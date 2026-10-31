@@ -1500,6 +1500,13 @@ char default_init_file_content[] =
 ; / -X). Off by default; the tray menu's Lock agent / Unlock agent always\n\
 ; works, and its Unlock also clears a program's lock.\n\
 ;allowipclock=no\n\
+; readknownhosts: use OpenSSH's %USERPROFILE%\\.ssh\\known_hosts as a\n\
+; host-key source (Settings, Agent page). Off by default: kageant then\n\
+; never opens the file. On: host names of a host key for the agent log's\n\
+; dest= / fwd= and the confirmation (marked \"(known_hosts)\"), \"Look up host\n\
+; keys\" in the rule editor (plain, hashed and @cert-authority entries), and\n\
+; \"Checked at each login\" destinations. KiTTY++ never writes the file.\n\
+;readknownhosts=no\n\
 \n\
 ; --- The agent log: what the agent did with keys - what signed or was\n\
 ; refused and why, what was added or removed and by which process. One\n\

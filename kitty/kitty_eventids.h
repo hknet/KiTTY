@@ -119,7 +119,7 @@ static const struct kitty_eventid kitty_eventids[] = {
       "Warning" },
     { 104, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "restricted",
       "fp comment result reason req reqpath pid dest fwd rule",
-      "Warning" },
+      "Warning; Information for keys-added" },
     { 110, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "add",
       "fp comment result reason req reqpath pid path restrict",
       "Information; Warning for a refusal or failure" },
@@ -449,10 +449,17 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "lifetime, device-removal, idle, windows-lock, windows-unlock, "
       "click-allow, click-deny, click-cancel-latch, pileup, "
       "suppress-latch, hello-verified, hello-denied, hello-unavailable, "
-      "hello-error; 104: a token - unbound (no session-bind), "
+      "hello-error, known_hosts (100: a destination rule permitted the "
+      "signature only through a host name read from OpenSSH's "
+      "known_hosts); 104: a token - unbound (no session-bind), "
       "bind-failed, not-userauth (the data to sign is no login for the "
       "key), destination (no rule permits the server), forwarding-hop, "
-      "session-id, hostkey, store-damaged; for result store-damaged the "
+      "session-id, hostkey, store-damaged, no-port (a CA destination's "
+      "Valid hosts has a port condition, the client sent no port), "
+      "known_hosts (result "
+      "keys-added); for result no-key-offered one of destination, "
+      "forwarding-hop (the last session-bind is for forwarding), "
+      "bind-failed, store-damaged; for result store-damaged the "
       "file and why it cannot be read, as text; 103: the agent's reason "
       "as text (key not found, "
       "unrecognised message, key usage not confirmed by user, ...); 201, "
@@ -486,7 +493,12 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "result",
       "the outcome; 100, 101: allowed, denied; 102: accepted; 103: "
       "refused; 104: sign-refused, remove-refused, store-damaged (the "
-      "rule file cannot be read: every key is refused over the pipe); "
+      "rule file cannot be read: every key is refused over the pipe), "
+      "keys-added (known_hosts turned on as a host-key source: host keys "
+      "found there added to the key's 'fixed list' destinations), "
+      "no-key-offered (the key list a program received was empty: the "
+      "destination rules left out every key kageant holds, the record "
+      "without fp, comment and rule); "
       "110, 114, "
       "115: done, "
       "blocked; 111: loaded, failed, fp-refused, not-verified; 112: "

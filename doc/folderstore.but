@@ -315,7 +315,9 @@ first lookup; when both exist, the one with it is read.
 \c{SshHostCAs} holds one file per CA (\k{kitty-cfg-host-cas}), named as
 a session value, written anew on each save, with \c{Key=value} lines
 \c{PublicKey} (base64), \c{Validity} (percent-encoded host expression),
-\c{PermitRSASHA1}, \c{PermitRSASHA256}, \c{PermitRSASHA512} (\c{0}/\c{1}).
+\c{PermitRSASHA1}, \c{PermitRSASHA256}, \c{PermitRSASHA512} and
+\c{PermitNameless} (certificates without names accepted, absent = no)
+(\c{0}/\c{1}).
 
 \H{folderstore-state} State files
 

@@ -282,6 +282,10 @@ struct unicode_data;
  */
 struct ca_options {
     bool permit_rsa_sha1, permit_rsa_sha256, permit_rsa_sha512;
+    /* KiTTY: a host certificate without names is valid for no host
+     * (OpenSSH 10.3); true accepts one from this CA for every host its
+     * expression admits */
+    bool permit_nameless;
 };
 
 #endif /* PUTTY_DEFS_H */

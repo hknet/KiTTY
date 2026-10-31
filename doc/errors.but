@@ -68,6 +68,12 @@ certified key signed by a \e{different} certification authority, KiTTY++
 will present this variant of the host key prompt, preceded by
 \q{WARNING - POTENTIAL SECURITY BREACH!}
 
+KiTTY++ shows the same prompt for a certificate from a CA you trust
+that it does not accept: one without names, expired, or not valid for
+the host name. The Terminal Window's Event Log has the reason, on the
+line \q{Rejected host key certificate: ...}. A certificate without names
+is \k{config-ssh-cert-nameless}.
+
 One reason why this can happen is a deliberate attack. Just like an
 ordinary man-in-the-middle attack which substitutes a wrong host key,
 a particularly ambitious attacker might substitute an entire wrong

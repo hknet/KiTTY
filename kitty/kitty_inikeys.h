@@ -270,6 +270,8 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_AGENT_NOTICETIMEOUT              "noticetimeout"
 #define KI_AGENT_PASSPHRASECACHESECONDS     "passphrasecacheseconds"
 #define KI_AGENT_QUIETMISSINGKEYS           "quietmissingkeys"
+/* OpenSSH's known_hosts as a host-key source (kitty_knownhosts.h) */
+#define KI_AGENT_READKNOWNHOSTS             "readknownhosts"
 #define KI_AGENT_RETRYKEYS                  "retrykeys"
 #define KI_AGENT_SHOWUNAVAILABLEKEYS        "showunavailablekeys"
 #define KI_AGENT_UNLOADONREMOVE             "unloadonremove"

@@ -1,6 +1,7 @@
 /*
  * kitty_agentbind.c: the session-bind@openssh.com message and the agent's
- * answer to it, and kageant's two extensions sent after it (kitty_agentbind.h).
+ * answer to it, kageant's two extensions sent after it, and
+ * key-state-v00@kapper.net for the reconnect wait (kitty_agentbind.h).
  * No PuTTY dependencies, so the unit test links this file alone.
  */
 #include <stdio.h>
@@ -75,6 +76,79 @@ size_t kitty_agentbind_withheld_encode(unsigned char *out, size_t cap)
         return need;
     out[0] = KITTY_AGENTBIND_MSG_EXT;
     return put_str(out, 1, cap, name, strlen(name));
+}
+
+size_t kitty_agentbind_keystate_encode(unsigned char *out, size_t cap,
+                                       const void *blob, size_t blob_len)
+{
+    const char *name = KITTY_AGENTBIND_KEYSTATE_EXT;
+    size_t need = 1 + (4 + strlen(name));
+    size_t at;
+
+    if (blob && blob_len)
+        need += 4 + blob_len;
+    if (!out || cap < need)
+        return need;
+    out[0] = KITTY_AGENTBIND_MSG_EXT;
+    at = put_str(out, 1, cap, name, strlen(name));
+    if (blob && blob_len)
+        at = put_str(out, at, cap, blob, blob_len);
+    return at;
+}
+
+/* a big-endian uint32 at p */
+static uint32_t get_u32(const unsigned char *p)
+{
+    return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+        ((uint32_t)p[2] << 8) | (uint32_t)p[3];
+}
+
+int kitty_agentbind_keystate_reply(const void *reply, size_t len,
+                                   const void *blob, size_t blob_len,
+                                   uint32_t *flags)
+{
+    const unsigned char *p = (const unsigned char *)reply;
+    const char *name = KITTY_AGENTBIND_KEYSTATE_EXT;
+    size_t at = 5, n = 0, nlen = strlen(name);
+    uint32_t count, i;
+    int type = kitty_agentbind_reply_type(reply, len);
+    int found = KITTY_KEYSTATE_ABSENT;
+    uint32_t got = 0;
+
+    if (type == KITTY_AGENTBIND_MSG_FAILURE)
+        return KITTY_KEYSTATE_UNKNOWN;
+    if (type != KITTY_AGENTBIND_MSG_EXT_RESPONSE)
+        return KITTY_KEYSTATE_BAD;
+    /* string name, uint32 count */
+    if (len - at < 4 || (n = get_u32(p + at)) != nlen ||
+        len - at - 4 < n || memcmp(p + at + 4, name, n))
+        return KITTY_KEYSTATE_BAD;
+    at += 4 + n;
+    if (len - at < 4)
+        return KITTY_KEYSTATE_BAD;
+    count = get_u32(p + at);
+    at += 4;
+    /* per key: string blob, uint32 flags - every entry well formed, and
+     * nothing after the last */
+    for (i = 0; i < count; i++) {
+        if (len - at < 4)
+            return KITTY_KEYSTATE_BAD;
+        n = get_u32(p + at);
+        if (len - at - 4 < n || len - at - 4 - n < 4)
+            return KITTY_KEYSTATE_BAD;
+        if (found != KITTY_KEYSTATE_FOUND && blob && n == blob_len &&
+            !memcmp(p + at + 4, blob, n)) {
+            got = get_u32(p + at + 4 + n);
+            found = KITTY_KEYSTATE_FOUND;
+        }
+        at += 4 + n + 4;
+    }
+    if (at != len)
+        return KITTY_KEYSTATE_BAD;
+    /* *flags only from an answer that is well formed to its end */
+    if (found == KITTY_KEYSTATE_FOUND)
+        *flags = got;
+    return found;
 }
 
 bool kitty_agentbind_withheld_reply(const void *reply, size_t len,

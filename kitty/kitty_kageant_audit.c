@@ -301,6 +301,16 @@ static void kageant_req_name(unsigned long pid, char **base_out,
     }
 }
 
+/* kageant_req_path_hook (pageant.h): the program behind a request, for the
+ * origin of a rule set over the pipe. NULL when not known. */
+char *kageant_req_path_dup(unsigned long pid)
+{
+    char *base, *path;
+    kageant_req_name(pid, &base, &path);
+    sfree(base);
+    return path;
+}
+
 /* Event 152: a key decrypted (result done, failed - a wrong passphrase -
  * or cancelled); trigger first-use (the prompt a signature opened, pid =
  * its requester) or gui (the key list's Decrypt). Never the passphrase. */

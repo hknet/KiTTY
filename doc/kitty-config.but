@@ -3180,6 +3180,12 @@ to narrow it further. It is what keeps a CA for one estate from
 vouching for hosts in another, so it is worth being precise here rather
 than writing \c{*}.
 
+\b \q{Accept certificates without names (valid for every host in Valid
+hosts)}: off by default. A host certificate without names is then valid
+for no host, as in OpenSSH 10.3. Not recommended: a stolen certificate
+without names lets one server pose as any host. Why and the fix:
+\k{config-ssh-cert-nameless}.
+
 Records are stored per user and work in portable mode. Nothing is
 stored until \q{Save}. The full how-to, including the OpenSSH server
 side, is at

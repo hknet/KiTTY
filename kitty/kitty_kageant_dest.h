@@ -25,6 +25,12 @@ char *kageant_dest_hostkey_text_for(ptrlen hostkey, const char *client);
 void kageant_dest_fields(const struct kageant_dest *d, char **dest,
                          char **fwd);
 
+/* The server of a bound connection for kageant's notices: its last
+ * binding written as the confirmation box writes a host ("web01 (client)
+ * web-01 (SHA256:...)", the fingerprint alone when no name is found).
+ * NULL when the connection sent no binding; sfree it. */
+char *kageant_dest_server_text(const struct kageant_dest *d);
+
 /* The confirmation box's lines for a bound connection: "Destination:
  * web01 (SHA256:...)" and one "Forwarded via: ..." per hop, a newline
  * between them. NULL when the connection sent no binding; sfree it. */
@@ -39,23 +45,49 @@ struct kageant_dest_found {
     char *source;
 };
 /* Every host key stored for host and port (22 when 0): the KiTTY++
- * host-key store in charge, the user's known_hosts and the CA store (a CA
- * whose host expression takes the host). Each key once. The count, *out
- * the array (NULL for none); kageant_dest_found_free it. */
+ * host-key store in charge, the user's known_hosts while kageant reads it
+ * and the CA store (a CA whose host expression takes the host). Each key
+ * once. The count, *out the array (NULL for none); kageant_dest_found_free
+ * it. */
 size_t kageant_dest_lookup(const char *host, int port,
                            struct kageant_dest_found **out);
 void kageant_dest_found_free(struct kageant_dest_found *v, size_t n);
 
-/* The rule editor's "Servers whose host key is stored now": every plain
+/* The rule editor's "Fixed list: host keys known now": every plain
  * host key stored under a name the pattern matches (* and ?, case
- * ignored) on that port - the KiTTY++ host-key store and known_hosts
- * (plain entries; hashed and @cert-authority lines give nothing). */
+ * ignored) on that port - the KiTTY++ host-key store and, while kageant
+ * reads it, known_hosts (plain entries; hashed and @cert-authority lines
+ * give nothing). */
 size_t kageant_dest_lookup_pattern(const char *pattern, int port,
                                    struct kageant_dest_found **out);
 
-/* The names a host key is stored under (the host-key store and
- * known_hosts, "host" or "host:port" for another port than 22), for
- * kar_hostkey_names. *out a new array (kar_names_free). */
-size_t kageant_dest_names(ptrlen hostkey, char ***out);
+/* The names a host key is stored under (the host-key store, and
+ * known_hosts while kageant reads it; "host" or "host:port" for another
+ * port than 22), for kar_hostkey_names. *out a new array
+ * (kar_names_free), *kh which of them come from known_hosts (sfree it). */
+size_t kageant_dest_names(ptrlen hostkey, char ***out, bool **kh);
+
+/* kkh_path_hook: %USERPROFILE%\.ssh\known_hosts while kageant's known_hosts
+ * setting is on, else NULL - the file is then never opened. */
+char *kageant_known_hosts_path(void);
+
+/* The CA store in charge (the registry, or the folder store's SshHostCAs),
+ * read whole: each CA with a public key that decodes. */
+struct kageant_ca {
+    char *name;
+    strbuf *pubkey;             /* the public key blob */
+    char *expr;                 /* "Valid hosts", "" for none */
+    bool nameless;              /* PermitNameless: certificates without
+                                 * names accepted */
+};
+struct kageant_ca_list {
+    struct kageant_ca *v;
+    size_t n, size;
+};
+void kageant_ca_list(struct kageant_ca_list *out);
+void kageant_ca_list_free(struct kageant_ca_list *l);
+/* kar_ca_lookup: the CA named name (as the CA store writes it, case kept). */
+bool kageant_ca_by_name(const char *name, strbuf *pubkey, char **expr,
+                        bool *nameless);
 
 #endif /* KITTY_KAGEANT_DEST_H */

@@ -915,9 +915,9 @@ static int kageant_policy_read(const char *inikey, const char *regname)
 
 /* Remembered for two seconds per policy, like the confirm mode: these are
  * queried on every external add/remove (and lock) request. One slot per
- * policy - a fifth policy needs a fifth slot, or it is re-read every time.
+ * policy - a sixth policy needs a sixth slot, or it is re-read every time.
  * A write through kageant_policy_set forgets them all at once. */
-#define KAGEANT_POLICY_SLOTS 4
+#define KAGEANT_POLICY_SLOTS 5
 static struct { const char *inikey; int value; DWORD stamp; } kageant_policy_cache[KAGEANT_POLICY_SLOTS];
 
 int kageant_policy_get(const char *inikey, const char *regname)
@@ -988,6 +988,19 @@ int  kageant_allowipclock_get(void)
 int kageant_allowipclock_set(int on)
 {
     return kageant_policy_set(KI_AGENT_ALLOWIPCLOCK, "AllowIpcLock", on);
+}
+/* "Use OpenSSH's known_hosts as a host-key source" - default OFF: the user
+ * never set that file as a source, and PuTTY never reads it. Off, kageant
+ * opens no known_hosts at all (kitty_knownhosts.h): no names for dest= and
+ * fwd=, no keys for the rule editor's look-up, no "Also servers stored
+ * later" match through it. Asked per host-key look-up, hence the cache. */
+int  kageant_readknownhosts_get(void)
+{
+    return kageant_policy_get(KI_AGENT_READKNOWNHOSTS, "ReadKnownHosts");
+}
+int kageant_readknownhosts_set(int on)
+{
+    return kageant_policy_set(KI_AGENT_READKNOWNHOSTS, "ReadKnownHosts", on);
 }
 
 /* "When Windows locks": 0 keep the agent working (default), 1 lock the

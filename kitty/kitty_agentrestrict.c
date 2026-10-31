@@ -18,6 +18,7 @@
 #include "ssh.h"
 
 #include "kitty_agentrestrict.h"
+#include "kitty_knownhosts.h"   /* the D9 comparison of a program's rule */
 #include "kitty_text.h"     /* KT_KA_DEST_CLIENT_MARK, KT_KAKEYS_DEST_* */
 
 /* ---- rules, hops, keys ---------------------------------------------------- */
@@ -63,12 +64,25 @@ void kar_hop_add_key(kar_hop *h, ptrlen blob, bool is_ca)
     h->nkeys++;
 }
 
+bool kar_hop_add_key_new(kar_hop *h, ptrlen blob, bool is_ca)
+{
+    for (size_t i = 0; i < h->nkeys; i++)
+        if (h->keys[i].is_ca == is_ca &&
+            ptrlen_eq_ptrlen(ptrlen_from_strbuf(h->keys[i].blob), blob))
+            return false;
+    if (h->nkeys >= KAR_MAX_HOPKEYS)
+        return false;
+    kar_hop_add_key(h, blob, is_ca);
+    return true;
+}
+
 void kar_hop_copy(kar_hop *dst, const kar_hop *src)
 {
     memset(dst, 0, sizeof(*dst));
     dst->user = src->user ? dupstr(src->user) : NULL;
     dst->host = src->host ? dupstr(src->host) : NULL;
     dst->match = src->match;
+    dst->flags = src->flags;
     for (size_t i = 0; i < src->nkeys; i++)
         kar_hop_add_key(dst, ptrlen_from_strbuf(src->keys[i].blob),
                         src->keys[i].is_ca);
@@ -105,7 +119,8 @@ static bool host_equal(const char *a, const char *b)
 static bool hop_equal(const kar_hop *a, const kar_hop *b)
 {
     if (!str_equal(a->user, b->user) || !host_equal(a->host, b->host) ||
-        a->nkeys != b->nkeys || a->match != b->match)
+        a->nkeys != b->nkeys || a->match != b->match ||
+        a->flags != b->flags)
         return false;
     for (size_t i = 0; i < a->nkeys; i++)
         if (a->keys[i].is_ca != b->keys[i].is_ca ||
@@ -134,7 +149,71 @@ bool kar_host_is_pattern(const char *host)
     return host && strpbrk(host, "*?") != NULL;
 }
 
-size_t (*kar_hostkey_names)(ptrlen hostkey, char ***names) = NULL;
+bool kar_pattern_narrow_enough(const char *host)
+{
+    size_t len, i, nlab = 0, wild_before = 0;
+    const char *p, *colon, *end;
+    size_t starts[3] = {0, 0, 0}, ends[3] = {0, 0, 0};   /* last 3 labels */
+
+    if (!kar_host_is_pattern(host))
+        return true;
+    p = host;
+    len = strlen(p);
+    if (*p == '[') {
+        const char *rb = strchr(p, ']');
+        if (!rb)
+            return false;
+        p++;
+        len = (size_t)(rb - p);
+    } else if ((colon = strrchr(p, ':')) != NULL &&
+               colon == strchr(p, ':') && colon[1]) {
+        /* "host:port": one colon followed by digits only */
+        const char *q = colon + 1;
+        while (*q >= '0' && *q <= '9')
+            q++;
+        if (!*q)
+            len = (size_t)(colon - p);
+    }
+    end = p + len;
+
+    /* walk the labels; count the wildcard labels other than the last two */
+    {
+        const char *s = p;
+        for (;;) {
+            const char *dot = memchr(s, '.', (size_t)(end - s));
+            const char *e = dot ? dot : end;
+            starts[0] = starts[1]; ends[0] = ends[1];
+            starts[1] = starts[2]; ends[1] = ends[2];
+            starts[2] = (size_t)(s - p); ends[2] = (size_t)(e - p);
+            nlab++;
+            /* the label that just left the last-two window */
+            if (nlab >= 3) {
+                for (i = starts[0]; i < ends[0]; i++)
+                    if (p[i] == '*' || p[i] == '?') {
+                        wild_before++;
+                        break;
+                    }
+            }
+            if (!dot)
+                break;
+            s = dot + 1;
+        }
+    }
+    if (nlab < 3 || !wild_before)
+        return false;
+    for (int l = 1; l <= 2; l++) {
+        if (ends[l] == starts[l])
+            return false;                  /* an empty label */
+        for (i = starts[l]; i < ends[l]; i++)
+            if (p[i] == '*' || p[i] == '?')
+                return false;
+    }
+    return true;
+}
+
+size_t (*kar_hostkey_names)(ptrlen hostkey, char ***names, bool **kh) = NULL;
+bool (*kar_ca_lookup)(const char *name, strbuf *pubkey, char **expr,
+                      bool *nameless) = NULL;
 
 void kar_names_free(char **names, size_t n)
 {
@@ -342,8 +421,12 @@ typedef struct kar_boundkey {
     ssh_key *key;               /* NULL when it does not decode */
     strbuf *ca;                 /* a certificate's CA blob, else NULL */
     char **names;               /* KAR_MATCH_STORED_LATER: the names it is */
-    size_t nnames;              /* stored under, read once when needed */
+    bool *kh;                   /* stored under, read once when needed; */
+    size_t nnames;              /* kh[i]: names[i] is from known_hosts */
     bool names_read;
+    unsigned port;              /* the client's port, 0 = none sent */
+    bool port_missed;           /* a KAR_MATCH_CA_STORE hop failed only for
+                                 * want of the port (KAR_WHY_NO_PORT) */
 } kar_boundkey;
 
 static void boundkey_init(kar_boundkey *k, ptrlen blob)
@@ -372,6 +455,7 @@ static void boundkey_free(kar_boundkey *k)
     if (k->ca)
         strbuf_free(k->ca);
     kar_names_free(k->names, k->nnames);
+    sfree(k->kh);
 }
 
 /* A copy of s in lower case (host names). sfree it. */
@@ -384,71 +468,96 @@ static char *lower_dup(const char *s, size_t len)
     return t;
 }
 
-/* KAR_MATCH_CA_PATTERN: a host certificate signed by a CA key of the hop,
- * valid now, with a principal the hop's pattern matches (the pattern is
- * the rule's host name, the principal the subject). */
-static bool hop_matches_ca_pattern(const kar_hop *h, const kar_boundkey *k)
+/* A host certificate's own check (type, time, CA signature) for one
+ * principal - the empty one for a certificate without names. */
+static bool cert_valid_for(ssh_key *key, ptrlen principal,
+                           const ca_options *opts)
 {
-    bool ca_ok = false, ok = false;
-    key_components *kc;
-    char *pat;
+    strbuf *error = strbuf_new();
+    bool ok = ssh_key_check_cert(key, true, principal, (uint64_t)time(NULL),
+                                 opts, BinarySink_UPCAST(error));
+    strbuf_free(error);
+    return ok;
+}
 
-    if (!k->ca || !k->key || !h->host)
+/* KAR_MATCH_CA_STORE: a host certificate signed by the CA of the hop's
+ * host name, with the key the CA store holds for it now, valid now, with
+ * a name the CA's "Valid hosts" admits; a certificate without names only
+ * when the CA's record allows it. The port conditions of Valid hosts: the
+ * client's port when it sent one; else never met, or dropped when the hop
+ * carries KAR_HOP_IGNORE_PORT. k->port_missed: a name failed only because
+ * no port was sent (it passes with the port conditions dropped). */
+static bool hop_matches_ca_store(const kar_hop *h, kar_boundkey *k)
+{
+    strbuf *pub;
+    char *expr = NULL;
+    bool nameless = false, ok = false, m;
+    key_components *kc;
+    size_t nnames = 0;
+    ca_options opts;
+
+    if (!k->ca || !k->key || !h->host || !kar_ca_lookup)
         return false;
-    for (size_t i = 0; i < h->nkeys && !ca_ok; i++)
-        ca_ok = h->keys[i].is_ca &&
-            ptrlen_eq_ptrlen(ptrlen_from_strbuf(h->keys[i].blob),
-                             ptrlen_from_strbuf(k->ca));
-    if (!ca_ok)
+    pub = strbuf_new();
+    if (!kar_ca_lookup(h->host, pub, &expr, &nameless) || !expr ||
+        !ptrlen_eq_ptrlen(ptrlen_from_strbuf(pub),
+                          ptrlen_from_strbuf(k->ca))) {
+        strbuf_free(pub);
+        sfree(expr);
         return false;
-    pat = lower_dup(h->host, strlen(h->host));
+    }
+    strbuf_free(pub);
+    /* the CA signature algorithms OpenSSH's agent accepts: not RSA with
+     * SHA-1 */
+    opts.permit_rsa_sha1 = false;
+    opts.permit_rsa_sha256 = true;
+    opts.permit_rsa_sha512 = true;
+    opts.permit_nameless = nameless;
     kc = ssh_key_components(k->key);
     for (size_t i = 0; kc && i < kc->ncomponents && !ok; i++) {
         const key_component *c = &kc->components[i];
-        char *p;
         if (c->type != KCT_TEXT ||
             strncmp(c->name, "cert_valid_principal_", 21))
             continue;
-        p = lower_dup(c->str->s, c->str->len);
-        if (kar_wildcard(p, pat)) {
-            /* the CA signature algorithms OpenSSH's agent accepts: not
-             * RSA with SHA-1; the certificate's own check of type, time
-             * and signature, for this principal */
-            ca_options opts;
-            strbuf *error = strbuf_new();
-            opts.permit_rsa_sha1 = false;
-            opts.permit_rsa_sha256 = true;
-            opts.permit_rsa_sha512 = true;
-            ok = ssh_key_check_cert(k->key, true,
-                                    ptrlen_from_strbuf(c->str),
-                                    (uint64_t)time(NULL), &opts,
-                                    BinarySink_UPCAST(error));
-            strbuf_free(error);
-        }
-        sfree(p);
+        nnames++;
+        if (k->port)
+            m = cert_expr_match_str(expr, c->str->s, k->port);
+        else if (h->flags & KAR_HOP_IGNORE_PORT)
+            m = cert_expr_match_str_dropport(expr, c->str->s);
+        else
+            m = cert_expr_match_str_noport(expr, c->str->s);
+        if (m)
+            ok = cert_valid_for(k->key, ptrlen_from_strbuf(c->str), &opts);
+        else if (!k->port && !(h->flags & KAR_HOP_IGNORE_PORT) &&
+                 cert_expr_match_str_dropport(expr, c->str->s) &&
+                 cert_valid_for(k->key, ptrlen_from_strbuf(c->str), &opts))
+            k->port_missed = true;
     }
     if (kc)
         key_components_free(kc);
-    sfree(pat);
+    if (!nnames && nameless)
+        ok = cert_valid_for(k->key, PTRLEN_LITERAL(""), &opts);
+    sfree(expr);
     return ok;
 }
 
 /* KAR_MATCH_STORED_LATER: is the bound host key stored under a name the
- * hop's pattern matches? A name's ":port" is left out of the match. */
-static bool hop_matches_names(const kar_hop *h, kar_boundkey *k)
+ * hop's pattern matches? A name's ":port" is left out of the match. 0 no,
+ * 1 yes, 2 yes but only through a name read from known_hosts. */
+static int hop_matches_names(const kar_hop *h, kar_boundkey *k)
 {
-    bool ok = false;
+    int ret = 0;
     char *pat;
 
     if (!h->host)
-        return false;
+        return 0;
     if (!k->names_read) {
         k->names_read = true;
         if (kar_hostkey_names)
-            k->nnames = kar_hostkey_names(k->blob, &k->names);
+            k->nnames = kar_hostkey_names(k->blob, &k->names, &k->kh);
     }
     pat = lower_dup(h->host, strlen(h->host));
-    for (size_t i = 0; i < k->nnames && !ok; i++) {
+    for (size_t i = 0; i < k->nnames && ret != 1; i++) {
         const char *n = k->names[i], *colon = strchr(n, ':');
         size_t len = strlen(n);
         char *t;
@@ -456,11 +565,12 @@ static bool hop_matches_names(const kar_hop *h, kar_boundkey *k)
         if (colon && !strchr(colon + 1, ':'))
             len = (size_t)(colon - n);
         t = lower_dup(n, len);
-        ok = kar_wildcard(t, pat);
+        if (kar_wildcard(t, pat))
+            ret = (k->kh && k->kh[i]) ? 2 : 1;
         sfree(t);
     }
     sfree(pat);
-    return ok;
+    return ret;
 }
 
 /* OpenSSH's match_key_hop: a plain key equals a plain entry; a
@@ -482,13 +592,15 @@ static bool hop_matches_keys(const kar_hop *h, const kar_boundkey *k)
             continue;
         {
             /* the CA signature algorithms OpenSSH's agent accepts: not
-             * RSA with SHA-1 */
+             * RSA with SHA-1; a certificate without names is valid for
+             * no host (OpenSSH 10.3) */
             ca_options opts;
             strbuf *error = strbuf_new();
             bool ok;
             opts.permit_rsa_sha1 = false;
             opts.permit_rsa_sha256 = true;
             opts.permit_rsa_sha512 = true;
+            opts.permit_nameless = false;
             ok = ssh_key_check_cert(
                 k->key, true, ptrlen_from_asciz(h->host ? h->host : ""),
                 (uint64_t)time(NULL), &opts, BinarySink_UPCAST(error));
@@ -500,45 +612,63 @@ static bool hop_matches_keys(const kar_hop *h, const kar_boundkey *k)
     return false;
 }
 
-/* A hop against a bound host key, by the hop's KAR_MATCH_* value. */
-static bool hop_matches(const kar_hop *h, kar_boundkey *k)
+/* A hop against a bound host key, by the hop's KAR_MATCH_* value: 0 no,
+ * 1 yes, 2 yes but only through a name read from known_hosts. */
+static int hop_matches(const kar_hop *h, kar_boundkey *k)
 {
-    if (h->match == KAR_MATCH_CA_PATTERN)
-        return hop_matches_ca_pattern(h, k);
+    if (h->match == KAR_MATCH_CA_DROPPED)
+        return 0;                       /* matches no server */
+    if (h->match == KAR_MATCH_CA_STORE)
+        return hop_matches_ca_store(h, k) ? 1 : 0;
     if (hop_matches_keys(h, k))
-        return true;
-    return h->match == KAR_MATCH_STORED_LATER && hop_matches_names(h, k);
+        return 1;
+    return h->match == KAR_MATCH_STORED_LATER ? hop_matches_names(h, k) : 0;
 }
 
 /* OpenSSH's permitted_by_dest_constraints: a rule whose "from" hop matches
  * the previous bind (none = this computer), whose "to" hop matches this one
- * (to NULL = any), and whose user pattern matches (when both are given). */
-static bool by_rules(const kar_rules *r, kar_boundkey *from,
-                     kar_boundkey *to, const char *user)
+ * (to NULL = any), and whose user pattern matches (when both are given).
+ * 0 no, 1 yes, 2 yes but only through a known_hosts name (a rule without
+ * one is preferred). */
+static int by_rules(const kar_rules *r, kar_boundkey *from,
+                    kar_boundkey *to, const char *user)
 {
+    int best = 0;
     for (size_t i = 0; i < r->n; i++) {
         const kar_rule *d = &r->v[i];
+        int mf = 1, mt = 1;
         if (!from) {
             if (d->from.host || d->from.nkeys)
                 continue;
-        } else if (!hop_matches(&d->from, from)) {
+        } else if ((mf = hop_matches(&d->from, from)) == 0) {
             continue;
         }
-        if (to && !hop_matches(&d->to, to))
+        if (to && (mt = hop_matches(&d->to, to)) == 0)
             continue;
         if (d->to.user && user && !kar_wildcard(user, d->to.user))
             continue;
-        return true;
+        if (mf == 1 && mt == 1)
+            return 1;
+        best = 2;
     }
-    return false;
+    return best;
 }
 
 bool kar_permitted(const kar_rules *r, const kar_bind *b, size_t nb,
                    bool bind_attempted, const char *user, const char **why)
 {
-    kar_boundkey prev, cur;
-    bool have_prev = false, ok = true;
+    return kar_permitted_ex(r, b, nb, bind_attempted, user, why, NULL);
+}
 
+bool kar_permitted_ex(const kar_rules *r, const kar_bind *b, size_t nb,
+                      bool bind_attempted, const char *user,
+                      const char **why, unsigned *via)
+{
+    kar_boundkey prev, cur;
+    bool have_prev = false, ok = true, kh = false;
+
+    if (via)
+        *via = 0;
     memset(&prev, 0, sizeof(prev));
     memset(&cur, 0, sizeof(cur));
     if (nb == 0) {
@@ -564,9 +694,19 @@ bool kar_permitted(const kar_rules *r, const kar_bind *b, size_t nb,
             break;
         }
         boundkey_init(&cur, b[i].hostkey);
-        if (!by_rules(r, have_prev ? &prev : NULL, &cur, test_user)) {
-            *why = KAR_WHY_DESTINATION;
-            ok = false;
+        cur.port = b[i].port;
+        if (have_prev)
+            prev.port_missed = false;   /* this hop's check only */
+        {
+            int m = by_rules(r, have_prev ? &prev : NULL, &cur, test_user);
+            if (!m) {
+                *why = (cur.port_missed ||
+                        (have_prev && prev.port_missed)) ?
+                    KAR_WHY_NO_PORT : KAR_WHY_DESTINATION;
+                ok = false;
+            } else if (m == 2) {
+                kh = true;
+            }
         }
         if (have_prev)
             boundkey_free(&prev);
@@ -582,6 +722,8 @@ bool kar_permitted(const kar_rules *r, const kar_bind *b, size_t nb,
     }
     if (have_prev)
         boundkey_free(&prev);
+    if (ok && kh && via)
+        *via |= KAR_VIA_KNOWN_HOSTS;
     return ok;
 }
 
@@ -621,10 +763,20 @@ bool kar_sign_permitted(const kar_rules *r, const kar_bind *b, size_t nb,
                         bool bind_attempted, ptrlen keyblob, ptrlen data,
                         const char **why)
 {
+    return kar_sign_permitted_ex(r, b, nb, bind_attempted, keyblob, data,
+                                 why, NULL);
+}
+
+bool kar_sign_permitted_ex(const kar_rules *r, const kar_bind *b, size_t nb,
+                           bool bind_attempted, ptrlen keyblob, ptrlen data,
+                           const char **why, unsigned *via)
+{
     ptrlen sid, user, hostkey;
     char *u;
     bool ok;
 
+    if (via)
+        *via = 0;
     if (nb == 0) {
         *why = bind_attempted ? KAR_WHY_BIND_FAILED : KAR_WHY_UNBOUND;
         return false;
@@ -634,7 +786,7 @@ bool kar_sign_permitted(const kar_rules *r, const kar_bind *b, size_t nb,
         return false;
     }
     u = mkstr(user);
-    ok = kar_permitted(r, b, nb, bind_attempted, u, why);
+    ok = kar_permitted_ex(r, b, nb, bind_attempted, u, why, via);
     sfree(u);
     if (!ok)
         return false;
@@ -704,6 +856,11 @@ char *kar_rule_text(const kar_rule *r)
         put_fmt(sb, "%s > ", r->from.host);
     if (r->to.user)
         put_fmt(sb, "%s@", r->to.user);
+    if (r->to.match == KAR_MATCH_CA_STORE) {
+        /* every server of a CA of the CA store: no host key in the rule */
+        put_fmt(sb, KT_KA_RULE_CA_FMT, r->to.host ? r->to.host : "");
+        return strbuf_to_str(sb);
+    }
     put_dataz(sb, r->to.host ? r->to.host : "");
     if (r->to.nkeys) {
         char *k = kar_hostkey_text(&r->to.keys[0]);
@@ -731,10 +888,18 @@ char *kar_rules_text(const kar_rules *r)
 
 bool kar_parse_bind_host(BinarySource *src, char **out, const char **why)
 {
+    return kar_parse_bind_host_port(src, out, NULL, why);
+}
+
+bool kar_parse_bind_host_port(BinarySource *src, char **out, unsigned *pport,
+                              const char **why)
+{
     ptrlen host = get_string(src);
     unsigned long port = get_uint32(src);
 
     *out = NULL;
+    if (pport)
+        *pport = 0;
     if (get_err(src)) {
         *why = "unable to decode request";
         return false;
@@ -760,7 +925,51 @@ bool kar_parse_bind_host(BinarySource *src, char **out, const char **why)
     }
     *out = (port == 22) ? mkstr(host) :
         dupprintf("%.*s:%lu", PTRLEN_PRINTF(host), port);
+    if (pport)
+        *pport = (unsigned)port;
     return true;
+}
+
+bool kar_parse_key_state(BinarySource *src, bool *one, ptrlen *blob,
+                         const char **why)
+{
+    *one = false;
+    *blob = make_ptrlen(NULL, 0);
+    if (!get_avail(src))
+        return true;                    /* every key */
+    *blob = get_string(src);
+    if (get_err(src)) {
+        *why = "unable to decode request";
+        return false;
+    }
+    if (get_avail(src)) {
+        *why = "trailing data after the request";
+        return false;
+    }
+    *one = true;
+    return true;
+}
+
+bool kar_ext_local_only(ptrlen name)
+{
+    return ptrlen_eq_string(name,
+                            "list-extended@putty.projects.tartarus.org") ||
+        ptrlen_eq_string(name, "reencrypt@putty.projects.tartarus.org") ||
+        ptrlen_eq_string(name, "reencrypt-all@putty.projects.tartarus.org");
+}
+
+const char *kar_nokey_reason(bool store_damaged, const kar_bind *b,
+                             size_t nb, bool bind_attempted)
+{
+    if (!nb && !bind_attempted)
+        return NULL;                    /* local use: nothing left out */
+    if (store_damaged)
+        return KAR_WHY_STORE_DAMAGED;
+    if (!nb)
+        return KAR_WHY_BIND_FAILED;
+    if (b[nb - 1].forwarding)
+        return KAR_WHY_FWD_HOP;
+    return KAR_WHY_DESTINATION;
 }
 
 /* ASCII case ignored: host names */
@@ -780,6 +989,12 @@ static bool kar_same_name(const char *a, const char *b)
 }
 
 char *kar_dest_names_text(const char *client, char *const *names, size_t n)
+{
+    return kar_dest_names_text_kh(client, names, NULL, n);
+}
+
+char *kar_dest_names_text_kh(const char *client, char *const *names,
+                             const bool *kh, size_t n)
 {
     strbuf *sb;
     size_t shown = 0, rest = 0;
@@ -802,6 +1017,8 @@ char *kar_dest_names_text(const char *client, char *const *names, size_t n)
         if (sb->len)
             put_byte(sb, ' ');
         put_dataz(sb, names[i]);
+        if (kh && kh[i])
+            put_dataz(sb, KT_KA_DEST_KH_MARK);     /* read from known_hosts */
         shown++;
     }
     if (rest)
@@ -837,8 +1054,10 @@ void kar_store_clear(kar_store *s)
         sfree(s->keys[i].comment);
         strbuf_free(s->keys[i].blob);
     }
-    for (size_t i = 0; i < s->nlinks; i++)
+    for (size_t i = 0; i < s->nlinks; i++) {
         sfree(s->links[i].fp);
+        kar_origin_free(&s->links[i].origin);
+    }
     sfree(s->dest);
     sfree(s->keys);
     sfree(s->links);
@@ -867,8 +1086,8 @@ void kar_store_copy(kar_store *dst, const kar_store *src)
         kar_store_note_key(dst, src->keys[i].fp, src->keys[i].comment,
                            ptrlen_from_strbuf(src->keys[i].blob));
     for (size_t i = 0; i < src->nlinks; i++)
-        kar_store_link(dst, src->links[i].fp, src->links[i].dest,
-                       src->links[i].flags);
+        kar_store_link_origin(dst, src->links[i].fp, src->links[i].dest,
+                              src->links[i].flags, &src->links[i].origin);
     dst->next_id = src->next_id;
     dst->damaged = src->damaged;
 }
@@ -953,19 +1172,32 @@ char *kar_store_dest_lines(const kar_store *s, const char *fp,
             sb = strbuf_new();
         else
             put_datapl(sb, PTRLEN_LITERAL("\r\n"));
-        put_dataz(sb, d->rule.to.host ? d->rule.to.host : "");
+        if (d->rule.to.match == KAR_MATCH_CA_STORE) {
+            char *ca = kar_ca_dest_text(
+                d->rule.to.host,
+                (d->rule.to.flags & KAR_HOP_IGNORE_PORT) != 0);
+            put_dataz(sb, ca);
+            sfree(ca);
+        } else {
+            put_dataz(sb, d->rule.to.host ? d->rule.to.host : "");
+        }
         if (d->rule.to.user)
             put_fmt(sb, KT_KAKEYS_DEST_USER_FMT, d->rule.to.user);
         if (d->rule.from.host)
             put_fmt(sb, KT_KAKEYS_DEST_VIA_FMT, d->rule.from.host);
         if (l->flags & KAR_LINK_FORWARD)
             put_dataz(sb, KT_KAKEYS_DEST_FORWARDING);
-        if (d->rule.to.match == KAR_MATCH_CA_PATTERN)
-            put_dataz(sb, KT_KAKEYS_DEST_MATCH_CA);
+        if (d->rule.to.match == KAR_MATCH_CA_DROPPED)
+            put_dataz(sb, KT_KAKEYS_DEST_MATCH_DROPPED);
         else if (d->rule.to.match == KAR_MATCH_STORED_NOW)
             put_dataz(sb, KT_KAKEYS_DEST_MATCH_NOW);
         else if (d->rule.to.match == KAR_MATCH_STORED_LATER)
             put_dataz(sb, KT_KAKEYS_DEST_MATCH_LATER);
+        {
+            char *o = kar_origin_text(&l->origin, &d->rule);
+            put_fmt(sb, "\r\n    %s", o);
+            sfree(o);
+        }
         (*count)++;
     }
     return sb ? strbuf_to_str(sb) : NULL;
@@ -1012,16 +1244,158 @@ unsigned kar_store_dest_for(kar_store *s, const kar_rule *r)
 void kar_store_link(kar_store *s, const char *fp, unsigned dest,
                     unsigned flags)
 {
-    for (size_t i = 0; i < s->nlinks; i++)
-        if (s->links[i].dest == dest && !strcmp(s->links[i].fp, fp)) {
-            s->links[i].flags = flags;
-            return;
+    kar_store_link_origin(s, fp, dest, flags, NULL);
+}
+
+void kar_store_link_origin(kar_store *s, const char *fp, unsigned dest,
+                           unsigned flags, const kar_origin *o)
+{
+    kar_link *l = NULL;
+    for (size_t i = 0; i < s->nlinks && !l; i++)
+        if (s->links[i].dest == dest && !strcmp(s->links[i].fp, fp))
+            l = &s->links[i];
+    if (!l) {
+        sgrowarray(s->links, s->linksize, s->nlinks);
+        l = &s->links[s->nlinks++];
+        memset(l, 0, sizeof(*l));
+        l->fp = dupstr(fp);
+        l->dest = dest;
+    }
+    l->flags = flags;
+    kar_origin_free(&l->origin);
+    if (o)
+        kar_origin_copy(&l->origin, o);
+}
+
+void kar_origin_copy(kar_origin *dst, const kar_origin *src)
+{
+    dst->kind = src->kind;
+    dst->program = src->program ? dupstr(src->program) : NULL;
+    dst->when = src->when;
+}
+
+void kar_origin_free(kar_origin *o)
+{
+    sfree(o->program);
+    memset(o, 0, sizeof(*o));
+}
+
+/* "host", "host:port" or "[host]:port" -> host and port (22 when not
+ * given). sfree *host. */
+static void origin_split_host(const char *text, char **host, int *port)
+{
+    const char *colon;
+    *port = 22;
+    if (*text == '[' && (colon = strstr(text, "]:")) != NULL) {
+        *host = dupprintf("%.*s", (int)(colon - text - 1), text + 1);
+        *port = atoi(colon + 2);
+    } else if ((colon = strchr(text, ':')) != NULL &&
+               !strchr(colon + 1, ':') && colon > text) {
+        *host = dupprintf("%.*s", (int)(colon - text), text);
+        *port = atoi(colon + 1);
+    } else {
+        *host = dupstr(text);
+    }
+    if (*port <= 0 || *port > 65535)
+        *port = 22;
+}
+
+/* the keys known_hosts holds for one host, for the comparison below */
+struct origin_kh {
+    strbuf **blob;
+    bool *is_ca;
+    size_t n, size, isize;
+};
+
+static void origin_kh_add(void *ctx, ptrlen blob, bool is_ca)
+{
+    struct origin_kh *f = (struct origin_kh *)ctx;
+    sgrowarray(f->blob, f->size, f->n);
+    sgrowarray(f->is_ca, f->isize, f->n);
+    f->blob[f->n] = strbuf_dup(blob);
+    f->is_ca[f->n] = is_ca;
+    f->n++;
+}
+
+char *kar_origin_text(const kar_origin *o, const kar_rule *r)
+{
+    strbuf *sb = strbuf_new();
+    unsigned kind = o ? o->kind : KAR_ORIGIN_UNKNOWN;
+
+    if (kind == KAR_ORIGIN_PROGRAM) {
+        char when[32];
+        when[0] = '\0';
+        if (o->when) {
+            time_t t = (time_t)o->when;
+            struct tm *tm = localtime(&t);
+            if (!tm || !strftime(when, sizeof(when), "%Y-%m-%d %H:%M", tm))
+                when[0] = '\0';
         }
-    sgrowarray(s->links, s->linksize, s->nlinks);
-    s->links[s->nlinks].fp = dupstr(fp);
-    s->links[s->nlinks].dest = dest;
-    s->links[s->nlinks].flags = flags;
-    s->nlinks++;
+        put_fmt(sb, KT_KARULES_ORIGIN_PROGRAM_FMT,
+                o->program && *o->program ? o->program :
+                                            KT_KARULES_ORIGIN_NO_PATH,
+                when[0] ? when : KT_KARULES_ORIGIN_NO_TIME);
+        /* while known_hosts is read: the program's host keys against the
+         * ones stored there under the rule's host name */
+        if (r && r->to.match == KAR_MATCH_EXACT && r->to.host &&
+            r->to.nkeys && kkh_path_hook) {
+            char *path = kkh_path_hook();
+            if (path) {
+                struct origin_kh f;
+                char *host;
+                int port;
+                size_t missing = 0;
+                sfree(path);
+                memset(&f, 0, sizeof(f));
+                origin_split_host(r->to.host, &host, &port);
+                kkh_lookup(host, port, false, origin_kh_add, &f);
+                for (size_t i = 0; i < r->to.nkeys; i++) {
+                    bool found = false;
+                    for (size_t j = 0; j < f.n && !found; j++)
+                        found = f.is_ca[j] == r->to.keys[i].is_ca &&
+                            ptrlen_eq_ptrlen(
+                                ptrlen_from_strbuf(f.blob[j]),
+                                ptrlen_from_strbuf(r->to.keys[i].blob));
+                    if (!found)
+                        missing++;
+                }
+                if (!missing)
+                    put_dataz(sb, KT_KARULES_ORIGIN_KH_SAME);
+                else
+                    put_fmt(sb, KT_KARULES_ORIGIN_KH_DIFF_FMT, (int)missing,
+                            (int)r->to.nkeys);
+                for (size_t j = 0; j < f.n; j++)
+                    strbuf_free(f.blob[j]);
+                sfree(f.blob);
+                sfree(f.is_ca);
+                sfree(host);
+            }
+        }
+    } else if (kind == KAR_ORIGIN_EDITOR) {
+        put_dataz(sb, KT_KARULES_ORIGIN_EDITOR);
+    } else {
+        put_dataz(sb, KT_KARULES_ORIGIN_UNKNOWN);
+    }
+    return strbuf_to_str(sb);
+}
+
+char *kar_ca_dest_text(const char *name, bool ignore_port)
+{
+    strbuf *pub = strbuf_new();
+    char *expr = NULL, *out;
+    bool nameless = false;
+
+    if (name && kar_ca_lookup && kar_ca_lookup(name, pub, &expr, &nameless) &&
+        expr)
+        out = dupprintf(KT_KAKEYS_DEST_CA_FMT "%s", name, expr,
+                        ignore_port ? KT_KAKEYS_DEST_CA_PORT_IGNORED : "");
+    else
+        out = dupprintf(KT_KAKEYS_DEST_CA_MISSING_FMT "%s",
+                        name ? name : "",
+                        ignore_port ? KT_KAKEYS_DEST_CA_PORT_IGNORED : "");
+    strbuf_free(pub);
+    sfree(expr);
+    return out;
 }
 
 void kar_store_unlink_key(kar_store *s, const char *fp)
@@ -1030,6 +1404,7 @@ void kar_store_unlink_key(kar_store *s, const char *fp)
     for (size_t i = 0; i < s->nlinks; i++) {
         if (!strcmp(s->links[i].fp, fp)) {
             sfree(s->links[i].fp);
+            kar_origin_free(&s->links[i].origin);
             continue;
         }
         s->links[j++] = s->links[i];
@@ -1039,14 +1414,14 @@ void kar_store_unlink_key(kar_store *s, const char *fp)
 
 void kar_store_set_key_rules(kar_store *s, const char *fp,
                              const char *comment, ptrlen blob,
-                             const kar_rules *r)
+                             const kar_rules *r, const kar_origin *o)
 {
     kar_store_note_key(s, fp, comment, blob);
     kar_store_unlink_key(s, fp);
     for (size_t i = 0; r && i < r->n; i++) {
         unsigned id = kar_store_dest_for(s, &r->v[i]);
         if (id)
-            kar_store_link(s, fp, id, 0);
+            kar_store_link_origin(s, fp, id, 0, o);
     }
 }
 
@@ -1079,11 +1454,20 @@ void kar_store_tidy(kar_store *s)
 
 /* ---- the store's bytes ---------------------------------------------------- */
 
-/* Format 1: the three tables. Format 2 (KiTTY++ 0.85.1.20 on): the same,
- * each destination followed by its "to" hop's KAR_MATCH_* value as a
- * uint32. Format 1 still loads, every destination KAR_MATCH_EXACT. */
+/* Format 1: the three tables. Format 2: the same, each destination
+ * followed by its "to" hop's KAR_MATCH_* value as a uint32 (0 to 3).
+ * Format 3 (KiTTY++ 0.85.1.20 on): format 2 with KAR_MATCH_CA_STORE (4),
+ * each link followed by its origin: uint32 KAR_ORIGIN_*, string the
+ * program's path ("" = none), uint64 the time. Format 4: format 3, each
+ * destination's match value followed by its "to" hop's KAR_HOP_* flags as
+ * a uint32 (KAR_HOP_IGNORE_PORT, on a KAR_MATCH_CA_STORE destination
+ * only). Formats 1 to 3 still load, their destinations without flags,
+ * the links of 1 and 2 with the origin unknown, format 1's destinations
+ * KAR_MATCH_EXACT. */
 #define KAR_STORE_MAGIC_1 "kageant-rules-1"
 #define KAR_STORE_MAGIC_2 "kageant-rules-2"
+#define KAR_STORE_MAGIC_3 "kageant-rules-3"
+#define KAR_STORE_MAGIC_4 "kageant-rules-4"
 
 static void store_hop_put(strbuf *sb, const kar_hop *h)
 {
@@ -1098,7 +1482,7 @@ static void store_hop_put(strbuf *sb, const kar_hop *h)
 
 void kar_store_encode(const kar_store *s, strbuf *out)
 {
-    kar_store_encode_format(s, out, 2);
+    kar_store_encode_format(s, out, 4);
 }
 
 void kar_store_encode_format(const kar_store *s, strbuf *out, int format)
@@ -1107,7 +1491,9 @@ void kar_store_encode_format(const kar_store *s, strbuf *out, int format)
     unsigned char hash[32];
     ssh_hash *h;
 
-    put_stringz(sb, format == 1 ? KAR_STORE_MAGIC_1 : KAR_STORE_MAGIC_2);
+    put_stringz(sb, format == 1 ? KAR_STORE_MAGIC_1 :
+                    format == 2 ? KAR_STORE_MAGIC_2 :
+                    format == 3 ? KAR_STORE_MAGIC_3 : KAR_STORE_MAGIC_4);
     put_uint32(sb, s->next_id);
     put_uint32(sb, (unsigned long)s->ndest);
     for (size_t i = 0; i < s->ndest; i++) {
@@ -1116,6 +1502,8 @@ void kar_store_encode_format(const kar_store *s, strbuf *out, int format)
         store_hop_put(sb, &s->dest[i].rule.to);
         if (format != 1)
             put_uint32(sb, s->dest[i].rule.to.match);
+        if (format >= 4)
+            put_uint32(sb, s->dest[i].rule.to.flags);
     }
     put_uint32(sb, (unsigned long)s->nkeys);
     for (size_t i = 0; i < s->nkeys; i++) {
@@ -1128,6 +1516,12 @@ void kar_store_encode_format(const kar_store *s, strbuf *out, int format)
         put_stringz(sb, s->links[i].fp);
         put_uint32(sb, s->links[i].dest);
         put_uint32(sb, s->links[i].flags);
+        if (format >= 3) {
+            const kar_origin *o = &s->links[i].origin;
+            put_uint32(sb, o->kind);
+            put_stringz(sb, o->program ? o->program : "");
+            put_uint64(sb, o->when);
+        }
     }
     h = ssh_hash_new(&ssh_sha256);
     put_datapl(h, ptrlen_from_strbuf(sb));
@@ -1210,7 +1604,11 @@ bool kar_store_decode(kar_store *s, ptrlen in, const char **err)
     BinarySource_BARE_INIT_PL(src, body);
     {
         ptrlen magic = get_string(src);
-        if (ptrlen_eq_string(magic, KAR_STORE_MAGIC_2)) {
+        if (ptrlen_eq_string(magic, KAR_STORE_MAGIC_4)) {
+            format = 4;
+        } else if (ptrlen_eq_string(magic, KAR_STORE_MAGIC_3)) {
+            format = 3;
+        } else if (ptrlen_eq_string(magic, KAR_STORE_MAGIC_2)) {
             format = 2;
         } else if (ptrlen_eq_string(magic, KAR_STORE_MAGIC_1)) {
             format = 1;
@@ -1241,20 +1639,33 @@ bool kar_store_decode(kar_store *s, ptrlen in, const char **err)
             *err = "destination table";
             goto damaged;
         }
-        if (format == 2) {
+        if (format >= 2) {
             unsigned long m = get_uint32(src);
-            if (get_err(src) || m > KAR_MATCH_MAX) {
+            if (get_err(src) || m > (format == 2 ? KAR_MATCH_STORED_LATER :
+                                                   KAR_MATCH_MAX)) {
                 *err = "destination table";
                 goto damaged;
             }
             d->rule.to.match = (unsigned)m;
         }
+        if (format >= 4) {
+            /* the flags: known bits only, on a CA destination only */
+            unsigned long fl = get_uint32(src);
+            if (get_err(src) || (fl & ~(unsigned long)KAR_HOP_IGNORE_PORT) ||
+                (fl && d->rule.to.match != KAR_MATCH_CA_STORE)) {
+                *err = "destination table";
+                goto damaged;
+            }
+            d->rule.to.flags = (unsigned)fl;
+        }
         /* a destination needs a host key, except one matched by the names
-         * stored later (KAR_MATCH_STORED_LATER) */
+         * known at each login (KAR_MATCH_STORED_LATER) and every server of a CA
+         * of the CA store (KAR_MATCH_CA_STORE, its host the CA's name) */
         if ((d->rule.from.host == NULL) != (d->rule.from.nkeys == 0) ||
             d->rule.from.user || !d->rule.to.host ||
             (!d->rule.to.nkeys &&
-             d->rule.to.match != KAR_MATCH_STORED_LATER)) {
+             d->rule.to.match != KAR_MATCH_STORED_LATER &&
+             d->rule.to.match != KAR_MATCH_CA_STORE)) {
             *err = "destination table";
             goto damaged;
         }
@@ -1295,19 +1706,33 @@ bool kar_store_decode(kar_store *s, ptrlen in, const char **err)
     for (unsigned long i = 0; i < n; i++) {
         char *fp;
         unsigned dest, flags;
+        kar_origin o;
+        memset(&o, 0, sizeof(o));
         if (!store_str(src, 1024, false, &fp)) {
             *err = "link table";
             goto damaged;
         }
         dest = get_uint32(src);
         flags = get_uint32(src);
+        if (format >= 3) {
+            o.kind = get_uint32(src);
+            if (!store_str(src, 32768, true, &o.program)) {
+                sfree(fp);
+                *err = "link table";
+                goto damaged;
+            }
+            o.when = get_uint64(src);
+        }
         if (get_err(src) || !kar_store_dest_by_id(t, dest) ||
-            !kar_store_key(t, fp) || (flags & ~KAR_LINK_FORWARD)) {
+            !kar_store_key(t, fp) || (flags & ~KAR_LINK_FORWARD) ||
+            o.kind > KAR_ORIGIN_MAX) {
             sfree(fp);
+            kar_origin_free(&o);
             *err = "link table";
             goto damaged;
         }
-        kar_store_link(t, fp, dest, flags);
+        kar_store_link_origin(t, fp, dest, flags, &o);
+        kar_origin_free(&o);
         sfree(fp);
     }
     if (get_avail(src)) {

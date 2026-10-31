@@ -8,7 +8,10 @@
  * own data behind it, a bad length, two answers in a row). kageant's own
  * extensions (docs/PROTOCOL-AGENT-KAPPER.md): session-bind-host-v00 and
  * withheld-keys-v00 byte for byte, the count read from the answer only
- * when it is SUCCESS + one uint32, and the line shown for it.
+ * when it is SUCCESS + one uint32, and the line shown for it;
+ * key-state-v00 byte for byte (one key, every key), the flags of the key
+ * read from a well-formed EXTENSION_RESPONSE only, FAILURE read as an
+ * agent without it (the fallback to list-extended).
  *
  * Returns non-zero on any failure.
  */
@@ -274,6 +277,107 @@ int main(void)
         expect("withheld: the line for three keys",
                !strcmp(line, "kageant: 3 keys restricted to other servers "
                        "were not offered."), true);
+    }
+
+    /* key-state-v00@kapper.net */
+    {
+        static const unsigned char kb[] = { 0xaa, 0xbb, 0xcc };
+        static const unsigned char kb2[] = { 0x11, 0x22 };
+        static const unsigned char want_one[] = {
+            27,
+            0, 0, 0, 24, 'k', 'e', 'y', '-', 's', 't', 'a', 't', 'e', '-',
+            'v', '0', '0', '@', 'k', 'a', 'p', 'p', 'e', 'r', '.', 'n', 'e',
+            't',
+            0, 0, 0, 3, 0xaa, 0xbb, 0xcc };
+        /* 29, the name, count 2: kb2 flags 0, kb flags 3 */
+#define KS_HEAD(len, cnt) 0, 0, 0, (len), 29, \
+            0, 0, 0, 24, 'k', 'e', 'y', '-', 's', 't', 'a', 't', 'e', '-', \
+            'v', '0', '0', '@', 'k', 'a', 'p', 'p', 'e', 'r', '.', 'n', 'e', \
+            't', 0, 0, 0, (cnt)
+        static const unsigned char two[] = {
+            KS_HEAD(1 + 28 + 4 + 10 + 11, 2),
+            0, 0, 0, 2, 0x11, 0x22, 0, 0, 0, 0,
+            0, 0, 0, 3, 0xaa, 0xbb, 0xcc, 0, 0, 0, 3 };
+        static const unsigned char none[] = { KS_HEAD(1 + 28 + 4, 0) };
+        static const unsigned char cut[] = {
+            KS_HEAD(1 + 28 + 4 + 9, 1),
+            0, 0, 0, 3, 0xaa, 0xbb, 0xcc, 0, 0 };
+        static const unsigned char extra[] = {
+            KS_HEAD(1 + 28 + 4 + 11 + 1, 1),
+            0, 0, 0, 3, 0xaa, 0xbb, 0xcc, 0, 0, 0, 2, 0 };
+        static const unsigned char morecount[] = {
+            KS_HEAD(1 + 28 + 4 + 11, 2),
+            0, 0, 0, 3, 0xaa, 0xbb, 0xcc, 0, 0, 0, 2 };
+        static const unsigned char othername[] = {
+            0, 0, 0, 1 + 28 + 4, 29,
+            0, 0, 0, 24, 'w', 'i', 't', 'h', 'h', 'e', 'l', 'd', '-', 'k',
+            'e', 'y', 's', '-', 'v', '0', '0', '@', 'k', 'a', 'p', 'p', 'e',
+            'r', 0, 0, 0, 0 };
+#undef KS_HEAD
+        static const unsigned char fail[] = { 0, 0, 0, 1, 5 };
+        static const unsigned char extfail[] = { 0, 0, 0, 1, 28 };
+        static const unsigned char success[] = { 0, 0, 0, 5, 6, 0, 0, 0, 0 };
+        uint32_t fl = 77;
+
+        n = kitty_agentbind_keystate_encode(NULL, 0, kb, sizeof(kb));
+        expect_size("key-state: sizing call", n, sizeof(want_one));
+        n = kitty_agentbind_keystate_encode(buf, sizeof(buf), kb, sizeof(kb));
+        expect_size("key-state: its length", n, sizeof(want_one));
+        expect_bytes("key-state: one key byte for byte", buf, want_one,
+                     sizeof(want_one));
+        n = kitty_agentbind_keystate_encode(buf, sizeof(buf), NULL, 0);
+        expect_size("key-state: every key - the name alone", n,
+                    sizeof(want_one) - 7);
+        expect_bytes("key-state: every key byte for byte", buf, want_one,
+                     sizeof(want_one) - 7);
+
+        expect("key-state: the second entry's flags are read",
+               kitty_agentbind_keystate_reply(two, sizeof(two), kb,
+                                              sizeof(kb), &fl) ==
+               KITTY_KEYSTATE_FOUND && fl == 3, true);
+        expect("key-state: the first entry's flags are read",
+               kitty_agentbind_keystate_reply(two, sizeof(two), kb2,
+                                              sizeof(kb2), &fl) ==
+               KITTY_KEYSTATE_FOUND && fl == 0, true);
+        fl = 77;
+        expect("key-state: no entry for the key - absent",
+               kitty_agentbind_keystate_reply(none, sizeof(none), kb,
+                                              sizeof(kb), &fl) ==
+               KITTY_KEYSTATE_ABSENT, true);
+        expect("key-state: a cut entry is no answer",
+               kitty_agentbind_keystate_reply(cut, sizeof(cut), kb,
+                                              sizeof(kb), &fl) ==
+               KITTY_KEYSTATE_BAD, true);
+        expect("key-state: a byte after the entries is no answer",
+               kitty_agentbind_keystate_reply(extra, sizeof(extra), kb,
+                                              sizeof(kb), &fl) ==
+               KITTY_KEYSTATE_BAD, true);
+        expect("key-state: a count above the entries is no answer",
+               kitty_agentbind_keystate_reply(morecount, sizeof(morecount),
+                                              kb, sizeof(kb), &fl) ==
+               KITTY_KEYSTATE_BAD, true);
+        expect("key-state: another extension's name is no answer",
+               kitty_agentbind_keystate_reply(othername, sizeof(othername),
+                                              kb, sizeof(kb), &fl) ==
+               KITTY_KEYSTATE_BAD, true);
+        expect("key-state: the flags are untouched without an entry",
+               fl == 77, true);
+        expect("key-state: FAILURE - an agent without it (fall back)",
+               kitty_agentbind_keystate_reply(fail, sizeof(fail), kb,
+                                              sizeof(kb), &fl) ==
+               KITTY_KEYSTATE_UNKNOWN, true);
+        expect("key-state: EXTENSION_FAILURE is no answer, no fallback",
+               kitty_agentbind_keystate_reply(extfail, sizeof(extfail), kb,
+                                              sizeof(kb), &fl) ==
+               KITTY_KEYSTATE_BAD, true);
+        expect("key-state: SUCCESS (PuTTY's reply shape) is no answer",
+               kitty_agentbind_keystate_reply(success, sizeof(success), kb,
+                                              sizeof(kb), &fl) ==
+               KITTY_KEYSTATE_BAD, true);
+        expect("key-state: no reply is no answer",
+               kitty_agentbind_keystate_reply(NULL, 0, kb, sizeof(kb),
+                                              &fl) ==
+               KITTY_KEYSTATE_BAD, true);
     }
 
     if (failures) {

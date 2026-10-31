@@ -34,6 +34,8 @@
 #include "kitty_kageant_dest.h" /* a session-bind destination, for the box and the log */
 #include "kitty_theme.h"    /* KITTY_THEME_* preference values */
 #include "ssh.h"
+#include "kitty_agentrestrict.h"   /* KAR_WHY_*: the reason of an empty key list */
+#include "kitty_buildlabel.h"      /* KITTY_TEST_BUILD_LABEL: the notice trace */
 
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
@@ -3357,6 +3359,76 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
     sfree(proc);
 }
 
+/* Test builds with KITTY_NOTICE_TRACE=<file>: a notice's title and text,
+ * one line appended (a line break written as " / "), for a test harness:
+ * the text of a notice is painted and cannot be read from outside. */
+static void kageant_trace_notice(const char *title, const char *text)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    const char *tp = getenv("KITTY_NOTICE_TRACE");
+    FILE *f;
+    if (!tp || !*tp || (f = fopen(tp, "a")) == NULL)
+        return;
+    fprintf(f, "notice title=%s text=", title);
+    for (; *text; text++) {
+        if (*text == '\n')
+            fputs(" / ", f);
+        else
+            fputc(*text, f);
+    }
+    fputc('\n', f);
+    fclose(f);
+#else
+    (void)title;
+    (void)text;
+#endif
+}
+
+/* kageant_nokey_hook (pageant.h): the SSH-2 key list a program received
+ * was empty although kageant holds SSH-2 keys - their destination rules
+ * left every one out. The core reports it once per connection. On the
+ * record first (event 104, result no-key-offered, reason the token), the
+ * notice setting aside; then the notice: the program, the server of the
+ * connection, the reason. */
+void kageant_do_nokey(const char *reason, unsigned long pid,
+                      const struct kageant_dest *dest)
+{
+    char *path, *who, *server, *first, *text;
+    const char *why;
+
+    kageant_audit_restricted(NULL, NULL, "no-key-offered", reason, pid,
+                             dest, NULL);
+    if (!kageant_notify_get() || !traywindow)
+        return;
+
+    path = pid ? kageant_req_path_dup(pid) : NULL;
+    if (path) {
+        const char *base = strrchr(path, '\\');
+        who = dupstr(base ? base + 1 : path);
+        sfree(path);
+    } else if (pid) {
+        who = dupprintf(KT_KA_NOKEY_PROGRAM_PID_FMT, pid);
+    } else {
+        who = dupstr(KT_KA_NOKEY_PROGRAM);
+    }
+    why = !strcmp(reason, KAR_WHY_STORE_DAMAGED) ? KT_KA_NOKEY_WHY_DAMAGED :
+          !strcmp(reason, KAR_WHY_BIND_FAILED) ? KT_KA_NOKEY_WHY_BIND_FAILED :
+          !strcmp(reason, KAR_WHY_FWD_HOP) ? KT_KA_NOKEY_WHY_FORWARDED :
+          KT_KA_NOKEY_WHY_DESTINATION;
+    server = kageant_dest_server_text(dest);
+    first = server ? dupprintf(KT_KA_NOKEY_FMT, who, server) :
+                     dupprintf(KT_KA_NOKEY_NOSERVER_FMT, who);
+    text = dupprintf("%s\n%s", first, why);
+    kageant_trace_notice(KT_KA_NOTICE_NO_KEY, text);
+    kitty_notice_show(KT_KA_NOTICE_NO_KEY, text, KAGEANT_NOTICE_WARN,
+                      kageant_notice_seconds(12), traywindow,
+                      KAGEANT_WM_NOTICE_CLICK);
+    sfree(text);
+    sfree(first);
+    sfree(server);
+    sfree(who);
+}
+
 /* ---------------------------------------------------------------------------
  * KiTTY: the agent lock, frontend half (the core is in pageant.c, the flags
  * are described in pageant.h).
@@ -3710,12 +3782,15 @@ void kageant_note_keyuse(const char *fingerprint, const char *comment,
      * and by which process. The COMMENT rides along because that is the
      * name users know a key by - nobody deals in SHA256 strings. The
      * server it signed for rides along when the client sent a verified
-     * session-bind (dest, and fwd for agent forwarding hops). */
+     * session-bind (dest, and fwd for agent forwarding hops). A signature a
+     * destination rule permitted only through a name read from OpenSSH's
+     * known_hosts carries reason "known_hosts". */
     if (kitty_audit_enabled())
         kageant_dest_fields(d, &dest, &fwd);
     kageant_audit_use_dest("sign", fingerprint, comment,
-                           allowed ? "allowed" : "denied", NULL, req_pid,
-                           dest, fwd);
+                           allowed ? "allowed" : "denied",
+                           allowed && d && d->via_known_hosts ?
+                           "known_hosts" : NULL, req_pid, dest, fwd);
     sfree(dest);
     sfree(fwd);
     for (i = 0; i < KAGEANT_FLASH_SLOTS; i++)            /* same key again? */

@@ -186,6 +186,10 @@ struct kageant_dest {
      * (session-bind-host-v00@kapper.net): "host" or "host:port"; NULL when
      * it sent none. The client's word: shown, never used for a decision. */
     const char *host[KAGEANT_MAX_BINDINGS];
+    /* a signature a destination rule permitted only through a host name
+     * read from OpenSSH's known_hosts (KAR_VIA_KNOWN_HOSTS): the agent log
+     * records it */
+    bool via_known_hosts;
 };
 /* KiTTY: every refused request - the reason of its SSH_AGENT_FAILURE
  * reply as the core words it - for the agent's audit log, whether or not
@@ -210,9 +214,21 @@ extern void (*kageant_restricted_hook)(const char *fp, const char *comment,
                                        unsigned long pid,
                                        const struct kageant_dest *dest,
                                        const char *rule);
+/* KiTTY: the SSH-2 key list an external client received was EMPTY while
+ * the agent holds SSH-2 keys: their destination rules left every one out.
+ * Once per connection. reason the KAR_WHY_* token of kar_nokey_reason
+ * (kitty/kitty_agentrestrict.h), pid the requester, dest the connection's
+ * bindings. NULL everywhere but kageant, which writes event 104 (result
+ * no-key-offered) and shows a notice. */
+extern void (*kageant_nokey_hook)(const char *reason, unsigned long pid,
+                                  const struct kageant_dest *dest);
 /* KiTTY: ssh-add -h changed the rule store (kar_store_get()); kageant
  * writes its rule file. */
 extern void (*kageant_rules_changed_hook)(void);
+/* KiTTY: the path of the program behind a request (pid), for the origin a
+ * rule set over the pipe keeps; NULL when not known. sfree it. NULL
+ * everywhere but kageant. */
+extern char *(*kageant_req_path_hook)(unsigned long pid);
 
 /* KiTTY: the agent LOCK. While any of the three flags is set the agent keeps
  * its keys but answers an empty key list and refuses every other request but
@@ -386,8 +402,11 @@ int pageant_sign(struct pageant_pubkey *key, ptrlen message, strbuf *out,
     /* KiTTY: kageant's own (docs/PROTOCOL-AGENT-KAPPER.md) */   \
     X(EXT_WITHHELD_KEYS, "withheld-keys-v00@kapper.net")         \
     X(EXT_SESSION_BIND_HOST, "session-bind-host-v00@kapper.net") \
+    X(EXT_KEY_STATE, "key-state-v00@kapper.net")                 \
     /* end of list */
 
+/* The flags of list-extended (in-process only, kar_ext_local_only) and of
+ * key-state-v00@kapper.net: */
 #define LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE    1
 #define LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY      2
 #define LIST_EXTENDED_FLAG_CONFIRM_ON_USE            4  /* KiTTY */

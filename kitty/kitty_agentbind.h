@@ -28,6 +28,16 @@
  *        this connection's key list because of their destination rules;
  *        or a failure (ignored: an agent without it, a forwarded agent)
  *
+ * kitty.exe's reconnect wait (kitty_reconnect.c) reads the state of its key
+ * with a third one, on a connection of its own:
+ *
+ *   byte    SSH_AGENTC_EXTENSION (27)
+ *   string  "key-state-v00@kapper.net"
+ *   string  the key's public blob (absent: every key)
+ *     -> SSH_AGENT_EXTENSION_RESPONSE (29), string "key-state-v00@kapper.net",
+ *        uint32 count, per key string blob and uint32 flags (pageant.h
+ *        LIST_EXTENDED_FLAG_*); SSH_AGENT_FAILURE from an agent without it
+ *
  * This file holds the encoding and the reading of the answer, free of the
  * rest of the program (test/test_agentbind.c). The SSH side - the data from
  * the transport layer, the one switch - is kitty_agentbind_ssh.c.
@@ -42,10 +52,13 @@
 #define KITTY_AGENTBIND_EXT_NAME     "session-bind@openssh.com"
 #define KITTY_AGENTBIND_HOST_EXT     "session-bind-host-v00@kapper.net"
 #define KITTY_AGENTBIND_WITHHELD_EXT "withheld-keys-v00@kapper.net"
+#define KITTY_AGENTBIND_KEYSTATE_EXT "key-state-v00@kapper.net"
 /* the longest host name session-bind-host-v00@kapper.net carries */
 #define KITTY_AGENTBIND_MAX_HOST     255
 #define KITTY_AGENTBIND_MSG_EXT      27   /* SSH_AGENTC_EXTENSION */
 #define KITTY_AGENTBIND_MSG_SUCCESS  6    /* SSH_AGENT_SUCCESS */
+#define KITTY_AGENTBIND_MSG_FAILURE  5    /* SSH_AGENT_FAILURE */
+#define KITTY_AGENTBIND_MSG_EXT_RESPONSE 29   /* SSH_AGENT_EXTENSION_RESPONSE */
 /* the longest agent message (pageant.h AGENT_MAX_MSGLEN) */
 #define KITTY_AGENTBIND_MAX_FRAME    262144
 
@@ -72,6 +85,27 @@ size_t kitty_agentbind_withheld_encode(unsigned char *out, size_t cap);
  * followed by exactly one uint32. */
 bool kitty_agentbind_withheld_reply(const void *reply, size_t len,
                                     uint32_t *count);
+
+/* key-state-v00@kapper.net's body for one key (blob_len bytes of its
+ * public blob; blob NULL or blob_len 0: every key) into out, sized as
+ * kitty_agentbind_encode is. */
+size_t kitty_agentbind_keystate_encode(unsigned char *out, size_t cap,
+                                       const void *blob, size_t blob_len);
+
+/* The answer to it (length field first, as agent_query() hands it over),
+ * for the key blob: */
+enum {
+    KITTY_KEYSTATE_FOUND = 1,     /* its entry: *flags = the flags word */
+    KITTY_KEYSTATE_ABSENT = 0,    /* answered, the key has no entry (not
+                                   * held, or not for this connection) */
+    KITTY_KEYSTATE_BAD = -1,      /* SSH_AGENT_EXTENSION_FAILURE, another
+                                   * type, a malformed answer or none */
+    KITTY_KEYSTATE_UNKNOWN = -2   /* SSH_AGENT_FAILURE: an agent without it
+                                   * (an older kageant, another agent) */
+};
+int kitty_agentbind_keystate_reply(const void *reply, size_t len,
+                                   const void *blob, size_t blob_len,
+                                   uint32_t *flags);
 
 /* The line shown for count withheld keys, "kageant: 1 key restricted to
  * other servers was not offered." (plural for more), into out (cap bytes,

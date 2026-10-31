@@ -283,10 +283,15 @@ END
  * tree - each key with rules at the root, its destinations below, their
  * attributes below those. Right: the selected destination - host, how a
  * pattern in it is matched (enabled for a pattern only, a warning line
- * under it for "Also servers stored later"), user, via host, forwarding,
- * the host keys found. Resizable: the tree grows in height, the right
- * side in both directions (keyrules_anchors). The combo box lands on 14
- * units at this font, its label takes the same. */
+ * under it for "Checked at each login: any matching host"), user, via host, forwarding,
+ * the host keys found. A destination "All servers of a host CA" shows the
+ * CA droplist in the host's place (hidden otherwise, the host row and the
+ * pattern row hidden for it) and its own warning line. In the pattern
+ * row's place a CA destination has its checkbox "Ignore the port ...",
+ * shown only while the CA's Valid hosts has a port condition. Resizable: the tree
+ * grows in height, the right side in both directions (keyrules_anchors).
+ * The combo boxes land on 14 units at this font, their labels take the
+ * same. */
 IDD_KEYRULES DIALOGEX DISCARDABLE 0, 0, 470, 262
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION KT_CAP_KA_KEY_RULES
@@ -302,10 +307,16 @@ BEGIN
     LTEXT "", IDC_KR_HEAD, 222, 8, 238, 11, SS_CENTERIMAGE | SS_ENDELLIPSIS
     LTEXT KT_RC_KEYRULES_HOST, IDC_KR_HOST_LBL, 222, 24, 50, 11, SS_CENTERIMAGE
     EDITTEXT IDC_KR_HOST, 276, 24, 184, 11, ES_AUTOHSCROLL
+    LTEXT KT_RC_KEYRULES_CA, IDC_KR_CA_LBL, 222, 24, 50, 14,
+        SS_CENTERIMAGE | NOT WS_VISIBLE
+    COMBOBOX IDC_KR_CA, 276, 24, 184, 80,
+        CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP | NOT WS_VISIBLE
     LTEXT KT_RC_KEYRULES_MATCH, IDC_KR_MATCH_LBL, 222, 40, 50, 14,
         SS_CENTERIMAGE
     COMBOBOX IDC_KR_MATCH, 276, 40, 184, 60,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    AUTOCHECKBOX KT_RC_KEYRULES_CA_IGNORE_PORT, IDC_KR_CA_IGNORE_PORT,
+        222, 41, 238, 12, NOT WS_VISIBLE
     LTEXT "", IDC_KR_MATCH_WARN, 222, 57, 238, 20
     LTEXT KT_RC_KEYRULES_USER, IDC_KR_USER_LBL, 222, 80, 50, 11, SS_CENTERIMAGE
     EDITTEXT IDC_KR_USER, 276, 80, 184, 11, ES_AUTOHSCROLL
@@ -386,23 +397,27 @@ BEGIN
     /* ---- page 0: Agent ---- */
     AUTOCHECKBOX KT_KA_MENU_OPENSSH, IDC_SET_OPENSSH,
         16, 28, 268, 10
-    AUTOCHECKBOX KT_KA_MENU_START_AT_LOGIN, IDC_SET_STARTUP,
+    /* OpenSSH's known_hosts as a host-key source ([Agent] readknownhosts,
+     * default off): no accelerator, every letter of it is taken here */
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_KNOWNHOSTS, IDC_SET_KNOWNHOSTS,
         16, 39, 268, 10
-    AUTOCHECKBOX "Load remembered &keys at startup", IDC_SET_LOADKEYS,
+    AUTOCHECKBOX KT_KA_MENU_START_AT_LOGIN, IDC_SET_STARTUP,
         16, 50, 268, 10
-    AUTOCHECKBOX KT_KA_MENU_NOTIFY, IDC_SET_NOTIFY,
+    AUTOCHECKBOX "Load remembered &keys at startup", IDC_SET_LOADKEYS,
         16, 61, 268, 10
+    AUTOCHECKBOX KT_KA_MENU_NOTIFY, IDC_SET_NOTIFY,
+        16, 72, 268, 10
     LTEXT KT_RC_KEYSETTINGS_NOTICE_LABEL, IDC_SET_L_NOTICE,
-        16, 76, 86, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_NOTICESECS, 106, 76, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+        16, 87, 86, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_NOTICESECS, 106, 87, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT KT_RC_KEYSETTINGS_NOTICE_HINT, IDC_SET_L_NOTICEHINT,
-        146, 76, 138, 11, SS_CENTERIMAGE
+        146, 87, 138, 11, SS_CENTERIMAGE
     LTEXT KT_RC_KEYSETTINGS_THEME_LABEL, IDC_SET_L_THEME,
-        16, 91, 50, 14, SS_CENTERIMAGE
-    COMBOBOX IDC_SET_THEME, 70, 91, 100, 80,
+        16, 102, 50, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_THEME, 70, 102, 100, 80,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT KT_RC_KEYSETTINGS_THEME_HINT,
-        IDC_SET_L_THEMEHINT, 16, 109, 268, 10
+        IDC_SET_L_THEMEHINT, 16, 120, 268, 10
 
     /* ---- page 1: Security ---- */
     AUTOCHECKBOX KT_RC_KEYSETTINGS_LOCKDOWN,

@@ -9,6 +9,7 @@ host_ca *host_ca_new(void)
     hca->opts.permit_rsa_sha1 = false;
     hca->opts.permit_rsa_sha256 = true;
     hca->opts.permit_rsa_sha512 = true;
+    hca->opts.permit_nameless = false;      /* KiTTY: OpenSSH 10.3 */
     return hca;
 }
 

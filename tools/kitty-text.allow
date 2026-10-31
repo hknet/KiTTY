@@ -33,6 +33,11 @@ word | KT_HOSTKEY_UPDATE_UNANSWERED | ask | the kitty.ini value updatehostkeys=a
 word | KT_HOSTKEY_UPDATE_KEPT_UNANSWERED | ask | the kitty.ini value updatehostkeys=ask, not the verb
 word | KT_INIMIG_OUT_INTRO | named | "named proxy" is the feature's name, not the verb
 word | KT_INIMIG_IN_INTRO | named | "named proxy" is the feature's name, not the verb
+word | KT_CERT_NO_HOST_NAMES_REFUSED | names | the noun: a certificate's names (its principals), D12/D13 wording
+word | KT_CERT_INFO_NO_HOST_NAMES | names | the noun: a certificate's names (its principals), D12/D13 wording
+word | KT_CERT_INFO_NO_USER_NAMES | names | the noun: a certificate's names (its principals), D12/D13 wording
+word | KT_CA_NAMELESS_CHECKBOX | names | the noun: a certificate's names (its principals), D12/D13 wording
+word | KT_CA_NAMELESS_WARNING | names | the noun: a certificate's names (its principals), D12/D13 wording
 word | KT_MIGF_ST_MPW | asked | wording debt: reword with the user's OK when its code is next changed
 word | KT_LOGGING_ASK_THE_USER_EVERY_TIME | ask | wording debt: reword with the user's OK when its code is next changed
 word | KT_REMOTE_CLIPBOARD_ASK | ask | wording debt: reword with the user's OK when its code is next changed

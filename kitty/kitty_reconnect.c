@@ -25,6 +25,7 @@
 
 #include "putty.h"
 #include "kitty_reconnect.h"
+#include "kitty_agentbind.h"   /* key-state-v00@kapper.net */
 #include "kitty_inikeys.h"
 #include "kitty_params.h"
 #include "kitty_text.h"
@@ -261,9 +262,12 @@ KrDecision kitty_reconnect_decide(const char *msg, bool have_agent,
 
 /* ---- the agent check -------------------------------------------------- */
 
-/* list-extended (PuTTY's agent extension, which kageant answers): per key a
- * flags word; HAS_NO_CLEARTEXT_KEY (2) = it is encrypted until someone types
- * its passphrase. A local query, no network. */
+/* key-state-v00@kapper.net (kageant's extension, kitty_agentbind.h): the
+ * flags word of the key; HAS_NO_CLEARTEXT_KEY (2) = it is encrypted until
+ * someone types its passphrase. An agent without it (a kageant before it)
+ * answers SSH_AGENT_FAILURE: then PuTTY's list-extended, which kageant
+ * served over the pipe until key-state-v00 replaced it there. A local
+ * query, no network. */
 /* One request, answered synchronously: no callback (what aqsync.c's wrapper
  * does - that file is in the agent library, which the terminals do not
  * link). Takes and frees req; the reply is the caller's to sfree. */
@@ -316,6 +320,25 @@ int kitty_reconnect_key_locked(void)
 
     if (!st.agent_blob || !st.agent_bloblen || !agent_exists())
         return -1;
+    {
+        size_t n = kitty_agentbind_keystate_encode(NULL, 0, st.agent_blob,
+                                                   st.agent_bloblen);
+        uint32_t flags = 0;
+        int ks;
+
+        req = strbuf_new_for_agent_query();
+        kitty_agentbind_keystate_encode(strbuf_append(req, n), n,
+                                        st.agent_blob, st.agent_bloblen);
+        reply = kr_agent_ask(req, &replylen);
+        ks = kitty_agentbind_keystate_reply(
+            reply, reply && replylen > 0 ? (size_t)replylen : 0,
+            st.agent_blob, st.agent_bloblen, &flags);
+        sfree(reply);
+        if (ks == KITTY_KEYSTATE_FOUND)
+            return (flags & 2) ? 1 : 0;
+        if (ks != KITTY_KEYSTATE_UNKNOWN)
+            return -1;                  /* not held, or no usable answer */
+    }
     req = strbuf_new_for_agent_query();
     put_byte(req, 27 /* SSH2_AGENTC_EXTENSION */);
     put_stringz(req, ext);

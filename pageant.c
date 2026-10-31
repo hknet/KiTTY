@@ -96,6 +96,9 @@ typedef struct PageantBinding {
     char *host;                 /* the client's name for the server
                                  * (session-bind-host-v00@kapper.net), NULL
                                  * when it sent none; display only */
+    unsigned port;              /* the port sent with it, 0 = none: used
+                                 * only for a port condition of a CA
+                                 * destination's Valid hosts */
 } PageantBinding;
 
 struct PageantClientInfo {
@@ -108,6 +111,12 @@ struct PageantClientInfo {
      * A restricted key is refused on a connection whose bind failed
      * (OpenSSH's session_bind_attempted). */
     bool bind_attempted;
+    /* KiTTY: the agent's own client (pageant_client_op_query with
+     * pageant_local): kageant's windows. PuTTY's list-extended and
+     * re-encrypt extensions are served to it only (kar_ext_local_only). */
+    bool in_process;
+    /* KiTTY: kageant_nokey_hook fired for this connection already */
+    bool nokey_noticed;
 };
 
 struct PageantAsyncOp {
@@ -310,6 +319,8 @@ struct PageantSignOp {
     strbuf *bind_hostkey[KAGEANT_MAX_BINDINGS]; /* when the request came */
     bool bind_fwd[KAGEANT_MAX_BINDINGS];
     char *bind_host[KAGEANT_MAX_BINDINGS];
+    bool via_kh;                    /* KiTTY: permitted through a known_hosts
+                                     * name (KAR_VIA_KNOWN_HOSTS) */
     strbuf *data_to_sign;
     unsigned flags;
     int crLine;
@@ -327,6 +338,13 @@ static PageantKeyRequestNode requests_blocked_on_gui =
 
 static void failure(PageantClient *pc, PageantClientRequestId *reqid,
                     strbuf *sb, unsigned char type, const char *fmt, ...);
+/* KiTTY: the reply type a failure() sends, for the client log (an
+ * extension's own failure is SSH_AGENT_EXTENSION_FAILURE, RFC 9987 5.8) */
+static const char *failure_type_name(unsigned char type)
+{
+    return type == SSH_AGENT_EXTENSION_FAILURE ?
+        "SSH_AGENT_EXTENSION_FAILURE" : "SSH_AGENT_FAILURE";
+}
 static void fail_requests_for_key(PageantPrivateKey *priv, const char *reason);
 static PageantPublicKey *pageant_nth_pubkey(int ssh_version, int i);
 
@@ -756,6 +774,7 @@ static size_t info_binds(PageantClientInfo *info, kar_bind *b)
         b[n].hostkey = ptrlen_from_strbuf(info->bindings[n].hostkey);
         b[n].sid = ptrlen_from_strbuf(info->bindings[n].sid);
         b[n].forwarding = info->bindings[n].forwarding;
+        b[n].port = info->bindings[n].port;
     }
     return n;
 }
@@ -765,10 +784,11 @@ static size_t info_binds(PageantClientInfo *info, kar_bind *b)
  * False with *why (a KAR_WHY_* token) and, when ruletext is given, the
  * key's rules as text (sfree it). A damaged rule file makes every key
  * restricted with no rule: listed on an unbound connection only, never
- * signing. */
+ * signing. *via (may be NULL): KAR_VIA_* of a permitted signature. */
 static bool restrict_allows(PageantClientInfo *info, ptrlen full_pub,
                             const ptrlen *keyblob, const ptrlen *sigdata,
-                            const char **why, char **ruletext)
+                            const char **why, char **ruletext,
+                            unsigned *via)
 {
     kar_store *st = kar_store_get();
     kar_bind b[KAGEANT_MAX_BINDINGS];
@@ -780,6 +800,8 @@ static bool restrict_allows(PageantClientInfo *info, ptrlen full_pub,
     *why = NULL;
     if (ruletext)
         *ruletext = NULL;
+    if (via)
+        *via = 0;
     if (!st->damaged && !st->nlinks)
         return true;                    /* nothing is restricted */
     if (!st->damaged) {
@@ -798,7 +820,8 @@ static bool restrict_allows(PageantClientInfo *info, ptrlen full_pub,
         ok = false;
         *why = KAR_WHY_STORE_DAMAGED;
     } else if (sigdata) {
-        ok = kar_sign_permitted(r, b, nb, attempted, *keyblob, *sigdata, why);
+        ok = kar_sign_permitted_ex(r, b, nb, attempted, *keyblob, *sigdata,
+                                   why, via);
     } else {
         ok = kar_permitted(r, b, nb, attempted, NULL, why);
     }
@@ -806,6 +829,26 @@ static bool restrict_allows(PageantClientInfo *info, ptrlen full_pub,
         *ruletext = kar_rules_text(r);
     kar_rules_free(r);
     return ok;
+}
+
+/* KiTTY: a key's LIST_EXTENDED_FLAG_* bits, for list-extended (the
+ * agent's own window) and key-state-v00@kapper.net (programs) alike */
+static uint32_t key_state_flags(PageantPublicKey *pub)
+{
+    PageantPrivateKey *priv = pub_to_priv(pub);
+    uint32_t flags = 0;
+    /* KiTTY: a key reserved for another process reads as locked
+     * (hknet/KiTTY#66) - only its asker may use it */
+    if ((!priv->skey && !priv->protected_skey) ||
+        priv_reserved_for_other(priv, pageant_external_pid))
+        flags |= LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY;
+    if (priv->encrypted_key_file)
+        flags |= LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE;
+    if (pub->confirm)
+        flags |= LIST_EXTENDED_FLAG_CONFIRM_ON_USE;   /* KiTTY */
+    if (pub->confirm == 2)
+        flags |= LIST_EXTENDED_FLAG_CONFIRM_HELLO;    /* KiTTY: mode 2 */
+    return flags;
 }
 
 static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
@@ -829,23 +872,9 @@ static void list_key_emit(BinarySink *bs, PageantPublicKey *pub,
          * string, so that clients that only partially understand
          * it can still find the parts they do understand.
          */
-        PageantPrivateKey *priv = pub_to_priv(pub);
-
         strbuf *sb = strbuf_new();
 
-        uint32_t flags = 0;
-        /* KiTTY: a key reserved for another process reads as locked
-         * (hknet/KiTTY#66) - only its asker may use it */
-        if ((!priv->skey && !priv->protected_skey) ||
-            priv_reserved_for_other(priv, pageant_external_pid))
-            flags |= LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY;
-        if (priv->encrypted_key_file)
-            flags |= LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE;
-        if (pub->confirm)
-            flags |= LIST_EXTENDED_FLAG_CONFIRM_ON_USE;   /* KiTTY */
-        if (pub->confirm == 2)
-            flags |= LIST_EXTENDED_FLAG_CONFIRM_HELLO;    /* KiTTY: mode 2 */
-        put_uint32(sb, flags);
+        put_uint32(sb, key_state_flags(pub));
 
         put_stringsb(bs, sb);
     }
@@ -859,7 +888,8 @@ static bool list_leaves_out(PageantClientInfo *info, PageantPublicKey *pub,
 {
     const char *why;
     return info && ssh_version == 2 &&
-        !restrict_allows(info, pub->sort.full_pub, NULL, NULL, &why, NULL);
+        !restrict_allows(info, pub->sort.full_pub, NULL, NULL, &why, NULL,
+                         NULL);
 }
 
 /* KiTTY: how many SSH-2 keys the key list of this connection leaves out
@@ -905,8 +935,8 @@ static int list_group(PageantClientInfo *info, PageantPublicKey *pub)
  * bound for a login the keys come in three groups, each in the offer
  * order: restricted to this server by its host keys, restricted to it by
  * a pattern only, not restricted. */
-static void list_keys_for(BinarySink *bs, int ssh_version, bool extended,
-                          PageantClientInfo *info)
+static unsigned long list_keys_for(BinarySink *bs, int ssh_version,
+                                   bool extended, PageantClientInfo *info)
 {
     PageantPublicKey *pub;
     strbuf *entries = strbuf_new();
@@ -956,6 +986,7 @@ static void list_keys_for(BinarySink *bs, int ssh_version, bool extended,
     put_uint32(bs, n);
     put_datapl(bs, ptrlen_from_strbuf(entries));
     strbuf_free(entries);
+    return n;
 }
 
 static void list_keys(BinarySink *bs, int ssh_version, bool extended)
@@ -1051,6 +1082,8 @@ void pageant_register_client(PageantClient *pc)
     pc->info->head.prev = pc->info->head.next = &pc->info->head;
     pc->info->nbindings = 0;
     pc->info->bind_attempted = false;
+    pc->info->in_process = false;
+    pc->info->nokey_noticed = false;
 }
 
 void pageant_unregister_client(PageantClient *pc)
@@ -1087,6 +1120,7 @@ static const struct kageant_dest *info_dest(PageantClientInfo *info,
         d->forwarding[i] = info->bindings[i].forwarding;
         d->host[i] = info->bindings[i].host;
     }
+    d->via_known_hosts = false;
     return d;
 }
 
@@ -1107,8 +1141,8 @@ static PRINTF_LIKE(5, 6) void failure(
                                  info_dest(pc->info, &d));
         }
         if (!pc->suppress_logging)
-            pageant_client_log(pc, reqid, "reply: SSH_AGENT_FAILURE (%s)",
-                               msg);
+            pageant_client_log(pc, reqid, "reply: %s (%s)",
+                               failure_type_name(type), msg);
         sfree(msg);
     }
 }
@@ -1122,6 +1156,7 @@ void (*kageant_restricted_hook)(const char *fp, const char *comment,
                                 const struct kageant_dest *dest,
                                 const char *rule) = NULL;
 void (*kageant_rules_changed_hook)(void) = NULL;
+char *(*kageant_req_path_hook)(unsigned long pid) = NULL;
 
 static void restricted_refusal(PageantClient *pc,
                                PageantClientRequestId *reqid, strbuf *sb,
@@ -1131,8 +1166,9 @@ static void restricted_refusal(PageantClient *pc,
 {
     strbuf_clear(sb);
     put_byte(sb, type);
-    pageant_client_log(pc, reqid, "reply: SSH_AGENT_FAILURE (%s: the key's "
-                       "destination rules, %s)", result, why);
+    pageant_client_log(pc, reqid, "reply: %s (%s: the key's "
+                       "destination rules, %s)", failure_type_name(type),
+                       result, why);
     if (kageant_restricted_hook) {
         struct kageant_dest d;
         kageant_restricted_hook(fp, comment, result, why,
@@ -1188,6 +1224,7 @@ static const struct kageant_dest *signop_dest(PageantSignOp *so,
         d->forwarding[i] = so->bind_fwd[i];
         d->host[i] = so->bind_host[i];
     }
+    d->via_known_hosts = so->via_kh;
     return d;
 }
 
@@ -1972,6 +2009,39 @@ static const char *session_bind_verify(ptrlen hostkey, ptrlen sid,
 #define DEF_EXT_NAMES(id, name) PTRLEN_DECL_LITERAL(name),
 static const ptrlen extension_names[] = { KNOWN_EXTENSIONS(DEF_EXT_NAMES) };
 
+/* KiTTY: is this extension one the client may not see (PuTTY's
+ * list-extended and re-encrypt ones to anything but the agent's own
+ * windows, kar_ext_local_only)? */
+static bool ext_hidden_from(PageantClient *pc, size_t ext)
+{
+    return !pc->info->in_process &&
+        kar_ext_local_only(extension_names[ext]);
+}
+
+void (*kageant_nokey_hook)(const char *reason, unsigned long pid,
+                           const struct kageant_dest *dest) = NULL;
+
+/* KiTTY: the SSH-2 key list of an external client went out empty. When
+ * the agent holds SSH-2 keys, their destination rules left every one out:
+ * kageant_nokey_hook, once per connection, with kar_nokey_reason's token. */
+static void nokey_report(PageantClient *pc)
+{
+    PageantClientInfo *info = pc->info;
+    kar_bind b[KAGEANT_MAX_BINDINGS];
+    struct kageant_dest d;
+    const char *why;
+
+    if (!kageant_nokey_hook || info->in_process || info->nokey_noticed ||
+        pageant_count_ssh2_keys() <= 0)
+        return;
+    why = kar_nokey_reason(kar_store_get()->damaged, b,
+                           info_binds(info, b), info->bind_attempted);
+    if (!why)
+        return;
+    info->nokey_noticed = true;
+    kageant_nokey_hook(why, pageant_external_pid, info_dest(info, &d));
+}
+
 static PageantAsyncOp *pageant_make_op(
     PageantClient *pc, PageantClientRequestId *reqid, ptrlen msgpl)
 {
@@ -2051,9 +2121,12 @@ static PageantAsyncOp *pageant_make_op(
 
         put_byte(sb, SSH2_AGENT_IDENTITIES_ANSWER);
         /* KiTTY: an external client's list leaves out the restricted keys
-         * its connection may not use; the agent's own window lists all */
-        list_keys_for(BinarySink_UPCAST(sb), 2, false,
-                      pageant_external_request ? pc->info : NULL);
+         * its connection may not use; the agent's own window lists all.
+         * An empty list goes to kageant's notice (nokey_report). */
+        if (list_keys_for(BinarySink_UPCAST(sb), 2, false,
+                          pageant_external_request ? pc->info : NULL) == 0 &&
+            pageant_external_request)
+            nokey_report(pc);
 
         /* KiTTY: tell the frontend somebody wanted our keys, so it can point
          * out any it is holding back. External requests only - the agent's own
@@ -2245,11 +2318,12 @@ static PageantAsyncOp *pageant_make_op(
          * editor) signs only a login its rules permit on this connection:
          * bound, the data a userauth request for the bound session, the
          * hops matched by its rules (kitty/kitty_agentrestrict.c). */
+        unsigned rvia = 0;
         {
             const char *rwhy;
             char *rrule;
             if (!restrict_allows(pc->info, pub->sort.full_pub, &keyblob,
-                                 &sigdata, &rwhy, &rrule)) {
+                                 &sigdata, &rwhy, &rrule, &rvia)) {
                 char *rfp = kar_key_fp(pub->sort.full_pub);
                 restricted_refusal(pc, reqid, sb, failure_type, rfp,
                                    pub->comment, "sign-refused", rwhy,
@@ -2295,6 +2369,7 @@ static PageantAsyncOp *pageant_make_op(
             so->bind_host[bi] = pc->info->bindings[bi].host ?
                 dupstr(pc->info->bindings[bi].host) : NULL;
         }
+        so->via_kh = (rvia & KAR_VIA_KNOWN_HOSTS) != 0;
         so->pkr.prev = so->pkr.next = NULL;
         so->data_to_sign = strbuf_dup(sigdata);
         so->flags = flags;
@@ -2504,10 +2579,19 @@ static PageantAsyncOp *pageant_make_op(
                 ptrlen rblob = rpub ? rpub->sort.full_pub
                                     : ptrlen_from_strbuf(pb);
                 char *rfp = kar_key_fp(rblob);
+                /* D9: the rule keeps where it came from - the program
+                 * behind the request and the time; its host keys are the
+                 * ones that program looked up */
+                kar_origin origin;
+                origin.kind = KAR_ORIGIN_PROGRAM;
+                origin.program = kageant_req_path_hook ?
+                    kageant_req_path_hook(pageant_external_pid) : NULL;
+                origin.when = (uint64_t)time(NULL);
                 kar_store_set_key_rules(
                     kar_store_get(), rfp,
                     rpub && rpub->comment ? rpub->comment : key->comment,
-                    rblob, key_dest);
+                    rblob, key_dest, &origin);
+                kar_origin_free(&origin);
                 sfree(rfp);
                 if (kageant_rules_changed_hook)
                     kageant_rules_changed_hook();
@@ -2673,7 +2757,7 @@ static PageantAsyncOp *pageant_make_op(
             const char *rwhy;
             char *rrule;
             if (!restrict_allows(pc->info, pub->sort.full_pub, NULL, NULL,
-                                 &rwhy, &rrule)) {
+                                 &rwhy, &rrule, NULL)) {
                 char *rfp = kar_key_fp(pub->sort.full_pub);
                 restricted_refusal(pc, reqid, sb, failure_type, rfp,
                                    pub->comment, "remove-refused", rwhy,
@@ -2759,6 +2843,12 @@ static PageantAsyncOp *pageant_make_op(
 
         for (size_t i = 0; i < lenof(extension_names); i++)
             if (ptrlen_eq_ptrlen(extname, extension_names[i])) {
+                /* KiTTY: to a program over the pipe or WM_COPYDATA,
+                 * PuTTY's list-extended, reencrypt and reencrypt-all are
+                 * unknown names (kar_ext_local_only): the plain
+                 * SSH_AGENT_FAILURE below */
+                if (ext_hidden_from(pc, i))
+                    break;
                 exttype = i;
 
                 /*
@@ -2789,7 +2879,8 @@ static PageantAsyncOp *pageant_make_op(
             put_byte(sb, SSH_AGENT_EXTENSION_RESPONSE);
             put_stringpl(sb, extension_names[EXT_QUERY]);
             for (size_t i = 0; i < lenof(extension_names); i++)
-                put_stringpl(sb, extension_names[i]);
+                if (!ext_hidden_from(pc, i))    /* KiTTY */
+                    put_stringpl(sb, extension_names[i]);
             pageant_client_log(pc, reqid,
                                "reply: SSH_AGENT_EXTENSION_RESPONSE + names");
             break;
@@ -3052,6 +3143,7 @@ static PageantAsyncOp *pageant_make_op(
             b->sid = strbuf_dup(sid);
             b->forwarding = forwarding;
             b->host = NULL;
+            b->port = 0;
             if (kageant_bind_hook)
                 kageant_bind_hook(hostkey, forwarding, pageant_external_pid);
 
@@ -3071,9 +3163,9 @@ static PageantAsyncOp *pageant_make_op(
              * connection bound for a login and for nothing else: a binding
              * for forwarding means the asker sits on a remote server,
              * which must not learn of keys for other servers. That answer
-             * is plain SSH_AGENT_FAILURE, the one an agent without the
-             * extension gives. It writes no refusal record: no key use was
-             * refused.
+             * is SSH_AGENT_EXTENSION_FAILURE (RFC 9987 5.8): the name is
+             * known, "query" lists it on every connection anyway. It
+             * writes no refusal record: no key use was refused.
              */
             PageantClientInfo *info = pc->info;
             bool fwd = false;
@@ -3082,8 +3174,9 @@ static PageantAsyncOp *pageant_make_op(
                     fwd = true;
             if (get_avail(msg) || !info->nbindings || fwd) {
                 strbuf_clear(sb);
-                put_byte(sb, SSH_AGENT_FAILURE);
-                pageant_client_log(pc, reqid, "reply: SSH_AGENT_FAILURE "
+                put_byte(sb, SSH_AGENT_EXTENSION_FAILURE);
+                pageant_client_log(pc, reqid, "reply: "
+                                   "SSH_AGENT_EXTENSION_FAILURE "
                                    "(withheld-keys: %s)",
                                    get_avail(msg) ? "trailing data" :
                                    fwd ? "bound for forwarding" :
@@ -3104,13 +3197,16 @@ static PageantAsyncOp *pageant_make_op(
              * (docs/PROTOCOL-AGENT-KAPPER.md): the name the client
              * connected to, sent right after its session-bind. Kept with
              * the last binding as the client's word, shown beside the
-             * verified fingerprint, never used for a decision. One name
-             * per binding.
+             * verified fingerprint. The name decides nothing. The port
+             * is used only for a port condition in the Valid hosts of a
+             * CA destination (kitty_agentrestrict.h). One name per
+             * binding.
              */
             PageantClientInfo *info = pc->info;
             const char *why;
             char *host;
-            if (!kar_parse_bind_host(msg, &host, &why)) {
+            unsigned port;
+            if (!kar_parse_bind_host_port(msg, &host, &port, &why)) {
                 fail("session-bind-host: %s", why);
                 goto responded;
             }
@@ -3126,9 +3222,55 @@ static PageantAsyncOp *pageant_make_op(
                 goto responded;
             }
             info->bindings[info->nbindings - 1].host = host;
+            info->bindings[info->nbindings - 1].port = port;
             put_byte(sb, SSH_AGENT_SUCCESS);
             pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS "
                                "(host name kept with the binding)");
+            break;
+          }
+
+          case EXT_KEY_STATE: {
+            /*
+             * KiTTY: key-state-v00@kapper.net
+             * (docs/PROTOCOL-AGENT-KAPPER.md): the LIST_EXTENDED_FLAG_*
+             * bits of every SSH-2 key, or of the one key whose public blob
+             * follows the name, in RFC 9987's reply format. The keys are
+             * those the key list of this connection shows: a key it leaves
+             * out has no entry, as a key the agent does not hold has none.
+             * kitty.exe's reconnect wait reads its key's state here.
+             */
+            PageantClientInfo *kinfo =
+                pageant_external_request ? pc->info : NULL;
+            const char *kwhy;
+            ptrlen kblob;
+            bool kone;
+            strbuf *kents;
+            unsigned long nk = 0;
+
+            if (!kar_parse_key_state(msg, &kone, &kblob, &kwhy)) {
+                fail("key-state: %s", kwhy);
+                goto responded;
+            }
+            kents = strbuf_new();
+            for (size_t oi = 0; oi < puborder_n; oi++) {
+                PageantPublicKey *kp = puborder[oi];
+                if (kp->sort.priv.ssh_version != 2 ||
+                    list_leaves_out(kinfo, kp, 2))
+                    continue;
+                if (kone && !ptrlen_eq_ptrlen(kp->sort.full_pub, kblob))
+                    continue;
+                put_stringpl(kents, kp->sort.full_pub);
+                put_uint32(kents, key_state_flags(kp));
+                nk++;
+            }
+            put_byte(sb, SSH_AGENT_EXTENSION_RESPONSE);
+            put_stringpl(sb, extension_names[EXT_KEY_STATE]);
+            put_uint32(sb, nk);
+            put_datapl(sb, ptrlen_from_strbuf(kents));
+            strbuf_free(kents);
+            pageant_client_log(pc, reqid, "reply: "
+                               "SSH_AGENT_EXTENSION_RESPONSE (%lu keys)",
+                               nk);
             break;
           }
 
@@ -3865,6 +4007,7 @@ static unsigned pageant_client_op_query(PageantClientOp *pco)
         pic.response = pco->buf;
         pic.got_response = false;
         pageant_register_client(&pic.pc);
+        pic.pc.info->in_process = true;     /* KiTTY: kar_ext_local_only */
 
         assert(pco->buf->len > 4);
         PageantAsyncOp *pao = pageant_make_op(

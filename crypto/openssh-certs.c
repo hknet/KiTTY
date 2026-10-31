@@ -3,6 +3,7 @@
  */
 
 #include "ssh.h"
+#include "kitty/kitty_text.h"      /* KiTTY: certificates without names */
 #include "putty.h"
 
 enum {
@@ -686,6 +687,8 @@ static SeatDialogText *opensshcert_cert_info(ssh_key *key)
     opensshcert_key *ck = container_of(key, opensshcert_key, sshk);
     SeatDialogText *text = seat_dialog_text_new();
     strbuf *tmp = strbuf_new();
+    /* KiTTY: no names - a warning line instead of an empty list */
+    bool kitty_noname = !ck->valid_principals->len;
 
     seat_dialog_text_append(text, SDT_MORE_INFO_KEY,
                             "Certificate type");
@@ -693,13 +696,15 @@ static SeatDialogText *opensshcert_cert_info(ssh_key *key)
       case SSH_CERT_TYPE_HOST:
         seat_dialog_text_append(text, SDT_MORE_INFO_VALUE_SHORT,
                                 "host key");
-        seat_dialog_text_append(text, SDT_MORE_INFO_KEY,
+        seat_dialog_text_append(text, SDT_MORE_INFO_KEY, "%s",
+                                kitty_noname ? KT_CERT_INFO_WARNING_KEY :
                                 "Valid host names");
         break;
       case SSH_CERT_TYPE_USER:
         seat_dialog_text_append(text, SDT_MORE_INFO_VALUE_SHORT,
                                 "user authentication key");
-        seat_dialog_text_append(text, SDT_MORE_INFO_KEY,
+        seat_dialog_text_append(text, SDT_MORE_INFO_KEY, "%s",
+                                kitty_noname ? KT_CERT_INFO_WARNING_KEY :
                                 "Valid user names");
         break;
       default:
@@ -724,8 +729,16 @@ static SeatDialogText *opensshcert_cert_info(ssh_key *key)
             sep = ",";
             put_datapl(tmp, principal);
         }
-        seat_dialog_text_append(text, SDT_MORE_INFO_VALUE_SHORT,
-                                "%s", tmp->s);
+        /* KiTTY: an empty list is a warning, not an empty line */
+        if (kitty_noname && ck->type == SSH_CERT_TYPE_HOST)
+            seat_dialog_text_append(text, SDT_MORE_INFO_VALUE_SHORT,
+                                    "%s", KT_CERT_INFO_NO_HOST_NAMES);
+        else if (kitty_noname && ck->type == SSH_CERT_TYPE_USER)
+            seat_dialog_text_append(text, SDT_MORE_INFO_VALUE_SHORT,
+                                    "%s", KT_CERT_INFO_NO_USER_NAMES);
+        else
+            seat_dialog_text_append(text, SDT_MORE_INFO_VALUE_SHORT,
+                                    "%s", tmp->s);
     }
 
     seat_dialog_text_append(text, SDT_MORE_INFO_KEY,
@@ -1050,7 +1063,16 @@ static bool opensshcert_check_cert(
      * If valid_principals is a zero-length string then this is
      * specified to be a carte-blanche certificate valid for any
      * principal (at least, provided you trust the CA that issued it).
+     *
+     * KiTTY: not for a host certificate. OpenSSH 10.3 matches an empty
+     * list against no principal: a CA can issue one by accident, and a
+     * stolen one lets a server pose as any host. Only a CA whose record
+     * allows it (permit_nameless) gets the old meaning.
      */
+    if (ck->valid_principals->len == 0 && host && !opts->permit_nameless) {
+        put_fmt(error, "%s", KT_CERT_NO_HOST_NAMES_REFUSED);
+        goto out;
+    }
     if (ck->valid_principals->len != 0) {
         BinarySource_BARE_INIT_PL(
             src, ptrlen_from_strbuf(ck->valid_principals));

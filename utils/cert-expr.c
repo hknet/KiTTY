@@ -608,6 +608,160 @@ bool cert_expr_match_str(const char *expression,
     return matched;
 }
 
+/*
+ * KiTTY: the same expression for a caller that does not know the port:
+ * kageant's "All servers of a host CA" destinations, where a session-bind
+ * carries the server's host key and never its port. Evaluated in Kleene's
+ * three-valued logic, as the Rationale above sketches it for IP addresses:
+ * a port predicate is UNKNOWN, NOT of UNKNOWN stays UNKNOWN, AND and OR
+ * follow Kleene's tables, and the host is admitted only when the result is
+ * definitely TRUE. A port condition is thus never met, negated or not:
+ * "port:22", "&& port:22", "!port:22" and "&& !port:22" reject, "|| port:22"
+ * leaves the decision to the rest. Plain eval() above is untouched.
+ */
+typedef enum Kitty3 { K3_FALSE, K3_TRUE, K3_UNKNOWN } Kitty3;
+
+static Kitty3 eval_noport(ExprNode *en, const char *hostname)
+{
+    Kitty3 r, s;
+
+    switch (en->op) {
+      case OP_AND:
+        r = K3_TRUE;
+        for (size_t i = 0; i < en->nsubexprs; i++) {
+            s = eval_noport(en->subexprs[i], hostname);
+            if (s == K3_FALSE)
+                return K3_FALSE;
+            if (s == K3_UNKNOWN)
+                r = K3_UNKNOWN;
+        }
+        return r;
+
+      case OP_OR:
+        r = K3_FALSE;
+        for (size_t i = 0; i < en->nsubexprs; i++) {
+            s = eval_noport(en->subexprs[i], hostname);
+            if (s == K3_TRUE)
+                return K3_TRUE;
+            if (s == K3_UNKNOWN)
+                r = K3_UNKNOWN;
+        }
+        return r;
+
+      case OP_NOT:
+        s = eval_noport(en->subexpr, hostname);
+        return s == K3_UNKNOWN ? K3_UNKNOWN :
+               s == K3_TRUE ? K3_FALSE : K3_TRUE;
+
+      case OP_HOSTNAME_WC:
+        return wc_match(en->wc, hostname) ? K3_TRUE : K3_FALSE;
+
+      case OP_PORT_RANGE:
+        return K3_UNKNOWN;
+
+      default:
+        unreachable("unhandled node type in eval_noport");
+    }
+}
+
+bool cert_expr_match_str_noport(const char *expression, const char *hostname)
+{
+    ExprNode *en = parse(ptrlen_from_asciz(expression), NULL, NULL);
+    if (!en)
+        return false;
+
+    bool matched = eval_noport(en, hostname) == K3_TRUE;
+    exprnode_free(en);
+    return matched;
+}
+
+/*
+ * KiTTY: the same expression with its port conditions dropped, for
+ * kageant's "All servers of a host CA" destinations set to ignore the
+ * port of a client that sends none. A port predicate has no value: AND
+ * and OR combine only the operands that have one, NOT of no value has
+ * none. An expression left without a value (port conditions only) admits
+ * nothing. "A && port:22", "A || port:22" and "A && !port:22" all become
+ * A: the port part can never widen the name part.
+ */
+typedef enum KittyDrop { KD_FALSE, KD_TRUE, KD_NONE } KittyDrop;
+
+static KittyDrop eval_dropport(ExprNode *en, const char *hostname)
+{
+    KittyDrop r, s;
+
+    switch (en->op) {
+      case OP_AND:
+      case OP_OR:
+        r = KD_NONE;
+        for (size_t i = 0; i < en->nsubexprs; i++) {
+            s = eval_dropport(en->subexprs[i], hostname);
+            if (s == KD_NONE)
+                continue;
+            if (s == (en->op == OP_AND ? KD_FALSE : KD_TRUE))
+                return s;
+            r = s;
+        }
+        return r;
+
+      case OP_NOT:
+        s = eval_dropport(en->subexpr, hostname);
+        return s == KD_NONE ? KD_NONE :
+               s == KD_TRUE ? KD_FALSE : KD_TRUE;
+
+      case OP_HOSTNAME_WC:
+        return wc_match(en->wc, hostname) ? KD_TRUE : KD_FALSE;
+
+      case OP_PORT_RANGE:
+        return KD_NONE;
+
+      default:
+        unreachable("unhandled node type in eval_dropport");
+    }
+}
+
+bool cert_expr_match_str_dropport(const char *expression,
+                                  const char *hostname)
+{
+    ExprNode *en = parse(ptrlen_from_asciz(expression), NULL, NULL);
+    if (!en)
+        return false;
+
+    bool matched = eval_dropport(en, hostname) == KD_TRUE;
+    exprnode_free(en);
+    return matched;
+}
+
+/* KiTTY: does the expression hold a port condition? */
+static bool node_has_port(ExprNode *en)
+{
+    switch (en->op) {
+      case OP_AND:
+      case OP_OR:
+        for (size_t i = 0; i < en->nsubexprs; i++)
+            if (node_has_port(en->subexprs[i]))
+                return true;
+        return false;
+      case OP_NOT:
+        return node_has_port(en->subexpr);
+      case OP_PORT_RANGE:
+        return true;
+      default:
+        return false;
+    }
+}
+
+bool cert_expr_has_port(const char *expression)
+{
+    ExprNode *en = parse(ptrlen_from_asciz(expression), NULL, NULL);
+    if (!en)
+        return false;
+
+    bool has = node_has_port(en);
+    exprnode_free(en);
+    return has;
+}
+
 bool cert_expr_valid(const char *expression,
                      char **error_msg, ptrlen *error_loc)
 {
@@ -829,6 +983,92 @@ static const struct EvalTest {
 #undef T
 };
 
+/* KiTTY: cert_expr_match_str_noport - a port condition is never met */
+static const struct NoPortTest {
+    const char *file;
+    int line;
+    const char *expr;
+    const char *host;
+    bool output;
+} noporttests[] = {
+#define T(expr_, host_, output_) { \
+        .file=__FILE__, .line=__LINE__, \
+        .expr=expr_, .host=host_, .output=output_}
+
+    T("*.example.com", "web.example.com", true),
+    T("*.example.com", "web.example.org", false),
+    T("port:22", "web.example.com", false),
+    T("*.example.com && port:22", "web.example.com", false),
+    T("*.example.com || port:22", "web.example.com", true),
+    T("*.example.com || port:22", "web.example.org", false),
+    T("!port:22", "web.example.com", false),
+    T("*.example.com && !port:22", "web.example.com", false),
+    T("*.example.com || !port:22", "web.example.com", true),
+    T("*.example.com || !port:22", "web.example.org", false),
+    T("!!port:22", "web.example.com", false),
+    T("!(*.example.com && port:22)", "web.example.org", true),
+    T("!(*.example.com && port:22)", "web.example.com", false),
+    T("*.example.com && !*.dmz.example.com", "web.example.com", true),
+    T("*.example.com && !*.dmz.example.com", "a.dmz.example.com", false),
+    T("*.example.com && (port:22 || !port:22)", "web.example.com", false),
+    T("*.example.com && port:0-65535", "web.example.com", false),
+    T("*.example.com &&", "web.example.com", false),
+
+#undef T
+};
+
+/* KiTTY: cert_expr_match_str_dropport - the port conditions dropped */
+static const struct NoPortTest dropporttests[] = {
+#define T(expr_, host_, output_) { \
+        .file=__FILE__, .line=__LINE__, \
+        .expr=expr_, .host=host_, .output=output_}
+
+    T("*.example.com", "web.example.com", true),
+    T("*.example.com", "web.example.org", false),
+    T("port:22", "web.example.com", false),
+    T("port:22-24", "web.example.com", false),
+    T("port:22 && port:23", "web.example.com", false),
+    T("!port:22", "web.example.com", false),
+    T("!!port:22", "web.example.com", false),
+    T("*.example.com && port:22", "web.example.com", true),
+    T("*.example.com && port:22", "web.example.org", false),
+    T("*.example.com || port:22", "web.example.com", true),
+    T("*.example.com || port:22", "web.example.org", false),
+    T("*.example.com && !port:22", "web.example.com", true),
+    T("*.example.com || !port:22", "web.example.org", false),
+    T("!(*.example.com && port:22)", "web.example.org", true),
+    T("!(*.example.com && port:22)", "web.example.com", false),
+    T("*.example.com || (port:22 && *.example.org)", "web.example.org", true),
+    T("*.example.com || (port:22 && *.example.org)", "web.example.net", false),
+    T("(port:22 || port:2222) && *.example.com", "web.example.com", true),
+    T("(port:22 || port:2222) && *.example.com", "web.example.org", false),
+    T("*.example.com && !*.dmz.example.com && port:22", "a.dmz.example.com",
+      false),
+    T("*.example.com &&", "web.example.com", false),
+
+#undef T
+};
+
+/* KiTTY: cert_expr_has_port */
+static const struct HasPortTest {
+    const char *file;
+    int line;
+    const char *expr;
+    bool output;
+} hasporttests[] = {
+#define T(expr_, output_) { \
+        .file=__FILE__, .line=__LINE__, .expr=expr_, .output=output_}
+
+    T("*.example.com", false),
+    T("*.example.com || *.example.org", false),
+    T("port:22", true),
+    T("*.example.com && !port:22", true),
+    T("*.example.com || (*.example.org && port:1-2)", true),
+    T("*.example.com && port:22 &&", false),
+
+#undef T
+};
+
 int main(int argc, char **argv)
 {
     if (argc > 1) {
@@ -956,6 +1196,59 @@ int main(int argc, char **argv)
                     fail++;
                 }
                 exprnode_free(en);
+            }
+        }
+
+        for (size_t i = 0; i < lenof(noporttests); i++) {
+            const struct NoPortTest *test = &noporttests[i];
+            bool output = cert_expr_match_str_noport(test->expr, test->host);
+            if (output == test->output) {
+                pass++;
+            } else {
+                fprintf(stderr, "FAIL: noporttests[%zu] @ %s:%d:\n"
+                        "  expression: %s\n"
+                        "  host:       %s\n"
+                        "  expected:   %s\n"
+                        "  actual:     %s\n",
+                        i, test->file, test->line, test->expr, test->host,
+                        test->output ? "accept" : "reject",
+                        output ? "accept" : "reject");
+                fail++;
+            }
+        }
+
+        for (size_t i = 0; i < lenof(dropporttests); i++) {
+            const struct NoPortTest *test = &dropporttests[i];
+            bool output = cert_expr_match_str_dropport(test->expr, test->host);
+            if (output == test->output) {
+                pass++;
+            } else {
+                fprintf(stderr, "FAIL: dropporttests[%zu] @ %s:%d:\n"
+                        "  expression: %s\n"
+                        "  host:       %s\n"
+                        "  expected:   %s\n"
+                        "  actual:     %s\n",
+                        i, test->file, test->line, test->expr, test->host,
+                        test->output ? "accept" : "reject",
+                        output ? "accept" : "reject");
+                fail++;
+            }
+        }
+
+        for (size_t i = 0; i < lenof(hasporttests); i++) {
+            const struct HasPortTest *test = &hasporttests[i];
+            bool output = cert_expr_has_port(test->expr);
+            if (output == test->output) {
+                pass++;
+            } else {
+                fprintf(stderr, "FAIL: hasporttests[%zu] @ %s:%d:\n"
+                        "  expression: %s\n"
+                        "  expected:   %s\n"
+                        "  actual:     %s\n",
+                        i, test->file, test->line, test->expr,
+                        test->output ? "has a port condition" : "none",
+                        output ? "has a port condition" : "none");
+                fail++;
             }
         }
 

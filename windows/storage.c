@@ -2077,6 +2077,7 @@ host_ca *host_ca_load(const char *name)
         s = ksf_list_get(items, "PermitRSASHA1"); if (s) hca->opts.permit_rsa_sha1 = atoi(s);
         s = ksf_list_get(items, "PermitRSASHA256"); if (s) hca->opts.permit_rsa_sha256 = atoi(s);
         s = ksf_list_get(items, "PermitRSASHA512"); if (s) hca->opts.permit_rsa_sha512 = atoi(s);
+        s = ksf_list_get(items, "PermitNameless"); if (s) hca->opts.permit_nameless = atoi(s);
         ksf_list_free(items);
     } else {
         if (get_reg_dword(rkey, "PermitRSASHA1", &val))
@@ -2085,6 +2086,9 @@ host_ca *host_ca_load(const char *name)
             hca->opts.permit_rsa_sha256 = val;
         if (get_reg_dword(rkey, "PermitRSASHA512", &val))
             hca->opts.permit_rsa_sha512 = val;
+        /* KiTTY: certificates without names (absent = refused) */
+        if (get_reg_dword(rkey, "PermitNameless", &val))
+            hca->opts.permit_nameless = val;
 
         close_regkey(rkey);
     }
@@ -2114,6 +2118,7 @@ char *host_ca_save(host_ca *hca)
         sprintf(tmp, "%u", (unsigned)hca->opts.permit_rsa_sha1); ksf_list_set(&items, "PermitRSASHA1", tmp);
         sprintf(tmp, "%u", (unsigned)hca->opts.permit_rsa_sha256); ksf_list_set(&items, "PermitRSASHA256", tmp);
         sprintf(tmp, "%u", (unsigned)hca->opts.permit_rsa_sha512); ksf_list_set(&items, "PermitRSASHA512", tmp);
+        sprintf(tmp, "%u", (unsigned)hca->opts.permit_nameless); ksf_list_set(&items, "PermitNameless", tmp);
         ksf_save(path, items);
         ksf_list_free(items);
         sfree(dir); sfree(path);
@@ -2144,6 +2149,7 @@ char *host_ca_save(host_ca *hca)
     put_reg_dword(rkey, "PermitRSASHA1", hca->opts.permit_rsa_sha1);
     put_reg_dword(rkey, "PermitRSASHA256", hca->opts.permit_rsa_sha256);
     put_reg_dword(rkey, "PermitRSASHA512", hca->opts.permit_rsa_sha512);
+    put_reg_dword(rkey, "PermitNameless", hca->opts.permit_nameless);   /* KiTTY */
 
     close_regkey(rkey);
     return NULL;

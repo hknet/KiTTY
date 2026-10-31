@@ -34,6 +34,7 @@ struct ca_state {
     dlgcontrol *ca_pubkey_info;
     dlgcontrol *ca_validity_edit;
     dlgcontrol *rsa_type_checkboxes[NRSATYPES];
+    dlgcontrol *nameless_checkbox;     /* KiTTY: certificates without names */
     char *name, *pubkey, *validity;
     tree234 *ca_names;                 /* stores plain 'char *' */
     ca_options opts;
@@ -202,6 +203,7 @@ static void ca_load_selected_record(struct ca_state *st, dlgparam *dp)
     dlg_refresh(st->ca_validity_edit, dp);
     for (size_t i = 0; i < NRSATYPES; i++)
         dlg_refresh(st->rsa_type_checkboxes[i], dp);
+    dlg_refresh(st->nameless_checkbox, dp);
     ca_refresh_pubkey_info(st, dp);
 }
 
@@ -548,6 +550,15 @@ void setup_ca_config_box_at(struct controlbox *b, const char *path,
     c->context2 = I(offsetof(ca_options, permit_rsa_sha512));
     st->rsa_type_checkboxes[2] = c;
     ctrl_columns(s, 1, 100);
+    /* KiTTY: a host certificate without names is valid for no host
+     * (OpenSSH 10.3) unless this CA's record allows it - off by default,
+     * the warning right under the box */
+    c = ctrl_checkbox(s, KT_CA_NAMELESS_CHECKBOX, NO_SHORTCUT,
+                      HELPCTX(ssh_cert_valid_expr), ca_rsa_type_handler,
+                      P(st));
+    c->context2 = I(offsetof(ca_options, permit_nameless));
+    st->nameless_checkbox = c;
+    ctrl_text(s, KT_CA_NAMELESS_WARNING, HELPCTX(ssh_cert_valid_expr));
 #undef CASC
 }
 

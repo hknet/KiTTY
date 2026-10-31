@@ -35,9 +35,23 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   (withheld-keys-v00@kapper.net), klink, kscp, ksftp and kitty.exe show
   "kageant: 1 key restricted to other servers was not offered." before the
   next authentication method. In the rule editor a host may be a pattern
-  (`*.customer.com`): matched by a host CA, by the keys stored now or also
-  by servers stored later. On a bound connection the keys restricted to
-  that server come first in the key list.
+  (`*.customer.com`): matched by a fixed list of the host keys known now, or checked at each
+  login against every known host key. "Add destination" also offers "All servers of a host CA":
+  a CA of the CA store, read with its Valid hosts at each login. A port
+  condition in Valid hosts is checked against the port a KiTTY++ client
+  sends or, with "Ignore the port for clients that send none", dropped for
+  OpenSSH's ssh.exe. Each rule
+  shows its origin: the program that set it and when, or the rule editor.
+  kageant reads OpenSSH's known_hosts only with "Use OpenSSH's known_hosts
+  as a host-key source" on (Settings > Agent, `readknownhosts`, default
+  off). Turning it on checks the file at once, counts its hashed entries
+  (a pattern never matches them) and offers to look up the "fixed list"
+  destinations again. Registering as the Windows OpenSSH agent with it off
+  adds a hint. On a bound connection the keys restricted to that server come
+  first in the key list. When the rules leave every key out of the list a
+  program receives, kageant shows a notice with the program, the server and
+  the reason, once per agent connection. Event 104 records it (result
+  `no-key-offered`).
 - Links in a session comment open with a click: the box under the session
   list underlines web addresses, `file://` links and UNC paths and opens them
   in the program Windows has registered for them. A path with blanks goes in
@@ -72,8 +86,17 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - Start FileZilla and the launcher's Open in FileZilla hand the session's
   key file to FileZilla, through a temporary site entry deleted after a
   minute. FileZilla asks for the key's passphrase itself.
+- kittygen and kittygen-cli warn about a certificate without names in
+  Certificate info..., `-O cert-info` and Add certificate to key.
 
 ### Changed
+
+- Host certificates without names (signed without `ssh-keygen -n`) are
+  valid for no host, as in OpenSSH 10.3: in kitty.exe, klink, kscp, ksftp
+  and kageant's rules. A server with such a certificate gets the host key
+  prompt until its host key is signed with names, or until its CA's record
+  has "Accept certificates without names" ticked (not recommended). The
+  Terminal Window's Event Log gives the reason.
 
 - Application > Security: "Extra tracing in the Event Log" is now "Extra
   tracing in the Terminal Window's Event Log", the Event Log it writes to.
@@ -103,6 +126,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - kageant Settings > Log > Destination: "Windows Event Log" and "file and
   Windows Event Log". Shortcuts: "Event Log" is now "Show the Terminal
   Window's Event Log".
+- kageant serves PuTTY's list-extended, reencrypt and reencrypt-all to its
+  own window only. A program over the pipe gets the answer for an unknown
+  extension. `query` no longer lists them. A remote host behind a
+  forwarded agent can no longer re-encrypt the keys. Programs read a key's
+  state with key-state-v00@kapper.net. kitty.exe's reconnect wait uses it
+  (list-extended with an older kageant).
 
 ### Fixed
 

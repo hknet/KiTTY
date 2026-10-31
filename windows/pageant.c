@@ -61,6 +61,7 @@
 #include "../kitty/kitty_agentrestrict.h"  /* KiTTY: destination-restricted keys */
 #include "../kitty/kitty_kageant_rules.h"  /* KiTTY: their rule file */
 #include "../kitty/kitty_kageant_dest.h"   /* KiTTY: host name -> host keys */
+#include "../kitty/kitty_knownhosts.h"    /* KiTTY: known_hosts on opt-in (D8) */
 #ifdef DEBUG_IPC
 #define _WIN32_WINNT 0x0500            /* for ConvertSidToStringSid */
 #include <sddl.h>
@@ -2396,21 +2397,31 @@ static void keydetail_autoenc_refresh(HWND hwnd, int pending)
  * destinations below it, each destination's attributes (user, via host,
  * forwarding, host keys) below that. The selected node's attributes are on
  * the right. A destination is entered by host name and looked up in the
- * KiTTY++ host-key store, known_hosts and the CA store
- * (kageant_dest_lookup); the keys found are shown before OK, and a host
- * without a stored key is refused with a text. Nothing reaches the agent
- * before OK: the editor works on its own copy, and OK writes the file
- * (kageant_rules_replace) and puts the rules in force.
+ * KiTTY++ host-key store, known_hosts (while kageant reads it) and the CA
+ * store (kageant_dest_lookup); the keys found are shown before OK, and a
+ * host without a stored key is refused with a text. A destination of the
+ * second kind, "All servers of a host CA", names a CA of the CA store and
+ * holds no host key: the CA is read from the CA store at login. Each link
+ * keeps its origin (a program over the pipe, this editor, or not
+ * recorded). Nothing reaches the agent before OK: the editor works on its
+ * own copy, and OK writes the file (kageant_rules_replace) and puts the
+ * rules in force.
  */
 struct kr_dest {
-    char *host;             /* as typed: name, name:port or [name]:port */
+    char *host;             /* as typed: name, name:port or [name]:port;
+                             * the CA's name for KAR_MATCH_CA_STORE */
     char *user;             /* "" = any user */
     char *via;              /* "" = from this computer */
     bool forward;           /* KAR_LINK_FORWARD */
     unsigned match;         /* KAR_MATCH_*: EXACT for a plain host name,
-                             * the choice for a pattern */
+                             * the choice for a pattern, CA_STORE for every
+                             * server of a CA of the CA store */
     kar_hop to, from;       /* the keys found (host/user filled at OK) */
     bool looked_up;         /* to/from match host and via as typed */
+    kar_origin origin;      /* where the stored link came from (D9) */
+    bool edited;            /* new or changed here: "Set in the rule editor"
+                             * at OK */
+    bool ignore_port;       /* KAR_HOP_IGNORE_PORT (a CA destination) */
     HTREEITEM item;
 };
 struct kr_key {
@@ -2427,6 +2438,7 @@ struct kr_state {
     int ck, cd;             /* the selection: key, destination (-1 = the key) */
     bool loading;           /* the fields are being filled, not typed in */
     kar_store *base;        /* the store as it was when the editor opened */
+    struct kageant_ca_list cas;   /* the CA store, for the CA kind */
 };
 
 static const struct kl_anchor keyrules_anchors[] = {
@@ -2435,11 +2447,13 @@ static const struct kl_anchor keyrules_anchors[] = {
     {IDC_KR_REMOVE,  KL_ANCH_LEFT | KL_ANCH_BOTTOM},
     {IDC_KR_HEAD,    KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_HOST,    KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_KR_CA,      KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_MATCH,   KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_MATCH_WARN, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_USER,    KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_VIA,     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_FORWARD, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_KR_CA_IGNORE_PORT, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KR_KEYS,
      KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDC_KR_STATUS,  KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
@@ -2456,6 +2470,11 @@ struct kr_open {
     const char *comment;
 };
 
+/* The pattern droplist: its entries in order (a KAR_MATCH_* each). */
+static const unsigned kr_match_choices[] = {
+    KAR_MATCH_STORED_NOW, KAR_MATCH_STORED_LATER,
+};
+
 static void kr_dest_free(struct kr_dest *d)
 {
     sfree(d->host);
@@ -2463,6 +2482,7 @@ static void kr_dest_free(struct kr_dest *d)
     sfree(d->via);
     kar_hop_free(&d->to);
     kar_hop_free(&d->from);
+    kar_origin_free(&d->origin);
 }
 
 static void kr_state_free(struct kr_state *st)
@@ -2478,6 +2498,7 @@ static void kr_state_free(struct kr_state *st)
     }
     sfree(st->k);
     kar_store_free(st->base);
+    kageant_ca_list_free(&st->cas);
     sfree(st);
 }
 
@@ -2507,6 +2528,7 @@ static struct kr_dest *kr_dest_add(struct kr_key *k)
     d->host = dupstr("");
     d->user = dupstr("");
     d->via = dupstr("");
+    d->edited = true;
     return d;
 }
 
@@ -2518,6 +2540,7 @@ static struct kr_state *kr_state_new(const struct kr_open *op)
     memset(st, 0, sizeof(*st));
     st->base = kar_store_new();
     kar_store_copy(st->base, kar_store_get());
+    kageant_ca_list(&st->cas);
     s = st->base;
     if (op && op->blob.len) {
         char *fp = kar_key_fp(op->blob);
@@ -2544,9 +2567,13 @@ static struct kr_state *kr_state_new(const struct kr_open *op)
         d->via = dupstr(sd->rule.from.host ? sd->rule.from.host : "");
         d->forward = (s->links[i].flags & KAR_LINK_FORWARD) != 0;
         d->match = sd->rule.to.match;
+        d->ignore_port = d->match == KAR_MATCH_CA_STORE &&
+            (sd->rule.to.flags & KAR_HOP_IGNORE_PORT);
         kar_hop_copy(&d->to, &sd->rule.to);
         kar_hop_copy(&d->from, &sd->rule.from);
         d->looked_up = true;
+        kar_origin_copy(&d->origin, &s->links[i].origin);
+        d->edited = false;
     }
     st->ck = st->n ? 0 : -1;
     st->cd = -1;
@@ -2591,10 +2618,19 @@ static bool kr_split_host(const char *text, char **host, int *port)
 
 static char *kr_dest_label(const struct kr_dest *d)
 {
+    char *ca, *out;
     if (!*d->host)
         return dupstr(KT_KARULES_TREE_NEW_DEST);
-    return dupprintf("%s%s%s%s%s", d->via, *d->via ? " > " : "", d->user,
-                     *d->user ? "@" : "", d->host);
+    if (d->match != KAR_MATCH_CA_STORE)
+        return dupprintf("%s%s%s%s%s", d->via, *d->via ? " > " : "", d->user,
+                         *d->user ? "@" : "", d->host);
+    /* "CA: <name> (Valid hosts: <expr>)" as the CA store holds it now,
+     * ", port ignored for clients that send none" after it when set */
+    ca = kar_ca_dest_text(d->host, d->ignore_port);
+    out = dupprintf("%s%s%s%s%s", d->via, *d->via ? " > " : "", d->user,
+                    *d->user ? "@" : "", ca);
+    sfree(ca);
+    return out;
 }
 
 static char *kr_key_label(const struct kr_key *k)
@@ -2621,6 +2657,36 @@ static HTREEITEM kr_tree_add(HWND tree, HTREEITEM parent, const char *text,
 
 #define KR_LPARAM(k, d) ((LPARAM)(((k) << 16) | ((d) + 1)))
 
+/* The editor's limit on a pattern destination (kar_pattern_narrow_enough):
+ * a pattern with one of the editor's two choices, typed here or loaded from
+ * a rule file written before the limit. A pattern that ssh-add -h set
+ * (exact match, OpenSSH's semantics) is left as it is (D11b). */
+static bool kr_dest_too_broad(const struct kr_dest *d)
+{
+    return (d->match == KAR_MATCH_STORED_NOW ||
+            d->match == KAR_MATCH_STORED_LATER) &&
+        !kar_pattern_narrow_enough(d->host);
+}
+
+/* A destination's origin as the tree shows it: the stored one, or "Set in
+ * the rule editor" once it is new or changed here. sfree it. */
+static char *kr_origin_text(const struct kr_dest *d)
+{
+    kar_origin ed;
+    kar_rule r;
+    if (d->edited) {
+        memset(&ed, 0, sizeof(ed));
+        ed.kind = KAR_ORIGIN_EDITOR;
+        return kar_origin_text(&ed, NULL);
+    }
+    /* a shallow rule for the known_hosts comparison of a program's rule */
+    memset(&r, 0, sizeof(r));
+    r.to = d->to;
+    r.to.host = d->host;
+    r.to.match = d->match;
+    return kar_origin_text(&d->origin, &r);
+}
+
 /* The attribute rows under one destination. */
 static void kr_tree_attrs(HWND tree, struct kr_dest *d, int ki, int di)
 {
@@ -2641,18 +2707,29 @@ static void kr_tree_attrs(HWND tree, struct kr_dest *d, int ki, int di)
     if (d->forward)
         kr_tree_add(tree, d->item, KT_KARULES_ATTR_FORWARD,
                     KR_LPARAM(ki, di));
-    if (d->match != KAR_MATCH_EXACT) {
+    if (kr_dest_too_broad(d))
+        kr_tree_add(tree, d->item, KT_KARULES_PATTERN_TOO_BROAD,
+                    KR_LPARAM(ki, di));
+    if (d->match == KAR_MATCH_CA_DROPPED) {
+        kr_tree_add(tree, d->item, KT_KARULES_MATCH_DROPPED_ROW,
+                    KR_LPARAM(ki, di));
+    } else if (d->match == KAR_MATCH_STORED_NOW ||
+               d->match == KAR_MATCH_STORED_LATER) {
         t = dupprintf(KT_KARULES_ATTR_MATCH_FMT,
-                      d->match == KAR_MATCH_CA_PATTERN ? KT_KARULES_MATCH_CA :
                       d->match == KAR_MATCH_STORED_NOW ? KT_KARULES_MATCH_NOW :
                                                          KT_KARULES_MATCH_LATER);
         kr_tree_add(tree, d->item, t, KR_LPARAM(ki, di));
         sfree(t);
     }
-    if (d->looked_up)
-        t = dupprintf(KT_KARULES_ATTR_KEYS_FMT, (int)d->to.nkeys);
-    else
-        t = dupstr(KT_KARULES_ATTR_KEYS_NONE);
+    if (d->match != KAR_MATCH_CA_STORE) {
+        if (d->looked_up)
+            t = dupprintf(KT_KARULES_ATTR_KEYS_FMT, (int)d->to.nkeys);
+        else
+            t = dupstr(KT_KARULES_ATTR_KEYS_NONE);
+        kr_tree_add(tree, d->item, t, KR_LPARAM(ki, di));
+        sfree(t);
+    }
+    t = kr_origin_text(d);
     kr_tree_add(tree, d->item, t, KR_LPARAM(ki, di));
     sfree(t);
 }
@@ -2713,6 +2790,42 @@ static void kr_keys_text(strbuf *sb, const kar_hop *h,
     }
 }
 
+/* The CA of a CA destination in the editor's copy of the CA store, NULL
+ * when it holds none of that name. */
+static const struct kageant_ca *kr_ca_find(const struct kr_state *st,
+                                           const char *name)
+{
+    for (size_t i = 0; name && *name && i < st->cas.n; i++)
+        if (!strcmp(st->cas.v[i].name, name))
+            return &st->cas.v[i];
+    return NULL;
+}
+
+/* The panel's text for a CA destination: the CA's key, its Valid hosts and
+ * how it is matched at login. */
+static void kr_ca_keys_text(strbuf *sb, const struct kr_state *st,
+                            const struct kr_dest *d)
+{
+    const struct kageant_ca *ca = kr_ca_find(st, d->host);
+    char *fp, *t;
+    if (!*d->host) {
+        put_dataz(sb, KT_KARULES_CA_PICK);
+        return;
+    }
+    if (!ca) {
+        put_fmt(sb, KT_KARULES_CA_GONE_FMT, d->host);
+        return;
+    }
+    fp = ssh2_fingerprint_blob(ptrlen_from_strbuf(ca->pubkey),
+                               SSH_FPTYPE_SHA256);
+    t = dupprintf(KT_KARULES_CA_SRC_FMT, ca->name);
+    put_fmt(sb, "%s%s   (%s)\r\n", KT_KARULES_KEY_CA, fp, t);
+    sfree(t);
+    sfree(fp);
+    put_fmt(sb, KT_KARULES_CA_VALID_FMT, ca->expr);
+    put_fmt(sb, "\r\n\r\n%s", KT_KARULES_CA_KEYS_LATER);
+}
+
 static void kr_status(HWND hwnd, const char *text, bool bad)
 {
     HWND st = GetDlgItem(hwnd, IDC_KR_STATUS);
@@ -2721,28 +2834,64 @@ static void kr_status(HWND hwnd, const char *text, bool bad)
     InvalidateRect(st, NULL, TRUE);
 }
 
-/* The pattern choice of a destination: enabled for a host name that is a
- * pattern, the warning line under it for "Also servers stored later". */
-static void kr_match_ui(HWND hwnd, const struct kr_dest *d)
+/* The rows that depend on the destination's kind: a host name with its
+ * pattern choice (enabled for a pattern, the warning line under it for
+ * "Checked at each login: any matching host"), or a CA of the CA store with its warning
+ * line and, while the CA's Valid hosts has a port condition, the checkbox
+ * "Ignore the port for clients that send none" in the pattern row's place. */
+static void kr_match_ui(HWND hwnd, const struct kr_state *st,
+                        const struct kr_dest *d)
 {
-    bool pat = d && kar_host_is_pattern(d->host);
+    bool ca = d && d->match == KAR_MATCH_CA_STORE;
+    bool pat = d && !ca && kar_host_is_pattern(d->host);
+    const struct kageant_ca *cafound = ca ? kr_ca_find(st, d->host) : NULL;
+    bool port = cafound && cert_expr_has_port(cafound->expr);
+    int sel = -1;
+    bool warn;
+
+    for (size_t i = 0; d && i < lenof(kr_match_choices); i++)
+        if (d->match == kr_match_choices[i])
+            sel = (int)i;
+    ShowWindow(GetDlgItem(hwnd, IDC_KR_HOST_LBL), ca ? SW_HIDE : SW_SHOW);
+    ShowWindow(GetDlgItem(hwnd, IDC_KR_HOST), ca ? SW_HIDE : SW_SHOW);
+    ShowWindow(GetDlgItem(hwnd, IDC_KR_CA_LBL), ca ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(hwnd, IDC_KR_CA), ca ? SW_SHOW : SW_HIDE);
+    ShowWindow(GetDlgItem(hwnd, IDC_KR_MATCH_LBL), ca ? SW_HIDE : SW_SHOW);
+    ShowWindow(GetDlgItem(hwnd, IDC_KR_MATCH), ca ? SW_HIDE : SW_SHOW);
+    ShowWindow(GetDlgItem(hwnd, IDC_KR_CA_IGNORE_PORT),
+               port ? SW_SHOW : SW_HIDE);
+    CheckDlgButton(hwnd, IDC_KR_CA_IGNORE_PORT,
+                   port && d->ignore_port ? BST_CHECKED : BST_UNCHECKED);
     SendDlgItemMessage(hwnd, IDC_KR_MATCH, CB_SETCURSEL,
-                       pat && d->match >= KAR_MATCH_CA_PATTERN ?
-                       (WPARAM)(d->match - 1) : (WPARAM)-1, 0);
+                       pat ? (WPARAM)sel : (WPARAM)-1, 0);
     EnableWindow(GetDlgItem(hwnd, IDC_KR_MATCH), pat);
     EnableWindow(GetDlgItem(hwnd, IDC_KR_MATCH_LBL), pat);
-    ShowWindow(GetDlgItem(hwnd, IDC_KR_MATCH_WARN),
-               pat && d->match == KAR_MATCH_STORED_LATER ? SW_SHOW : SW_HIDE);
+    if (ca) {
+        int ci = -1;
+        for (size_t i = 0; i < st->cas.n; i++)
+            if (!strcmp(st->cas.v[i].name, d->host))
+                ci = (int)i;
+        SendDlgItemMessage(hwnd, IDC_KR_CA, CB_SETCURSEL, (WPARAM)ci, 0);
+    }
+    SetDlgItemText(hwnd, IDC_KR_MATCH_WARN,
+                   ca ? KT_KARULES_CA_WARN : KT_KARULES_MATCH_WARN);
+    warn = ca || (pat && d->match == KAR_MATCH_STORED_LATER);
+    ShowWindow(GetDlgItem(hwnd, IDC_KR_MATCH_WARN), warn ? SW_SHOW : SW_HIDE);
+    EnableWindow(GetDlgItem(hwnd, IDC_KR_LOOKUP), d != NULL);
 }
 
-/* A destination's host name was changed: a pattern takes a choice ("Host
- * CA only" first), a plain name the exact match. */
+/* A destination's host name was changed: a pattern takes a choice
+ * ("Fixed list: host keys known now" first, it cannot widen), a plain
+ * name the exact match. A CA destination keeps its kind, a dropped "Host
+ * CA only" stays marked until a choice is picked. */
 static void kr_match_follow_host(struct kr_dest *d)
 {
+    if (d->match == KAR_MATCH_CA_STORE)
+        return;
     if (!kar_host_is_pattern(d->host))
         d->match = KAR_MATCH_EXACT;
     else if (d->match == KAR_MATCH_EXACT)
-        d->match = KAR_MATCH_CA_PATTERN;
+        d->match = KAR_MATCH_STORED_NOW;
 }
 
 /* The right-hand panel for the selection. */
@@ -2750,7 +2899,8 @@ static void kr_show(HWND hwnd, struct kr_state *st)
 {
     static const int dest_ids[] = {
         IDC_KR_HOST, IDC_KR_USER, IDC_KR_VIA, IDC_KR_FORWARD, IDC_KR_LOOKUP,
-        IDC_KR_HOST_LBL, IDC_KR_USER_LBL, IDC_KR_VIA_LBL,
+        IDC_KR_HOST_LBL, IDC_KR_USER_LBL, IDC_KR_VIA_LBL, IDC_KR_CA,
+        IDC_KR_CA_LBL, IDC_KR_CA_IGNORE_PORT,
     };
     struct kr_key *k = st->ck >= 0 ? &st->k[st->ck] : NULL;
     struct kr_dest *d = (k && st->cd >= 0) ? &k->d[st->cd] : NULL;
@@ -2761,30 +2911,33 @@ static void kr_show(HWND hwnd, struct kr_state *st)
         EnableWindow(GetDlgItem(hwnd, dest_ids[i]), d != NULL);
     EnableWindow(GetDlgItem(hwnd, IDC_KR_ADD), k != NULL);
     EnableWindow(GetDlgItem(hwnd, IDC_KR_REMOVE), k && (d || k->n));
-    SetDlgItemText(hwnd, IDC_KR_HOST, d ? d->host : "");
+    SetDlgItemText(hwnd, IDC_KR_HOST,
+                   d && d->match != KAR_MATCH_CA_STORE ? d->host : "");
     SetDlgItemText(hwnd, IDC_KR_USER, d ? d->user : "");
     SetDlgItemText(hwnd, IDC_KR_VIA, d ? d->via : "");
     CheckDlgButton(hwnd, IDC_KR_FORWARD,
                    d && d->forward ? BST_CHECKED : BST_UNCHECKED);
-    kr_match_ui(hwnd, d);
+    kr_match_ui(hwnd, st, d);
     if (d) {
         SetDlgItemText(hwnd, IDC_KR_HEAD, KT_KARULES_HEAD_DEST);
-        if (!d->looked_up) {
+        if (d->match == KAR_MATCH_CA_STORE) {
+            kr_ca_keys_text(sb, st, d);
+        } else if (!d->looked_up) {
             put_dataz(sb, KT_KARULES_KEYS_NOT_LOOKED_UP);
         } else if (!d->to.nkeys) {
             put_dataz(sb, KT_KARULES_KEYS_LATER);
         } else {
             kr_keys_text(sb, &d->to, NULL, 0);
-            if (d->from.nkeys) {
-                char *t = dupprintf(KT_KARULES_KEYS_VIA_FMT, d->via);
-                put_fmt(sb, "\r\n\r\n%s\r\n", t);
-                sfree(t);
-                {
-                    strbuf *vb = strbuf_new();
-                    kr_keys_text(vb, &d->from, NULL, 0);
-                    put_datapl(sb, ptrlen_from_strbuf(vb));
-                    strbuf_free(vb);
-                }
+        }
+        if (d->looked_up && d->from.nkeys) {
+            char *t = dupprintf(KT_KARULES_KEYS_VIA_FMT, d->via);
+            put_fmt(sb, "\r\n\r\n%s\r\n", t);
+            sfree(t);
+            {
+                strbuf *vb = strbuf_new();
+                kr_keys_text(vb, &d->from, NULL, 0);
+                put_datapl(sb, ptrlen_from_strbuf(vb));
+                strbuf_free(vb);
             }
         }
     } else if (k) {
@@ -2815,6 +2968,43 @@ static char *kr_field(HWND hwnd, int id)
     return buf;
 }
 
+/* A CA destination's look-up: its CA is read from the CA store at login,
+ * so only a via host's keys are looked up. */
+static void kr_lookup_ca(HWND hwnd, struct kr_state *st, struct kr_dest *d)
+{
+    struct kageant_dest_found *ff = NULL;
+    size_t nf = 0;
+    char *via = NULL, *msg;
+    int vport = 22;
+
+    if (!*d->host) {
+        kr_status(hwnd, KT_KARULES_CA_PICK, true);
+        SetFocus(GetDlgItem(hwnd, IDC_KR_CA));
+        return;
+    }
+    if (*d->via && (!kr_split_host(d->via, &via, &vport) ||
+                    (nf = kageant_dest_lookup(via, vport, &ff)) == 0)) {
+        msg = dupprintf(kageant_readknownhosts_get() ?
+                        KT_KARULES_NO_KEYS_KH_FMT : KT_KARULES_NO_KEYS_FMT,
+                        d->via);
+        kr_status(hwnd, msg, true);
+        sfree(msg);
+        sfree(via);
+        return;
+    }
+    kar_hop_free(&d->from);
+    for (size_t i = 0; i < nf; i++)
+        kar_hop_add_key(&d->from, ptrlen_from_strbuf(ff[i].blob),
+                        ff[i].is_ca);
+    d->looked_up = true;
+    d->edited = true;
+    kr_tree_attrs(GetDlgItem(hwnd, IDC_KR_TREE), d, st->ck, st->cd);
+    kr_show(hwnd, st);
+    kr_status(hwnd, KT_KARULES_CA_KEYS_LATER, false);
+    kageant_dest_found_free(ff, nf);
+    sfree(via);
+}
+
 /* Look up the selected destination's host keys (and its via host's). */
 static void kr_lookup(HWND hwnd, struct kr_state *st)
 {
@@ -2828,49 +3018,49 @@ static void kr_lookup(HWND hwnd, struct kr_state *st)
     if (st->ck < 0 || st->cd < 0)
         return;
     d = &st->k[st->ck].d[st->cd];
+    if (d->match == KAR_MATCH_CA_STORE) {
+        kr_lookup_ca(hwnd, st, d);
+        return;
+    }
     if (!kr_split_host(d->host, &host, &port)) {
         kr_status(hwnd, KT_KARULES_HOST_EMPTY, true);
         SetFocus(GetDlgItem(hwnd, IDC_KR_HOST));
         return;
     }
+    if (!kar_pattern_narrow_enough(d->host)) {
+        /* the editor's limit: a pattern keeps a fixed domain */
+        sfree(host);
+        kr_status(hwnd, KT_KARULES_PATTERN_TOO_BROAD, true);
+        SetFocus(GetDlgItem(hwnd, IDC_KR_HOST));
+        return;
+    }
     kr_match_follow_host(d);
+    if (d->match == KAR_MATCH_CA_DROPPED) {
+        sfree(host);
+        kr_status(hwnd, KT_KARULES_DROPPED_FIX, true);
+        SetFocus(GetDlgItem(hwnd, IDC_KR_MATCH));
+        return;
+    }
     if (d->match == KAR_MATCH_STORED_NOW ||
         d->match == KAR_MATCH_STORED_LATER) {
         /* every key stored now under a name the pattern matches; for
-         * "Also servers stored later" a snapshot that may be empty */
+         * "Checked at each login: any matching host" a snapshot that may be empty */
         nt = kageant_dest_lookup_pattern(host, port, &ft);
     } else {
         nt = kageant_dest_lookup(host, port, &ft);
-        if (d->match == KAR_MATCH_CA_PATTERN) {
-            /* "Host CA only": the CA keys of what was found */
-            size_t j = 0;
-            for (size_t i = 0; i < nt; i++) {
-                if (ft[i].is_ca) {
-                    struct kageant_dest_found tmp = ft[j];
-                    ft[j] = ft[i];
-                    ft[i] = tmp;
-                    j++;
-                }
-            }
-            for (size_t i = j; i < nt; i++) {
-                strbuf_free(ft[i].blob);
-                sfree(ft[i].source);
-            }
-            nt = j;
-            if (!nt) {
-                msg = dupprintf(KT_KARULES_NO_CA_FMT, d->host);
-                goto out;
-            }
-        }
     }
     if (!nt && d->match != KAR_MATCH_STORED_LATER) {
-        msg = dupprintf(KT_KARULES_NO_KEYS_FMT, d->host);
+        msg = dupprintf(kageant_readknownhosts_get() ?
+                        KT_KARULES_NO_KEYS_KH_FMT : KT_KARULES_NO_KEYS_FMT,
+                        d->host);
         goto out;
     }
     if (*d->via) {
         if (!kr_split_host(d->via, &via, &vport) ||
             (nf = kageant_dest_lookup(via, vport, &ff)) == 0) {
-            msg = dupprintf(KT_KARULES_NO_KEYS_FMT, d->via);
+            msg = dupprintf(kageant_readknownhosts_get() ?
+                            KT_KARULES_NO_KEYS_KH_FMT : KT_KARULES_NO_KEYS_FMT,
+                            d->via);
             goto out;
         }
     }
@@ -2882,6 +3072,7 @@ static void kr_lookup(HWND hwnd, struct kr_state *st)
         kar_hop_add_key(&d->from, ptrlen_from_strbuf(ff[i].blob),
                         ff[i].is_ca);
     d->looked_up = true;
+    d->edited = true;
     kr_tree_attrs(GetDlgItem(hwnd, IDC_KR_TREE), d, st->ck, st->cd);
     kr_show(hwnd, st);
     /* the panel again, now with where each key was found */
@@ -2918,11 +3109,45 @@ static void kr_lookup(HWND hwnd, struct kr_state *st)
     sfree(via);
 }
 
+/* The first destination whose host is a pattern without a fixed domain of
+ * two labels (kr_dest_too_broad): false with *bk, *bd set to it. */
+static bool kr_patterns_ok(const struct kr_state *st, int *bk, int *bd)
+{
+    for (size_t i = 0; i < st->n; i++)
+        for (size_t j = 0; j < st->k[i].n; j++)
+            if (kr_dest_too_broad(&st->k[i].d[j])) {
+                *bk = (int)i;
+                *bd = (int)j;
+                return false;
+            }
+    return true;
+}
+
+/* The first destination that still holds the dropped "Host CA only"
+ * choice: false with *bk, *bd set to it. */
+static bool kr_dropped_ok(const struct kr_state *st, int *bk, int *bd)
+{
+    for (size_t i = 0; i < st->n; i++)
+        for (size_t j = 0; j < st->k[i].n; j++)
+            if (st->k[i].d[j].match == KAR_MATCH_CA_DROPPED) {
+                *bk = (int)i;
+                *bd = (int)j;
+                return false;
+            }
+    return true;
+}
+
 /* The editor's state as a store, on top of the store it was opened from.
- * false with *bk, *bd naming a destination not looked up. */
+ * false with *bk, *bd naming a destination not looked up (a CA
+ * destination: no CA picked). A destination new or changed here gets the
+ * origin "Set in the rule editor", the others keep theirs. */
 static bool kr_to_store(struct kr_state *st, kar_store *out, int *bk,
                         int *bd)
 {
+    kar_origin ed;
+    memset(&ed, 0, sizeof(ed));
+    ed.kind = KAR_ORIGIN_EDITOR;
+    ed.when = (uint64_t)time(NULL);
     kar_store_copy(out, st->base);
     for (size_t i = 0; i < st->n; i++) {
         struct kr_key *k = &st->k[i];
@@ -2933,10 +3158,11 @@ static bool kr_to_store(struct kr_state *st, kar_store *out, int *bk,
             int port;
             kar_rule r;
             unsigned id;
+            bool ca = d->match == KAR_MATCH_CA_STORE;
             kr_match_follow_host(d);
             if (!d->looked_up ||
-                (!d->to.nkeys && d->match != KAR_MATCH_STORED_LATER) ||
-                !kr_split_host(d->host, &host, &port) ||
+                (!ca && !d->to.nkeys && d->match != KAR_MATCH_STORED_LATER) ||
+                (ca ? !*d->host : !kr_split_host(d->host, &host, &port)) ||
                 (*d->via && !d->from.nkeys)) {
                 sfree(host);
                 *bk = (int)i;
@@ -2944,13 +3170,15 @@ static bool kr_to_store(struct kr_state *st, kar_store *out, int *bk,
                 return false;
             }
             memset(&r, 0, sizeof(r));
-            kar_hop_copy(&r.to, &d->to);
+            if (!ca)
+                kar_hop_copy(&r.to, &d->to);
             kar_hop_copy(&r.from, &d->from);
             sfree(r.to.host);
-            r.to.host = host;
+            r.to.host = ca ? dupstr(d->host) : host;
             sfree(r.to.user);
             r.to.user = *d->user ? dupstr(d->user) : NULL;
             r.to.match = d->match;
+            r.to.flags = ca && d->ignore_port ? KAR_HOP_IGNORE_PORT : 0;
             sfree(r.from.user);
             r.from.user = NULL;
             sfree(r.from.host);
@@ -2968,14 +3196,42 @@ static bool kr_to_store(struct kr_state *st, kar_store *out, int *bk,
             kar_hop_free(&r.from);
             kar_hop_free(&r.to);
             if (id)
-                kar_store_link(out, k->fp, id,
-                               d->forward ? KAR_LINK_FORWARD : 0);
+                kar_store_link_origin(out, k->fp, id,
+                                      d->forward ? KAR_LINK_FORWARD : 0,
+                                      d->edited ? &ed : &d->origin);
         }
         if (k->n)
             kar_store_note_key(out, k->fp, k->comment,
                                ptrlen_from_strbuf(k->blob));
     }
     return true;
+}
+
+/* "Add destination": a new destination of either kind on the selected
+ * key. CA: refused with a status line when the CA store holds none. */
+static void kr_add(HWND hwnd, struct kr_state *st, bool ca)
+{
+    struct kr_key *k;
+    struct kr_dest *d;
+    if (st->ck < 0)
+        return;
+    k = &st->k[st->ck];
+    if (k->n >= KAR_MAX_RULES) {
+        kr_status(hwnd, KT_KARULES_TOO_MANY, true);
+        return;
+    }
+    if (ca && !st->cas.n) {
+        kr_status(hwnd, KT_KARULES_CA_NONE, true);
+        return;
+    }
+    d = kr_dest_add(k);
+    if (ca)
+        d->match = KAR_MATCH_CA_STORE;
+    st->cd = (int)k->n - 1;
+    kr_tree_build(hwnd, st);
+    kr_show(hwnd, st);
+    kr_status(hwnd, ca ? KT_KARULES_CA_PICK : KT_KARULES_EDITOR_HINT, false);
+    SetFocus(GetDlgItem(hwnd, ca ? IDC_KR_CA : IDC_KR_HOST));
 }
 
 static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
@@ -2988,12 +3244,13 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
       case WM_INITDIALOG: {
         static const struct kitty_theme_row rows[] = {
             {IDC_KR_HOST, {IDC_KR_HOST_LBL, 0}},
+            {IDC_KR_CA, {IDC_KR_CA_LBL, 0}},
             {IDC_KR_MATCH, {IDC_KR_MATCH_LBL, 0}},
             {IDC_KR_USER, {IDC_KR_USER_LBL, 0}},
             {IDC_KR_VIA,  {IDC_KR_VIA_LBL, 0}},
         };
-        static const char *const matches[] = {   /* KAR_MATCH_* - 1 */
-            KT_KARULES_MATCH_CA, KT_KARULES_MATCH_NOW, KT_KARULES_MATCH_LATER,
+        static const char *const matches[] = {   /* kr_match_choices */
+            KT_KARULES_MATCH_NOW, KT_KARULES_MATCH_LATER,
         };
         const char *damage = kageant_rules_damage_text();
         char *t;
@@ -3011,7 +3268,10 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
         for (size_t i = 0; i < lenof(matches); i++)
             SendDlgItemMessage(hwnd, IDC_KR_MATCH, CB_ADDSTRING, 0,
                                (LPARAM)matches[i]);
-        SetDlgItemText(hwnd, IDC_KR_MATCH_WARN, KT_KARULES_MATCH_WARN);
+        /* the CAs of the CA store, for "All servers of a host CA" */
+        for (size_t i = 0; i < st->cas.n; i++)
+            SendDlgItemMessageA(hwnd, IDC_KR_CA, CB_ADDSTRING, 0,
+                                (LPARAM)st->cas.v[i].name);
         kitty_theme_mark_ink(GetDlgItem(hwnd, IDC_KR_MATCH_WARN),
                              KITTY_INK_WARN);
         kitty_theme_align_rows(hwnd, rows, lenof(rows));
@@ -3022,7 +3282,13 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
             kr_status(hwnd, t, true);
             sfree(t);
         } else {
-            kr_status(hwnd, KT_KARULES_EDITOR_HINT, false);
+            int bk, bd;
+            if (!kr_dropped_ok(st, &bk, &bd))
+                kr_status(hwnd, KT_KARULES_DROPPED_FIX, true);
+            else if (kr_patterns_ok(st, &bk, &bd))
+                kr_status(hwnd, KT_KARULES_EDITOR_HINT, false);
+            else
+                kr_status(hwnd, KT_KARULES_PATTERN_TOO_BROAD, true);
         }
         anchored_capture(hwnd, keyrules_anchors, lenof(keyrules_anchors),
                          keyrules_baserects, &keyrules_basesize,
@@ -3088,14 +3354,23 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
                 char *label;
                 sfree(*field);
                 *field = kr_field(hwnd, LOWORD(wParam));
+                d->edited = true;
                 if (LOWORD(wParam) == IDC_KR_HOST) {
+                    char cur[128];
                     kr_match_follow_host(d);
-                    kr_match_ui(hwnd, d);
+                    kr_match_ui(hwnd, st, d);
+                    GetDlgItemTextA(hwnd, IDC_KR_STATUS, cur, sizeof(cur));
+                    if (kr_dest_too_broad(d))
+                        kr_status(hwnd, KT_KARULES_PATTERN_TOO_BROAD, true);
+                    else if (!strcmp(cur, KT_KARULES_PATTERN_TOO_BROAD))
+                        kr_status(hwnd, KT_KARULES_EDITOR_HINT, false);
                 }
                 if (LOWORD(wParam) != IDC_KR_USER && d->looked_up) {
-                    /* the keys were found for the old name */
+                    /* the keys were found for the old name (a CA
+                     * destination has none of its own: its via host's) */
                     d->looked_up = false;
-                    kar_hop_free(&d->to);
+                    if (d->match != KAR_MATCH_CA_STORE)
+                        kar_hop_free(&d->to);
                     kar_hop_free(&d->from);
                     SetDlgItemText(hwnd, IDC_KR_KEYS,
                                    KT_KARULES_KEYS_NOT_LOOKED_UP);
@@ -3122,6 +3397,33 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
                 struct kr_dest *d = &st->k[st->ck].d[st->cd];
                 d->forward = IsDlgButtonChecked(hwnd, IDC_KR_FORWARD) ==
                              BST_CHECKED;
+                d->edited = true;
+                st->loading = true;
+                kr_tree_attrs(GetDlgItem(hwnd, IDC_KR_TREE), d, st->ck,
+                              st->cd);
+                st->loading = false;
+            }
+            return 0;
+          case IDC_KR_CA_IGNORE_PORT:
+            /* a CA destination: the port of a client that sends none */
+            if (HIWORD(wParam) == BN_CLICKED && !st->loading &&
+                st->ck >= 0 && st->cd >= 0) {
+                struct kr_dest *d = &st->k[st->ck].d[st->cd];
+                char *label;
+                TVITEMA it;
+                if (d->match != KAR_MATCH_CA_STORE)
+                    return 0;
+                d->ignore_port = IsDlgButtonChecked(
+                    hwnd, IDC_KR_CA_IGNORE_PORT) == BST_CHECKED;
+                d->edited = true;
+                label = kr_dest_label(d);
+                memset(&it, 0, sizeof(it));
+                it.mask = TVIF_TEXT;
+                it.hItem = d->item;
+                it.pszText = label;
+                SendDlgItemMessageA(hwnd, IDC_KR_TREE, TVM_SETITEMA, 0,
+                                    (LPARAM)&it);
+                sfree(label);
                 st->loading = true;
                 kr_tree_attrs(GetDlgItem(hwnd, IDC_KR_TREE), d, st->ck,
                               st->cd);
@@ -3134,9 +3436,10 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
                 struct kr_dest *d = &st->k[st->ck].d[st->cd];
                 LRESULT sel = SendDlgItemMessage(hwnd, IDC_KR_MATCH,
                                                  CB_GETCURSEL, 0, 0);
-                if (sel >= 0 && sel < KAR_MATCH_MAX &&
-                    d->match != (unsigned)sel + 1) {
-                    d->match = (unsigned)sel + 1;
+                if (sel >= 0 && sel < (LRESULT)lenof(kr_match_choices) &&
+                    d->match != kr_match_choices[sel]) {
+                    d->match = kr_match_choices[sel];
+                    d->edited = true;
                     /* the keys depend on the choice: look them up again */
                     if (d->looked_up) {
                         d->looked_up = false;
@@ -3144,7 +3447,7 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
                         SetDlgItemText(hwnd, IDC_KR_KEYS,
                                        KT_KARULES_KEYS_NOT_LOOKED_UP);
                     }
-                    kr_match_ui(hwnd, d);
+                    kr_match_ui(hwnd, st, d);
                     st->loading = true;
                     kr_tree_attrs(GetDlgItem(hwnd, IDC_KR_TREE), d, st->ck,
                                   st->cd);
@@ -3152,23 +3455,66 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
                 }
             }
             return 0;
+          case IDC_KR_CA:
+            /* a CA of the CA store for a CA destination */
+            if (HIWORD(wParam) == CBN_SELCHANGE && !st->loading &&
+                st->ck >= 0 && st->cd >= 0) {
+                struct kr_dest *d = &st->k[st->ck].d[st->cd];
+                LRESULT sel = SendDlgItemMessage(hwnd, IDC_KR_CA,
+                                                 CB_GETCURSEL, 0, 0);
+                if (d->match == KAR_MATCH_CA_STORE && sel >= 0 &&
+                    (size_t)sel < st->cas.n) {
+                    char *label;
+                    TVITEMA it;
+                    /* another CA: its own decision on the port */
+                    if (strcmp(d->host, st->cas.v[sel].name))
+                        d->ignore_port = false;
+                    sfree(d->host);
+                    d->host = dupstr(st->cas.v[sel].name);
+                    d->looked_up = true;
+                    d->edited = true;
+                    label = kr_dest_label(d);
+                    memset(&it, 0, sizeof(it));
+                    it.mask = TVIF_TEXT;
+                    it.hItem = d->item;
+                    it.pszText = label;
+                    SendDlgItemMessageA(hwnd, IDC_KR_TREE, TVM_SETITEMA, 0,
+                                        (LPARAM)&it);
+                    sfree(label);
+                    st->loading = true;
+                    kr_tree_attrs(GetDlgItem(hwnd, IDC_KR_TREE), d, st->ck,
+                                  st->cd);
+                    st->loading = false;
+                    kr_show(hwnd, st);
+                    kr_status(hwnd, KT_KARULES_EDITOR_HINT, false);
+                }
+            }
+            return 0;
           case IDC_KR_LOOKUP:
             kr_lookup(hwnd, st);
             return 0;
           case IDC_KR_ADD:
+            /* the two kinds, in a menu under the button */
             if (st->ck >= 0) {
-                struct kr_key *k = &st->k[st->ck];
-                if (k->n >= KAR_MAX_RULES) {
-                    kr_status(hwnd, KT_KARULES_TOO_MANY, true);
-                    return 0;
-                }
-                kr_dest_add(k);
-                st->cd = (int)k->n - 1;
-                kr_tree_build(hwnd, st);
-                kr_show(hwnd, st);
-                kr_status(hwnd, KT_KARULES_EDITOR_HINT, false);
-                SetFocus(GetDlgItem(hwnd, IDC_KR_HOST));
+                HMENU m = CreatePopupMenu();
+                RECT br;
+                int cmd;
+                AppendMenuA(m, MF_STRING, IDC_KR_ADD_HOST,
+                            KT_KARULES_KIND_HOST);
+                AppendMenuA(m, MF_STRING, IDC_KR_ADD_CA, KT_KARULES_KIND_CA);
+                GetWindowRect(GetDlgItem(hwnd, IDC_KR_ADD), &br);
+                cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN |
+                                     TPM_TOPALIGN | TPM_RIGHTBUTTON,
+                                     br.left, br.bottom, 0, hwnd, NULL);
+                DestroyMenu(m);
+                if (cmd == IDC_KR_ADD_HOST || cmd == IDC_KR_ADD_CA)
+                    kr_add(hwnd, st, cmd == IDC_KR_ADD_CA);
             }
+            return 0;
+          case IDC_KR_ADD_HOST:
+          case IDC_KR_ADD_CA:
+            /* the menu's commands, also reachable as messages */
+            kr_add(hwnd, st, LOWORD(wParam) == IDC_KR_ADD_CA);
             return 0;
           case IDC_KR_REMOVE:
             if (st->ck >= 0) {
@@ -3194,11 +3540,34 @@ static INT_PTR CALLBACK KeyRulesProc(HWND hwnd, UINT msg, WPARAM wParam,
             int bk = -1, bd = -1;
             char *err, *aside = NULL;
             bool applied = false;
+            if (!kr_dropped_ok(st, &bk, &bd)) {
+                kar_store_free(ns);
+                st->ck = bk;
+                st->cd = bd;
+                kr_tree_build(hwnd, st);
+                kr_show(hwnd, st);
+                kr_status(hwnd, KT_KARULES_DROPPED_FIX, true);
+                SetFocus(GetDlgItem(hwnd, IDC_KR_MATCH));
+                return 0;
+            }
+            if (!kr_patterns_ok(st, &bk, &bd)) {
+                kar_store_free(ns);
+                st->ck = bk;
+                st->cd = bd;
+                kr_tree_build(hwnd, st);
+                kr_show(hwnd, st);
+                kr_status(hwnd, KT_KARULES_PATTERN_TOO_BROAD, true);
+                SetFocus(GetDlgItem(hwnd, IDC_KR_HOST));
+                return 0;
+            }
             if (!kr_to_store(st, ns, &bk, &bd)) {
-                char *t = dupprintf(KT_KARULES_NOT_LOOKED_UP_FMT,
-                                    *st->k[bk].d[bd].host ?
-                                    st->k[bk].d[bd].host :
-                                    KT_KARULES_TREE_NEW_DEST);
+                const struct kr_dest *bad = &st->k[bk].d[bd];
+                char *t = (bad->match == KAR_MATCH_CA_STORE && !*bad->host) ?
+                    dupstr(KT_KARULES_CA_PICK) :
+                    dupprintf(KT_KARULES_NOT_LOOKED_UP_FMT,
+                              (*bad->via && !bad->from.nkeys) ? bad->via :
+                              *bad->host ? bad->host :
+                              KT_KARULES_TREE_NEW_DEST);
                 kar_store_free(ns);
                 st->ck = bk;
                 st->cd = bd;
@@ -3545,7 +3914,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         return 0;
       case WM_HELP: {
         /* KiTTY: F1 - the Destinations part opens the restriction
-         * section, the rest the key list's */
+         * section, the rest this window's own */
         int id = ((LPHELPINFO)lParam)->iCtrlId;
         launch_help(hwnd, (id == IDC_KEYDETAIL_DEST ||
                            id == IDC_KEYDETAIL_DEST_LBL ||
@@ -4690,7 +5059,8 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
  * shortcut - adding a control means adding it here in the same edit.
  */
 static const int keysettings_page_agent[] = {
-    IDC_SET_OPENSSH, IDC_SET_STARTUP, IDC_SET_LOADKEYS, IDC_SET_NOTIFY,
+    IDC_SET_OPENSSH, IDC_SET_KNOWNHOSTS, IDC_SET_STARTUP, IDC_SET_LOADKEYS,
+    IDC_SET_NOTIFY,
     IDC_SET_L_NOTICE, IDC_SET_NOTICESECS, IDC_SET_L_NOTICEHINT,
     IDC_SET_L_THEME, IDC_SET_THEME, IDC_SET_L_THEMEHINT,
 };
@@ -4869,6 +5239,196 @@ static void keysettings_readonly_line(HWND hwnd)
  * choice from an untouched default. One settings dialog at a time. */
 static int keysettings_sink_shown = -1;
 
+/* KiTTY: the box of the known_hosts check below, with a Help button
+ * (MB_HELP) when the manual is there: Help opens its known_hosts section
+ * and closes nothing. Returns the button pressed. */
+static HWND kh_box_owner = NULL;
+static void CALLBACK kh_box_help(LPHELPINFO hi)
+{
+    (void)hi;
+    launch_help(kh_box_owner, WINHELP_CTX_pageant_knownhosts);
+}
+
+static int kh_box(HWND owner, const char *text, UINT type)
+{
+    MSGBOXPARAMSA mb;
+    memset(&mb, 0, sizeof(mb));
+    mb.cbSize = sizeof(mb);
+    mb.hwndOwner = owner;
+    mb.lpszText = text;
+    mb.lpszCaption = KT_CAP_KA_KNOWNHOSTS;
+    mb.dwStyle = type;
+    if (has_help()) {
+        mb.dwStyle |= MB_HELP;
+        mb.lpfnMsgBoxCallback = kh_box_help;
+        kh_box_owner = owner;
+    }
+    return MessageBoxIndirectA(&mb);
+}
+
+/* KiTTY: the "Fixed list: host keys known now" destinations looked up
+ * again, now with known_hosts: keys found are added to each, none removed
+ * (kar_hop_add_key_new). A pattern wider than the editor takes
+ * (kar_pattern_narrow_enough) is left as it is. The rule file is written the
+ * way the editor's OK writes it (kageant_rules_replace). Each key whose
+ * destinations changed gets an agent log record: event 104, result
+ * keys-added, reason known_hosts, its rules as they are now. */
+static void keysettings_recollect(HWND hwnd)
+{
+    kar_store *t = kar_store_new();
+    bool *changed;
+    int keys = 0, dests = 0;
+    char *err, *aside = NULL, *msg;
+    bool applied = false;
+
+    kar_store_copy(t, kar_store_get());
+    changed = snewn(t->ndest + 1, bool);
+    for (size_t i = 0; i < t->ndest; i++) {
+        kar_hop *to = &t->dest[i].rule.to;
+        struct kageant_dest_found *f = NULL;
+        size_t nf;
+        char *host = NULL;
+        int port = 22, added = 0;
+
+        changed[i] = false;
+        if (to->match != KAR_MATCH_STORED_NOW || !to->host ||
+            !kar_pattern_narrow_enough(to->host) ||
+            !kr_split_host(to->host, &host, &port))
+            continue;
+        nf = kageant_dest_lookup_pattern(host, port, &f);
+        for (size_t j = 0; j < nf; j++)
+            if (kar_hop_add_key_new(to, ptrlen_from_strbuf(f[j].blob),
+                                    f[j].is_ca))
+                added++;
+        kageant_dest_found_free(f, nf);
+        sfree(host);
+        if (added) {
+            changed[i] = true;
+            keys += added;
+            dests++;
+        }
+    }
+    if (!keys) {
+        MessageBox(hwnd, KT_KA_KH_RECOLLECT_NONE, KT_CAP_KA_KNOWNHOSTS,
+                   MB_ICONINFORMATION | MB_OK);
+        sfree(changed);
+        kar_store_free(t);
+        return;
+    }
+    err = kageant_rules_replace(t, &aside, &applied);
+    sfree(aside);               /* only a damaged store is set aside */
+    if (err) {
+        MessageBox(hwnd, err, KT_CAP_KA_RULES_NOT_SAVED,
+                   MB_ICONWARNING | MB_OK);
+        sfree(err);
+    }
+    if (applied) {
+        /* one record per key with a changed destination */
+        for (size_t i = 0; i < t->nlinks; i++) {
+            const kar_dest *d = kar_store_dest_by_id(t, t->links[i].dest);
+            const kar_skey *k;
+            char *rules;
+            bool seen = false;
+            if (!d || !changed[d - t->dest])
+                continue;
+            for (size_t j = 0; j < i && !seen; j++) {
+                const kar_dest *e = kar_store_dest_by_id(t, t->links[j].dest);
+                seen = e && changed[e - t->dest] &&
+                    !strcmp(t->links[j].fp, t->links[i].fp);
+            }
+            if (seen)
+                continue;
+            k = kar_store_key(t, t->links[i].fp);
+            rules = kageant_rules_text_for_fp(t->links[i].fp);
+            kitty_audit("restricted", "fp", t->links[i].fp,
+                        "comment", k ? k->comment : NULL,
+                        "result", "keys-added", "reason", "known_hosts",
+                        "rule", rules, (const char *)NULL);
+            sfree(rules);
+        }
+        keylist_update();
+        msg = dupprintf(KT_KA_KH_RECOLLECT_DONE_FMT, keys, dests);
+        MessageBox(hwnd, msg, KT_CAP_KA_KNOWNHOSTS, MB_ICONINFORMATION | MB_OK);
+        sfree(msg);
+    }
+    sfree(changed);
+    kar_store_free(t);
+}
+
+/* KiTTY: "Use OpenSSH's known_hosts as a host-key source" was turned on by
+ * this OK (off before): the file is checked at once and the result shown in
+ * one box - not there (normal before ssh.exe stored a host key), not
+ * readable (with Windows' reason), or read with its count of host entries
+ * and of hashed ones (a hashed entry holds no name: a pattern destination
+ * never matches it). With "Fixed list: host keys known now"
+ * destinations in the rule store and the file read, the box offers to look
+ * their host keys up again (keysettings_recollect). That widens those
+ * rules: it is never done without a Yes. No is the default. */
+static void keysettings_knownhosts_on(HWND hwnd)
+{
+    char *path = kageant_known_hosts_path();
+    /* the box shows the path in this form: always short, so Windows never
+     * breaks it inside a word (a profile path can be long) */
+    static const char shown[] = "%USERPROFILE%\\.ssh\\known_hosts";
+    const kar_store *st = kar_store_get();
+    strbuf *sb = strbuf_new();
+    size_t total = 0, hashed = 0;
+    int nnow = 0;
+    bool file_read = false, warn = false;
+    UINT type;
+
+    if (!path) {
+        put_fmt(sb, KT_KA_KH_MISSING_FMT, shown);
+    } else {
+        HANDLE h = CreateFileA(path, GENERIC_READ,
+                               FILE_SHARE_READ | FILE_SHARE_WRITE |
+                               FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+                               FILE_ATTRIBUTE_NORMAL, NULL);
+        DWORD err = 0;
+        if (h == INVALID_HANDLE_VALUE)
+            err = GetLastError();
+        else
+            CloseHandle(h);
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
+            put_fmt(sb, KT_KA_KH_MISSING_FMT, shown);
+        } else if (err) {
+            put_fmt(sb, KT_KA_KH_UNREADABLE_FMT, shown, kitty_win_reason(err));
+            warn = true;
+        } else if (!kkh_count(&total, &hashed)) {
+            err = GetLastError();
+            put_fmt(sb, KT_KA_KH_UNREADABLE_FMT, shown,
+                    kitty_win_reason(err ? err : ERROR_READ_FAULT));
+            warn = true;
+        } else {
+            file_read = true;
+            put_fmt(sb, KT_KA_KH_READ_FMT, shown, (int)total);
+            if (hashed) {
+                put_fmt(sb, KT_KA_KH_HASHED_FMT, (int)hashed);
+                if (has_help())
+                    put_dataz(sb, KT_KA_KH_HASHED_HELP);
+                warn = true;
+            }
+        }
+    }
+    if (file_read && !st->damaged)
+        for (size_t i = 0; i < st->ndest; i++)
+            if (st->dest[i].rule.to.match == KAR_MATCH_STORED_NOW &&
+                st->dest[i].rule.to.host &&
+                kar_pattern_narrow_enough(st->dest[i].rule.to.host))
+                nnow++;   /* the ones keysettings_recollect takes */
+    if (nnow) {
+        put_fmt(sb, KT_KA_KH_RECOLLECT_Q_FMT, nnow);
+        type = MB_YESNO | MB_DEFBUTTON2 |
+            (warn ? MB_ICONWARNING : MB_ICONQUESTION);
+    } else {
+        type = MB_OK | (warn ? MB_ICONWARNING : MB_ICONINFORMATION);
+    }
+    if (kh_box(hwnd, sb->s, type) == IDYES && nnow)
+        keysettings_recollect(hwnd);
+    strbuf_free(sb);
+    sfree(path);
+}
+
 static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam)
 {
@@ -4884,6 +5444,8 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         }
         CheckDlgButton(hwnd, IDC_SET_OPENSSH,
             kageant_openssh_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_KNOWNHOSTS,
+            kageant_readknownhosts_get() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_LOADKEYS,
                        kageant_startup_get() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_STARTUP,
@@ -5206,6 +5768,13 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 IsDlgButtonChecked(hwnd, IDC_SET_BLOCKREMOVE) == BST_CHECKED);
             kageant_allowipclock_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_ALLOWIPCLOCK) == BST_CHECKED);
+            /* off before, on now: the file is checked once OK has stored
+             * everything (keysettings_knownhosts_on below) - a plain OK
+             * with the box already ticked does not repeat it */
+            bool kh_turned_on = !kageant_readknownhosts_get();
+            kageant_readknownhosts_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_KNOWNHOSTS) == BST_CHECKED);
+            kh_turned_on = kh_turned_on && kageant_readknownhosts_get();
             {
                 int wl = (int)SendDlgItemMessage(hwnd, IDC_SET_WINLOCK, CB_GETCURSEL, 0, 0);
                 kageant_winlock_mode_set(wl >= 0 && wl <= 2 ? wl : 0);
@@ -5250,6 +5819,8 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                     kageant_audit_sink_set(sel + 1);
             }
             kageant_setting_failure_box(hwnd);
+            if (kh_turned_on)
+                keysettings_knownhosts_on(hwnd);
             /* Side-effectful toggles: fire the tray handler only on a real
              * change (it may prompt or refuse, and it is the authority). */
             int want = IsDlgButtonChecked(hwnd, IDC_SET_OPENSSH) == BST_CHECKED;
@@ -7467,6 +8038,15 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
                     const char *c = cfg ? cfg : "~/.ssh/config";
                     char *msg = bak ? dupprintf(KT_KA_OPENSSH_REGISTERED_FMT, c, c)
                                     : dupprintf(KT_KA_OPENSSH_REGISTERED_NEW_FMT, c);
+                    if (!kageant_readknownhosts_get()) {
+                        /* a pattern destination matches through the names
+                         * stored for a host key, never through a name a
+                         * client sends: ssh.exe stores its host keys in
+                         * known_hosts only */
+                        char *m2 = dupcat(msg, KT_KA_OPENSSH_KH_HINT);
+                        sfree(msg);
+                        msg = m2;
+                    }
                     MessageBox(NULL, msg, KT_CAP_KAGEANT, MB_ICONINFORMATION | MB_OK);
                     sfree(msg); sfree(cfg);
                 }
@@ -8088,10 +8668,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * before any key is added: a startup key is restricted from its
          * first request on. A damaged file refuses every key and says so. */
         kageant_restricted_hook = kageant_audit_restricted;
+        /* a key list sent out empty because of the rules: event 104 and
+         * a notice (kageant_do_nokey) */
+        kageant_nokey_hook = kageant_do_nokey;
         kageant_rules_changed_hook = kageant_rules_changed;
-        /* the names of a bound host key, for a pattern rule's "Also
-         * servers stored later" */
+        /* the names of a bound host key, for a pattern rule's "Checked
+         * at each login" */
         kar_hostkey_names = kageant_dest_names;
+        kar_ca_lookup = kageant_ca_by_name;           /* D10: CA destinations */
+        kkh_path_hook = kageant_known_hosts_path;     /* D8: known_hosts opt-in */
+        kageant_req_path_hook = kageant_req_path_dup; /* D9: a rule's origin */
         if (!kageant_rules_load()) {
             char *t = dupprintf(KT_KARULES_DAMAGED_NOTICE_FMT,
                                 kageant_rules_damage_text());

@@ -73,6 +73,14 @@ The SSH agent protocol, which is specified by
 defines an extension mechanism. These names can be sent in an
 \cw{SSH_AGENTC_EXTENSION} message.
 
+kageant serves \cw{reencrypt}, \cw{reencrypt-all} and
+\cw{list-extended} to its own window only. A program gets
+\cw{SSH_AGENT_FAILURE}, the answer for an unknown name
+(\k{pageant-deferred-decryption}). kageant's own extensions,
+\cw{key-state-v00@kapper.net} for the key state among them, are
+described in
+\W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/PROTOCOL-AGENT-KAPPER.md}{docs/PROTOCOL-AGENT-KAPPER.md}.
+
 \dt \cw{add-ppk@putty.projects.tartarus.org}
 
 \dd The payload is a single SSH-2 \cw{string} containing a keypair in

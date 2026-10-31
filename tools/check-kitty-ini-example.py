@@ -91,6 +91,7 @@ ALLOW_TEMPLATE_UNREAD = {
     ("Agent", "blockipcadd"),
     ("Agent", "blockipcremove"),
     ("Agent", "allowipclock"),
+    ("Agent", "readknownhosts"),
     ("Agent", "keylistgeometry"),
     ("Agent", "keylistcolumns"),
     ("Agent", "agentloggeometry"),

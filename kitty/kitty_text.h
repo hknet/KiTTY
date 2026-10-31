@@ -2765,6 +2765,7 @@
 #define KT_KA_NOTICE_CONFIRM_BLOCKED                 "kageant: confirmations blocked"
 #define KT_KA_NOTICE_UNPROTECTED                     "kageant: keys are NOT memory-protected"
 #define KT_KA_NOTICE_KEY_USED                        "kageant: SSH key used"
+#define KT_KA_NOTICE_NO_KEY                          "kageant: no key offered"
 
 /* kageant: tray menu items */
 #define KT_KA_MENU_QUICK_CONNECT                     "&Quick Connect"
@@ -2940,6 +2941,31 @@
 #define KT_KA_OPENSSH_REGISTERED_NEW_FMT             "kageant is now the Windows OpenSSH agent.\n\n" \
         "\"Include kageant.conf\" is in the new file:\n%s\n\n" \
         "Untick this item to remove the block again."
+/* appended to the two texts above while known_hosts is not read: the
+ * Settings dialog may be closed already, so the setting by label and page
+ * (the label is KT_RC_KEYSETTINGS_KNOWNHOSTS: change both together) */
+#define KT_KA_OPENSSH_KH_HINT                        "\n\nPattern destinations with ssh.exe need " \
+        "\"Use OpenSSH's known_hosts as a host-key source\" (Settings, Agent page)."
+/* Settings OK with "Use OpenSSH's known_hosts as a host-key source" newly
+ * ticked: the file checked at once, one box (Help: the known_hosts
+ * section of the manual). First line: one of MISSING / UNREADABLE / READ. */
+#define KT_CAP_KA_KNOWNHOSTS                         "kageant - known_hosts"
+#define KT_KA_KH_MISSING_FMT                         "%s\ndoes not exist yet.\n" \
+        "ssh.exe creates it with the first host key it stores."
+#define KT_KA_KH_UNREADABLE_FMT                      "Cannot read\n%s\n%s"
+#define KT_KA_KH_READ_FMT                            "%s\nHost entries: %d."
+/* after READ, when hashed entries are among them */
+#define KT_KA_KH_HASHED_FMT                          "\n\nHashed: %d of them. A pattern destination " \
+        "checked at each login never matches these servers."
+/* after it, while the manual is there (the box then has Help) */
+#define KT_KA_KH_HASHED_HELP                         " The Help button shows the fix."
+/* after READ, when "fixed list" destinations exist: the box becomes Yes/No
+ * (No the default) */
+#define KT_KA_KH_RECOLLECT_Q_FMT                     "\n\nDestinations \"Fixed list: host keys known now\": %d.\n" \
+        "Look up their host keys again, known_hosts included? " \
+        "Keys found are added: those destinations then admit more servers."
+#define KT_KA_KH_RECOLLECT_DONE_FMT                  "%d host key(s) added to %d destination(s)."
+#define KT_KA_KH_RECOLLECT_NONE                      "No new host key found for the \"fixed list\" destinations."
 #define KT_KA_OPENSSH_ON_FAILED_FMT                  "kageant is not the Windows OpenSSH agent:\n\n%s\n\n" \
         "~/.ssh/config was left as it was."
 #define KT_KA_OPENSSH_OFF_FAILED_FMT                 "The kageant block could not be removed:\n\n%s\n\n" \
@@ -3047,9 +3073,17 @@
 #define KT_KAKEYS_DEST_VIA_FMT                       "  via %s"
 #define KT_KAKEYS_DEST_FORWARDING                    "  forwarding"
 /* a destination whose host name is a pattern: how it is matched */
-#define KT_KAKEYS_DEST_MATCH_CA                      "  host CA only"
-#define KT_KAKEYS_DEST_MATCH_NOW                     "  stored now"
-#define KT_KAKEYS_DEST_MATCH_LATER                   "  also stored later"
+#define KT_KAKEYS_DEST_MATCH_NOW                     "  fixed list"
+#define KT_KAKEYS_DEST_MATCH_LATER                   "  checked at each login"
+/* the dropped "Host CA only" choice, still read from an older rule file */
+#define KT_KAKEYS_DEST_MATCH_DROPPED                 "  Host CA only: no longer offered, matches no server"
+/* every server of a CA of the CA store: %s = the CA's name, its Valid
+ * hosts expression as the CA store holds it now */
+#define KT_KAKEYS_DEST_CA_FMT                        "CA: %s (Valid hosts: %s)"
+#define KT_KAKEYS_DEST_CA_MISSING_FMT                "CA: %s (not in the CA store: matches no server)"
+/* after either: the destination ignores the port of a client that sends
+ * none (KAR_HOP_IGNORE_PORT) */
+#define KT_KAKEYS_DEST_CA_PORT_IGNORED               ", port ignored for clients that send none"
 #define KT_KAKEYS_DEST_DAMAGED                       "unknown: the rule file is damaged"
 #define KT_KAKEYS_ALG_NOT_LOADED                     "(not loaded)"
 #define KT_KAKEYS_LIFETIME_UNLIMITED                 "unlimited"
@@ -3245,6 +3279,19 @@
 #define KT_KA_ALL_KEYS_REMOVED_FMT                   "All keys were removed from the agent%s."
 #define KT_KA_KEY_ADDED_TEXT                         "A key was added to the agent"
 #define KT_KA_KEY_REMOVED_TEXT                       "A key was removed from the agent"
+/* kageant: the SSH-2 key list a program received was empty, every key left
+ * out by its destination rules (kageant_do_nokey). First line: the program
+ * (its file name, KT_KA_NOKEY_PROGRAM* when not known) and the server of the
+ * connection as the confirmation shows it ("web01 (SHA256:...)"). Second
+ * line: the reason, one per kar_nokey_reason token. */
+#define KT_KA_NOKEY_FMT                              "%s got no key for %s."
+#define KT_KA_NOKEY_NOSERVER_FMT                     "%s got no key."
+#define KT_KA_NOKEY_PROGRAM_PID_FMT                  "A program (pid %lu)"
+#define KT_KA_NOKEY_PROGRAM                          "A program"
+#define KT_KA_NOKEY_WHY_DESTINATION                  "Every key kageant holds is restricted to other servers."
+#define KT_KA_NOKEY_WHY_FORWARDED                    "No key kageant holds may be used through this forwarded connection."
+#define KT_KA_NOKEY_WHY_BIND_FAILED                  "Every key kageant holds is restricted. The server was not verified: its session-bind was refused."
+#define KT_KA_NOKEY_WHY_DAMAGED                      "The rule file of kageant is damaged. No key is offered to a server until new rules are saved in Key details, Restrict..."
 #define KT_KA_NO_COMMENT                             "(no comment)"
 #define KT_KA_UNNAMED_KEY                            "(unnamed key)"
 #define KT_KA_HELLO_ALLOW_USE_FMT                    "Allow this use of the SSH key \"%s\"?"
@@ -3271,6 +3318,11 @@
  * the agent log's dest= / fwd= and on the lines above: the client's word,
  * not verified */
 #define KT_KA_DEST_CLIENT_MARK                       " (client)"
+/* after a host name read from OpenSSH's known_hosts (kageant reads the
+ * file only with its known_hosts setting on) */
+#define KT_KA_DEST_KH_MARK                           " (known_hosts)"
+/* a CA destination in the agent log's rule= and restrict= */
+#define KT_KA_RULE_CA_FMT                            "CA: %s"
 
 /* kageant's destination rules (kitty_kageant_rules.c, the rule editor in
  * windows/pageant.c, the host lookup in kitty_kageant_dest.c) */
@@ -3305,13 +3357,42 @@
 #define KT_KARULES_ATTR_FORWARD                      "Forwarding: allowed"
 /* the tree row and the droplist of a destination whose host is a pattern */
 #define KT_KARULES_ATTR_MATCH_FMT                    "Pattern: %s"
-#define KT_KARULES_MATCH_CA                          "Host CA only"
-#define KT_KARULES_MATCH_NOW                         "Servers whose host key is stored now"
-#define KT_KARULES_MATCH_LATER                       "Also servers stored later"
-#define KT_KARULES_MATCH_WARN                        "A program running as this Windows user that writes the host-key store or known_hosts can widen this rule."
+#define KT_KARULES_MATCH_NOW                         "Fixed list: host keys known now"
+#define KT_KARULES_MATCH_LATER                       "Checked at each login: any matching host"
+#define KT_KARULES_MATCH_WARN                        "A program running as this Windows user that writes the host-key store, " \
+        "or known_hosts while kageant reads it, can widen this rule."
 #define KT_KARULES_KEYS_LATER                        "Matched at login: a server passes when its host key is stored under a name the pattern covers."
-#define KT_KARULES_NO_CA_FMT                         "No CA key for %s in known_hosts (@cert-authority) or the CA store."
-#define KT_KARULES_LATER_NONE_FMT                    "No host key stored for %s yet. Servers stored later are matched at login."
+/* a destination of a rule file that still holds the dropped "Host CA
+ * only" choice: its tree row, and the status line that keeps OK from
+ * saving it */
+#define KT_KARULES_MATCH_DROPPED_ROW                 "Pattern: Host CA only - no longer offered, matches no server"
+#define KT_KARULES_DROPPED_FIX                       "\"Host CA only\" is no longer offered: this destination matches no server. " \
+        "Pick a pattern choice, or remove it and add \"All servers of a host CA\"."
+/* "Add destination": its two kinds (a menu under the button) */
+#define KT_KARULES_KIND_HOST                         "&Server or pattern"
+#define KT_KARULES_KIND_CA                           "All servers of a host &CA"
+/* a destination of the second kind: the CA picked from the CA store */
+#define KT_KARULES_CA_WARN                           "A program running as this Windows user that edits the CA store can widen this rule."
+#define KT_KARULES_CA_NONE                           "No CA in the KiTTY++ CA store. Add one in the configuration box: " \
+        "Application > Security > Certificate Authorities."
+#define KT_KARULES_CA_PICK                           "Pick a CA of the KiTTY++ CA store."
+#define KT_KARULES_CA_VALID_FMT                      "Valid hosts: %s"
+#define KT_KARULES_CA_SRC_FMT                        "CA store: %s"
+#define KT_KARULES_CA_KEYS_LATER                     "Matched at login against the CA store: a host certificate from this CA, valid now, " \
+        "with a name Valid hosts admits. A port condition needs the client's port."
+#define KT_KARULES_CA_GONE_FMT                       "No CA %s in the CA store: this destination matches no server."
+/* a rule's origin (the tree, Key details): a program over the pipe
+ * (ssh-add -h) - its path and the time -, the editor, or a rule file
+ * older than the record */
+#define KT_KARULES_ORIGIN_PROGRAM_FMT                "Set by %s, %s (host keys looked up by that program)"
+#define KT_KARULES_ORIGIN_NO_PATH                    "an unknown program"
+#define KT_KARULES_ORIGIN_NO_TIME                    "time not recorded"
+#define KT_KARULES_ORIGIN_EDITOR                     "Set in the rule editor"
+#define KT_KARULES_ORIGIN_UNKNOWN                    "Origin not recorded"
+/* while kageant reads known_hosts: a program's host keys against it */
+#define KT_KARULES_ORIGIN_KH_SAME                    ", host keys as in known_hosts"
+#define KT_KARULES_ORIGIN_KH_DIFF_FMT                ", host keys not in known_hosts: %d of %d"
+#define KT_KARULES_LATER_NONE_FMT                    "No host key known for %s yet. Matching servers are checked at each login."
 #define KT_KARULES_ATTR_KEYS_FMT                     "Host keys: %d"
 #define KT_KARULES_ATTR_KEYS_NONE                    "Host keys: not looked up"
 /* the editor's right-hand side */
@@ -3327,7 +3408,12 @@
 #define KT_KARULES_EDITOR_DAMAGED_FMT                "The rule file is damaged: %s\n" \
         "OK keeps that file aside and saves the rules shown here."
 #define KT_KARULES_HOST_EMPTY                        "Host name missing."
-#define KT_KARULES_NO_KEYS_FMT                       "No host key of %s in the KiTTY++ host-key store, " \
+#define KT_KARULES_PATTERN_TOO_BROAD                 "A pattern needs a fixed domain of two labels or more, " \
+        "e.g. *.customer.com."
+#define KT_KARULES_NO_KEYS_FMT                       "No host key of %s in the KiTTY++ host-key store " \
+        "or the CA store."
+/* the same while kageant reads known_hosts */
+#define KT_KARULES_NO_KEYS_KH_FMT                    "No host key of %s in the KiTTY++ host-key store, " \
         "known_hosts or the CA store."
 #define KT_KARULES_FOUND_FMT                         "%d host key(s) found for %s."
 #define KT_KARULES_TOO_MANY                          "1024 destinations per key at most."
@@ -3865,6 +3951,22 @@
 #define KT_HOSTKEY_MISMATCH_N                        "The host key does not match any of the %d %s keys %s has stored for this server:"
 #define KT_HOSTKEY_MISMATCH_N_KEY                    "Stored key %d: %s, first seen %s"
 #define KT_HOSTKEY_REPLACES_ALL                      "Accepting the new key replaces all %d stored %s keys."
+/* crypto/openssh-certs.c: a host certificate without names is valid for no
+ * host (OpenSSH 10.3) - the reason in the Terminal Window's Event Log
+ * ("Rejected host key certificate: ..."), and the certificate's info text
+ * (kittygen's "Certificate info...", kittygen-cli cert-info, the host key
+ * box) where its names would be */
+#define KT_CERT_NO_HOST_NAMES_REFUSED                "Certificate holds no host names: KiTTY++, like OpenSSH 10.3, " \
+        "accepts it for no host (\"Accept certificates without names\" is off for its CA)"
+#define KT_CERT_INFO_WARNING_KEY                     "Warning"
+#define KT_CERT_INFO_NO_HOST_NAMES                   "No host names: KiTTY++, like OpenSSH 10.3, accepts this certificate " \
+        "for no host. A stolen copy would let a server pose as any host."
+#define KT_CERT_INFO_NO_USER_NAMES                   "No user names: OpenSSH 10.3 accepts this certificate for no user."
+/* ssh/ca-config.c: a CA record's exception, off by default, the warning
+ * line under it */
+#define KT_CA_NAMELESS_CHECKBOX                      "Accept certificates without names (valid for every host in Valid hosts)"
+#define KT_CA_NAMELESS_WARNING                       "Not recommended: a stolen certificate without names lets one server " \
+        "pose as any host."
 /* windows/dialog.c: the host key box - an unknown key, a changed key, a
  * certificate no trusted authority signed, the changes of
  * updatehostkeys=ask. The detail field is label TAB value. */
@@ -4845,6 +4947,9 @@
 #define KT_RC_KEYRULES_FORWARD                       "Allow agent &forwarding to the other destinations"
 #define KT_RC_KEYRULES_LOOKUP                        "&Look up host keys"
 #define KT_RC_KEYRULES_KEYS                          "Host keys:"
+#define KT_RC_KEYRULES_CA                            "CA:"
+/* under the CA, shown while its Valid hosts has a port condition */
+#define KT_RC_KEYRULES_CA_IGNORE_PORT                "Ignore the port for clients that send none (OpenSSH's ssh.exe)"
 
 /* pageant.rc: IDD_KEYSETTINGS (caption = KT_CAP_KA_SETTINGS) */
 #define KT_RC_KEYSETTINGS_NOTICE_LABEL               "Notice &display (seconds):"
@@ -4857,6 +4962,9 @@
 /* No accelerator on these two: the letters are unique per DIALOG, and every
  * letter of both texts is taken on one of the four pages (free: b j q v z). */
 #define KT_RC_KEYSETTINGS_ALLOWIPCLOCK               "Allow locking the agent over IPC (ssh-add -x / -X)"
+/* the Agent page, under "Register as Windows OpenSSH agent": [Agent]
+ * readknownhosts. KiTTY++ never writes the file. */
+#define KT_RC_KEYSETTINGS_KNOWNHOSTS                 "Use OpenSSH's known_hosts as a host-key source"
 #define KT_RC_KEYSETTINGS_WINLOCK_LABEL              "When Windows locks:"
 #define KT_RC_KEYSETTINGS_HELLO                      "Confirmations require Windows &Hello"
 #define KT_RC_KEYSETTINGS_TTL_LABEL                  "&Passphrase cache (seconds):"

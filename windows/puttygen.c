@@ -1740,6 +1740,31 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
     burnstr(passphrase);
 }
 
+/* KiTTY: the warning for a certificate without names (OpenSSH 10.3 matches
+ * it against no principal), NULL when it has names or another type. */
+static const char *kitty_cert_nameless_warning(ssh_key *key)
+{
+    key_components *kc = ssh_key_components(key);
+    const char *type = NULL, *warn = NULL;
+    bool names = false;
+    for (size_t i = 0; kc && i < kc->ncomponents; i++) {
+        const key_component *c = &kc->components[i];
+        if (c->type != KCT_TEXT)
+            continue;
+        if (!strcmp(c->name, "cert_type"))
+            type = c->str->s;
+        else if (!strncmp(c->name, "cert_valid_principal_", 21))
+            names = true;
+    }
+    if (!names && type && !strcmp(type, "host"))
+        warn = KT_CERT_INFO_NO_HOST_NAMES;
+    else if (!names && type && !strcmp(type, "user"))
+        warn = KT_CERT_INFO_NO_USER_NAMES;
+    if (kc)
+        key_components_free(kc);
+    return warn;
+}
+
 void add_certificate(HWND hwnd, struct MainDlgState *state,
                      Filename *filename)
 {
@@ -1847,6 +1872,15 @@ void add_certificate(HWND hwnd, struct MainDlgState *state,
 
     update_ui_after_ssh2_pubkey_change(hwnd, state);
     ui_set_state(hwnd, state, 2);
+
+    /* KiTTY: attached, with a warning when the certificate holds no names
+     * (no refusal: the user may know why) */
+    {
+        const char *warn = kitty_cert_nameless_warning(state->ssh2key.key);
+        if (warn)
+            message_box(hwnd, warn, KT_CAP_KITTYGEN_WARNING,
+                        MB_OK | MB_ICONWARNING, false, 0);
+    }
 }
 
 void remove_certificate(HWND hwnd, struct MainDlgState *state)

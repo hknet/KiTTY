@@ -122,6 +122,93 @@ tell two certificates apart.
 \b The state of deferred decryption, if enabled for this key.
 See \k{pageant-deferred-decryption}.
 
+\S{pageant-mainwin-keydetails} The Key details window
+
+Double-click a key in the key list, or select it and press Enter, to
+open \q{kageant - key details}. The fields are read-only text that can
+be selected and copied. The window can be resized. A setting changed
+here takes effect at once. In window order:
+
+\b \q{Key:} the key type and its size in bits.
+
+\b \q{State:} \q{loaded and ready to use}, encrypted until its first
+use, loaded from an encrypted key file, or not loaded with the reason:
+the key file is not reachable, the file does not load, the file holds
+another key than the one recorded, or no fingerprint is on record for
+the path.
+
+\b \q{Fingerprints:} SHA-256 and MD5, for a certified key also both
+forms including the certificate. A key not loaded shows the
+fingerprint recorded at the last save, if there is one.
+
+\b \q{Comment:} the key's comment.
+
+\b \q{Loaded from:} each key file the key was loaded from, with its
+protection: \q{passphrase}, \q{Windows Hello protected} or
+\q{UNPROTECTED - no passphrase}. A key not loaded shows its startup
+path. A key added by another program shows \q{not known}.
+\q{Locate...} appears for a startup entry whose file is not reachable
+or does not load. It opens a file picker: a file that holds the
+recorded key becomes the entry's new path. A file with another key, or
+one that does not load, changes nothing.
+
+\b \q{Destinations:} the key's destination rules: the count on the
+first line, then one line per destination. Without rules \q{any - the
+key is not restricted}, with a damaged rule file \q{unknown: the rule
+file is damaged}. \q{Restrict...} opens the rule editor on this key,
+for a loaded SSH-2 key only. See \k{pageant-restrict}.
+
+\b \q{Lifetime:} for a key added with a lifetime (\c{ssh-add -t}) the
+time set and the time remaining, counted down while the window is open,
+then \q{expired - key removed}. Otherwise \q{unlimited}, or \q{not
+loaded}.
+
+\b \q{Load this key deferred at startup (passphrase at first use)}: the
+startup list adds the key encrypted at the next start (see
+\k{pageant-deferred-decryption}). The stored entry changes at once. The
+key's current state stays. Greyed for a key the startup list does not
+track and for a key file without a passphrase.
+
+\b \q{Confirm each use:} \q{no}, \q{ask before each use} (a
+confirmation box before each signature) or \q{ask with Windows Hello}
+(a Windows Hello gesture before each signature). It applies to the
+loaded key at once. The startup entry keeps it when the startup list
+tracks the key. Greyed for a key not loaded.
+
+\b \q{Re-encrypt after idle:} the key's own idle time (see
+\k{pageant-autoencrypt}): \c{immediately}, \c{10m}, \c{2h}, \c{1d} or a
+typed time. Blank = the agent default, shown beside the field. The
+value applies when a listed value is picked or the field loses the
+focus. A time that does not parse restores the previous value. Greyed
+for a key not loaded and while the agent setting is \q{Enforced for
+every key}.
+
+\b \q{Accept this key}: shown only for an entry refused because the
+file holds another key or no fingerprint is on record. Its question
+shows the file, the current fingerprint and the recorded one if there
+is one. Yes loads the key and records the new fingerprint. With
+\q{Confirmations require Windows Hello} on (Settings, \q{Security}
+page), Accept also requires a Windows Hello gesture. This is the only
+place a changed key file is accepted.
+
+\b \q{Protect with Windows Hello...}: writes a Windows Hello protected
+copy of the key file (the copy and its \c{.hello} file, see
+\k{ppk-hello}). The original stays where it is. \q{Replace this key's
+startup entry with the protected copy} in the protect window puts the
+copy in the startup list. Enabled for a loaded key from a file without
+a \c{.hello} file, on a computer that offers Windows Hello.
+
+\b \q{Forget a path...}: goes through the key's paths one by one. Yes
+removes that path from the startup list, No goes to the next, Cancel
+stops. The key stays loaded. Forgetting the key's only startup entry
+means it no longer loads at startup. Greyed for a key with no path on
+record.
+
+\b \q{Close} (Enter, Esc) closes the window.
+
+F1 opens this section. F1 on \q{Destinations:} or \q{Restrict...} opens
+\k{pageant-restrict}.
+
 \S{pageant-mainwin-addkey} The \q{Add Key} button
 
 To add a key to kageant by reading it out of a local disk file,
@@ -160,9 +247,11 @@ With \c{readonly=yes} in kitty.ini the dialog shows \q{Read-only
 stored, key list changes included.
 
 \b \q{Agent}: whether kageant registers itself as the Windows OpenSSH
-agent, starts at login, reloads the remembered keys at startup, and
-shows a notice when a key is used; the notice display time; the colour
-theme.
+agent, whether it uses OpenSSH's \c{known_hosts} as a host-key source
+(\q{Use OpenSSH's known_hosts as a host-key source}, off by default,
+\k{pageant-knownhosts}), starts at login, reloads the remembered keys at
+startup, and shows a notice when a key is used; the notice display time;
+the colour theme.
 
 \b \q{Security}: the IPC policy (refuse all key adds and removes over
 the pipe, or only adds, or only removes), whether confirmations demand
@@ -193,7 +282,7 @@ the records go to the Application log, whose size and retention are
 Windows' own settings.
 
 100 sign, 101 confirm, 102 session-bind, 103 refused request, 104
-refused by a key's destination rules, 110 add,
+refused by a key's destination rules or a key list they left empty, 110 add,
 111 load at startup, 112 forget a path, 113 retry, 114 remove, 115
 remove all, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
 132 Hello unlock, 140 key file warning, 150 re-encrypt all, 151
@@ -287,6 +376,23 @@ and then add a directive like this to your main \cq{.ssh\\config} file
 
 \c Include kageant.conf
 
+\s{ssh-add}: \c{ssh-add} does not read \c{.ssh\\config}, so the
+\cw{IdentityAgent} line reaches \c{ssh.exe} only. This also holds for
+\q{Register as Windows OpenSSH agent}. \c{ssh-add} finds its agent
+through the environment variable \cw{SSH_AUTH_SOCK}. Without it,
+\c{ssh-add} talks to the pipe of the Windows \q{OpenSSH Authentication
+Agent} service: keys it adds land there, not in kageant. Set the
+variable in the PowerShell window that runs \c{ssh-add}:
+
+\c $line = Get-Content "$env:USERPROFILE\.ssh\kageant.conf"
+\c $pipe = $line -replace '^IdentityAgent "(.*)"$','$1'
+\c $env:SSH_AUTH_SOCK = $pipe -replace '/','\'
+
+The pipe name changes with each Windows start, so set it again in each
+new window. kageant does not set \cw{SSH_AUTH_SOCK} for the user
+account: Git for Windows' own \c{ssh} reads the same variable and
+cannot use a named pipe.
+
 \s{Note}: this technique only works with \e{Windows's} port of
 OpenSSH, which lives at \cw{C:\\Windows\\System32\\OpenSSH\\ssh.exe}
 if you have it installed. (If not, it can be installed as a Windows
@@ -300,11 +406,40 @@ like MinGW or MSys, so they won't speak Windows native pathname syntax
 or understand named pipes. The above instructions will only work with
 Windows's own version of OpenSSH.
 
-So, if you want to use Windows \cw{git} with an SSH key held in
-kageant, you'll have to set the environment variable \cw{GIT_SSH}, to
-point at a different program. You could point it at
-\cw{c:\\Windows\\System32\\OpenSSH\\ssh.exe} once you've done this
-setup \dash but it's just as easy to point it at klink!
+To use Git for Windows with keys held in kageant, let \cw{git} run
+Windows' own \cw{ssh.exe} instead of its own copy:
+
+\b In the Git for Windows installer: on the page \q{Choosing the SSH
+executable}, pick \q{Use external OpenSSH}.
+
+\b For an existing installation, run once in PowerShell or a command
+prompt:
+
+\lcont{
+
+\c git config --global core.sshCommand C:/Windows/System32/OpenSSH/ssh.exe
+
+Use forward slashes: \cw{git} runs this command through its own shell,
+which takes a backslash as an escape character.
+
+}
+
+Then turn on \q{Register as Windows OpenSSH agent} (kageant's tray
+menu, or Settings, Agent page). \cw{ssh.exe} finds kageant through the
+\cw{IdentityAgent} line. \cw{git} needs no \cw{SSH_AUTH_SOCK}. To check,
+list a remote's branches with a key that only kageant holds:
+
+\c git ls-remote git@git.example.com:group/project.git
+
+The branches appear without a passphrase prompt. An environment variable
+\cw{GIT_SSH_COMMAND} takes precedence over \c{core.sshCommand}: remove
+it, or point it at the same \cw{ssh.exe}. \c{core.sshCommand} in turn
+takes precedence over \cw{GIT_SSH}.
+
+Pointing \cw{GIT_SSH} at klink works without this setup: klink finds
+kageant on its own. Add \c{git config --global ssh.variant plink}, so
+that \cw{git} passes a port (\c{-P}) and \c{--ipv4} / \c{--ipv6}
+(\c{-4} / \c{-6}) in klink's form.
 
 \S{pageant-cmdline-unix} Unix-domain sockets: integrating with WSL 1
 
@@ -443,13 +578,17 @@ as their last two fields.
 \c{accepted}, \c{dest} and \c{forwarding} (\c{yes} or \c{no}).
 
 The fingerprint is the verified part. The host names are looked up in
-the KiTTY++ host-key store and in \c{%USERPROFILE%\\.ssh\\known_hosts}
-(plain entries: a hashed entry holds no name) and are shown for
-orientation only. klink, kscp, ksftp and kitty.exe also send the name
+the KiTTY++ host-key store and, while kageant reads it
+(\k{pageant-knownhosts}), in OpenSSH's \c{known_hosts} (plain entries: a
+hashed entry holds no name). A name from \c{known_hosts} is marked
+\c{(known_hosts)}. The names are shown for orientation only. klink, kscp,
+ksftp and kitty.exe also send the name
 they connected to, right after the binding
 (\c{session-bind-host-v00@kapper.net}). That name comes first, marked
 \c{(client)}: it is the client's word, never verified and never used
-for a decision. The names the lookup finds follow when they differ from
+for a decision. The port sent with it is used for one decision only: a
+port condition of an \q{All servers of a host CA} destination
+(\k{pageant-restrict-hostca}). The names the lookup finds follow when they differ from
 it, at most 5 names in all, then \c{+N} for the rest:
 \c{SHA256:WCvM... monitor.example.net (client) 192.0.2.21 +1}. An
 OpenSSH client sends no name: the lookup's names stand alone. Without a
@@ -476,6 +615,63 @@ name of the server whose connection it is. kageant's own extensions
 are described in full in
 \W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/PROTOCOL-AGENT-KAPPER.md}{docs/PROTOCOL-AGENT-KAPPER.md}.
 
+\S{pageant-knownhosts} OpenSSH's \c{known_hosts}
+
+kageant reads \c{%USERPROFILE%\\.ssh\\known_hosts} only while
+\q{Use OpenSSH's known_hosts as a host-key source} is ticked (Settings,
+\q{Agent} page, \c{[Agent] readknownhosts=yes} in kitty.ini). It is off
+by default: the file is OpenSSH's. Nobody set it as a source for
+kageant. PuTTY never reads it. KiTTY++ never writes it. Off, kageant
+does not open the file at all. On, the file serves three uses:
+
+\b Host names: \c{dest} and \c{fwd} in the agent log and the key-use
+confirmation. A name from the file is marked:
+\c{SHA256:... web07.example.com (known_hosts)}.
+
+\b \q{Look up host keys} in the rule editor: plain, hashed and
+\c{@cert-authority} entries, listed with the source \c{known_hosts} or
+\c{known_hosts, @cert-authority}.
+
+\b \q{Checked at each login}: a name from the file counts
+as a stored name. A signature such a rule permitted only through a name
+from the file carries the reason \c{known_hosts} in its record (event
+100).
+
+A rule a program set (\c{ssh-add -h}) also shows whether its host keys
+are the ones the file holds for its host name (\k{pageant-restrict}).
+
+OK with the setting newly ticked checks the file at once. The box shows
+it not there yet (ssh.exe creates it with the first host key it
+stores), not readable (with Windows' reason), or read with its number
+of host entries and of hashed ones.
+
+A hashed entry (\c{|1|...}, written while OpenSSH's
+\c{HashKnownHosts} is \c{yes}) holds no host name. A pattern
+destination (\q{Checked at each login: any matching host}) never matches such a
+server. To store the names again:
+
+\b Set \c{HashKnownHosts no} in \c{%USERPROFILE%\\.ssh\\config}, so new
+entries carry names.
+
+\b For every server already hashed run \c{ssh-keygen -R <host>} (it
+removes the hashed line too), then connect once with ssh.exe and accept
+the key again.
+
+OpenSSH cannot turn a hashed line back into a name.
+
+With destinations \q{Fixed list: host keys known now} in the rule
+store, the same box offers to look their host keys up again,
+\c{known_hosts} included. Yes adds the keys found to each such
+destination and keeps the ones it holds. Those destinations then admit
+more servers: No is the default. A pattern wider than the editor takes
+is left as it is. The rule file is saved at once. Each key whose
+destinations changed gets an agent log record (event 104, result
+\c{keys-added}, reason \c{known_hosts}).
+
+\q{Register as Windows OpenSSH agent} with this setting off adds a
+hint to its confirmation: pattern destinations with ssh.exe need it,
+since ssh.exe stores its host keys in \c{known_hosts} only.
+
 A key without destination rules behaves as before: kageant refuses
 nothing because of the destination. A connection without a binding -
 PuTTY, older KiTTY++ versions and OpenSSH clients before 8.9 - gets the
@@ -493,21 +689,25 @@ agent, kageant honours too.
 \b \e{From the key list}: double-click the key, then \q{Restrict...}
 beside \q{Destinations:}. The rule editor shows every key with rules,
 each with its destinations below it and their attributes below those.
-\q{Add destination} adds one: the host name (\c{host:port} for another
-port than 22), a user (optional: the key then logs in as that user only,
-\c{*} and \c{?} as wildcards), a via host (optional: the key is used
-through an agent forwarded to that host, towards this one) and
-\q{Allow agent forwarding to the other destinations}. \q{Look up host
-keys} finds the host's keys in the KiTTY++ host-key store, in
-\c{%USERPROFILE%\\.ssh\\known_hosts} (hashed and
-\c{@cert-authority} entries included) and in the CA store, and lists
-them with where each was found. A host without a stored key cannot be
-added: log in to it once first. OK saves the rules and puts them in
-force at once.
+\q{Add destination} offers two kinds. \q{Server or pattern}: the host
+name (\c{host:port} for another port than 22), a user (optional: the
+key then logs in as that user only, \c{*} and \c{?} as wildcards), a
+via host (optional: the key is used through an agent forwarded to that
+host, towards this one) and \q{Allow agent forwarding to the other
+destinations}. \q{Look up host keys} finds the host's keys in the
+KiTTY++ host-key store, in the CA store and, while kageant reads it
+(\k{pageant-knownhosts}), in \c{known_hosts} (hashed and
+\c{@cert-authority} entries included). It lists them with where each
+was found. A host without a stored key cannot be added: log in to it
+once first. \q{All servers of a host CA}: a CA of the KiTTY++ CA store
+under \q{CA:}, no host name, no host key in the rule
+(\k{pageant-restrict-hostca}). User, via host and forwarding work as for
+a server. OK saves the rules and puts them in force at once.
 
 \b \e{With OpenSSH's ssh-add}: \c{ssh-add -h web01 key}, or
 \c{ssh-add -h jump01 -h "jump01>web01" key} for a jump host. ssh-add
-looks the host keys up in \c{known_hosts} itself.
+looks the host keys up in OpenSSH's \c{known_hosts} itself. Set
+\cw{SSH_AUTH_SOCK} first (\k{pageant-cmdline-openssh}).
 
 A re-add with \c{-h} replaces the key's rules. A re-add without \c{-h}
 keeps them: rules are lifted in the rule editor (\q{Remove}), not by a
@@ -516,32 +716,56 @@ destinations per key, a user name of 256 bytes.
 
 In the rule editor a host name may be a pattern: \c{*} and \c{?}, where
 \c{*} also covers dots (\c{*.customer.com} takes
-\c{a.b.customer.com}). \q{Pattern:} under \q{Host:} then decides how a
-server is matched:
+\c{a.b.customer.com}). The editor takes a pattern only with two
+labels without a wildcard at its end and the wildcard in a label
+before them: \c{*.customer.com} or \c{web*.customer.com}, not
+\c{*}, \c{*.com} or \c{customer.*}. \q{Pattern:} under \q{Host:}
+then decides how a server is matched:
 
-\b \q{Host CA only} (the default): the destination's host keys are CA
-keys, from the CA store and the \c{@cert-authority} lines that cover the
-pattern. A server passes with a host certificate from that CA, valid
-now, with a principal the pattern matches. A plain host key never
-passes.
+\b \q{Fixed list: host keys known now} (set for a new pattern):
+\q{Look up host keys} takes every key stored under a name the pattern
+matches, in the KiTTY++ host-key store and, while kageant reads it, in
+\c{known_hosts} (plain entries), as a snapshot. A server added later
+needs another look-up.
 
-\b \q{Servers whose host key is stored now}: \q{Look up host keys} takes
-every key stored under a name the pattern matches, in the KiTTY++
-host-key store and in \c{known_hosts} (plain entries), as a snapshot. A
-server added later needs another look-up.
+\b \q{Checked at each login: any matching host}: at each login kageant matches the
+pattern against the names the host-key store holds for the server's host
+key (and \c{known_hosts}, while kageant reads it). A new server works
+after its first host key prompt. The editor shows the trade-off under
+the choice: a program running as this Windows user that writes the
+host-key store, or \c{known_hosts} while kageant reads it, can widen the
+rule. The name a client sends (\c{session-bind-host-v00@kapper.net}) is
+never used for it.
 
-\b \q{Also servers stored later}: at each login kageant matches the
-pattern against the names the host-key store and \c{known_hosts} hold for
-the server's host key. A new server works after its first host key
-prompt. The editor shows the trade-off under the choice: a program
-running as this Windows user that writes the host-key store or
-\c{known_hosts} can widen the rule. The name a client sends
-(\c{session-bind-host-v00@kapper.net}) is never used for it.
+The former choice \q{Host CA only} is gone: \q{All servers of a host CA}
+takes its place (\k{pageant-restrict-hostca}). A rule file that still
+holds it loads. Such a destination matches no server. Key details marks
+it \q{Host CA only: no longer offered, matches no server}. The editor
+refuses OK until it gets one of the two choices or is removed.
 
 \c{ssh-add -h} stays as in OpenSSH: there a pattern finds
 \c{@cert-authority} lines only. Key details and the editor's tree show
-the choice. The rule file keeps it in its second format. A file of the
-first format still loads, its destinations matched as before.
+the choice.
+
+Each rule keeps its origin. The editor's tree and Key details show it
+under the destination:
+
+\b \q{Set by C:\\Windows\\System32\\OpenSSH\\ssh-add.exe, 2026-10-30
+14:02 (host keys looked up by that program)}: a rule a program set over
+the pipe (\c{ssh-add -h}), with the program kageant found behind the
+request and the time. While kageant reads \c{known_hosts}, the line goes
+on with \q{host keys as in known_hosts}, or \q{host keys not in
+known_hosts: 1 of 2} when the program sent host keys the file does not
+hold for the rule's host name.
+
+\b \q{Set in the rule editor}: a rule made or changed in the editor.
+
+\b \q{Origin not recorded}: a rule from a rule file of an older
+version.
+
+The rule file keeps the choices and the origins in its third format.
+Files of the first and second formats still load, their rules with
+\q{Origin not recorded}.
 
 On a connection bound for a login kageant lists the keys in three
 groups, each in the offer order: keys whose rules match this server by
@@ -562,8 +786,10 @@ Key details lists the rules under \q{Destinations:}: the count on the
 first line (\q{2 destinations - the key signs a login to these servers
 only}), then one line per destination - the host, then \q{user},
 \q{via} and \q{forwarding} where the destination has them
-(\c{web01.example.com  user deploy  via jump.example.com  forwarding}).
-A key without rules shows \q{any - the key is not restricted}. The list
+(\c{web01.example.com  user deploy  via jump.example.com  forwarding}),
+a CA destination as \c{CA: }\e{name}\c{ (Valid hosts: }\e{expression}\c{)}
+- each with its origin on the line below it. A key without rules shows
+\q{any - the key is not restricted}. The list
 takes the height the window grows by. The key list adds \q{restricted}
 to the key's state and draws the row in the theme's info colour (blue).
 A key not loaded stays grey. The flash of a key use comes first. A
@@ -586,7 +812,9 @@ the client must name the server's host key in the request (OpenSSH
 does).
 
 \b A host certificate is accepted for a CA key of the rule when the
-certificate is valid for the rule's host name.
+certificate is valid for the rule's host name. A certificate without
+names is valid for no host, as in OpenSSH 10.3
+(\k{pageant-restrict-hostca}).
 
 \b A program may not remove a restricted key through a connection the
 key may not be used on.
@@ -606,10 +834,29 @@ for other servers exist. PuTTY's Pageant and OpenSSH's agent answer the
 query with a failure: nothing is shown. The wire format is in
 \W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/PROTOCOL-AGENT-KAPPER.md}{docs/PROTOCOL-AGENT-KAPPER.md}.
 
+When the key list a program receives is empty because the rules left out
+every key kageant holds, kageant shows a notice, once per agent
+connection: the program, the server of the connection and the reason.
+For example:
+
+\c ssh.exe got no key for web01.
+\c Every key kageant holds is restricted to other servers.
+
+The other reasons: the connection is bound for agent forwarding
+(\q{No key kageant holds may be used through this forwarded
+connection.}), its session-bind was refused (the server was not
+verified), or the rule file is damaged. The notice follows
+\q{Notify when a key is used}. The agent log records it whatever that
+setting: kind \c{restricted}, result \c{no-key-offered}, the reason as a
+token (\c{destination}, \c{forwarding-hop}, \c{bind-failed},
+\c{store-damaged}), \c{dest} and \c{fwd}: event ID 104. A connection
+without a session-bind lists the restricted keys (local use): it never
+gets this notice.
+
 Each refusal is a record of its own: kind \c{restricted}, result
 \c{sign-refused} or \c{remove-refused}, the reason as a token
 (\c{unbound}, \c{bind-failed}, \c{not-userauth}, \c{destination},
-\c{forwarding-hop}, \c{session-id}, \c{hostkey}), the binding's
+\c{forwarding-hop}, \c{session-id}, \c{hostkey}, \c{no-port}), the binding's
 \c{dest} and \c{fwd} and the key's rules in \c{rule}: event ID 104, a
 warning. A key added with rules carries them in event 110's
 \c{restrict} field.
@@ -621,6 +868,126 @@ why. \c{ssh-add -h} does not write over that file. Saving rules in
 the rule editor keeps the old file as
 \c{kageant-rules.dat.damaged-}\e{date}\c{-}\e{time} and writes the
 rules shown.
+
+\S{pageant-restrict-hostca} All servers of a host CA
+
+A host CA (\i{certificate authority}) signs the host keys of a fleet of
+servers. Each server holds a host certificate: its host key, the names
+it is valid for, a validity period and the CA's signature. The server
+sends its certificate in the key exchange. The client side holds only
+the CA's public key.
+
+Setting up the CA:
+
+\b Create the CA and sign the servers' host keys with their names as in
+\W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/SSH-CERTIFICATES.md}{docs/SSH-CERTIFICATES.md}
+(\c{ssh-keygen -h -n web01.example.com}, \c{HostCertificate} in
+\c{sshd_config}).
+
+\b Enter the CA's public key in the KiTTY++ CA store: the configuration
+box, \q{Application} > \q{Security} > \q{Certificate Authorities}
+(\k{kitty-cfg-host-cas}), or \c{kitty.exe -host-ca} for the same editor
+in a window of its own. Fill in \q{Name for this CA (shown in log
+messages)}, \q{Public key of certification authority} (or \q{Read from
+file}) and \q{Valid hosts this key is trusted to certify}
+(\c{*.example.com}), then \q{Save}.
+
+A key for every server of that CA:
+
+\n Key details > \q{Restrict...} > \q{Add destination} > \q{All servers
+of a host CA}.
+
+\n \q{CA:} pick the CA. \q{Host keys:} shows its key
+(\c{CA ssh-ed25519 255 SHA256:...   (CA store: }\e{name}\c{)}) and its
+\q{Valid hosts}. Under the CA the editor warns: a program running as
+this Windows user that edits the CA store can widen the rule.
+
+\n OK. The rule is in force at once.
+
+At each login kageant reads the CA from the CA store: its public key and
+its \q{Valid hosts}. A change there applies at once. kageant signs a
+login to a server whose host certificate is signed by that public key,
+is valid now and holds a name \q{Valid hosts} admits.
+
+A port condition in \q{Valid hosts} is checked against the port the
+client sends after its session-bind
+(\c{session-bind-host-v00@kapper.net}). KiTTY++'s kitty.exe, klink, kscp
+and ksftp send it. \c{*.example.com && port:2222} then admits a login to
+\c{web01.example.com} on port 2222 only. The port is the client's word:
+kageant cannot verify it. A client that sends no port (OpenSSH's
+\c{ssh.exe}) meets no port condition, negated or not.
+\c{*.example.com && port:22} admits no server,
+\c{*.example.com && !port:22} none either, \c{*.example.com || port:22}
+admits every name in \c{example.com}. For such clients the editor
+offers \q{Ignore the port for clients that send none} under the CA,
+shown while the CA's \q{Valid hosts} has a port condition. With it the
+port conditions are dropped from the expression for a client that sends
+no port: \c{*.example.com && port:2222} and
+\c{*.example.com || port:22} admit every name in \c{example.com}.
+\c{*.example.org || port:22} admits no name outside \c{example.org}. An
+expression of port conditions only admits nothing. A client that sends a
+port is always checked against that port. No signature for:
+
+\b a server with a plain host key (no certificate),
+
+\b a certificate from another CA, or one whose CA signature is RSA
+with SHA-1,
+
+\b an expired certificate, or one not yet valid,
+
+\b a certificate whose names \q{Valid hosts} does not admit,
+
+\b a login that \q{Valid hosts} admits only with a port the client did
+not send (reason \c{no-port} in event 104),
+
+\b a certificate without names (below),
+
+\b any server, when the CA is gone from the CA store: Key details shows
+\q{CA: }\e{name}\q{ (not in the CA store: matches no server)}.
+
+Key details and the editor's tree show the destination as
+\c{CA: }\e{name}\c{ (Valid hosts: }\e{expression}\c{)}, read from the CA
+store when shown. With \q{Ignore the port for clients that send none}
+\c{, port ignored for clients that send none} follows.
+
+\c{ssh-add -h} has no pattern choice. OpenSSH treats the certificate's
+name as the pattern and the rule's name as the text:
+\c{ssh-add -h "*.example.com"} does not cover \c{web.example.com}. With
+\c{ssh-add -h} list each server:
+\c{ssh-add -h web.example.com -h srv01.example.com key}. kageant checks \c{ssh-add -h} rules with PuTTY's certificate
+check: the CA, the validity period and the signature, then the names.
+The rule's host name must equal one of the certificate's names exactly,
+character for character. A certificate without names is valid for no
+host.
+
+\e{Certificates without names.} A host certificate signed without
+\c{-n} holds no names. OpenSSH up to 10.2 took it as valid for every
+host. OpenSSH 10.3 matches it against no host (its release notes:
+\W{https://openssh.org/txt/release-10.3}{openssh.org/txt/release-10.3}).
+KiTTY++ follows OpenSSH 10.3 in kageant's rules as in its clients
+(\k{config-ssh-cert-nameless}). A CA can issue such a certificate by
+accident. A stolen one lets one server pose as any host. The fix: sign
+the host keys with their names (\c{-n}). The exception: \q{Accept
+certificates without names (valid for every host in Valid hosts)} in the
+CA's record. With it, a destination \q{All servers of a host CA} takes
+that CA's certificates without names too. \s{Not recommended}: the box
+reopens the gap OpenSSH 10.3 closed. It applies to the CA store's CAs
+only, never to an \c{ssh-add -h} rule.
+
+Which kind to take:
+
+\b \q{All servers of a host CA}: a fleet whose host keys a CA signs. A
+new server passes as soon as it holds a certificate with its name.
+Nothing changes on this computer.
+
+\b \q{Fixed list: host keys known now}: a known set of servers
+without a CA. A new server needs another \q{Look up host keys}.
+
+\b \q{Checked at each login: any matching host}: customer servers without a CA, where
+new ones appear. A new server passes after its first host key prompt.
+The editor warns: a program running as this Windows user that writes
+the host-key store, or \c{known_hosts} while kageant reads it, can widen
+the rule.
 
 \H{pageant-deferred-decryption} Loading keys without decrypting them
 
@@ -657,6 +1024,15 @@ right-click the key list in the main window and choose \q{Re-encrypt
 All Keys}.
 (Note that this does \e{not} discard cleartext keys that were not
 previously added encrypted!)
+
+Re-encrypting is done in kageant's own window only. kageant does not
+serve PuTTY's \c{reencrypt} and \c{reencrypt-all} agent extensions to
+other programs: a remote host behind a forwarded agent must not
+re-encrypt your keys. PuTTY's \c{list-extended} is not served to programs
+either. They read the state of a key with kageant's
+\c{key-state-v00@kapper.net}. To a program the three are unknown names.
+\c{query} does not list them. Details in
+\W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/PROTOCOL-AGENT-KAPPER.md}{docs/PROTOCOL-AGENT-KAPPER.md}.
 
 \s{Note}: kageant brings the prompt to the front with the keyboard
 focus. Check that the prompt window is active before typing the

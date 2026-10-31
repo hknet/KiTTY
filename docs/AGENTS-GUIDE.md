@@ -1360,8 +1360,10 @@ offered.` (`N keys ... were not offered.`) before the next method.
 where the restricted key was meant: the server is not in the key's rules, or
 the client sent no binding (ssh.exe older than OpenSSH 8.9). The agent log
 records event 104 with the reason: `destination`, `unbound`, `bind-failed`,
-`session-id`, `hostkey`, `forwarding-hop` or `store-damaged` (the rule file
-cannot be read: every key is refused). Stop. Report it to the human.
+`session-id`, `hostkey`, `forwarding-hop`, `no-port` (the Valid hosts of a
+CA destination has a port condition, the client sent no port) or
+`store-damaged` (the rule file cannot be read: every key is refused). Stop.
+Report it to the human.
 
 **never:** change a key's destinations: `ssh-add -h` replaces the key's
 rules, and only the human decides them. Reach a server outside the rules
@@ -2040,8 +2042,9 @@ kageant pipe, is tested.
 
 - `<keyfile>`: the AI agent's private key file (block 59).
 - `<host>`: a server of the job, e.g. `web01`. Its host key must be known:
-  in the KiTTY++ host-key store, in known_hosts or signed by a host CA of
-  the CA store (block 58).
+  in the KiTTY++ host-key store, signed by a host CA of the CA store (block
+  58), or in known_hosts when kageant reads that file (Settings > Agent >
+  "Use OpenSSH's known_hosts as a host-key source", default off).
 - `<jump>`: a jump host the job goes through, e.g. `jump01`.
 - kageant key details: double-click the key in kageant's key list.
 - `kageant.conf`: the file `%USERPROFILE%\.ssh\kageant.conf`. It holds the
@@ -2055,7 +2058,8 @@ kageant pipe, is tested.
 # one of these forms: in kageant's window
 In kageant's key list: double-click the key, Restrict..., Add destination, Host: <host>, Look up host keys, OK.
 For a jump host: one destination for <jump>, one for <host> with Via host: <jump> (the key then works through an agent forwarded to <jump>).
-For a group of servers: Host: *.<domain>, then Pattern: Host CA only (a host CA signs their keys), Servers whose host key is stored now, or Also servers stored later (the human decides: it trusts the host-key store and known_hosts).
+For a group of servers: Host: *.<domain>, then Pattern: Fixed list: host keys known now, or Checked at each login: any matching host (the human decides: it trusts the host-key store, and known_hosts while kageant reads it).
+For every server of a host CA: Add destination, All servers of a host CA, CA: <the CA of the CA store> (the server's certificate must hold its names).
 ```
 
 ```powershell
@@ -2070,16 +2074,19 @@ C:\Windows\System32\OpenSSH\ssh-add.exe -h <jump> -h "<jump>><host>" <keyfile>
 
 **expect:** key details lists under `Destinations:` the count on the first
 line, then one line per destination: the host, then `user`, `via` and
-`forwarding` where the destination has them. The key list draws the key's
+`forwarding` where the destination has them, and below each its origin
+(`Set by <program path>, <date time> (host keys looked up by that program)`
+for ssh-add, `Set in the rule editor`). The key list draws the key's
 row in blue. Its State column ends in `, restricted`.
 The rules are kept in `kageant-rules.dat` (`%APPDATA%\KiTTY`, or beside
 kitty.ini in a portable copy), encrypted for the Windows account, and apply
 again after a restart, whichever way the key comes back. Event 110 `add`
 carries them in `restrict`. A refusal is event 104.
 
-**failure:** `No host key of <host> in the KiTTY++ host-key store,
-known_hosts or the CA store.`: log in to `<host>` once yourself (or scan it,
-block 7) to store its key, then look up again. ssh-add with no known_hosts
+**failure:** `No host key of <host> in the KiTTY++ host-key store or the
+CA store.` (with known_hosts in the list while kageant reads it): log in to
+`<host>` once yourself (or scan it, block 7) to store its key, then look up
+again. ssh-add with no known_hosts
 entry stops with an error before it reaches kageant.
 
 **never:** restrict a key that other programs need for other hosts. Use a

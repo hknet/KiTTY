@@ -103,7 +103,8 @@ add_subdirectory(keygen)
 
 add_library(agent STATIC
   sshpubk.c pageant.c aqsync.c
-  kitty/kitty_agentrestrict.c) # KiTTY: ssh-add -h, the rules pageant.c checks
+  kitty/kitty_agentrestrict.c  # KiTTY: ssh-add -h, the rules pageant.c checks
+  kitty/kitty_knownhosts.c)    # KiTTY: OpenSSH's known_hosts, read on opt-in
 
 add_library(guiterminal STATIC
   terminal/terminal.c terminal/bidi.c
@@ -309,6 +310,7 @@ add_executable(test_agentbind
 add_executable(test_agentrestrict
   test/test_agentrestrict.c
   kitty/kitty_agentrestrict.c
+  kitty/kitty_knownhosts.c
   sshpubk.c)
 target_link_libraries(test_agentrestrict crypto utils ${platform_libraries})
 

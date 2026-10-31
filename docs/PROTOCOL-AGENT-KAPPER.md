@@ -1,24 +1,28 @@
 # kageant's agent protocol extensions
 
-This file describes the two extensions of the SSH agent protocol that
+This file describes the three extensions of the SSH agent protocol that
 kageant (the KiTTY++ agent) adds to OpenSSH's protocol (`PROTOCOL.agent`,
-draft-miller-ssh-agent). Both are sent with `SSH_AGENTC_EXTENSION` (27).
+draft-miller-ssh-agent). All three are sent with `SSH_AGENTC_EXTENSION` (27).
 Their names follow the `name@domain` rule of RFC 4251 section 6:
 `kapper.net` is the KiTTY++ domain. Each name carries a version, as
 OpenSSH's `restrict-destination-v00@openssh.com` does. A changed format
 gets a new name (`-v01`). kageant then answers both names while clients
 move to the new one.
 
-Both extensions build on OpenSSH's `session-bind@openssh.com` (section 1
-of `PROTOCOL.agent`): a client binds its agent connection to the server it
-completed key exchange with. kageant keeps the bindings per connection.
-The destination rules of keys (`restrict-destination-v00@openssh.com`,
-`ssh-add -h`) are checked against them.
+`withheld-keys-v00` and `session-bind-host-v00` build on OpenSSH's
+`session-bind@openssh.com` (section 1 of `PROTOCOL.agent`): a client binds
+its agent connection to the server it completed key exchange with. kageant
+keeps the bindings per connection. The destination rules of keys
+(`restrict-destination-v00@openssh.com`, `ssh-add -h`) are checked against
+them. `key-state-v00` follows the same rules: a connection learns the
+state of the keys its key list shows, of no other key.
+
+The last section describes how kageant answers PuTTY's extensions.
 
 ## Discovery
 
 kageant answers the standard `query` extension with every extension it
-supports, these two included:
+supports, these three included:
 
     byte        SSH_AGENTC_EXTENSION (27)
     string      "query"
@@ -27,8 +31,10 @@ supports, these two included:
     string      "query"
     string[]    extension names
 
-A client needs no query before it sends either extension: an agent
-without it answers a failure.
+A client needs no query before it sends one of these extensions: an
+agent without it answers a failure. To a program the answer does not list
+PuTTY's `list-extended`, `reencrypt` and `reencrypt-all` (see the last
+section).
 
 ## withheld-keys-v00@kapper.net
 
@@ -51,7 +57,7 @@ when the request comes. Keys without rules are never counted.
 Answer without a binding, with a binding for forwarding, or with data
 after the name:
 
-    byte        SSH_AGENT_FAILURE (5)
+    byte        SSH_AGENT_EXTENSION_FAILURE (28)
 
 **When KiTTY++ sends it.** klink, kscp, ksftp and kitty.exe send it once,
 on the agent connection of a login, after a successful
@@ -70,10 +76,10 @@ name with a failure. Nothing else changes for them.
 a host. It is refused on a connection with a binding for forwarding: the
 program that sends it sits on a remote server, which must not learn that the
 user holds keys for other servers. It is refused without a binding: the
-count only means something for the server bound. The refusal is the
-plain `SSH_AGENT_FAILURE` an agent without the extension gives, so it
-does not show whether keys exist. kageant writes no refusal record for
-it: no key use was refused.
+count only means something for the server bound. The refusal is
+`SSH_AGENT_EXTENSION_FAILURE`, as RFC 9987 section 5.8 recommends for a
+known extension that fails. It does not show whether keys exist. kageant
+writes no refusal record for it: no key use was refused.
 
 ## session-bind-host-v00@kapper.net
 
@@ -110,7 +116,9 @@ shown. Its answer on a forwarded connection never reaches the server.
 
 **Display.** kageant shows the name first, marked ` (client)`, then the
 names its own lookup finds for the host key (the KiTTY++ host-key store,
-`known_hosts`) that differ from it, at most 5 names in all, then `+N`
+and OpenSSH's `known_hosts` only while kageant's setting "Use OpenSSH's
+known_hosts as a host-key source" is on - a name from it marked
+` (known_hosts)`) that differ from it, at most 5 names in all, then `+N`
 for the rest:
 
     dest="SHA256:WCvM... monitor.example.net (client) 192.0.2.21 +1"
@@ -122,10 +130,103 @@ Event Log records that carry those fields, and the confirmation's
 names only. Without the extension (OpenSSH's ssh.exe) only the lookup's
 names are shown.
 
-**Security.** The name is the client's word: kageant does not verify it
-and decides nothing by it. Every check - the destination rules, the
-signature over the session id - stays on the host key the binding
-verified. The name is shown so the reader recognises the server. It is
+**Security.** The name and the port are the client's word. kageant
+cannot verify them: `session-bind@openssh.com` carries neither. The name
+decides nothing. The port is used for one decision only: a port
+condition in the **Valid hosts** of an "All servers of a host CA"
+destination is checked against it. A port condition therefore holds
+against a mistake, not against a client that sends a false port. Without
+the extension a port condition is never met, unless the destination is
+set to "Ignore the port for clients that send none" (the port conditions
+are then dropped from the expression). Every other check - the
+destination rules, the signature over the session id - stays on the host
+key the binding verified. The name is shown so the reader recognises the
+server. It is
 marked `(client)` so it is not taken for a verified fact. Length and
 control characters are checked because the name reaches the agent log,
 the Windows Event Log and a dialog.
+
+## key-state-v00@kapper.net
+
+The state of one key, or of every SSH-2 key the agent holds.
+
+    byte        SSH_AGENTC_EXTENSION (27)
+    string      "key-state-v00@kapper.net"
+    string      key blob (optional)
+
+Without the key blob the answer covers every SSH-2 key, with it that one
+key:
+
+    byte        SSH_AGENT_EXTENSION_RESPONSE (29)
+    string      "key-state-v00@kapper.net"
+    uint32      count
+    count times:
+        string  key blob
+        uint32  flags
+
+The flags (the bits of PuTTY's `list-extended`):
+
+    1   the agent holds the encrypted key file: it can re-encrypt the key
+    2   no cleartext key: the key stays encrypted until its passphrase is
+        typed (also a key decrypted for another program that has not used
+        it yet)
+    4   every use of the key is confirmed
+    8   that confirmation is a Windows Hello check (set with 4)
+
+Other bits are 0. A client ignores a bit it does not know.
+
+The answer covers the keys the key list of this connection shows
+(`SSH2_AGENTC_REQUEST_IDENTITIES`). A key its destination rules leave out
+has no entry, as a key the agent does not hold has none: the count is 0
+for both.
+
+Answer when the data after the name is not one string (cut short, or
+bytes after it):
+
+    byte        SSH_AGENT_EXTENSION_FAILURE (28)
+
+kageant then writes a refused request to its agent log (event 103,
+reason `key-state: ...`). While the agent is locked the answer is
+`SSH_AGENT_FAILURE` (5), as for every request other than the key lists
+(answered empty), the lock and the unlock.
+
+**When KiTTY++ sends it.** kitty.exe sends it while it waits to reconnect
+after a login failed on an agent key that is still encrypted: every 5
+seconds, with the blob of that key, on an agent connection of its own.
+Flag 2 set: it waits. Flag 2 clear: it reconnects once. No entry: it
+stops and reports the condition. The server is not contacted while it
+waits. An agent that answers `SSH_AGENT_FAILURE` (an older kageant,
+another agent): kitty.exe then sends PuTTY's `list-extended` instead.
+
+**Security.** The answer carries public keys and their flags, only for
+the keys the connection may see. It shows whether a key is still
+encrypted and whether its use is confirmed. A remote host behind a
+forwarded agent learns that much about the keys it is offered.
+
+## PuTTY's extensions
+
+kageant answers PuTTY's `add-ppk@putty.projects.tartarus.org` from every
+program. PuTTY's `list-extended@putty.projects.tartarus.org`,
+`reencrypt@putty.projects.tartarus.org` and
+`reencrypt-all@putty.projects.tartarus.org` serve kageant's own window
+only (its key list, Re-encrypt and Re-encrypt All Keys). To a program on
+the pipe or through `WM_COPYDATA` they are unknown names:
+
+    byte        SSH_AGENT_FAILURE (5)
+
+That is the answer RFC 9987 section 5.8 specifies for an extension the
+agent does not support. The `query` answer to a program leaves the three
+out. kageant writes a refused request to its agent log (event 103, reason
+`unrecognised extension name '...'`).
+
+Why: `list-extended` answers `SSH_AGENT_SUCCESS` followed by data. RFC 9987
+section 5.8 allows `SSH_AGENT_SUCCESS` alone or
+`SSH_AGENT_EXTENSION_RESPONSE` with the extension's name for a successful
+extension request. `key-state-v00` carries the same flags in that format.
+`reencrypt` and `reencrypt-all` are refused because a remote host behind a
+forwarded agent must not re-encrypt the user's keys: every key would then
+require its passphrase again, at that host's will.
+
+PuTTY's Unix `pageant` client against kageant: `pageant -l` lists the keys
+without " (encrypted)". `pageant -d` removes a key as before (the standard
+key list and removal). `pageant -r` and `--reencrypt-all` fail.

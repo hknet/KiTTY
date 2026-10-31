@@ -281,6 +281,11 @@ int  kageant_blockremove_get(void);
 int  kageant_blockremove_set(int on);
 int  kageant_allowipclock_get(void);    /* ssh-add -x / -X allowed (default no) */
 int  kageant_allowipclock_set(int on);
+int  kageant_readknownhosts_get(void);  /* OpenSSH's known_hosts read (default no) */
+int  kageant_readknownhosts_set(int on);
+/* the full path of the program behind a request (pid), NULL when not
+ * known; sfree it (kitty_kageant_audit.c, kageant_req_path_hook) */
+char *kageant_req_path_dup(unsigned long pid);
 int  kageant_winlock_mode(void);        /* When Windows locks: 0 keep, 1 lock, 2 re-encrypt */
 int  kageant_winlock_mode_set(int mode);
 /* one agent-log line (kitty_kageant_audit.c; also in kitty_pageant_int.h) */
@@ -334,6 +339,10 @@ extern void (*kageant_keyuse_hook)(const char *fingerprint,
  * keys being held back, at the moment their absence costs something. */
 extern void (*kageant_identities_asked_hook)(unsigned long pid);
 void kageant_do_identities_asked(unsigned long pid);
+/* kageant_nokey_hook (pageant.h): a program's SSH-2 key list was empty,
+ * every key left out by its destination rules - event 104 and a notice */
+void kageant_do_nokey(const char *reason, unsigned long pid,
+                      const struct kageant_dest *dest);
 
 /* ---- provided by windows/pageant.c for kitty_pageant.c ---- */
 HWND kageant_traywindow(void);         /* tray window, for balloon popups */

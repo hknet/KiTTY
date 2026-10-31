@@ -180,6 +180,40 @@ Then trust that CA once, on the client side:
 New and rebuilt servers are then trusted from the first connection, with no
 fingerprint prompt and nothing to clear afterwards.
 
+### Host certificates without names
+
+Sign every host key **with its names** (`-n`). A host certificate signed without
+`-n` holds no names. OpenSSH up to 10.2 took it as valid for every host.
+OpenSSH 10.3 matches it against no host
+([release notes](https://openssh.org/txt/release-10.3)). KiTTY++ follows OpenSSH
+10.3 in kitty.exe, klink, kscp, ksftp and in kageant's destination rules. A CA can
+issue such a certificate by accident. A stolen one lets one server pose as any host
+the CA's **Valid hosts** covers.
+
+What such a server gets: the host key prompt for a certificate no trusted CA
+signed (*WARNING - POTENTIAL SECURITY BREACH!*), unless its key is already cached.
+`-batch` refuses the connection. The Terminal Window's Event Log has the reason:
+`Rejected host key certificate: Certificate holds no host names: KiTTY++, like
+OpenSSH 10.3, accepts it for no host ("Accept certificates without names" is off
+for its CA)`.
+
+The fix: re-sign the host keys with their names, as above
+(`ssh-keygen -s host_ca -h -n web01.example.com,10.0.0.5 ...`).
+
+The exception, per CA: **Accept certificates without names (valid for every host
+in Valid hosts)** in the CA's record (*Application → Security → Certificate
+Authorities*), off by default. Ticked, a certificate of that CA without names is
+valid for every host in its **Valid hosts**, as before OpenSSH 10.3.
+
+> ⚠️ **Warning:** ticking it reopens the gap OpenSSH 10.3 closed. Any server that
+> holds a certificate without names from that CA - stolen, or issued by mistake -
+> can pose as every host in **Valid hosts**. Tick it only for a CA you run
+> yourself, and only until its host keys are signed again with names.
+
+kittygen's **Certificate info...** and `kittygen-cli -O cert-info` show a warning
+line in place of the empty name list, and **Add certificate to key** warns when it
+attaches such a certificate.
+
 ## Try it locally first
 
 If you want to see the whole thing work before touching a production server, a
@@ -309,7 +343,7 @@ principals and the validity window. For a certificate already folded into a
 |---|---|
 | `Server refused our key` | the certificate never reached the server: the `.ppk` has no certificate attached, or the detached-certificate field points at the wrong file |
 | `Permission denied (publickey)` with the certificate loaded | principal mismatch (the name in `-n` is not in `AuthorizedPrincipalsFile`), the certificate has expired, or the server does not trust that CA |
-| Prompt for the host key even though a host certificate is configured | the host CA record's **Valid hosts** expression does not match the name you are connecting to — connecting by IP when the pattern lists a hostname is the common case |
+| Prompt for the host key even though a host certificate is configured | the host CA record's **Valid hosts** expression does not match the name you are connecting to — connecting by IP when the pattern lists a hostname is the common case. Or the certificate holds no names (see *Host certificates without names*): the Terminal Window's Event Log has the reason |
 | Certificate seems ignored | it does not match the key: a certificate is bound to one public key, so re-signing after regenerating a key is mandatory |
 
 Useful checks: `kittygen-cli -O cert-info key.ppk` on the client, and

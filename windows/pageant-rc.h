@@ -84,6 +84,7 @@
 #define IDC_SET_L_LOGSINK 353
 #define IDC_SET_L_LOGSINKHINT 354
 #define IDC_SET_EVENTVIEWER 355   /* Event Viewer on the agent's events */
+#define IDC_SET_KNOWNHOSTS 356    /* OpenSSH's known_hosts read (D8) */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100
@@ -128,6 +129,11 @@
 #define IDC_KR_MATCH_LBL 516
 #define IDC_KR_MATCH 517
 #define IDC_KR_MATCH_WARN 518
+#define IDC_KR_CA_LBL 519         /* a CA destination: its CA (D10) */
+#define IDC_KR_CA 520
+#define IDC_KR_ADD_HOST 521       /* "Add destination"'s two kinds: menu */
+#define IDC_KR_ADD_CA 522         /* commands, also taken as messages */
+#define IDC_KR_CA_IGNORE_PORT 523 /* a CA destination: KAR_HOP_IGNORE_PORT */
 
 /* KiTTY: the Hello-protect dialog */
 #define IDC_HP_SRC 100

@@ -555,6 +555,16 @@ bool cert_expr_valid(const char *expression,
                      char **error_msg, ptrlen *error_loc);
 bool cert_expr_match_str(const char *expression,
                          const char *hostname, unsigned port);
+/* KiTTY: the same without a port - a port condition is never met, negated
+ * or not (Kleene's three-valued logic, the result must be TRUE) */
+bool cert_expr_match_str_noport(const char *expression, const char *hostname);
+/* KiTTY: the same with the port conditions dropped. A port atom is
+ * neutral: "A && port:22" and "A || port:22" become A. An expression of
+ * port conditions only admits nothing. cert_expr_has_port: does the
+ * expression hold a port condition at all? */
+bool cert_expr_match_str_dropport(const char *expression,
+                                  const char *hostname);
+bool cert_expr_has_port(const char *expression);
 /* Build a certificate expression out of hostname wildcards. Required
  * to handle legacy configuration from early in development, when
  * multiple wildcards were stored separately in config, implicitly

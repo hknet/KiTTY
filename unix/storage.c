@@ -672,6 +672,8 @@ host_ca *host_ca_load(const char *name)
             hca->opts.permit_rsa_sha256 = atoi(value);
         } else if (!strcmp(line, "PermitRSASHA512")) {
             hca->opts.permit_rsa_sha512 = atoi(value);
+        } else if (!strcmp(line, "PermitNameless")) {      /* KiTTY */
+            hca->opts.permit_nameless = atoi(value);
         }
 
         sfree(line);
@@ -733,6 +735,7 @@ char *host_ca_save(host_ca *hca)
     fprintf(fp, "PermitRSASHA1=%d\n", (int)hca->opts.permit_rsa_sha1);
     fprintf(fp, "PermitRSASHA256=%d\n", (int)hca->opts.permit_rsa_sha256);
     fprintf(fp, "PermitRSASHA512=%d\n", (int)hca->opts.permit_rsa_sha512);
+    fprintf(fp, "PermitNameless=%d\n", (int)hca->opts.permit_nameless);
 
     bool bad = ferror(fp);
     if (fclose(fp) < 0)

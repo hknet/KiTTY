@@ -860,6 +860,7 @@ static bool ssh_key_check_cert_wrapper(
     opts.permit_rsa_sha1 = true;
     opts.permit_rsa_sha256 = true;
     opts.permit_rsa_sha512 = true;
+    opts.permit_nameless = false;   /* KiTTY */
 
     while (optstr.len) {
         ptrlen word = ptrlen_get_word(&optstr, ",");
@@ -877,6 +878,8 @@ static bool ssh_key_check_cert_wrapper(
             opts.permit_rsa_sha256 = ptrlen_eq_string(value, "true");
         if (ptrlen_eq_string(key, "permit_rsa_sha512"))
             opts.permit_rsa_sha512 = ptrlen_eq_string(value, "true");
+        if (ptrlen_eq_string(key, "permit_nameless"))     /* KiTTY */
+            opts.permit_nameless = ptrlen_eq_string(value, "true");
     }
 
     return ssh_key_check_cert(key, host, principal, time, &opts, error);

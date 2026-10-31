@@ -3260,6 +3260,47 @@ LzN/Ly+uECsga2hoc+P/ZHMULMZkCfrOyWdeXz7BR/acLZJoT579
                              b'does not contain expected hostname '
                              b'"hostname3.example.com"')
 
+            # KiTTY: a host certificate without names is valid for no
+            # host (OpenSSH 10.3), unless the CA allows it
+            # (permit_nameless); a user certificate keeps its meaning
+            cert_pub = sign_cert_via_testcrypt(
+                make_signature_preimage(
+                    key_to_certify = base_key.public_blob(),
+                    ca_key = ca_key,
+                    certtype = CertType.host,
+                    keyid = b'id',
+                    serial = 115,
+                    principals = [],
+                    valid_after = 1000,
+                    valid_before = 2000), ca_key)
+            certified_key = ssh_key_new_priv(alg + '-cert', cert_pub,
+                                             base_key.private_blob())
+            result, err = certified_key.check_cert(
+                True, b'hostname.example.com', 1000, '')
+            self.assertEqual(result, False)
+            self.assertEqual(err, b'Certificate holds no host names: '
+                             b'KiTTY++, like OpenSSH 10.3, accepts it for '
+                             b'no host ("Accept certificates without '
+                             b'names" is off for its CA)')
+            result, err = certified_key.check_cert(
+                True, b'hostname.example.com', 1000, 'permit_nameless=true')
+            self.assertEqual(result, True)
+            cert_pub = sign_cert_via_testcrypt(
+                make_signature_preimage(
+                    key_to_certify = base_key.public_blob(),
+                    ca_key = ca_key,
+                    certtype = CertType.user,
+                    keyid = b'id',
+                    serial = 116,
+                    principals = [],
+                    valid_after = 1000,
+                    valid_before = 2000), ca_key)
+            certified_key = ssh_key_new_priv(alg + '-cert', cert_pub,
+                                             base_key.private_blob())
+            result, err = certified_key.check_cert(
+                False, b'username', 1000, '')
+            self.assertEqual(result, True)
+
             # And just for luck, try a totally unknown certificate type,
             # making sure that it's rejected in both modes and gives the
             # right error message

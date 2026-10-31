@@ -3165,6 +3165,45 @@ and \cq{||} takes priority tightly. You will have to write either
 alternatively just \cw{C}}, or \cq{A && (B || C)} (\q{\cw{A}, and also
 at least one of \cw{B} and \cw{C}}), to make it clear.
 
+\S2{config-ssh-cert-nameless} \i{Certificates without names}
+
+A host certificate holds the names it is valid for (\c{ssh-keygen -n}).
+One signed without \c{-n} holds none. OpenSSH up to 10.2 took such a
+certificate as valid for every host. OpenSSH 10.3 matches it against no
+host (its release notes:
+\W{https://openssh.org/txt/release-10.3}{openssh.org/txt/release-10.3}).
+KiTTY++ follows OpenSSH 10.3: kitty.exe, klink, kscp and ksftp accept a
+host certificate without names for no host. kageant's destination rules
+do the same. A CA can issue such a certificate by accident. A
+stolen one lets one server pose as any host the CA's \q{Valid hosts}
+covers.
+
+A server that presents a certificate without names gets the host key
+prompt of \k{errors-cert-mismatch} (\q{WARNING - POTENTIAL SECURITY
+BREACH!}, \q{signed by a different certification authority}) unless
+its key is already in the cache. \c{-batch} refuses the connection. The
+Terminal Window's Event Log has the reason:
+
+\c Rejected host key certificate: Certificate holds no host names:
+\c KiTTY++, like OpenSSH 10.3, accepts it for no host ("Accept
+\c certificates without names" is off for its CA)
+
+The fix: sign the servers' host keys with their names,
+\c{ssh-keygen -s ca -h -n web01.example.com,web01 ...}.
+
+The exception, for one CA: \q{Accept certificates without names (valid
+for every host in Valid hosts)} in the CA's record, off by default. The
+line under it warns: \q{Not recommended: a stolen certificate without
+names lets one server pose as any host.} Ticked, a certificate of that
+CA without names is valid for every host its \q{Valid hosts} admits, as
+before OpenSSH 10.3.
+
+\s{Warning}: ticking the box reopens the gap OpenSSH 10.3 closed. Any
+server that holds a certificate without names from that CA - stolen, or
+issued by mistake - can pose as every host in \q{Valid hosts}. Tick it
+only for a CA you run yourself, and only until its host keys are signed
+again with names.
+
 \S2{config-ssh-cert-rsa-hash} RSA signature types in certificates
 
 This choice exists only for RSA: an RSA key can sign with any of
