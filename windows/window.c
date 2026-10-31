@@ -8520,9 +8520,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * (never re-dial on a failed login) - or the server closed while
          * the host-key question was still open, which is no failed login
          * either. */
+        /* Enter alone also restarts a session that never logged in (a login
+         * that failed because the agent had no key yet, after a Windows
+         * restart brought the window back): a key press is the user's own
+         * request, not a re-dial - every other key keeps the gate above. */
         if (message == WM_KEYDOWN && !wgs->backend && wgs->session_closed &&
             GetAutoreconnectFlag() &&
-            (wgs->ever_authenticated || wgs->closed_unanswered) &&
+            (wgs->ever_authenticated || wgs->closed_unanswered ||
+             wParam == VK_RETURN) &&
             !(GetKeyState(VK_CONTROL) & 0x8000) &&
             !(GetKeyState(VK_MENU) & 0x8000) &&
             wParam != VK_CONTROL && wParam != VK_SHIFT && wParam != VK_MENU &&

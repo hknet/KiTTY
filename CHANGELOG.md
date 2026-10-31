@@ -176,6 +176,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   decoded it: a server's host key in kitty.exe, klink, kscp and ksftp, a
   session-bind or an `ssh-add -h` host key in kageant. Such a key is now
   refused.
+- Enter restarts a disconnected session also when it never logged in,
+  for example a window Windows brought back after a restart whose first
+  login failed because the agent had no key loaded yet. Other keys
+  restart only a session that had logged in, as before.
 - The host key prompt for a host certificate without a server name from
   a trusted certification authority names that authority and the
   missing name, with the CA store's checkbox that allows such

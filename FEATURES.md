@@ -1642,7 +1642,7 @@ KiTTY++ can host a Cygwin shell inside its terminal window through PuTTY's local
 
 ### Local terminal (kitty_pterm)
 
-`kitty_pterm.exe` is KiTTY++'s terminal **emulator** running a **local shell** instead of a network connection. You get the exact same terminal as a KiTTY++ SSH window — fonts, colour schemes, mouse selection/copy-paste, scrollback, clickable URLs, transparency — but the backend is a local process (via the Windows ConPTY pseudo-console). Its value is consistency: your local shell looks and behaves just like your remote sessions. It is an interactive terminal, not a scripting tool, and has no special tie to saved sessions beyond sharing the appearance.
+`kitty_pterm.exe` is PuTTY's terminal **emulator** running a **local shell** instead of a network connection, through the Windows ConPTY pseudo-console (Windows 10 1809 or later). It has PuTTY's terminal: fonts, colour schemes, mouse selection and copy-paste, scrollback. It is built from upstream's pterm without KiTTY++'s own terminal features, so transparency, KiTTY++'s link and OSC handling and the other additions of a KiTTY++ SSH window are not in it. `kitty_pterm.exe -e wsl.exe` opens a WSL shell this way. It is an interactive terminal, not a scripting tool, and has no special tie to saved sessions beyond sharing the appearance.
 
 **How to change the shell (cmd → PowerShell):** by default it runs `cmd.exe`. Launch it with `-e` to run a different shell, e.g. `kitty_pterm.exe -e powershell.exe` (Windows PowerShell) or `kitty_pterm.exe -e pwsh.exe` (PowerShell 7). For a saved session, set the same command in **Connection → Data → "Remote command"**.
 
