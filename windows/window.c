@@ -1880,6 +1880,7 @@ static void start_backend_connect_ex(WinGuiSeat *wgs, const char *refusal)
             msg = dupprintf("Unable to open connection to\n%s\n%s",
                             conf_dest(wgs->conf), error);
         }
+        sfree(realhost);
         sfree(error);
 #ifdef MOD_RECONNECT
         /* hknet/KiTTY#66: a connect that failed here never reached a login
