@@ -119,6 +119,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
+- Session > Scripting: with "Wait for a prompt before sending" a script ends
+  right after its last line, instead of waiting for one more prompt and
+  stopping with the timeout notice when none came. A condition line after
+  the last line keeps that wait. Until the prompt after the last line
+  arrives, the next script waits for it before its first line, also with
+  "Except for first command".
 - Host certificates without names (signed without `ssh-keygen -n`) are
   valid for no host, as in OpenSSH 10.3: in kitty.exe, klink, kscp, ksftp
   and kageant's rules. A server with such a certificate gets the host key

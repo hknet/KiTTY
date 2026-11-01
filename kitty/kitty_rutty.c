@@ -19,6 +19,7 @@
  *
  * Public API (called from window.c and kitty_scriptbridge.c):
  *   int  kitty_script_active(void);
+ *   int  kitty_script_watching(void);   // active, or a prompt is owed
  *   int  kitty_script_send_file(Conf *conf, Backend *backend, Filename *fn,
  *                               LogContext *logctx, HWND owner);
  *   int  kitty_script_send_buffer(Conf *conf, Backend *backend,
@@ -77,11 +78,24 @@ typedef struct {
     LogContext *logctx;        /* the Terminal Window's Event Log (lives as long as
                                 * the process) */
     HWND owner;                /* the terminal window, for the notices */
+    int wait_owed;             /* the previous script's last prompt has not
+                                * arrived: wait for it before the first line */
     char *path;                /* the script file, for the notices */
 } ScriptData;
 
 static ScriptData the_script;
 static int script_inited = 0;
+
+/*
+ * A wait-for script ends right after its last line is sent (unless a
+ * condition line follows it: then it waits for that text). The prompt that
+ * last line brings back is still owed: until it arrives, a next script
+ * waits for it before its first line, "Except for first command" or not,
+ * so it never types into the previous script's last command. The pattern
+ * and the matching buffer are the ended script's (the_script keeps them
+ * until the next script_prepare).
+ */
+static int script_prompt_owed = 0;
 
 /* ---- timer callbacks (forward) ---- */
 static void script_sendline(void *ctx, unsigned long now);
@@ -274,6 +288,22 @@ static void script_setsend(ScriptData *s)
     }
 }
 
+/*
+ * The last line is out: the script ends now, without waiting for the prompt
+ * that line brings back. A condition line after the last line keeps the
+ * wait (the script then ends when that text arrives, or times out). With
+ * wait-for on, that prompt is owed to the next script (script_prompt_owed).
+ */
+static int script_end_after_last(ScriptData *s)
+{
+    if (s->nextline_c != 0 || s->waitfor2_c >= 0)
+        return false;
+    script_stop_internal(s);
+    script_prompt_owed = s->enable;
+    logevent(s->logctx, KT_RUTTY_FINISHED);
+    return true;
+}
+
 static void script_sendline(void *ctx, unsigned long now)
 {
     ScriptData *s = (ScriptData *)ctx;
@@ -297,6 +327,8 @@ static void script_sendline(void *ctx, unsigned long now)
     }
     script_getline(s);
     script_chkline(s);
+    if (script_end_after_last(s))
+        return;
     if (s->enable) {
         s->send = false;
         s->latest = schedule_timer(s->timeout, script_timeout, s);
@@ -323,6 +355,8 @@ static void script_sendchar(void *ctx, unsigned long now)
     }
     script_getline(s);
     script_chkline(s);
+    if (script_end_after_last(s))
+        return;
     if (s->enable) {
         s->send = false;
         s->latest = schedule_timer(s->timeout, script_timeout, s);
@@ -350,6 +384,11 @@ static void script_timeout(void *ctx, unsigned long now)
 int kitty_script_active(void)
 {
     return script_inited && the_script.runs;
+}
+
+int kitty_script_watching(void)
+{
+    return script_inited && (the_script.runs || script_prompt_owed);
 }
 
 /* [KiTTY] scriptmode=no: master off-switch for the rutty engine (classic
@@ -383,6 +422,8 @@ static int script_prepare(ScriptData *s, Conf *conf, Backend *backend,
 
     sfree(s->path);                        /* the previous script's */
     memset(s, 0, sizeof(*s));
+    s->wait_owed = script_prompt_owed;
+    script_prompt_owed = 0;
     script_inited = 1;
     s->backend = backend;
     s->logctx = logctx;
@@ -428,7 +469,9 @@ static void script_begin(ScriptData *s)
     script_getline(s);
     script_chkline(s);
 
-    if (s->enable && !s->except) {         /* wait-for-prompt before first line */
+    if (s->enable && s->except && s->wait_owed)
+        logevent(s->logctx, KT_RUTTY_WAIT_OWED);
+    if (s->enable && (!s->except || s->wait_owed)) { /* wait-for-prompt before first line */
         s->send = false;
         s->latest = schedule_timer(s->timeout, script_timeout, s);
     } else {
@@ -513,7 +556,7 @@ void kitty_script_remote(const void *vdata, size_t len)
     const char *data = (const char *)vdata;
     size_t i;
 
-    if (!script_inited || !s->runs)
+    if (!script_inited || (!s->runs && !script_prompt_owed))
         return;
 
     for (i = 0; i < len; i++) {
@@ -530,6 +573,16 @@ void kitty_script_remote(const void *vdata, size_t len)
             s->remotedata[s->remotedata_c++] = data[i];
         }
 
+        if (!s->runs) {
+            /* the prompt the ended script's last line brought back */
+            if (s->waitfor_c == 0 ||
+                script_cond_chk(s->waitfor, s->waitfor_c,
+                                s->remotedata, s->remotedata_c)) {
+                script_prompt_owed = 0;
+                return;
+            }
+            continue;
+        }
         if (s->runs) {
             /* halton */
             if (s->halton_c > 0 &&

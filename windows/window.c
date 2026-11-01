@@ -13326,8 +13326,9 @@ static size_t win_seat_output(Seat *seat, SeatOutputType type,
 #ifdef MOD_PERSO
     /* KiTTY rutty scripting: observe incoming host data for waitfor/halton
      * (OBSERVE-only - the data still flows on to the terminal below). Same
-     * interception point as ZModem; no terminal.c edits. */
-    if (kitty_script_active() && type == SEAT_OUTPUT_STDOUT)
+     * interception point as ZModem; no terminal.c edits. Also after a
+     * script ended, until the prompt its last line brings back arrives. */
+    if (kitty_script_watching() && type == SEAT_OUTPUT_STDOUT)
         kitty_script_remote(data, len);
     /* The script bridge's prompt event (kitty_scriptbridge.c): observe-only
      * as well, and whether a script runs or not. */

@@ -2649,6 +2649,7 @@
 #define KT_RUTTY_FINISHED                            "finished sending script"
 #define KT_RUTTY_REFUSED_OFF                         "script not sent: scriptmode=no in kitty.ini"
 #define KT_RUTTY_REFUSED_BUSY                        "script not sent: another script is running"
+#define KT_RUTTY_WAIT_OWED                           "script waits for the prompt after the previous script's last line"
 /* kitty_rutty.c: the modeless notices of a failed script (the file, and
  * for the timeout its seconds) */
 #define KT_RUTTY_NOTICE_NOT_FOUND                    "Script not sent, file not found:\n%s"

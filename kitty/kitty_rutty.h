@@ -8,6 +8,8 @@
 
 /* ---- exported from kitty/kitty_rutty.c ---- */
 int kitty_script_active(void);
+/* a script runs, or the prompt after the last script's last line is owed */
+int kitty_script_watching(void);
 int kitty_script_enabled(void);
 void kitty_script_remote(const void *vdata, size_t len);
 /* logctx: the Terminal Window's Event Log, which gets the start, end, halt, timeout

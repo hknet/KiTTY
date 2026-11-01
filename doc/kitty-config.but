@@ -286,6 +286,16 @@ ever. \q{Line delay}
 and \q{Character delay} pace the typing itself, for hosts that drop
 input sent faster than a human types.
 
+\b The script ends as soon as its last line is sent (\q{finished
+sending script}). It does not wait for the prompt that line brings
+back, so a last \c{exit} or \c{reboot} ends it without a timeout. To
+end only once the last command is done, add a condition line after it
+(next paragraph): the script then waits for that text, with the
+timeout and \q{Halt-on text} armed. Until the prompt after the last
+line arrives, the next script waits for it before its first line, even
+with \q{Except for first command} ticked, so it never types into the
+command still running.
+
 A line's wait can also be set \e{from inside the file}, per line:
 
 \b \q{Start of condition/comment line} sets one character, \c{:} by
