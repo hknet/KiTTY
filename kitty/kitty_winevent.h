@@ -143,10 +143,11 @@ void kitty_wev_transfer(int ok, const char *user, const char *direction,
                         const char *local, const char *remote,
                         long long bytes, const char *reason);
 
-/* 4xx and anything else in the program's block: vals holds every field of
- * the table but "pid", in the table's order (NULL = empty); pid is filled
- * in here. */
-void kitty_wev_report(unsigned offset, int warning,
+/* 4xx, kittygen and kittygen-cli: `fields` names vals[0..n-1] (space
+ * separated, NULL = empty), every field of the table but "pid", in the
+ * table's order; pid is filled in here. The names are a string literal
+ * held to the table by tools/check-kitty-events.py (rule 12). */
+void kitty_wev_report(unsigned offset, int warning, const char *fields,
                       const char *const *vals, int n);
 
 /* 9xx: always written, source KiTTY++, the Application log. type is an
@@ -154,7 +155,7 @@ void kitty_wev_report(unsigned offset, int warning,
  * ID with its fields whether or not the source has a message file (the
  * system MSI registers kitty.exe for it); id must have a row in
  * kitty_eventids.h (tools/check-kitty-events.py checks every call). */
-void kitty_wev_suite(unsigned id, unsigned type,
+void kitty_wev_suite(unsigned id, unsigned type, const char *fields,
                      const char *const *vals, int n);
 /* 902: what this Windows lacks (kitty_oldwin_degraded: the lookups made so
  * far), once per process; nothing when nothing is missing. Every program

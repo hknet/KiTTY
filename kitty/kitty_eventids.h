@@ -32,7 +32,8 @@
  * never changes; a new field is appended at its end, here and in the .mc.
  *
  * No Win32 here. The table itself is compiled only where
- * KITTY_EVENTIDS_TABLE is defined (kitty_winevent.c, the unit test).
+ * KITTY_EVENTIDS_TABLE is defined (kitty_winevent.c, kitty_auditchain.c,
+ * the unit tests).
  */
 #ifndef KITTY_EVENTIDS_H
 #define KITTY_EVENTIDS_H
@@ -106,70 +107,81 @@ static const struct kitty_eventid kitty_eventids[] = {
 
     /* kageant: kitty/kitty_auditlog.c, audit_kinds */
     { 100, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "sign",
-      "fp comment result reason req reqpath pid dest fwd",
+      "fp comment result reason req reqpath pid dest fwd seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 101, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "confirm",
-      "fp comment result reason req reqpath pid dest fwd",
+      "fp comment result reason req reqpath pid dest fwd seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 102, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "session-bind",
-      "result dest forwarding req reqpath pid",
+      "result dest forwarding req reqpath pid seq sig ts prev",
       "Information" },
     { 103, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "request",
-      "result reason req reqpath pid dest fwd",
+      "result reason req reqpath pid dest fwd seq sig ts prev",
       "Warning" },
     { 104, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "restricted",
-      "fp comment result reason req reqpath pid dest fwd rule",
+      "fp comment result reason req reqpath pid dest fwd rule seq sig ts prev",
       "Warning; Information for keys-added" },
     { 110, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "add",
-      "fp comment result reason req reqpath pid path restrict",
+      "fp comment result reason req reqpath pid path restrict seq sig ts prev",
       "Information; Warning for a refusal or failure" },
-    { 111, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "loadkey", "path result enc",
+    { 111, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "loadkey", "path result enc seq sig ts prev",
       "Information; Warning for a refusal or failure" },
-    { 112, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "forget-path", "path result",
+    { 112, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "forget-path", "path result seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 113, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "retry",
-      "trigger loaded refused absent broken",
+      "trigger loaded refused absent broken seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 114, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "remove",
-      "fp comment result reason req reqpath pid",
+      "fp comment result reason req reqpath pid seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 115, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "remove-all",
-      "fp comment result reason req reqpath pid",
+      "fp comment result reason req reqpath pid seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 116, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "rules",
-      "fp comment result reason req reqpath pid restrict",
+      "fp comment result reason req reqpath pid restrict seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 120, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "lock",
-      "fp comment result reason req reqpath pid",
+      "fp comment result reason req reqpath pid seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 121, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "unlock",
-      "fp comment result reason req reqpath pid",
+      "fp comment result reason req reqpath pid seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 130, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "hello-enrol",
-      "path result detail",
+      "path result detail seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 131, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "hello-protect",
-      "path dest result detail err",
+      "path dest result detail err seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 132, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "hello-unlock",
-      "path result detail",
+      "path result detail seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 140, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "keyfile-warning",
-      "path warning",
+      "path warning seq sig ts prev",
       "Warning" },
     { 150, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "reencrypt-all",
-      "fp comment result reason req reqpath pid",
+      "fp comment result reason req reqpath pid seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 151, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "reencrypt",
-      "fp comment result reason req reqpath pid",
+      "fp comment result reason req reqpath pid seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     { 152, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "decrypt",
-      "fp comment result trigger req reqpath pid",
+      "fp comment result trigger req reqpath pid seq sig ts prev",
       "Information; Warning for a refusal or failure" },
-    { 160, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "agent", "result",
+    { 160, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "agent", "result seq sig ts prev",
       "Information; Warning for a refusal or failure" },
-    { 170, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "logrotate", "result",
+    { 170, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "logrotate", "result seq sig ts prev",
       "Information; Warning for a refusal or failure" },
+    /* the chain's anchors (kitty/kitty_auditchain.h): written whatever the
+     * sinks are. Every agent row ends with seq sig ts prev: the event
+     * alone gives back the signed line (kitty_auditchain_event_line) */
+    { 171, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "logchain",
+      "result run logkey file fragment value rotation keep expired seq sig "
+      "ts prev",
+      "Information" },
+    /* the summary of a record's repeats (kitty_auditchain_repeat) */
+    { 172, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "repeated",
+      "count first last of seq sig ts prev",
+      "Information" },
 
     /* kitty.exe */
     { 200, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "session-open",
@@ -323,6 +335,10 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "comment",
       "100-170: the comment of the key concerned; 400, 401: of the "
       "key generated or saved" },
+    { "count",
+      "172: how often the record of seq of was repeated after it was "
+      "written in full or after the last 172 for it: every field the same, "
+      "the time aside" },
     { "credentials",
       "225, 325: yes when a user name or password went to the proxy, "
       "else no" },
@@ -354,10 +370,17 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "exitcode",
       "201: the remote command's exit code; 301: the tool's own "
       "exit code; empty when there is none" },
+    { "expired",
+      "171 rotate: the rotated generations the age rule (agentlogexpiredays) "
+      "deleted at this rotation, empty for none" },
     { "features",
       "902: the features this Windows lacks, comma-separated" },
+    { "file",
+      "171: the agent log file the chain is written to, its full path" },
     { "files",
       "901: the log files deleted" },
+    { "first",
+      "172: the time of the first repeat counted (UTC, as ts in the file)" },
     { "for",
       "220, 221, 225, 320, 321, 325: what the connection served; empty "
       "for the connection's own login; session for a jump host's login "
@@ -379,6 +402,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...); "
       "210-221, 310-321, 400-403: the hash alone (SHA256:...; an SSH-1 "
       "key's MD5 hash, aa:bb:...), empty for a proxy's login" },
+    { "fragment",
+      "171 resumed: the bytes of the incomplete record a crash left at the "
+      "end of the file, closed with CRLF before this record" },
     { "from",
       "200, 300: the local end of the connection, address and port" },
     { "fwd",
@@ -391,15 +417,24 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "local-command: the program's file name" },
     { "kb",
       "901: the kilobytes freed" },
+    { "keep",
+      "171 rotate: agentlogkeep at this rotation, the rotated generations "
+      "kept on disk" },
     { "keytype",
       "210-213, 310-313: the host key's type as its fingerprint "
       "names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, "
       "empty in a 213, 313 refused; 400: the key's SSH type" },
+    { "last",
+      "172: the time of the last repeat counted (UTC, as ts in the file)" },
     { "loaded",
       "113: startup keys loaded" },
     { "local",
       "240, 241, 330, 331: the file's full local path; a 331 for a run "
       "that failed before any file: the local path as given" },
+    { "logkey",
+      "171: the public Ed25519 key of this kageant run (base64), made at "
+      "its start and held in its memory only. It signs every record of the "
+      "run" },
     { "mb",
       "901: LogKeepMB as set, 0 = off" },
     { "method",
@@ -416,6 +451,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "missing",
       "902: each missing entry point with its DLL and the feature "
       "it powers, separated by semicolons" },
+    { "of",
+      "172: the seq of the record repeated, empty when the file is not "
+      "written" },
     { "oldfp",
       "213, 313: the hash of the stored key a replaced key took the "
       "place of, for added the hash of key 1 of its type (SHA256:...), "
@@ -434,6 +472,10 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "port",
       "the port connected to; a serial line's speed; with proxy set and "
       "in 225, 325: the proxy's; 225, 325 local-command: empty" },
+    { "prev",
+      "100-172: the SHA-256 of the line before this record in the file "
+      "(base64), none for the first line of a file, empty when the file is "
+      "not written; 171: the head the anchor pins" },
     { "program",
       "900: the refused program file's path" },
     { "protection",
@@ -518,7 +560,10 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "failed, startup-entry-replaced; 132: hello, hello-cached, "
       "recovery-passphrase, printed-secret, denied, no-door-here, failed; "
       "150, 151: done, failed; 152: done, failed (a wrong passphrase), "
-      "cancelled; 160: start, stop; 170: failed; 201, 301: closed, "
+      "cancelled; 160: start, stop; 170: failed; 171: start, resumed "
+      "(after a crash fragment), rotate, head (every 15 minutes with "
+      "new records), stop, config (before a change of agentlog, "
+      "agentlogpath or agentlogsink); 201, 301: closed, "
       "remote-closed, fatal, user; 211, 212, 311, 312: accept-new, "
       "accepted, refused; 213, 313: stored, added (beside a stored key "
       "of its type), replaced, made-primary, removed, proof-failed, "
@@ -528,24 +573,47 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "updatehostkeys=ask); "
       "401, 402: saved, failed; 906: refused (not started), allowed "
       "(Yes in the question), declined (No, or the question closed)" },
+    { "rotation",
+      "171 rotate: the number of this rotation of the log, counted from "
+      "its first file" },
     { "rule",
       "104: the key's destination rules: each as host name, then the hash "
       "of its first host key (SHA256:..., CA SHA256:... for a CA key) and "
       "+N for more keys, user@ in front for a user, from-host > in front "
       "for use through a forwarded agent, separated by a comma; empty when "
       "the rule file cannot be read" },
+    { "run",
+      "171: the id of this kageant run, 32 hex digits" },
+    { "seq",
+      "100-172: the record's line in the chain of the agent log file, "
+      "counted over every file and every run, empty when the file is not "
+      "written" },
     { "session",
       "the saved session's name, empty when none was loaded" },
+    { "sig",
+      "100-172: the Ed25519 signature (base64) of the record's line up to "
+      "its sig field, under the run's logkey, empty when the file is not "
+      "written. The signed line is rebuilt from the event alone: ts=, the "
+      "kind as ev=, the fields in the order of this table when not empty, "
+      "then seq and prev" },
     { "tool",
       "400-403: kittygen or kittygen-cli" },
     { "trigger",
       "113: what started the retry; values: button, device-arrival; 152: "
       "what asked for the passphrase; values: first-use (a signature), "
       "gui (the key list's Decrypt)" },
+    { "ts",
+      "100-172: the time of the record as its file line carries it (UTC), "
+      "empty when the file is not written. With prev it lets the signature "
+      "be checked from the event alone" },
     { "user",
       "220, 221, 320, 321, 240, 241, 330, 331: the user name of the login "
       "(a proxy's: the name sent to it); 225, 325: the user name sent to "
       "the proxy, empty when none" },
+    { "value",
+      "171 config: the setting about to change and its new value: "
+      "agentlog=no, agentlog=yes, agentlogpath= the new path (empty for "
+      "the default) or agentlogsink= file, eventlog or both" },
     { "warning",
       "140: weak-protection or old-format" },
 };

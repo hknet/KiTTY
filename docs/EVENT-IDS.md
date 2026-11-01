@@ -20,29 +20,31 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | ID | Source | Kind | Level | Fields |
 |---:|---|---|---|---|
 | `0` | `KiTTY++` | - | no longer written (records of earlier versions) | `%1` holds the text in full |
-| `100` | `KiTTY++_agent` | `sign` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd` |
-| `101` | `KiTTY++_agent` | `confirm` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd` |
-| `102` | `KiTTY++_agent` | `session-bind` | Information | `result`, `dest`, `forwarding`, `req`, `reqpath`, `pid` |
-| `103` | `KiTTY++_agent` | `request` | Warning | `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd` |
-| `104` | `KiTTY++_agent` | `restricted` | Warning; Information for keys-added | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd`, `rule` |
-| `110` | `KiTTY++_agent` | `add` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `path`, `restrict` |
-| `111` | `KiTTY++_agent` | `loadkey` | Information; Warning for a refusal or failure | `path`, `result`, `enc` |
-| `112` | `KiTTY++_agent` | `forget-path` | Information; Warning for a refusal or failure | `path`, `result` |
-| `113` | `KiTTY++_agent` | `retry` | Information; Warning for a refusal or failure | `trigger`, `loaded`, `refused`, `absent`, `broken` |
-| `114` | `KiTTY++_agent` | `remove` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid` |
-| `115` | `KiTTY++_agent` | `remove-all` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid` |
-| `116` | `KiTTY++_agent` | `rules` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `restrict` |
-| `120` | `KiTTY++_agent` | `lock` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid` |
-| `121` | `KiTTY++_agent` | `unlock` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid` |
-| `130` | `KiTTY++_agent` | `hello-enrol` | Information; Warning for a refusal or failure | `path`, `result`, `detail` |
-| `131` | `KiTTY++_agent` | `hello-protect` | Information; Warning for a refusal or failure | `path`, `dest`, `result`, `detail`, `err` |
-| `132` | `KiTTY++_agent` | `hello-unlock` | Information; Warning for a refusal or failure | `path`, `result`, `detail` |
-| `140` | `KiTTY++_agent` | `keyfile-warning` | Warning | `path`, `warning` |
-| `150` | `KiTTY++_agent` | `reencrypt-all` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid` |
-| `151` | `KiTTY++_agent` | `reencrypt` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid` |
-| `152` | `KiTTY++_agent` | `decrypt` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `trigger`, `req`, `reqpath`, `pid` |
-| `160` | `KiTTY++_agent` | `agent` | Information; Warning for a refusal or failure | `result` |
-| `170` | `KiTTY++_agent` | `logrotate` | Information; Warning for a refusal or failure | `result` |
+| `100` | `KiTTY++_agent` | `sign` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd`, `seq`, `sig`, `ts`, `prev` |
+| `101` | `KiTTY++_agent` | `confirm` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd`, `seq`, `sig`, `ts`, `prev` |
+| `102` | `KiTTY++_agent` | `session-bind` | Information | `result`, `dest`, `forwarding`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
+| `103` | `KiTTY++_agent` | `request` | Warning | `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd`, `seq`, `sig`, `ts`, `prev` |
+| `104` | `KiTTY++_agent` | `restricted` | Warning; Information for keys-added | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `dest`, `fwd`, `rule`, `seq`, `sig`, `ts`, `prev` |
+| `110` | `KiTTY++_agent` | `add` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `path`, `restrict`, `seq`, `sig`, `ts`, `prev` |
+| `111` | `KiTTY++_agent` | `loadkey` | Information; Warning for a refusal or failure | `path`, `result`, `enc`, `seq`, `sig`, `ts`, `prev` |
+| `112` | `KiTTY++_agent` | `forget-path` | Information; Warning for a refusal or failure | `path`, `result`, `seq`, `sig`, `ts`, `prev` |
+| `113` | `KiTTY++_agent` | `retry` | Information; Warning for a refusal or failure | `trigger`, `loaded`, `refused`, `absent`, `broken`, `seq`, `sig`, `ts`, `prev` |
+| `114` | `KiTTY++_agent` | `remove` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
+| `115` | `KiTTY++_agent` | `remove-all` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
+| `116` | `KiTTY++_agent` | `rules` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `restrict`, `seq`, `sig`, `ts`, `prev` |
+| `120` | `KiTTY++_agent` | `lock` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
+| `121` | `KiTTY++_agent` | `unlock` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
+| `130` | `KiTTY++_agent` | `hello-enrol` | Information; Warning for a refusal or failure | `path`, `result`, `detail`, `seq`, `sig`, `ts`, `prev` |
+| `131` | `KiTTY++_agent` | `hello-protect` | Information; Warning for a refusal or failure | `path`, `dest`, `result`, `detail`, `err`, `seq`, `sig`, `ts`, `prev` |
+| `132` | `KiTTY++_agent` | `hello-unlock` | Information; Warning for a refusal or failure | `path`, `result`, `detail`, `seq`, `sig`, `ts`, `prev` |
+| `140` | `KiTTY++_agent` | `keyfile-warning` | Warning | `path`, `warning`, `seq`, `sig`, `ts`, `prev` |
+| `150` | `KiTTY++_agent` | `reencrypt-all` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
+| `151` | `KiTTY++_agent` | `reencrypt` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
+| `152` | `KiTTY++_agent` | `decrypt` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `trigger`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
+| `160` | `KiTTY++_agent` | `agent` | Information; Warning for a refusal or failure | `result`, `seq`, `sig`, `ts`, `prev` |
+| `170` | `KiTTY++_agent` | `logrotate` | Information; Warning for a refusal or failure | `result`, `seq`, `sig`, `ts`, `prev` |
+| `171` | `KiTTY++_agent` | `logchain` | Information | `result`, `run`, `logkey`, `file`, `fragment`, `value`, `rotation`, `keep`, `expired`, `seq`, `sig`, `ts`, `prev` |
+| `172` | `KiTTY++_agent` | `repeated` | Information | `count`, `first`, `last`, `of`, `seq`, `sig`, `ts`, `prev` |
 | `200` | `KiTTY++_kitty` | `session-open` | Information | `session`, `host`, `port`, `proto`, `addr`, `from`, `pid` |
 | `201` | `KiTTY++_kitty` | `session-close` | Information; Warning when fatal | `session`, `host`, `port`, `result`, `reason`, `exitcode`, `pid` |
 | `210` | `KiTTY++_kitty` | `hostkey-known` | Information | `host`, `port`, `keytype`, `fp`, `basis`, `pid`, `proxy` |
@@ -89,6 +91,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `bytes` - 240, 241, 330, 331: the file's bytes moved; empty when not known.
 - `check` - 900: the check that refused the program file; values: rename, signature, integrity.
 - `comment` - 100-170: the comment of the key concerned; 400, 401: of the key generated or saved.
+- `count` - 172: how often the record of seq of was repeated after it was written in full or after the last 172 for it: every field the same, the time aside.
 - `credentials` - 225, 325: yes when a user name or password went to the proxy, else no.
 - `days` - 901: LogKeepDays as set, 0 = off.
 - `dest` - 100, 101: the server the key is used for, from the client's verified session-bind: the hash of its host key (SHA256:...), then its host names - the one the client sent after the binding first, marked (client), then the ones found in the host-key store and known_hosts, five in all, +N for more; empty without a session-bind; 102: the server the client bound to, written the same way without the client's name; 103, 104: the server of the connection's verified session-bind, written the same way, empty without one; 131: the protected copy written.
@@ -97,29 +100,38 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `enc` - 111: whether the key file has a passphrase; values: password, blank.
 - `err` - 131: the error text when the protection failed.
 - `exitcode` - 201: the remote command's exit code; 301: the tool's own exit code; empty when there is none.
+- `expired` - 171 rotate: the rotated generations the age rule (agentlogexpiredays) deleted at this rotation, empty for none.
 - `features` - 902: the features this Windows lacks, comma-separated.
+- `file` - 171: the agent log file the chain is written to, its full path.
 - `files` - 901: the log files deleted.
+- `first` - 172: the time of the first repeat counted (UTC, as ts in the file).
 - `for` - 220, 221, 225, 320, 321, 325: what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's.
 - `format` - 401: ppk3, ppk2, openssh, ssh.com or ssh1; 402: rfc4716, openssh or ssh1.
 - `forwarding` - 102: yes when the client bound the connection for agent forwarding, else no.
 - `found` - 900: what the check found; rename: the program's file name; signature: bad digest, not signed, or signer: followed by the signer name; integrity: no stamp, truncated, bad stamp, modified or cannot check.
 - `fp` - the key fingerprint; 100-170: as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...); 210-221, 310-321, 400-403: the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login.
+- `fragment` - 171 resumed: the bytes of the incomplete record a crash left at the end of the file, closed with CRLF before this record.
 - `from` - 200, 300: the local end of the connection, address and port.
 - `fwd` - 100, 101, 103, 104: the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none.
 - `host` - the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; 225, 325 local-command: the program's file name.
 - `kb` - 901: the kilobytes freed.
+- `keep` - 171 rotate: agentlogkeep at this rotation, the rotated generations kept on disk.
 - `keytype` - 210-213, 310-313: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused; 400: the key's SSH type.
+- `last` - 172: the time of the last repeat counted (UTC, as ts in the file).
 - `loaded` - 113: startup keys loaded.
 - `local` - 240, 241, 330, 331: the file's full local path; a 331 for a run that failed before any file: the local path as given.
+- `logkey` - 171: the public Ed25519 key of this kageant run (base64), made at its start and held in its memory only. It signs every record of the run.
 - `mb` - 901: LogKeepMB as set, 0 = off.
 - `method` - 220, 221, 320, 321: the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident; 240, 241: zmodem or kitten-osc5113.
 - `methods` - 221, 321: the methods the server still offered, comma-separated (over SSH-1 from its authentication mask: publickey, password, tis, cryptocard); empty for a proxy's login.
 - `missing` - 902: each missing entry point with its DLL and the feature it powers, separated by semicolons.
+- `of` - 172: the seq of the record repeated, empty when the file is not written.
 - `oldfp` - 213, 313: the hash of the stored key a replaced key took the place of, for added the hash of key 1 of its type (SHA256:...), empty for every other result.
 - `path` - 100-170: the key file; 401-403: the file written; 903: the session file; 904: the folder or file created without the access rights; 905: the program file the Applications panel marked red; 906: the helper program's file; 907: the session log file.
 - `pattern` - 901: the folder and the log file name pattern searched.
 - `pid` - 100-170: the process that asked the agent, empty when none did; 200-403: the process writing the record.
 - `port` - the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
+- `prev` - 100-172: the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written; 171: the head the anchor pins.
 - `program` - 900: the refused program file's path.
 - `protection` - 401, 403: none, passphrase or hello.
 - `proto` - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, serial.
@@ -131,10 +143,16 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `reqpath` - 100-170: that program's full path.
 - `request` - 230: what the far end asked for; values: osc52-read, osc5522-read, far2l-clipboard, file-read, file-write.
 - `restrict` - 110, 116: the key's destination rules, written as in rule; empty for a key without rules (116: every rule of the key removed).
-- `result` - the outcome; 100, 101: allowed, denied; 102: accepted; 103: refused; 104: sign-refused, remove-refused, store-damaged (the rule file cannot be read: every key is refused over the pipe), keys-added (known_hosts turned on as a host-key source: host keys found there added to the key's 'fixed list' destinations), no-key-offered (the key list a program received was empty: the destination rules left out every key kageant holds, the record without fp, comment and rule); 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 116: changed (the rule editor's OK changed the key's destination rules), removed, refused (kageant -R: every rule of the key removed after the confirmation, or kept - No, Windows Hello refused, no interactive desktop); 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, added (beside a stored key of its type), replaced, made-primary, removed, proof-failed, refused (the server refused the proof request), over-limit (more keys of one type than hostkeyspertype), declined (Change nothing, or no, with updatehostkeys=ask), unanswered (no answer with updatehostkeys=ask); 401, 402: saved, failed; 906: refused (not started), allowed (Yes in the question), declined (No, or the question closed).
+- `result` - the outcome; 100, 101: allowed, denied; 102: accepted; 103: refused; 104: sign-refused, remove-refused, store-damaged (the rule file cannot be read: every key is refused over the pipe), keys-added (known_hosts turned on as a host-key source: host keys found there added to the key's 'fixed list' destinations), no-key-offered (the key list a program received was empty: the destination rules left out every key kageant holds, the record without fp, comment and rule); 110, 114, 115: done, blocked; 111: loaded, failed, fp-refused, not-verified; 116: changed (the rule editor's OK changed the key's destination rules), removed, refused (kageant -R: every rule of the key removed after the confirmation, or kept - No, Windows Hello refused, no interactive desktop); 112: forgotten; 120, 121: done, refused, waiting, unlock-shut, shut, blocked; 130: added, denied, failed; 131: protected, denied, failed, startup-entry-replaced; 132: hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed; 150, 151: done, failed; 152: done, failed (a wrong passphrase), cancelled; 160: start, stop; 170: failed; 171: start, resumed (after a crash fragment), rotate, head (every 15 minutes with new records), stop, config (before a change of agentlog, agentlogpath or agentlogsink); 201, 301: closed, remote-closed, fatal, user; 211, 212, 311, 312: accept-new, accepted, refused; 213, 313: stored, added (beside a stored key of its type), replaced, made-primary, removed, proof-failed, refused (the server refused the proof request), over-limit (more keys of one type than hostkeyspertype), declined (Change nothing, or no, with updatehostkeys=ask), unanswered (no answer with updatehostkeys=ask); 401, 402: saved, failed; 906: refused (not started), allowed (Yes in the question), declined (No, or the question closed).
+- `rotation` - 171 rotate: the number of this rotation of the log, counted from its first file.
 - `rule` - 104: the key's destination rules: each as host name, then the hash of its first host key (SHA256:..., CA SHA256:... for a CA key) and +N for more keys, user@ in front for a user, from-host > in front for use through a forwarded agent, separated by a comma; empty when the rule file cannot be read.
+- `run` - 171: the id of this kageant run, 32 hex digits.
+- `seq` - 100-172: the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written.
 - `session` - the saved session's name, empty when none was loaded.
+- `sig` - 100-172: the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev.
 - `tool` - 400-403: kittygen or kittygen-cli.
 - `trigger` - 113: what started the retry; values: button, device-arrival; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).
+- `ts` - 100-172: the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone.
 - `user` - 220, 221, 320, 321, 240, 241, 330, 331: the user name of the login (a proxy's: the name sent to it); 225, 325: the user name sent to the proxy, empty when none.
+- `value` - 171 config: the setting about to change and its new value: agentlog=no, agentlog=yes, agentlogpath= the new path (empty for the default) or agentlogsink= file, eventlog or both.
 - `warning` - 140: weak-protection or old-format.

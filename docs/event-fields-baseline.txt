@@ -1,0 +1,56 @@
+# The event IDs of release 0.85.1.19 with their fields in order. Every field list of
+# kitty/kitty_eventids.h must start with the list here: fields are only appended
+# (tools/check-kitty-events.py, rule 13). Written by check-kitty-events.py
+# --write-baseline from the release tag; release.ps1 -NextBaseline refreshes it.
+release 0.85.1.19
+100 sign fp comment result reason req reqpath pid
+101 confirm fp comment result reason req reqpath pid
+110 add fp comment result reason req reqpath pid path
+111 loadkey path result enc
+112 forget-path path result
+113 retry trigger loaded refused absent broken
+114 remove fp comment result reason req reqpath pid
+115 remove-all fp comment result reason req reqpath pid
+120 lock fp comment result reason req reqpath pid
+121 unlock fp comment result reason req reqpath pid
+130 hello-enrol path result detail
+131 hello-protect path dest result detail err
+132 hello-unlock path result detail
+140 keyfile-warning path warning
+150 reencrypt-all fp comment result reason req reqpath pid
+151 reencrypt fp comment result reason req reqpath pid
+152 decrypt fp comment result trigger req reqpath pid
+160 agent result
+170 logrotate result
+200 session-open session host port proto addr from pid
+201 session-close session host port result reason exitcode pid
+210 hostkey-known host port keytype fp basis pid proxy
+211 hostkey-new host port keytype fp result pid proxy
+212 hostkey-mismatch host port keytype fp result pid proxy
+213 hostkey-update host port keytype fp result oldfp pid proxy
+220 auth-ok host port user method fp pid proxy for
+221 auth-failed host port user method reason methods pid proxy for
+225 proxy-used proxy host port user credentials pid for
+230 farend-refused session host request reason detail pid
+240 transfer-done session host port user method direction local remote bytes pid
+241 transfer-failed session host port user method direction local remote bytes pid reason
+300 session-open session host port proto addr from pid
+301 session-close session host port result reason exitcode pid
+310 hostkey-known host port keytype fp basis pid proxy
+311 hostkey-new host port keytype fp result pid proxy
+312 hostkey-mismatch host port keytype fp result pid proxy
+313 hostkey-update host port keytype fp result oldfp pid proxy
+320 auth-ok host port user method fp pid proxy for
+321 auth-failed host port user method reason methods pid proxy for
+325 proxy-used proxy host port user credentials pid for
+330 transfer-done session host user direction local remote bytes pid
+331 transfer-failed session host user direction local remote bytes pid reason
+400 key-generated tool keytype bits fp comment pid
+401 private-saved tool fp comment path format protection result reason pid
+402 public-saved tool fp path format result reason pid
+403 passphrase-changed tool fp path protection pid
+900 program-refused check found program
+901 log-retention files kb days mb pattern
+902 missing-features features missing
+903 session-save-failed session path reason
+904 store-rights-not-set path reason

@@ -38,6 +38,7 @@
 #include "../kitty/kitty_hello_ui.h"   /* KiTTY: the shared printout window */
 #include "../kitty/kitty_auditlog.h"  /* KiTTY: the audit log's file sink */
 #include "../kitty/kitty_auditparse.h"  /* KiTTY: reading its lines, old and current form */
+#include "../kitty/kitty_auditverify.h" /* KiTTY: -verifylog, the Verify button */
 #include "../kitty/kitty_theme.h"     /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_theme_pref.h" /* KiTTY: the app-wide theme setting */
 #include "../kitty/kitty_anchor.h"    /* KiTTY: edge anchoring for the resizable windows */
@@ -95,6 +96,7 @@ static void kageant_start_failed(HWND hwnd, const char *what)
 #define TID_KEY_LIFETIME 3       /* KiTTY: expire ssh-add -t keys (see WM_TIMER) */
 #define TID_HELLO_CACHE  4       /* KiTTY: wipe the Hello KEK cache at TTL */
 #define TID_KL_RESUME    7       /* KiTTY: key-list Resume-button sync */
+#define TID_AUDIT_CHAIN  9       /* KiTTY: the agent log's head anchor (Q3) */
 
 #define APPNAME "kageant"
 
@@ -4697,12 +4699,14 @@ static const struct kl_anchor auditview_anchors[] = {
     {IDC_AUDIT_REQFILTER, KL_ANCH_LEFT | KL_ANCH_TOP},
     {IDC_AUDIT_ENABLE,  KL_ANCH_LEFT | KL_ANCH_TOP},
     {IDC_AUDIT_EVENTVIEWER, KL_ANCH_RIGHT | KL_ANCH_TOP},
+    {IDC_AUDIT_VERIFY,  KL_ANCH_RIGHT | KL_ANCH_TOP},
     {IDC_AUDIT_REFRESH, KL_ANCH_RIGHT | KL_ANCH_TOP},
     {IDOK,              KL_ANCH_RIGHT | KL_ANCH_TOP},
     {IDC_AUDIT_LIST,
      KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDC_AUDIT_DETAIL,  KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
     {IDC_AUDIT_PATH,    KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
+    {IDC_AUDIT_VERIFYLINE, KL_ANCH_LEFT | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 static RECT auditview_baserects[lenof(auditview_anchors)];
 static SIZE auditview_basesize, auditview_minsize;
@@ -4857,10 +4861,62 @@ static INT_PTR CALLBACK AuditDetailProc(HWND hwnd, UINT msg,
     return 0;
 }
 
+/*
+ * KiTTY: the agent log window's Verify runs on a thread of its own: on a
+ * full log (20 MB, tens of thousands of signed lines and events) it takes
+ * seconds, and kageant's own thread must go on answering the pipe. The
+ * button is off while it runs, the verdict line reads "Checking..."; the
+ * report comes back to the window as KAGEANT_WM_VERIFY_DONE (lParam = the
+ * strbuf, the window frees it). A window closed meanwhile: the thread frees
+ * it itself.
+ */
+#define KAGEANT_WM_VERIFY_DONE  (WM_APP + 14)
+static volatile LONG auditview_verifying = 0;
+
+struct auditview_verify_job {
+    HWND hwnd;
+    char *path, *run;
+};
+
+static DWORD WINAPI auditview_verify_thread(LPVOID arg)
+{
+    struct auditview_verify_job *j = (struct auditview_verify_job *)arg;
+    strbuf *rep = strbuf_new();
+    kitty_auditverify(j->path, NULL, j->run, rep);
+    if (!PostMessage(j->hwnd, KAGEANT_WM_VERIFY_DONE, 0, (LPARAM)rep)) {
+        strbuf_free(rep);
+        InterlockedExchange(&auditview_verifying, 0);
+    }
+    sfree(j->path);
+    sfree(j->run);
+    sfree(j);
+    return 0;
+}
+
+/* The report into the window: the whole of it in the record box, the
+ * verdict (its last line) under the list. */
+static void auditview_verify_show(HWND hwnd, strbuf *rep)
+{
+    const char *last;
+    while (rep->len >= 2 && rep->s[rep->len - 1] == '\n')
+        strbuf_shrink_by(rep, 2);
+    last = strrchr(rep->s, '\n');
+    SetDlgItemText(hwnd, IDC_AUDIT_VERIFYLINE, last ? last + 1 : rep->s);
+    SetDlgItemText(hwnd, IDC_AUDIT_DETAIL, rep->s);
+}
+
 static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
                                       WPARAM wParam, LPARAM lParam)
 {
     switch (msg) {
+      case KAGEANT_WM_VERIFY_DONE: {
+        strbuf *rep = (strbuf *)lParam;
+        auditview_verify_show(hwnd, rep);
+        strbuf_free(rep);
+        EnableWindow(GetDlgItem(hwnd, IDC_AUDIT_VERIFY), TRUE);
+        InterlockedExchange(&auditview_verifying, 0);
+        return 0;
+      }
       case WM_INITDIALOG: {
         HWND hlist = GetDlgItem(hwnd, IDC_AUDIT_LIST);
         LVCOLUMN col;
@@ -4918,8 +4974,8 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
         {
             static const int row_ids[] = {
                 IDC_AUDIT_FILTER_LBL, IDC_AUDIT_FILTER, IDC_AUDIT_APP_LBL,
-                IDC_AUDIT_ENABLE, IDC_AUDIT_EVENTVIEWER, IDC_AUDIT_REFRESH,
-                IDOK, 0
+                IDC_AUDIT_ENABLE, IDC_AUDIT_EVENTVIEWER, IDC_AUDIT_VERIFY,
+                IDC_AUDIT_REFRESH, IDOK, 0
             };
             kitty_theme_align_row(hwnd, IDC_AUDIT_REQFILTER, row_ids);
         }
@@ -5084,6 +5140,45 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
           case IDC_AUDIT_EVENTVIEWER:
             kageant_eventviewer_open(hwnd);
             return 0;
+          case IDC_AUDIT_VERIFY: {
+            /* The chain of the file this kageant writes, against the
+             * anchors in the Windows Event Log, on a thread of its own
+             * (auditview_verify_thread). The run writing the log now is
+             * this one. */
+            struct auditview_verify_job *j;
+            HANDLE th;
+            if (!*kitty_audit_path()) {
+                strbuf *rep = strbuf_new();
+                put_dataz(rep, KT_KALOG_NO_PATH);
+                auditview_verify_show(hwnd, rep);
+                strbuf_free(rep);
+                return 0;
+            }
+            if (InterlockedExchange(&auditview_verifying, 1))
+                return 0;                  /* one check at a time */
+            j = snew(struct auditview_verify_job);
+            j->hwnd = hwnd;
+            j->path = dupstr(kitty_audit_path());
+            j->run = kitty_audit_run_id() ? dupstr(kitty_audit_run_id()) : NULL;
+            EnableWindow(GetDlgItem(hwnd, IDC_AUDIT_VERIFY), FALSE);
+            SetDlgItemText(hwnd, IDC_AUDIT_VERIFYLINE, KT_KALOG_VERIFY_BUSY);
+            th = CreateThread(NULL, 0, auditview_verify_thread, j, 0, NULL);
+            if (th) {
+                CloseHandle(th);
+            } else {
+                /* no thread: the check here, as before */
+                strbuf *rep = strbuf_new();
+                kitty_auditverify(j->path, NULL, j->run, rep);
+                auditview_verify_show(hwnd, rep);
+                strbuf_free(rep);
+                EnableWindow(GetDlgItem(hwnd, IDC_AUDIT_VERIFY), TRUE);
+                InterlockedExchange(&auditview_verifying, 0);
+                sfree(j->path);
+                sfree(j->run);
+                sfree(j);
+            }
+            return 0;
+          }
           case IDC_AUDIT_REFRESH: {
             /* Reload re-derives the App list; keep the current slice if
              * the app is still present. */
@@ -5174,7 +5269,7 @@ static const int keysettings_page_media[] = {
     IDC_SET_L_RETRY, IDC_SET_RETRY, IDC_SET_UNLOAD, IDC_SET_QUIET,
 };
 static const int keysettings_page_log[] = {
-    IDC_SET_AGENTLOG,
+    IDC_SET_AGENTLOG, IDC_SET_L_LOGCHAINHINT,
     IDC_SET_L_LOGPATH, IDC_SET_AGENTLOGPATH,
     IDC_SET_L_LOGKB, IDC_SET_AGENTLOGKB,
     IDC_SET_L_LOGKEEP, IDC_SET_AGENTLOGKEEP,
@@ -7982,6 +8077,10 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             KillTimer(hwnd, TID_HELLO_CACHE);
             kitty_hello_cache_wipe();
         }
+        /* KiTTY: the agent log's head anchor and the summary of repeats,
+         * when they are due */
+        if (wParam == TID_AUDIT_CHAIN)
+            kitty_audit_chain_tick();
         /* KiTTY: remove any ssh-add -t keys whose lifetime has run out. */
         if (wParam == TID_KEY_LIFETIME) {
             int changed = kageant_expire_due_keys();
@@ -8887,6 +8986,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     char **cli_rmrules = NULL;
     size_t ncli_rmrules = 0, cli_rmrulessize = 0;
     bool cli_list = false;
+    /* KiTTY: -verifylog (the agent log's chain checked) and -anchors (an
+     * exported log to take the anchors from) */
+    char *cli_verifylog = NULL, *cli_anchors = NULL;
     /* the keys the command line added, for the report of their rules */
     char **cli_added = NULL;
     size_t ncli_added = 0, cli_addedsize = 0;
@@ -9033,11 +9135,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             CmdlineArg *nx = amo.arglist->args[amo.index + 1];
             const char *nxs = nx ? cmdline_arg_to_utf8(nx) : NULL;
             if (cur && (!strcmp(cur, "-h") || !strcmp(cur, "-d") ||
-                        !strcmp(cur, "-R")) &&
+                        !strcmp(cur, "-R") || !strcmp(cur, "-verifylog")) &&
                 (!nxs || nxs[0] == '-'))
                 opt_error(!strcmp(cur, "-h") ? KT_KA_CLI_H_NEEDS_DEST :
                           !strcmp(cur, "-d") ? KT_KA_CLI_D_NEEDS_KEY :
-                                               KT_KA_CLI_R_NEEDS_KEY);
+                          !strcmp(cur, "-R") ? KT_KA_CLI_R_NEEDS_KEY :
+                                               KT_KA_CLI_VERIFY_NEEDS_FILE);
         }
 
         if (aux_match_arg(&amo, &valarg)) {
@@ -9080,6 +9183,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         } else if (match_opt("-l")) {
             /* KiTTY: every key with its destination rules */
             cli_list = true;
+        } else if (match_optval("-verifylog")) {
+            /* KiTTY: the agent log's chain checked, nothing started */
+            sfree(cli_verifylog);
+            cli_verifylog = dupstr(cmdline_arg_to_str(valarg));
+        } else if (match_optval("-anchors")) {
+            sfree(cli_anchors);
+            cli_anchors = dupstr(cmdline_arg_to_str(valarg));
         } else if (match_opt("-restrict-acl", "-restrict_acl",
                              "-restrictacl")) {
             restrict_process_acl();
@@ -9119,6 +9229,28 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             opt_error("unrecognised option '%s'\n",
                       cmdline_arg_to_str(amo.arglist->args[amo.index]));
         }
+    }
+
+    /*
+     * KiTTY: -verifylog checks the agent log's chain and ends: exit code 0
+     * intact, 1 broken, 2 cannot verify. No agent starts, no mutex is
+     * taken, nothing is written. The last run of the file is reported as
+     * still writing when a kageant runs (its run cannot be told from
+     * here).
+     */
+    if (cli_anchors && !cli_verifylog)
+        opt_error(KT_KA_CLI_ANCHORS_NEEDS_VERIFY);
+    if (cli_verifylog) {
+        strbuf *rep = strbuf_new();
+        int rc = kitty_auditverify(cli_verifylog, cli_anchors,
+                                   agent_exists() ? "*" : NULL, rep);
+        kageant_cli_report(rep->s, rc == 1 ? KT_CAP_KA_CMDLINE_ERROR :
+                           KT_CAP_KA_CMDLINE,
+                           rc == 0 ? MB_ICONINFORMATION : MB_ICONWARNING);
+        strbuf_free(rep);
+        sfree(cli_verifylog);
+        sfree(cli_anchors);
+        return rc;
     }
 
     /*
@@ -9246,11 +9378,20 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * requests it (see kageant_do_confirm). */
         /* KiTTY: the audit log comes up BEFORE the hooks and the startup
          * keys, so the very first loads are already on the record. */
+        /* KiTTY: the OS CSPRNG, for writing protected PPKs and for the
+         * agent log's run key - which must exist before the first record,
+         * so both come before the log is set up. */
+        kageant_random_hook = kageant_hello_random;
+        kitty_audit_set_random(kageant_hello_random);
         kageant_audit_setup();
         kitty_audit("agent", "result", "start", (const char *)NULL);
         kitty_wev_missing_features();   /* KiTTY: event 902 at every start */
-
-        kageant_random_hook = kageant_hello_random;   /* KiTTY: the OS CSPRNG, for writing protected PPKs */
+        /* KiTTY: a head anchor every 15 minutes with new records, and the
+         * summary of a record's repeats a minute after the first: looked
+         * at every 10 seconds, or at the shorter interval of a test build */
+        SetTimer(traywindow, TID_AUDIT_CHAIN,
+                 kitty_audit_chain_head_ms() < 10000 ?
+                 (UINT)kitty_audit_chain_head_ms() : 10000, NULL);
         kitty_hello_cache_ttl_set(kageant_hello_ttl());  /* KiTTY: KEK cache */
         kageant_confirm_hook = kageant_do_confirm;
         kageant_refused_hook = kageant_audit_refused;   /* KiTTY: refusals in the audit log */
@@ -9761,6 +9902,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * exit path funnels through here. (A force-kill cannot log, by nature;
      * the next start line brackets the gap.) */
     kitty_audit("agent", "result", "stop", (const char *)NULL);
+    kitty_audit_chain_end();   /* KiTTY: the stop anchor, the run key wiped */
     if (traywindow)
         kageant_wts_register(traywindow, false);   /* KiTTY: When Windows locks */
 

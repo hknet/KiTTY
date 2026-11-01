@@ -1545,8 +1545,15 @@
 ; line per event in a capped, rotated local file; the tray's "Agent
 ; log..." window views and filters it. Called the AGENT log on purpose: a
 ; local file is evidence, never proof - same-user malware can delete it -
-; and the name must not claim otherwise. Tamper-evident and off-box sinks
-; are planned on top of this format.
+; and the name must not claim otherwise. The file is a chain: every line
+; carries seq, prev (the hash of the line before it) and sig, signed with
+; a key kageant holds in its memory only. kageant writes the anchor
+; records (event 171, start, rotation, stop, a change of these settings,
+; every 15 minutes) to the Windows Event Log (KiTTY++_Agent, or
+; Application without the system MSI) with every agentlogsink, file
+; included. A record that repeats the one before it is counted, not
+; written: one record (event 172) holds the count.
+; kageant -verifylog <file> checks the chain against those anchors.
 ; agentlog: write the log. Default yes.
 ;agentlog=yes
 ; agentlogpath: full path of the log file. Default: next to kitty.ini for

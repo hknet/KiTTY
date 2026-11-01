@@ -265,6 +265,17 @@ add_executable(test_auditparse
   test/test_auditparse.c
   kitty/kitty_auditparse.c)
 
+# KiTTY: unit test for the agent log's signed chain (kitty/kitty_auditchain.c,
+# in kageant): records built and verified, and every tamper case - an edit,
+# a deleted, reordered or inserted line, a cut with and without an anchor, a
+# foreign key, the whole file replaced, rotation with a generation gone, the
+# keep count, a crash fragment, a mixed old/new file. `--bench` times 1000
+# Ed25519 signatures.
+add_executable(test_auditchain
+  test/test_auditchain.c
+  kitty/kitty_auditchain.c)
+target_link_libraries(test_auditchain crypto utils ${platform_libraries})
+
 # KiTTY: unit test for the event ID table (kitty/kitty_eventids.h): every ID
 # in its block under its block's source, kitty.exe's and the console tools'
 # shared offsets alike. tools/check-kitty-events.py checks the .mc against it.
@@ -514,7 +525,7 @@ foreach(t
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
     test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
     test_agentbind test_agentrestrict
-    test_auditparse test_eventids test_commentlinks)
+    test_auditparse test_auditchain test_eventids test_commentlinks)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events
@@ -647,6 +658,9 @@ if(KITTY_INI_CHECK_PYTHON)
             ${CMAKE_CURRENT_SOURCE_DIR}/windows/kitty_events.mc
             ${CMAKE_CURRENT_SOURCE_DIR}/doc/eventids.but
             ${CMAKE_CURRENT_SOURCE_DIR}/docs/EVENT-IDS.md
+            ${CMAKE_CURRENT_SOURCE_DIR}/docs/WINDOWS-EVENT-LOG.md
+            ${CMAKE_CURRENT_SOURCE_DIR}/docs/event-fields-baseline.txt
+            ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_auditlog.c
             ${KITTY_CONF_CHECK_SOURCES}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Checking the event messages, the manual's appendix and docs/EVENT-IDS.md against the event ID table, and the sources' Event Log calls")

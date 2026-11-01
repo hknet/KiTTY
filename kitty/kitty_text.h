@@ -2951,6 +2951,13 @@
         "-restrict-putty-acl\n" \
         "        pass -restrict-acl on to KiTTY++ sessions started\n" \
         "        from the tray menu\n" \
+        "-verifylog file\n" \
+        "        check the chain of the agent log file and its rotated\n" \
+        "        generations against the anchors in the Windows Event\n" \
+        "        Log. Exit code 0 intact, 1 broken, 2 cannot verify\n" \
+        "-anchors file.evtx\n" \
+        "        with -verifylog: read the anchors from an exported log\n" \
+        "        instead of this computer's Windows Event Log\n" \
         "-pgpfp\n" \
         "        show the PGP fingerprints of the PuTTY release keys\n" \
         "        (deprecated)\n" \
@@ -2985,6 +2992,71 @@
 #define KT_KA_CLI_L_NONE                             "kageant holds no key and no destination rule."
 #define KT_KA_CLI_L_FAILED                           "-l: the destination rules could not be read (a damaged rule file, or an older kageant)."
 #define KT_KA_CLI_NOT_RUNNING_FMT                    "%s acts on a running kageant: none is running."
+/* kageant -verifylog (windows/pageant.c, kitty/kitty_auditverify.c) */
+#define KT_KA_CLI_VERIFY_NEEDS_FILE                  "-verifylog needs the agent log file.\n\n" \
+        "kageant -help lists every option."
+#define KT_KA_CLI_ANCHORS_NEEDS_VERIFY               "-anchors goes with -verifylog.\n\n" \
+        "kageant -help lists every option."
+#define KT_KA_CLI_VERIFY_UNREADABLE_FMT              "%s: the file cannot be read (%s)."
+#define KT_KA_CLI_ANCHORS_UNREADABLE_FMT             "-anchors %s: the exported log cannot be read (%s)."
+/* where the anchors were read: "the Windows Event Log (<log>, source <src>)" */
+#define KT_KAC_WHERE_FMT                             "the Windows Event Log (%s, source KiTTY++_agent)"
+#define KT_KAC_WHERE_EVTX_FMT                        "the exported log %s"
+#define KT_KAC_WHERE_NONE                            "the Windows Event Log (source KiTTY++_agent)"
+/* The agent log's chain: the verifier's report (kitty/kitty_auditchain.c).
+ * One line each. Problems first (exit 1), then what could not be checked
+ * (exit 2), then notes, the summary and the verdict. */
+#define KT_KAC_AT_FMT                                "%s line %s"
+#define KT_KAC_CHANGED_FMT                           "%s (seq %s, %s): the record was changed - the next line holds another hash for it."
+#define KT_KAC_SIGBAD_FMT                            "%s (seq %s, %s): signature does not match - the record was changed."
+#define KT_KAC_NOSIG_FMT                             "%s (seq %s, %s): no signature - written by another program."
+#define KT_KAC_NOKEY_FMT                             "%s (seq %s, %s): no anchor of its run before it - its signature cannot be checked."
+#define KT_KAC_MISSING_FMT                           "%s: %s records missing between seq %s and %s."
+#define KT_KAC_MISSING1_FMT                          "%s: %s record missing between seq %s and %s."
+#define KT_KAC_GAPGEN_FMT                            "%s records missing between seq %s and %s: a generation between %s and %s is gone."
+#define KT_KAC_GAPGEN1_FMT                           "%s record missing between seq %s and %s: a generation between %s and %s is gone."
+#define KT_KAC_REORDER_FMT                           "%s (seq %s): records out of order."
+#define KT_KAC_REPEAT_FMT                            "%s (seq %s): seq repeated or going back (seq %s expected)."
+#define KT_KAC_NOCHAIN_IN_RUN_FMT                    "%s: a record without chain fields inside a run - written by another program."
+#define KT_KAC_CRLF_FMT                              "%s: the line ends are not CRLF - the file was rewritten."
+#define KT_KAC_RESTART_FMT                           "%s: the chain starts again (prev none) - the records before it were removed."
+#define KT_KAC_UNBOUND_FMT                           "%s: the first chained record does not hold the hash of the line before it."
+#define KT_KAC_FRAGMENT_BAD_FMT                      "%s: incomplete record not accounted for by a resumed record."
+#define KT_KAC_KEYDIFF_FILE_FMT                      "%s: the run started %s carries a key other than the one of its start record."
+#define KT_KAC_HEADCUT_FMT                           "%s: starts at seq %s with a record whose line before is in no file and which is no rotate record - records at the start were removed."
+#define KT_KAC_KEEP_FMT                              "%s: the files of the last %s rotations must be on disk, the oldest present starts at rotation %s - deleted before its time."
+#define KT_KAC_FORGED_FMT                            "Record %s of %s: anchor not signed by the key of its run - written by another program."
+#define KT_KAC_EV_FORGED_FMT                         "Record %s of %s (event %s, seq %s): not signed by the key of its run - forged or edited."
+#define KT_KAC_EV_MISSING_FMT                        "Record %s of %s (event %s, seq %s): signed by the run started %s, no file holds its line."
+#define KT_KAC_EV_DIFF_FMT                           "Record %s of %s (event %s, seq %s): signed by its run, differs from %s."
+#define KT_KAC_EV_OK_FMT                             "%s events of %s match their lines in the file."
+#define KT_KAC_EV_OK1_FMT                            "%s event of %s matches its line in the file."
+#define KT_KAC_KEYDIFF_EVLOG_FMT                     "Run started %s: its key in the file differs from the key in %s."
+#define KT_KAC_ANCHOR_DIFF_FMT                       "%s (seq %s): differs from the anchor of %s in %s."
+#define KT_KAC_OTHER_RUN_FMT                         "%s (seq %s): the anchor of %s in %s for this seq is of another run - the file was replaced."
+#define KT_KAC_ANCHOR_MISSING_FMT                    "seq %s: %s holds an anchor of %s for it, no file holds the line."
+#define KT_KAC_CUTOFF_FMT                            "%s ends at seq %s, %s holds seq %s from %s: %s records cut off."
+#define KT_KAC_RESTARTED_FMT                         "%s: log restarted, %s holds seq %s at %s: a deleted log."
+#define KT_KAC_ROLLED_OUT_FMT                        "Only records from %s on are left in %s. The run of %s has no anchor left: its key cannot be confirmed."
+#define KT_KAC_KEY_UNCONFIRMED_FMT                   "Run started %s: no anchor in %s confirms its key."
+#define KT_KAC_NO_EVLOG_FMT                          "Not readable: %s. The chain in the files is intact up to seq %s. A cut at the end or a replaced file cannot be seen without it."
+#define KT_KAC_NOTHING_FMT                           "%s: no chained records - nothing to verify."
+#define KT_KAC_PRECHAIN_FMT                          "%s line 1: %s records before the chain started (written by an earlier kageant)."
+#define KT_KAC_DOWNGRADE_FMT                         "%s lines %s-%s: %s records without chain fields (written by an earlier kageant)."
+#define KT_KAC_ROTATED_OUT_FMT                       "%s: starts at seq %s, earlier records rotated out (anchor of %s)."
+#define KT_KAC_FRAGMENT_FMT                          "%s: incomplete record, kageant ended during the write."
+#define KT_KAC_NOSTOP_FMT                            "Run started %s ended without a stop record."
+#define KT_KAC_LIVE_FMT                              "Run started %s is still writing this log."
+#define KT_KAC_UNSIGNED_FMT                          "seq %s-%s after the last anchor (seq %s): signed, not yet pinned by an anchor."
+#define KT_KAC_UNSIGNED1_FMT                         "seq %s%.0s after the last anchor (seq %s): signed, not yet pinned by an anchor."
+#define KT_KAC_SUMMARY_FMT                           "%s: %s records, seq %s-%s."
+#define KT_KAC_MORE_FMT                              "%s more problems, not listed."
+#define KT_KAC_MORE1_FMT                             "%s more problem, not listed."
+#define KT_KAC_BROKEN_FMT                            "Chain BROKEN: %s problems, the first at %s."
+#define KT_KAC_BROKEN1_FMT                           "Chain BROKEN: %s problem, at %s."
+#define KT_KAC_CANNOT_FMT                            "Chain NOT VERIFIED: the checks above could not be made."
+#define KT_KAC_INTACT_FMT                            "Chain intact, every record signed. %s runs, every run key confirmed in %s."
+#define KT_KAC_INTACT1_FMT                           "Chain intact, every record signed. %s run, its key confirmed in %s."
 #define KT_KA_CLI_D_UNREADABLE_FMT                   "-d %s: no key file kageant reads and no SHA256 fingerprint (%s)."
 #define KT_KA_CLI_LIST_FAILED_FMT                    "The key list of the running kageant could not be read: %s"
 #define KT_KA_CLI_D_NOT_HELD_FMT                     "-d %s: the running kageant holds no such key."
@@ -3343,6 +3415,7 @@
 #define KT_KALOG_COL_KEY                             KT_HOST_KEYS_KEY  /* "Key" - the same word as the host-keys column */
 #define KT_KALOG_COL_REQUESTER                       "Requester"
 #define KT_KALOG_NO_PATH                             "(no log path resolved)"
+#define KT_KALOG_VERIFY_BUSY                         "Checking the chain..."
 #define KT_KALOG_ALL_APPS                            "(all apps)"
 #define KT_KALOG_FP_REFUSED_NOTE                     "   (key refused: the file is not the key " \
         "recorded for it - fingerprint mismatch)"
@@ -5167,12 +5240,15 @@
 #define KT_RC_KEYSETTINGS_LOGSINK_BOTH               "file and Windows Event Log"
 #define KT_RC_KEYSETTINGS_LOGSINK_HINT               "Windows Event Log: Applications and Services Logs > KiTTY++_Agent when installed for all users, else the Application log. Source KiTTY++_agent."
 #define KT_RC_KEYSETTINGS_EVENTVIEWER                "Event &Viewer"
+/* Under the log's settings: what switching the log on also writes. */
+#define KT_RC_KEYSETTINGS_LOGCHAIN_HINT              "Log check: kageant signs anchor records (event 171) and writes them to the Windows Event Log, also with the file as the only destination."
 
 /* pageant.rc: IDD_AUDITVIEW (caption = KT_CAP_KA_AGENT_LOG), IDD_AUDITDETAIL */
 #define KT_RC_AUDITVIEW_FILTER_LABEL                 "&Filter:"
 #define KT_RC_AUDITVIEW_APP_LABEL                    "&App:"
 #define KT_RC_AUDITVIEW_ENABLE                       "&Logging"
 #define KT_RC_AUDITVIEW_EVENTVIEWER                  KT_RC_KEYSETTINGS_EVENTVIEWER
+#define KT_RC_AUDITVIEW_VERIFY                       "Verif&y"
 #define KT_RC_AUDITDETAIL_CAPTION                    "kageant - agent log record"
 
 /* pageant.rc: IDD_ABOUT (the two buttons are puttygen.rc's About box's too) */

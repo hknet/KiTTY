@@ -6353,7 +6353,7 @@ static int win_gui_askappend(LogPolicy *lp, Filename *filename,
         const char *v[1];
         v[0] = filename->utf8path;
         kitty_wev_suite(KITTY_EV_SESSION_LOG_NOT_WRITTEN,
-                        EVENTLOG_WARNING_TYPE, v, 1);
+                        EVENTLOG_WARNING_TYPE, "path", v, 1);
         return 0;
     }
 

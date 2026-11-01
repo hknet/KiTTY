@@ -516,6 +516,10 @@ BEGIN
         IDC_SET_L_LOGSINKHINT, 16, 120, 268, 27
     LTEXT KT_RC_KEYSETTINGS_LOGNOTE,
         IDC_SET_L_LOGNOTE, 16, 150, 268, 10
+    /* What switching the log on also writes: the chain's anchors go to the
+     * Windows Event Log with every destination. */
+    LTEXT KT_RC_KEYSETTINGS_LOGCHAIN_HINT,
+        IDC_SET_L_LOGCHAINHINT, 16, 164, 268, 18
 
     DEFPUSHBUTTON KT_WIN_OK, IDOK, 182, 224, 54, 15
     PUSHBUTTON KT_KITTY_CANCEL, IDCANCEL, 240, 224, 54, 15
@@ -537,7 +541,7 @@ END
  * heights are snapped at runtime to whatever the font makes a closed combo
  * box, not taken from these numbers.
  */
-IDD_AUDITVIEW DIALOGEX DISCARDABLE 0, 0, 490, 260
+IDD_AUDITVIEW DIALOGEX DISCARDABLE 0, 0, 540, 272
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION KT_CAP_KA_AGENT_LOG
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -560,18 +564,22 @@ BEGIN
     AUTOCHECKBOX KT_RC_AUDITVIEW_ENABLE, IDC_AUDIT_ENABLE, 268, 6, 44, 14
     /* 30 units wider than before for this button, the rest unchanged */
     PUSHBUTTON KT_RC_AUDITVIEW_EVENTVIEWER, IDC_AUDIT_EVENTVIEWER, 316, 6, 62, 14
-    PUSHBUTTON KT_MENU_REFRESH, IDC_AUDIT_REFRESH, 382, 6, 46, 14
-    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 434, 6, 48, 14
+    /* the chain checked: the report in the record box, the verdict in the
+     * line at the bottom */
+    PUSHBUTTON KT_RC_AUDITVIEW_VERIFY, IDC_AUDIT_VERIFY, 382, 6, 46, 14
+    PUSHBUTTON KT_MENU_REFRESH, IDC_AUDIT_REFRESH, 432, 6, 46, 14
+    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 484, 6, 48, 14
     CONTROL "", IDC_AUDIT_LIST, "SysListView32",
         LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | WS_BORDER |
-        WS_TABSTOP, 8, 24, 474, 178
+        WS_TABSTOP, 8, 24, 524, 178
     /* KiTTY: the drill-down. The list's first level stays human (comment,
      * exe name); selecting a row shows its FULL raw record here -
      * fingerprints, requester path, every field - copyable. Double-click
      * opens the same record formatted one field per line (IDD_AUDITDETAIL). */
-    EDITTEXT IDC_AUDIT_DETAIL, 8, 206, 474, 38,
+    EDITTEXT IDC_AUDIT_DETAIL, 8, 206, 524, 38,
         ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
-    LTEXT "", IDC_AUDIT_PATH, 8, 248, 474, 10, SS_PATHELLIPSIS
+    LTEXT "", IDC_AUDIT_PATH, 8, 248, 524, 10, SS_PATHELLIPSIS
+    LTEXT "", IDC_AUDIT_VERIFYLINE, 8, 260, 524, 10, SS_ENDELLIPSIS
 END
 
 /* KiTTY: one audit record, unfolded - every field on its own line, all of

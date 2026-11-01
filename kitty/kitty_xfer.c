@@ -543,7 +543,7 @@ static const char *kh_base( const char *full ) {
 static void kh_log( unsigned type, const char *result, const char *full, const char *why ) {
 	const char *v[3] ;
 	v[0] = result ; v[1] = full ; v[2] = why ;
-	kitty_wev_suite( KITTY_EV_HELPER_PROGRAM, type, v, 3 ) ;
+	kitty_wev_suite( KITTY_EV_HELPER_PROGRAM, type, "result path reason", v, 3 ) ;
 }
 
 /* One open box per file; every action that wanted the file while it was open

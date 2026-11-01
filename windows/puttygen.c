@@ -3008,7 +3008,9 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         v[6] = kwev_why ? "failed" : "saved";
                         v[7] = kwev_why;
                         kitty_wev_report(KITTY_EVO_PRIVATE_SAVED,
-                                         kwev_why != NULL, v, 8);
+                                         kwev_why != NULL,
+                                         "tool fp comment path format "
+                                         "protection result reason", v, 8);
                         /* KiTTY: event 403, as kittygen-cli -P writes it -
                          * a loaded key saved with another protection */
                         if (!kwev_why && state->kitty_pp_from_file &&
@@ -3019,7 +3021,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                             w[2] = filename_to_str(fn);
                             w[3] = v[5];
                             kitty_wev_report(KITTY_EVO_PASSPHRASE_CHANGED, 0,
-                                             w, 4);
+                                             "tool fp path protection", w, 4);
                         }
                         sfree(kfp);
                     }
@@ -3130,7 +3132,9 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                         v[4] = kwev_why ? "failed" : "saved";
                         v[5] = kwev_why;
                         kitty_wev_report(KITTY_EVO_PUBLIC_SAVED,
-                                         kwev_why != NULL, v, 6);
+                                         kwev_why != NULL,
+                                         "tool fp path format result reason",
+                                         v, 6);
                         sfree(kfp);
                     }
                     filename_free(fn);
@@ -3355,7 +3359,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             v[2] = nbits;
             v[3] = fp;
             v[4] = *state->commentptr;
-            kitty_wev_report(KITTY_EVO_KEY_GENERATED, 0, v, 5);
+            kitty_wev_report(KITTY_EVO_KEY_GENERATED, 0,
+                             "tool keytype bits fp comment", v, 5);
             sfree(fp);
         }
         ui_set_state(hwnd, state, 2);

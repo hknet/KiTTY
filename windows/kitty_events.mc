@@ -35,141 +35,153 @@ Language=English
 MessageId=100
 SymbolicName=KITTY_AGENT_SIGN
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%ndest: %9%nfwd: %10%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%ndest: %9%nfwd: %10%nseq: %11%nsig: %12%nts: %13%nprev: %14%0
 .
 
 MessageId=101
 SymbolicName=KITTY_AGENT_CONFIRM
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%ndest: %9%nfwd: %10%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%ndest: %9%nfwd: %10%nseq: %11%nsig: %12%nts: %13%nprev: %14%0
 .
 
 MessageId=102
 SymbolicName=KITTY_AGENT_BIND
 Language=English
-%1%nresult: %2%ndest: %3%nforwarding: %4%nreq: %5%nreqpath: %6%npid: %7%0
+%1%nresult: %2%ndest: %3%nforwarding: %4%nreq: %5%nreqpath: %6%npid: %7%nseq: %8%nsig: %9%nts: %10%nprev: %11%0
 .
 
 MessageId=103
 SymbolicName=KITTY_AGENT_REQUEST
 Language=English
-%1%nresult: %2%nreason: %3%nreq: %4%nreqpath: %5%npid: %6%ndest: %7%nfwd: %8%0
+%1%nresult: %2%nreason: %3%nreq: %4%nreqpath: %5%npid: %6%ndest: %7%nfwd: %8%nseq: %9%nsig: %10%nts: %11%nprev: %12%0
 .
 
 MessageId=104
 SymbolicName=KITTY_AGENT_RESTRICTED
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%ndest: %9%nfwd: %10%nrule: %11%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%ndest: %9%nfwd: %10%nrule: %11%nseq: %12%nsig: %13%nts: %14%nprev: %15%0
 .
 
 MessageId=110
 SymbolicName=KITTY_AGENT_ADD
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%npath: %9%nrestrict: %10%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%npath: %9%nrestrict: %10%nseq: %11%nsig: %12%nts: %13%nprev: %14%0
 .
 
 MessageId=111
 SymbolicName=KITTY_AGENT_LOADKEY
 Language=English
-%1%npath: %2%nresult: %3%nenc: %4%0
+%1%npath: %2%nresult: %3%nenc: %4%nseq: %5%nsig: %6%nts: %7%nprev: %8%0
 .
 
 MessageId=112
 SymbolicName=KITTY_AGENT_FORGET_PATH
 Language=English
-%1%npath: %2%nresult: %3%0
+%1%npath: %2%nresult: %3%nseq: %4%nsig: %5%nts: %6%nprev: %7%0
 .
 
 MessageId=113
 SymbolicName=KITTY_AGENT_RETRY
 Language=English
-%1%ntrigger: %2%nloaded: %3%nrefused: %4%nabsent: %5%nbroken: %6%0
+%1%ntrigger: %2%nloaded: %3%nrefused: %4%nabsent: %5%nbroken: %6%nseq: %7%nsig: %8%nts: %9%nprev: %10%0
 .
 
 MessageId=114
 SymbolicName=KITTY_AGENT_REMOVE
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nseq: %9%nsig: %10%nts: %11%nprev: %12%0
 .
 
 MessageId=115
 SymbolicName=KITTY_AGENT_REMOVE_ALL
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nseq: %9%nsig: %10%nts: %11%nprev: %12%0
 .
 
 MessageId=116
 SymbolicName=KITTY_AGENT_RULES
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nrestrict: %9%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nrestrict: %9%nseq: %10%nsig: %11%nts: %12%nprev: %13%0
 .
 
 MessageId=120
 SymbolicName=KITTY_AGENT_LOCK
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nseq: %9%nsig: %10%nts: %11%nprev: %12%0
 .
 
 MessageId=121
 SymbolicName=KITTY_AGENT_UNLOCK
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nseq: %9%nsig: %10%nts: %11%nprev: %12%0
 .
 
 MessageId=130
 SymbolicName=KITTY_AGENT_HELLO_ENROL
 Language=English
-%1%npath: %2%nresult: %3%ndetail: %4%0
+%1%npath: %2%nresult: %3%ndetail: %4%nseq: %5%nsig: %6%nts: %7%nprev: %8%0
 .
 
 MessageId=131
 SymbolicName=KITTY_AGENT_HELLO_PROTECT
 Language=English
-%1%npath: %2%ndest: %3%nresult: %4%ndetail: %5%nerr: %6%0
+%1%npath: %2%ndest: %3%nresult: %4%ndetail: %5%nerr: %6%nseq: %7%nsig: %8%nts: %9%nprev: %10%0
 .
 
 MessageId=132
 SymbolicName=KITTY_AGENT_HELLO_UNLOCK
 Language=English
-%1%npath: %2%nresult: %3%ndetail: %4%0
+%1%npath: %2%nresult: %3%ndetail: %4%nseq: %5%nsig: %6%nts: %7%nprev: %8%0
 .
 
 MessageId=140
 SymbolicName=KITTY_AGENT_KEYFILE_WARNING
 Language=English
-%1%npath: %2%nwarning: %3%0
+%1%npath: %2%nwarning: %3%nseq: %4%nsig: %5%nts: %6%nprev: %7%0
 .
 
 MessageId=150
 SymbolicName=KITTY_AGENT_REENCRYPT_ALL
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nseq: %9%nsig: %10%nts: %11%nprev: %12%0
 .
 
 MessageId=151
 SymbolicName=KITTY_AGENT_REENCRYPT
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%0
+%1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nseq: %9%nsig: %10%nts: %11%nprev: %12%0
 .
 
 MessageId=152
 SymbolicName=KITTY_AGENT_DECRYPT
 Language=English
-%1%nfp: %2%ncomment: %3%nresult: %4%ntrigger: %5%nreq: %6%nreqpath: %7%npid: %8%0
+%1%nfp: %2%ncomment: %3%nresult: %4%ntrigger: %5%nreq: %6%nreqpath: %7%npid: %8%nseq: %9%nsig: %10%nts: %11%nprev: %12%0
 .
 
 MessageId=160
 SymbolicName=KITTY_AGENT_START_STOP
 Language=English
-%1%nresult: %2%0
+%1%nresult: %2%nseq: %3%nsig: %4%nts: %5%nprev: %6%0
 .
 
 MessageId=170
 SymbolicName=KITTY_AGENT_LOGROTATE
 Language=English
-%1%nresult: %2%0
+%1%nresult: %2%nseq: %3%nsig: %4%nts: %5%nprev: %6%0
 .
 
+
+MessageId=171
+SymbolicName=KITTY_AGENT_LOGCHAIN
+Language=English
+%1%nresult: %2%nrun: %3%nlogkey: %4%nfile: %5%nfragment: %6%nvalue: %7%nrotation: %8%nkeep: %9%nexpired: %10%nseq: %11%nsig: %12%nts: %13%nprev: %14%0
+.
+
+MessageId=172
+SymbolicName=KITTY_AGENT_REPEATED
+Language=English
+%1%ncount: %2%nfirst: %3%nlast: %4%nof: %5%nseq: %6%nsig: %7%nts: %8%nprev: %9%0
+.
 ; kitty.exe's sessions, source "KiTTY++_kitty" (kitty/kitty_winevent.c, the
 ; table in kitty/kitty_eventids.h), written with [KiTTY] sessioneventlog=yes.
 ; %1 is the kind, %2 onwards the fields in the table's order, an absent

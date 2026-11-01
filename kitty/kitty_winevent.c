@@ -175,17 +175,42 @@ static void wev_u64(char *buf, size_t sz, unsigned long long v)
     buf[i] = '\0';
 }
 
-/* The record: the kind, then every field of the table - "pid" this
- * process's, the others from vals in order (vals holds every field but
- * pid; a missing one is ""). */
-static void wev_write(unsigned id, WORD type, const char *const *vals, int n)
+/* The value of one field: vals[i] where the i-th name of `fields` (space
+ * separated) is that field; NULL when the writer gives none. */
+static const char *wev_value(const char *fields, const char *const *vals,
+                             int n, const char *name, size_t len)
+{
+    const char *f = fields;
+    int i = 0;
+    while (f && *f && i < n) {
+        const char *s = f;
+        while (*f && *f != ' ')
+            f++;
+        if ((size_t)(f - s) == len && !strncmp(s, name, len))
+            return vals[i];
+        i++;
+        while (*f == ' ')
+            f++;
+    }
+    return NULL;
+}
+
+/* The record: the kind, then every field of the table in the table's
+ * order - "pid" this process's, every other one the value the writer gave
+ * under its name (`fields` names vals[0..n-1], space separated; a field
+ * not named is ""). Each writer gives its names as a string literal, so
+ * tools/check-kitty-events.py holds every writer's list to the table's
+ * (rule 12): a writer's list in another order than the table's fails the
+ * build instead of labelling every value wrongly. */
+static void wev_write(unsigned id, WORD type, const char *fields,
+                      const char *const *vals, int n)
 {
     const struct kitty_eventid *e = wev_find(id);
     const char *strings[1 + WEV_MAX_FIELDS];
     char *owned[1 + WEV_MAX_FIELDS];    /* the copies to free */
     char pid[16];
     const char *f;
-    int i = 0, nowned = 0;
+    int nowned = 0;
     WORD ns = 0;
     HANDLE h;
 
@@ -200,9 +225,9 @@ static void wev_write(unsigned id, WORD type, const char *const *vals, int n)
         if (f - name == 3 && !strncmp(name, "pid", 3)) {
             strings[ns++] = pid;
         } else {
-            owned[nowned] = wev_scrub(i < n ? vals[i] : NULL);
+            owned[nowned] = wev_scrub(wev_value(fields, vals, n, name,
+                                                (size_t)(f - name)));
             strings[ns++] = owned[nowned++];
-            i++;
         }
         while (*f == ' ')
             f++;
@@ -275,7 +300,7 @@ void kitty_wev_session_open(const void *seat, const char *addr,
     v[0] = g_session; v[1] = g_host; v[2] = port; v[3] = g_proto;
     v[4] = addr; v[5] = from;
     wev_write(g_block + KITTY_EVO_SESSION_OPEN, EVENTLOG_INFORMATION_TYPE,
-              v, 6);
+              "session host port proto addr from", v, 6);
 }
 
 void kitty_wev_session_close(const char *result, const char *reason,
@@ -306,7 +331,8 @@ void kitty_wev_session_close(const char *result, const char *reason,
     v[4] = reason; v[5] = code;
     wev_write(g_block + KITTY_EVO_SESSION_CLOSE,
               (result && !strcmp(result, "fatal")) ?
-              EVENTLOG_WARNING_TYPE : EVENTLOG_INFORMATION_TYPE, v, 6);
+              EVENTLOG_WARNING_TYPE : EVENTLOG_INFORMATION_TYPE,
+              "session host port result reason exitcode", v, 6);
 }
 
 const char *kitty_wev_fp_hash(const char *fp)
@@ -366,8 +392,18 @@ void kitty_wev_hostkey(unsigned offset, const char *host, int port,
     }
     v[0] = host; v[1] = p; v[2] = kt; v[3] = hash;
     v[4] = basis_or_result; v[5] = proxy;
-    wev_write(g_block + offset,
-              warn ? EVENTLOG_WARNING_TYPE : EVENTLOG_INFORMATION_TYPE, v, 6);
+    /* one call per ID: the known key's record has basis, the others
+     * result, in the same place */
+    if (offset == KITTY_EVO_HOSTKEY_KNOWN)
+        wev_write(g_block + KITTY_EVO_HOSTKEY_KNOWN, EVENTLOG_INFORMATION_TYPE,
+                  "host port keytype fp basis proxy", v, 6);
+    else if (offset == KITTY_EVO_HOSTKEY_NEW)
+        wev_write(g_block + KITTY_EVO_HOSTKEY_NEW,
+                  warn ? EVENTLOG_WARNING_TYPE : EVENTLOG_INFORMATION_TYPE,
+                  "host port keytype fp result proxy", v, 6);
+    else
+        wev_write(g_block + KITTY_EVO_HOSTKEY_MISMATCH, EVENTLOG_WARNING_TYPE,
+                  "host port keytype fp result proxy", v, 6);
 }
 
 void kitty_wev_hostkey_pending(unsigned offset, const char *host, int port,
@@ -422,7 +458,8 @@ void kitty_wev_hostkey_update(const char *host, int port, const char *keytype,
     v[5] = (oldfp && *oldfp) ? kitty_wev_fp_hash(oldfp) : "";
     v[6] = proxy;
     wev_write(g_block + KITTY_EVO_HOSTKEY_UPDATE,
-              warn ? EVENTLOG_WARNING_TYPE : EVENTLOG_INFORMATION_TYPE, v, 7);
+              warn ? EVENTLOG_WARNING_TYPE : EVENTLOG_INFORMATION_TYPE,
+              "host port keytype fp result oldfp proxy", v, 7);
 }
 
 /* The `for` field of a login record that is not a proxy's own: empty for
@@ -458,7 +495,8 @@ void kitty_wev_auth_ok_for(const char *host, int port, const char *user,
     v[0] = host; v[1] = p; v[2] = user; v[3] = method;
     v[4] = fp ? kitty_wev_fp_hash(fp) : "";
     v[5] = proxy; v[6] = purpose;
-    wev_write(g_block + KITTY_EVO_AUTH_OK, EVENTLOG_INFORMATION_TYPE, v, 7);
+    wev_write(g_block + KITTY_EVO_AUTH_OK, EVENTLOG_INFORMATION_TYPE,
+              "host port user method fp proxy for", v, 7);
 }
 
 void kitty_wev_auth_ok(const char *host, int port, const char *user,
@@ -482,7 +520,7 @@ void kitty_wev_proxy_used(const char *proxy, const char *host, int port,
     v[4] = credentials ? "yes" : "no";
     v[5] = purpose;
     wev_write(g_block + KITTY_EVO_PROXY_USED, EVENTLOG_INFORMATION_TYPE,
-              v, 6);
+              "proxy host port user credentials for", v, 6);
 }
 
 void kitty_wev_auth_failed_for(const char *host, int port, const char *user,
@@ -498,7 +536,8 @@ void kitty_wev_auth_failed_for(const char *host, int port, const char *user,
     wev_port(p, sizeof(p), port);
     v[0] = host; v[1] = p; v[2] = user; v[3] = method; v[4] = reason;
     v[5] = methods; v[6] = proxy; v[7] = purpose;
-    wev_write(g_block + KITTY_EVO_AUTH_FAILED, EVENTLOG_WARNING_TYPE, v, 8);
+    wev_write(g_block + KITTY_EVO_AUTH_FAILED, EVENTLOG_WARNING_TYPE,
+              "host port user method reason methods proxy for", v, 8);
 }
 
 void kitty_wev_auth_failed(const char *host, int port, const char *user,
@@ -537,7 +576,8 @@ void kitty_wev_farend_refused(const char *request, const char *reason,
         return;
     v[0] = g_session; v[1] = g_host; v[2] = request; v[3] = reason;
     v[4] = detail;
-    wev_write(g_block + KITTY_EVO_FAREND_REFUSED, EVENTLOG_WARNING_TYPE, v, 5);
+    wev_write(KITTY_EVB_KITTY + KITTY_EVO_FAREND_REFUSED, EVENTLOG_WARNING_TYPE,
+              "session host request reason detail", v, 5);
 }
 
 /* A transfer's local file as a full path (relative names are taken from
@@ -567,11 +607,14 @@ void kitty_wev_transfer(int ok, const char *user, const char *direction,
     v[4] = wev_full(full, sizeof(full), local); v[5] = remote; v[6] = nb;
     v[7] = reason;
     if (ok)
-        wev_write(g_block + KITTY_EVO_TRANSFER_DONE,
-                  EVENTLOG_INFORMATION_TYPE, v, 7);
+        wev_write(KITTY_EVB_CLI + KITTY_EVO_TRANSFER_DONE,
+                  EVENTLOG_INFORMATION_TYPE,
+                  "session host user direction local remote bytes", v, 7);
     else
-        wev_write(g_block + KITTY_EVO_TRANSFER_FAILED,
-                  EVENTLOG_WARNING_TYPE, v, 8);
+        wev_write(KITTY_EVB_CLI + KITTY_EVO_TRANSFER_FAILED,
+                  EVENTLOG_WARNING_TYPE,
+                  "session host user direction local remote bytes reason",
+                  v, 8);
 }
 
 void kitty_wev_term_transfer(int ok, const char *user, const char *method,
@@ -591,21 +634,25 @@ void kitty_wev_term_transfer(int ok, const char *user, const char *method,
     v[5] = direction; v[6] = wev_full(full, sizeof(full), local);
     v[7] = remote; v[8] = nb; v[9] = reason;
     if (ok)
-        wev_write(g_block + KITTY_EVO_TERM_TRANSFER_DONE,
-                  EVENTLOG_INFORMATION_TYPE, v, 9);
+        wev_write(KITTY_EVB_KITTY + KITTY_EVO_TERM_TRANSFER_DONE,
+                  EVENTLOG_INFORMATION_TYPE,
+                  "session host port user method direction local remote bytes",
+                  v, 9);
     else
-        wev_write(g_block + KITTY_EVO_TERM_TRANSFER_FAILED,
-                  EVENTLOG_WARNING_TYPE, v, 10);
+        wev_write(KITTY_EVB_KITTY + KITTY_EVO_TERM_TRANSFER_FAILED,
+                  EVENTLOG_WARNING_TYPE,
+                  "session host port user method direction local remote bytes "
+                  "reason", v, 10);
 }
 
-void kitty_wev_report(unsigned offset, int warning,
+void kitty_wev_report(unsigned offset, int warning, const char *fields,
                       const char *const *vals, int n)
 {
-    if (!g_on)
+    if (!g_on || g_block != KITTY_EVB_KITTYGEN)
         return;
-    wev_write(g_block + offset,
+    wev_write(KITTY_EVB_KITTYGEN + offset,
               warning ? EVENTLOG_WARNING_TYPE : EVENTLOG_INFORMATION_TYPE,
-              vals, n);
+              fields, vals, n);
 }
 
 /* The missing-features text's entry lines as ONE line, "; " between
@@ -654,7 +701,7 @@ void kitty_wev_missing_features(void)
     v[1] = line;
     /* the features by name and the entry points behind them */
     kitty_wev_suite(KITTY_EV_MISSING_FEATURES, EVENTLOG_INFORMATION_TYPE,
-                    v, 2);
+                    "features missing", v, 2);
     sfree(line);
     sfree(brief);
     sfree(full);
@@ -664,10 +711,10 @@ void kitty_wev_missing_features(void)
  * without the message file the Event Viewer shows its "The description
  * for Event ID ... cannot be found" sentence and the strings, which still
  * read in the table's order (doc/eventids.but). */
-void kitty_wev_suite(unsigned id, unsigned type,
+void kitty_wev_suite(unsigned id, unsigned type, const char *fields,
                      const char *const *vals, int n)
 {
     if (id < KITTY_EVB_SUITE || id > KITTY_EVB_SUITE + 99)
         return;
-    wev_write(id, (WORD)type, vals, n);
+    wev_write(id, (WORD)type, fields, vals, n);
 }

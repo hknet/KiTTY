@@ -272,7 +272,8 @@ static void apps_log_warning(const struct apps_row *r)
     if (nseen < (int)lenof(seen)) seen[nseen++] = dupstr(r->path);
     v[0] = r->path;
     v[1] = r->basis;
-    kitty_wev_suite(KITTY_EV_APP_FILE_WARNING, EVENTLOG_WARNING_TYPE, v, 2);
+    kitty_wev_suite(KITTY_EV_APP_FILE_WARNING, EVENTLOG_WARNING_TYPE,
+                    "path reason", v, 2);
 }
 
 /* ---- the list ---------------------------------------------------------------- */

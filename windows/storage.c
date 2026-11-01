@@ -652,7 +652,7 @@ static void kitty_session_save_failed(const char *sess, const char *path,
     vals[1] = path;
     vals[2] = why;
     kitty_wev_suite(KITTY_EV_SESSION_SAVE_FAILED, EVENTLOG_WARNING_TYPE,
-                    vals, 3);
+                    "session path reason", vals, 3);
     if (g_save_failed_report)
         g_save_failed_report(msg);
     sfree(msg);

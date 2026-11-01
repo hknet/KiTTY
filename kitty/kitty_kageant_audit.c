@@ -46,8 +46,14 @@ int kageant_audit_get(void)
 }
 int kageant_audit_set(int on)
 {
-    int ok = kageant_setting_write(KI_AGENT_AGENTLOG, on ? "yes" : "no",
-                                   "AgentLog", on ? 1 : 0);
+    int ok;
+    /* the change on the record before it takes effect: an anchor in the
+     * file and in the Windows Event Log (switching the log off is the last
+     * record of that stretch) */
+    if ((on ? 1 : 0) != (kageant_audit_get() ? 1 : 0))
+        kitty_audit_chain_config(on ? "agentlog=yes" : "agentlog=no");
+    ok = kageant_setting_write(KI_AGENT_AGENTLOG, on ? "yes" : "no",
+                               "AgentLog", on ? 1 : 0);
     kageant_audit_setup();
     return ok;
 }
@@ -131,7 +137,13 @@ int kageant_audit_sink_set(int sinks)
         sinks == KITTY_AUDIT_SINK_EVENTLOG ? "eventlog" :
         sinks == (KITTY_AUDIT_SINK_FILE | KITTY_AUDIT_SINK_EVENTLOG) ?
                                              "both" : "file";
-    int ok = kageant_setting_str_set(KI_AGENT_AGENTLOGSINK, "AgentLogSink", s);
+    int ok;
+    if (sinks != kageant_audit_sink_get()) {
+        char *v = dupprintf("agentlogsink=%s", s);
+        kitty_audit_chain_config(v);
+        sfree(v);
+    }
+    ok = kageant_setting_str_set(KI_AGENT_AGENTLOGSINK, "AgentLogSink", s);
     kageant_audit_setup();
     return ok;
 }
@@ -190,6 +202,15 @@ void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
     if (keep > 99) keep = 99;
     if (expiredays < 0) expiredays = 0;
     if (expiredays > 3650) expiredays = 3650;
+    {
+        char *was = kageant_audit_pathsetting_dup();
+        if (strcmp(was ? was : "", path ? path : "")) {
+            char *v = dupprintf("agentlogpath=%s", path ? path : "");
+            kitty_audit_chain_config(v);
+            sfree(v);
+        }
+        sfree(was);
+    }
     kageant_setting_str_set(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
                             path ? path : "");
     snprintf(num, sizeof(num), "%d", maxkb);

@@ -300,6 +300,8 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_ui.c    # KiTTY: the shared printout window
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auditlog.c # KiTTY: the audit log's file sink
   ${CMAKE_SOURCE_DIR}/kitty/kitty_auditparse.c # KiTTY: reading its lines (test/test_auditparse.c)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_auditchain.c # KiTTY: its chain (test/test_auditchain.c)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_auditverify.c # KiTTY: -verifylog against the Windows Event Log
   ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c    # KiTTY: dark mode for the dialogs
   ${CMAKE_SOURCE_DIR}/kitty/kitty_theme_pref.c  # KiTTY: the app-wide theme setting
   pageant.rc)
@@ -907,9 +909,9 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_zmodem.c
   ${KITTY_DIR}/kitty_adb.c
   ${KITTY_DIR}/kitty_rutty.c
+  ${KITTY_DIR}/kitty_scriptbridge.c   # KiTTY: the script bridge - other programs drive the script engine (WM_COPYDATA)
   ${KITTY_DIR}/kitty_config.c   # the sequencer; the panels are in the four files below
   ${KITTY_DIR}/kitty_config_upstream.c
-  ${KITTY_DIR}/kitty_scriptbridge.c   # KiTTY: the script bridge - other programs drive the script engine (WM_COPYDATA)
   ${KITTY_DIR}/kitty_config_shared.c
   ${KITTY_DIR}/kitty_config_session.c
   ${KITTY_DIR}/kitty_commentview.c    # KiTTY: the Session panel's comment box - wrapped, links that open

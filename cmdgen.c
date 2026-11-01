@@ -1420,7 +1420,8 @@ int main(int argc, char **argv)
         v[2] = nbits;
         v[3] = fp;
         v[4] = ssh2key ? ssh2key->comment : ssh1key ? ssh1key->comment : "";
-        kitty_wev_report(KITTY_EVO_KEY_GENERATED, 0, v, 5);
+        kitty_wev_report(KITTY_EVO_KEY_GENERATED, 0,
+                         "tool keytype bits fp comment", v, 5);
         sfree(fp);
     }
 #endif
@@ -1922,14 +1923,17 @@ int main(int argc, char **argv)
             v[5] = prot;
             v[6] = ok ? "saved" : "failed";
             v[7] = ok ? "" : kwev_last_error;
-            kitty_wev_report(KITTY_EVO_PRIVATE_SAVED, !ok, v, 8);
+            kitty_wev_report(KITTY_EVO_PRIVATE_SAVED, !ok,
+                             "tool fp comment path format protection result "
+                             "reason", v, 8);
             if (ok && change_passphrase) {
                 const char *w[4];
                 w[0] = "kittygen-cli";
                 w[1] = fp;
                 w[2] = outfile;
                 w[3] = prot;
-                kitty_wev_report(KITTY_EVO_PASSPHRASE_CHANGED, 0, w, 4);
+                kitty_wev_report(KITTY_EVO_PASSPHRASE_CHANGED, 0,
+                                 "tool fp path protection", w, 4);
             }
         } else if (outtype == PUBLIC || outtype == PUBLICO) {
             const char *v[6];
@@ -1940,7 +1944,8 @@ int main(int argc, char **argv)
                 outtype == PUBLIC ? "rfc4716" : "openssh";
             v[4] = ok ? "saved" : "failed";
             v[5] = ok ? "" : kwev_last_error;
-            kitty_wev_report(KITTY_EVO_PUBLIC_SAVED, !ok, v, 6);
+            kitty_wev_report(KITTY_EVO_PUBLIC_SAVED, !ok,
+                             "tool fp path format result reason", v, 6);
         }
         sfree(fp);
     }

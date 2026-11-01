@@ -29,6 +29,8 @@
 #define IDC_AUDIT_APP_LBL 408
 #define IDC_AUDIT_EVENTVIEWER 409  /* Event Viewer on the agent's events */
 #define IDC_AUDITDETAIL_TEXT 410
+#define IDC_AUDIT_VERIFY 411       /* the chain checked (kitty_auditverify) */
+#define IDC_AUDIT_VERIFYLINE 412   /* its verdict */
 
 /* KiTTY: the settings dialog */
 #define IDC_SET_OPENSSH 300
@@ -87,6 +89,7 @@
 #define IDC_SET_KNOWNHOSTS 356    /* OpenSSH's known_hosts read (opt-in) */
 #define IDC_SET_BLOCKFWD 357      /* key changes refused over a forwarded agent */
 #define IDC_SET_ALLOWWMCD 360     /* requests by window messages (WM_COPYDATA) */
+#define IDC_SET_L_LOGCHAINHINT 361  /* the anchors go to the Windows Event Log */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100

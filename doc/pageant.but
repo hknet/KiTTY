@@ -273,7 +273,10 @@ for all users, otherwise the Application log under the source
 \c{KiTTY++_agent}. Each kind of record has its own event ID and each
 field is its own value in the event data, so Event Viewer filters,
 Windows Event Forwarding and a SIEM can select on them. Size and
-retention are set in Event Viewer or with \c{wevtutil}.
+retention are set in Event Viewer or with \c{wevtutil}. \q{Log check:
+kageant signs anchor records (event 171)...} under the settings: with
+the log on, the anchors of its chain go to the Windows Event Log with
+every destination, the file alone included (\k{pageant-logchain}).
 
 \lcont{
 The system-wide installation creates the \c{KiTTY++_Agent} log with a
@@ -289,7 +292,8 @@ refused by a key's destination rules or a key list they left empty, 110 add,
 remove all, 116 rules changed in the rule editor, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
 132 Hello unlock, 140 key file warning, 150 re-encrypt all, 151
 re-encrypt one key, 152 decrypt a key, 160 agent start/stop, 170 log
-rotation. Refusals,
+rotation, 171 log chain anchor, 172 a record repeated
+(\k{pageant-logchain}). Refusals,
 failures and key file warnings are warnings, the rest information. The
 fields of each ID, in order, are listed in \k{kitty-eventids}.
 
@@ -315,6 +319,85 @@ the same gets none. Cancel writes none. A rule set with \c{ssh-add
 
 Press F1 on any page for this section; on the idle row it opens the
 idle section.
+
+\S{pageant-logchain} The agent log's chain: \c{-verifylog} and
+\q{Verify}
+
+kageant chains the lines of its agent log file. Every line ends with
+\c{seq}, a counter over the whole log continued across runs and files,
+\c{prev}, the SHA-256 of the line before it exactly as on disk, and
+\c{sig}, the signature of the line up to that field, \c{prev} included.
+A changed, deleted, swapped or added line breaks the chain at that place.
+
+At its start, at each rotation, at its stop, every 15 minutes while
+records were written and before a change of \q{Write the agent log},
+the log file or the destination takes effect, kageant writes an anchor
+record: \c{ev="logchain"}, event ID 171, \c{result} \c{start},
+\c{rotate}, \c{stop}, \c{config} or \c{head}. After a crash left an
+incomplete record at the end of the file, kageant closes that line and
+starts with \c{resumed}, its byte count in \c{fragment}. Every record
+is signed with an Ed25519 key kageant makes at its start and holds in its
+memory only: an anchor's \c{logkey} is its public key, \c{run} the run's
+id. A run that has ended can never be signed again.
+
+One signature takes milliseconds, so a flood of identical records is not
+a flood of signatures: a record with the same kind and fields as the last
+one written in full, the time aside, is counted, not written. The record
+\c{ev="repeated"}, event ID 172, stands for the repeats: \c{count},
+\c{first} and \c{last} (the time of the first and the last repeat) and
+\c{of} (the \c{seq} of the record repeated). It is written before the
+next different record, a minute after the first repeat or before an anchor
+(a rotation and the stop included).
+
+The anchors go to the Windows Event Log with every destination, the file
+alone included: to \c{KiTTY++_Agent} where KiTTY++ is installed for all
+users, else to the Application log, under the source
+\c{KiTTY++_agent}. Any program can add events there, but none can remove
+or reorder the events written. A log file cut at its end, or replaced as
+a whole, meets them.
+
+The check: \c{kageant -verifylog} \e{file}, or \q{Verify} in the agent
+log window (the report in the record box, its last line under the list).
+It reads the file, its rotated generations and the anchors in this
+computer's logs. Every other agent event there is checked too: each ends
+with \c{seq}, \c{sig}, \c{ts} and \c{prev}, so its signed line is rebuilt
+from the event alone. An event not signed by the key of its run is
+reported as forged or edited. An event of the run whose line no file holds,
+or whose line differs, is a problem too. \c{-anchors} \e{file.evtx} takes them from an exported
+log instead. Each problem is a line of its own, the first one first,
+up to 100 lines. The problems after them are counted:
+
+\c kageant.log line 912 (seq 4410, 2026-11-01T09:12:03Z): the
+\c   record was changed - the next line holds another hash for it.
+\c kageant.log: 2 records missing between seq 4410 and 4413.
+\c kageant.log ends at seq 5020, the Windows Event Log
+\c   (Application, source KiTTY++_agent) holds seq 5100 from
+\c   2026-11-01T10:00:00Z: 80 records cut off.
+\c Chain BROKEN: 3 problems, the first at kageant.log line 912.
+
+Other problems: a signature that does not match, a record without a
+signature, records out of order, a record without chain fields inside a
+run, line ends that are not CRLF, a
+generation missing between two others or deleted before its time (the
+files of the last \q{Generations} rotations must be on disk), an anchor
+in the Windows Event Log not signed by the key of its run, a run whose
+key in the file differs from the one in the Windows Event Log, a file
+replaced by another run's.
+
+Notes, which leave the chain intact: the records before the chain
+started (an older kageant wrote them), the earlier records rotated out,
+an incomplete record of a crash, a run that ended without a stop record,
+the \c{seq} range after the last anchor (signed, but a cut there cannot be
+seen).
+
+Exit code 0: \q{Chain intact, every record signed}. 1: \q{Chain
+BROKEN}. 2: \q{Chain NOT VERIFIED} - the Windows Event Log cannot be
+read, a run's anchors rolled out of it, or no anchor confirms a run's
+key. Without the anchors a cut at the end of the file or a replaced file
+cannot be seen: the check ends with 2 then, never with \q{intact}. An
+administrator can clear the Windows Event Log, so only anchors forwarded
+off the computer (Windows Event Forwarding) are out of the reach of every
+account on it.
 
 \H{pageant-cmdline} The kageant command line
 
@@ -440,14 +523,16 @@ and puts up the confirmation itself.
 \S{pageant-cmdline-report} Reports and exit codes
 
 From a command prompt or PowerShell, kageant writes its reports to that
-window: the results of \c{-h}, \c{-d}, \c{-D}, \c{-R} and \c{-l},
-the destination rules of the keys it added, its errors, and \c{-help}.
+window: the results of \c{-h}, \c{-d}, \c{-D}, \c{-R}, \c{-l} and
+\c{-verifylog} (\k{pageant-logchain}), the destination rules of the keys
+it added, its errors, and \c{-help}.
 Its output can be redirected to a file. Started without a console (a
 shortcut, the Run box), an error shows a message box. A result shows
 nothing then (\c{-l} a message box). The exit code is 1 when an option
 is wrong, a \c{-h} destination is refused or a key of it is not added, a
 key of \c{-d} or \c{-D} is not removed, or \c{-R} does not remove the
-rules. It is 0 otherwise.
+rules. It is 0 otherwise. \c{-verifylog} ends with its own: 0 intact, 1
+broken, 2 cannot verify.
 
 \S{pageant-cmdline-command} Making kageant run another program
 

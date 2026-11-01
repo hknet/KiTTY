@@ -356,7 +356,7 @@ char *kitty_logkeep_run(const Filename *configured, const Filename *active,
             v[0] = nfiles_s; v[1] = kb_s; v[2] = days_s; v[3] = mb_s;
             v[4] = disp;
             kitty_wev_suite(KITTY_EV_LOG_RETENTION, EVENTLOG_INFORMATION_TYPE,
-                            v, 5);
+                            "files kb days mb pattern", v, 5);
         }
         sfree(rd);
         sfree(rm);

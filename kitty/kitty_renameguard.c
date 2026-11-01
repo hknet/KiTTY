@@ -81,7 +81,8 @@ static void kg_eventlog(const char *check, const char *found)
     v[0] = check;
     v[1] = found;
     v[2] = path ? path : "";
-    kitty_wev_suite(KITTY_EV_PROGRAM_REFUSED, EVENTLOG_ERROR_TYPE, v, 3);
+    kitty_wev_suite(KITTY_EV_PROGRAM_REFUSED, EVENTLOG_ERROR_TYPE,
+                    "check found program", v, 3);
     sfree(path);
 }
 

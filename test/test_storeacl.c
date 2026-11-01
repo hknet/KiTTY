@@ -54,10 +54,11 @@ static char *strf(const char *fmt, ...)
 
 static int nevents = 0;
 static char *lastevent, *lastpath;
-void kitty_wev_suite(unsigned id, unsigned type, const char *const *vals,
-                     int n)
+void kitty_wev_suite(unsigned id, unsigned type, const char *fields,
+                     const char *const *vals, int n)
 {
     (void)type;
+    (void)fields;
     nevents++;
     free(lastevent);
     free(lastpath);

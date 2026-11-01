@@ -55,6 +55,11 @@ otherwise to the file only. An explicit setting (section 2) always wins.
 `Windows Event Log` or `file and Windows Event Log` without the system MSI
 writes to the Application log.
 
+With the agent log on, the anchors of its chain (event ID 171) go to the
+Windows Event Log with every destination, `file` included: to
+`KiTTY++_Agent` where it exists, else to the Application log. kageant's
+settings show this under the Log page (section 7).
+
 ## 2. Turning it on
 
 ### kitty.exe, kitty_tel, klink/kscp/ksftp, kittygen
@@ -160,7 +165,7 @@ The IDs:
 | Range | Source | Records |
 |---|---|---|
 | 0 | `KiTTY++` | text only, no longer written: listed for the records of earlier versions |
-| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), refused request (103), refused by a key's destination rules (104), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), rules changed in the rule editor (116), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), log rotation (170) |
+| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), refused request (103), refused by a key's destination rules (104), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), rules changed in the rule editor (116), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), log rotation (170), log chain anchor (171), a record repeated (172) |
 | 200-299 | `KiTTY++_kitty` | session opened (200) and closed (201), host key known (210), new (211), mismatch (212), host key update (213), login succeeded (220) and failed (221), proxy used (225), far-end request refused (230), file transferred (240) and failed (241) - ZModem and kitten transfers |
 | 300-399 | `KiTTY++_cli` | 300-325 as 200-225; file transferred (330) and failed (331) |
 | 400-499 | `KiTTY++_kittygen` | key generated (400), private key saved (401), public key saved (402), passphrase changed (403) |
@@ -193,6 +198,15 @@ Warning, 900 is Error, the rest are classified as Information.
   in `restrict`.
 - **Serial lines:** `proto` `serial`, `host` the line (`COM3`), `port` the
   speed.
+- **The agent log's chain (kageant):** every agent record 100-172 ends with
+  `seq` (its line in the chain of the agent log file), `sig` (the signature
+  of that line), `ts` and `prev` (the line's time and the hash of the line
+  before it), all four empty when the file is not written. The event alone
+  gives back the signed line (section 7).
+- **Repeated records (kageant):** a record with the same kind and fields as
+  the last one written in full, the time aside, is counted and not written.
+  Event ID 172 (`repeated`) stands for the repeats: `count`, the time of the
+  `first` and the `last` repeat, and `of`, the `seq` of the record repeated.
 
 The full list - every ID with its fields in order, and the meaning and values
 of each field - is in [EVENT-IDS.md](EVENT-IDS.md), and the same list is in
@@ -217,6 +231,15 @@ record.
 
 A `Get-WinEvent` query that matches nothing ends in an error ("No events were
 found that match the specified selection criteria."), not in empty output.
+
+**Positions never change.** A field keeps its position (`%2`, `%3`, ...)
+for as long as its ID exists: positions are never reordered or reused, a new
+field only takes a new position at the end of its ID's list. Section 8 has
+every position of every ID. Where no message table is registered (the
+Application log, without the system MSI) that table is the mapping of the
+insertion strings. The build holds the writers, the message texts and the
+manual to the one table in the source. It holds every list to the one of
+the last release (`docs/event-fields-baseline.txt`).
 
 ## 5. Read access
 
@@ -730,3 +753,1017 @@ Never worked. `localhost` as `<Address>` is refused (LastError 32, "The
 request is not supported."; with a non-administrator account LastError 5,
 "Access is denied."); by name or address the collector got 0x80338012, with
 every credential type and group membership tried. Use two machines.
+
+## 7. The agent log's chain and its anchors
+
+kageant chains the lines of the agent log file: every line ends with `seq`
+(a counter over the whole log, continued across runs and files), `prev`
+(the SHA-256 of the line before it, exactly as on disk, base64) and `sig`.
+`sig` is an Ed25519 signature over the line up to its `sig` field, `prev`
+included, with a key kageant makes at its start and holds in its memory
+only. At its start, at each rotation, at a stop, every 15 minutes while
+records were written and before a change of `agentlog`, `agentlogpath` or
+`agentlogsink` takes effect, kageant writes an anchor record
+(`ev="logchain"`, event ID 171). The run's public key is the anchor's
+`logkey`. A run that has ended can never be signed again.
+
+A flood of identical records costs one signature: a record with the same
+kind and fields as the last one written in full, the time aside, is
+counted, not written. The summary record `ev="repeated"` (event ID 172)
+stands for the repeats: `count`, `first` and `last` (the time of the first
+and the last repeat) and `of` (the `seq` of the record repeated). It is
+written before the next different record, a minute after the first repeat
+or before an anchor (a rotation and the stop included). It is chained and
+signed as every other record.
+
+Every anchor also goes to the Windows Event Log (KiTTY++_Agent, source
+KiTTY++_agent) where the system MSI registered that log, else to the Windows
+Event Log (Application, source KiTTY++_agent) - with every `agentlogsink`
+setting, `file` included. Any program can add events under the source, but
+none can remove or reorder the ones written: a file cut at its end, or
+replaced as a whole, meets the anchors there.
+
+`kageant -verifylog <file>` checks the file, its rotated generations and the
+anchors in this computer's logs (`-anchors <file.evtx>`: an exported log
+instead). Exit code 0 intact, 1 broken, 2 cannot verify. The **Verify**
+button of the agent log window runs the same check. The kageant manual
+lists the report lines.
+
+Limits:
+
+- The records after the last anchor are signed, but no anchor pins them: a
+  cut after the last anchor cannot be seen. The report lists their `seq`
+  range.
+- Without the anchors (the Event Log cannot be read, or they rolled out) a
+  cut at the end or a replaced file cannot be seen. The check then ends
+  with exit code 2, never with "intact".
+- An event is checked from the Windows Event Log alone (below). Which run
+  signed it shows in the anchors: the `logkey` of the run's `start` or
+  `resumed` anchor (171) whose time span holds the event.
+- An administrator can clear the log (System log, event 104 of
+  Microsoft-Windows-Eventlog) or edit an exported file. Only events already
+  forwarded off the computer (section 6) are out of reach.
+
+```powershell
+Get-WinEvent -LogName Application -FilterXPath "*[System[Provider[@Name='KiTTY++_agent'] and EventID=171]]"
+kageant -verifylog "$env:LOCALAPPDATA\kapper.net\KiTTY\kageant.log"
+```
+
+A line's signature covers its `prev`, so one valid signature binds every
+line of the unbroken chain before it under the same run key. `kageant
+-verifylog` therefore checks the signature of the last line of each such
+stretch (the line before a break of the chain or a change of run key, and a
+file's last line). An event in the Windows Event Log that is not its line
+in the file is checked by its own signature. A stretch whose last signature does
+not fit is checked line by line, so the report names each line that does
+not fit. For a full log (20 MB, 4 files) the checks take under a second.
+Reading its events from the Windows Event Log comes on top.
+The Verify button runs on a thread of its own, so kageant goes on
+answering meanwhile.
+
+`kageant -verifylog` also reads every other agent event of those logs
+(each ID of 100-172 but 171). An event that is its line in the file passes. An event signed by
+a run of another log file is that log's. An event signed by a run of this
+file whose line no file holds is reported, and so is one that differs from
+its line. An event signed by no run known, written while a run of this file
+was writing, is reported as forged or edited.
+
+### Checking one event from the Windows Event Log alone
+
+Every agent event (100-172) carries `%1` = the kind, then the fields of its
+ID in the order of section 8, ending with `seq`, `sig`, `ts` and `prev`. The
+signed bytes are the record's line in the agent log file up to its `sig`
+field. They are rebuilt from the event:
+
+1. Take the event's strings in order: `%1` is the kind, `%2` onwards the
+   fields with the labels of section 8.
+2. Start with `ts=`, the value of `ts`, a space, `ev="`, the kind, `"`.
+3. For each field in section 8's order, `seq`, `sig`, `ts` and `prev` left
+   out: when its string is not empty, add a space, the label, `="`, the
+   string with every `"` doubled, `"`. An empty string adds nothing.
+4. Add ` seq="`, the value of `seq`, `" prev="`, the value of `prev`, `"`.
+5. The bytes are the result in the computer's ANSI code page (the text
+   kageant wrote), with no line end. The strings hold no control
+   characters: kageant wrote each as `?`.
+6. `sig` is base64 of a 64-byte Ed25519 signature of those bytes. The key
+   is the `logkey` (base64, 32 bytes) of the run: the `start` or `resumed`
+   anchor (171) of that log file before the event. An anchor checks the
+   same way, by its own `logkey`.
+
+Example, event 110 (`add`): `%2 fp` = `ssh-ed25519 255
+SHA256:l9+TL7y3IbXVDDFm6grzb/8NwJglZ4ckgviz7wG+3yQ`, `%3 comment` = `my
+"work" key`, `%4 result` = `done`, `%5 reason` = `ipc`, `%6 req` =
+`ssh-add.exe`, `%7 reqpath` = `C:\Windows\System32\OpenSSH\ssh-add.exe`,
+`%8 pid` = `4711`, `%9 path` and `%10 restrict` empty, `%11 seq` = `42`,
+`%12 sig` = 88 base64 characters, `%13 ts` = `2026-11-01T10:00:00Z`, `%14
+prev` = `Px01AuVcwD/2pxrLL2ldwMPBF8vBpnVq6Uy/r/OuEgM=`. The signed bytes
+(one line):
+
+```
+ts=2026-11-01T10:00:00Z ev="add" fp="ssh-ed25519 255 SHA256:l9+TL7y3IbXVDDFm6grzb/8NwJglZ4ckgviz7wG+3yQ" comment="my ""work"" key" result="done" reason="ipc" req="ssh-add.exe" reqpath="C:\Windows\System32\OpenSSH\ssh-add.exe" pid="4711" seq="42" prev="Px01AuVcwD/2pxrLL2ldwMPBF8vBpnVq6Uy/r/OuEgM="
+```
+
+The line in the file is the same text, then ` sig="` and the value of `%12`.
+`%12` decoded must be a valid Ed25519 signature of the line above under the
+run's `logkey`. Else the event was edited, or written by a program without
+the run's key.
+
+## 8. The fields of each event ID
+
+Generated from the table in `kitty/kitty_eventids.h`. `%1` is the kind of
+every record, the fields follow from `%2` on. Positions are never reordered
+or reused (section 4).
+
+<!-- BEGIN field tables generated by tools/check-kitty-events.py --write-appendix -->
+### 100 sign
+
+Source `KiTTY++_agent`, `%1` = `sign`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; allowed, denied |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `dest` | the server the key is used for, from the client's verified session-bind: the hash of its host key (SHA256:...), then its host names - the one the client sent after the binding first, marked (client), then the ones found in the host-key store and known_hosts, five in all, +N for more; empty without a session-bind |
+| `%10` | `fwd` | the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none |
+| `%11` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%12` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%13` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%14` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 101 confirm
+
+Source `KiTTY++_agent`, `%1` = `confirm`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; allowed, denied |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `dest` | the server the key is used for, from the client's verified session-bind: the hash of its host key (SHA256:...), then its host names - the one the client sent after the binding first, marked (client), then the ones found in the host-key store and known_hosts, five in all, +N for more; empty without a session-bind |
+| `%10` | `fwd` | the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none |
+| `%11` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%12` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%13` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%14` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 102 session-bind
+
+Source `KiTTY++_agent`, `%1` = `session-bind`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `result` | the outcome; accepted |
+| `%3` | `dest` | the server the client bound to, written the same way without the client's name |
+| `%4` | `forwarding` | yes when the client bound the connection for agent forwarding, else no |
+| `%5` | `req` | the file name of the program that asked the agent |
+| `%6` | `reqpath` | that program's full path |
+| `%7` | `pid` | the process that asked the agent, empty when none did |
+| `%8` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%9` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%10` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%11` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 103 request
+
+Source `KiTTY++_agent`, `%1` = `request`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `result` | the outcome; refused |
+| `%3` | `reason` | the agent's reason as text (key not found, window-messages - a request by window messages refused by allowwmcopydata, unrecognised message, key usage not confirmed by user, ...) |
+| `%4` | `req` | the file name of the program that asked the agent |
+| `%5` | `reqpath` | that program's full path |
+| `%6` | `pid` | the process that asked the agent, empty when none did |
+| `%7` | `dest` | the server of the connection's verified session-bind, written the same way, empty without one |
+| `%8` | `fwd` | the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none |
+| `%9` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%10` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%11` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%12` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 104 restricted
+
+Source `KiTTY++_agent`, `%1` = `restricted`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; sign-refused, remove-refused, store-damaged (the rule file cannot be read: every key is refused over the pipe), keys-added (known_hosts turned on as a host-key source: host keys found there added to the key's 'fixed list' destinations), no-key-offered (the key list a program received was empty: the destination rules left out every key kageant holds, the record without fp, comment and rule) |
+| `%5` | `reason` | a token - unbound (no session-bind), bind-failed, not-userauth (the data to sign is no login for the key), destination (no rule permits the server), forwarding-hop, session-id, hostkey, store-damaged, no-port (a CA destination's Valid hosts has a port condition, the client sent no port), known_hosts (result keys-added); for result no-key-offered one of destination, forwarding-hop (the last session-bind is for forwarding), bind-failed, store-damaged; for result store-damaged the file and why it cannot be read, as text |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `dest` | the server of the connection's verified session-bind, written the same way, empty without one |
+| `%10` | `fwd` | the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none |
+| `%11` | `rule` | the key's destination rules: each as host name, then the hash of its first host key (SHA256:..., CA SHA256:... for a CA key) and +N for more keys, user@ in front for a user, from-host > in front for use through a forwarded agent, separated by a comma; empty when the rule file cannot be read |
+| `%12` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%13` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%14` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%15` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 110 add
+
+Source `KiTTY++_agent`, `%1` = `add`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; done, blocked |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `path` | the key file |
+| `%10` | `restrict` | the key's destination rules, written as in rule; empty for a key without rules (116: every rule of the key removed) |
+| `%11` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%12` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%13` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%14` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 111 loadkey
+
+Source `KiTTY++_agent`, `%1` = `loadkey`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `path` | the key file |
+| `%3` | `result` | the outcome; loaded, failed, fp-refused, not-verified |
+| `%4` | `enc` | whether the key file has a passphrase; values: password, blank |
+| `%5` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%6` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%7` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%8` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 112 forget-path
+
+Source `KiTTY++_agent`, `%1` = `forget-path`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `path` | the key file |
+| `%3` | `result` | the outcome; forgotten |
+| `%4` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%5` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%6` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%7` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 113 retry
+
+Source `KiTTY++_agent`, `%1` = `retry`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `trigger` | what started the retry; values: button, device-arrival |
+| `%3` | `loaded` | startup keys loaded |
+| `%4` | `refused` | startup keys refused |
+| `%5` | `absent` | startup keys whose file was not there |
+| `%6` | `broken` | startup keys whose file could not be read |
+| `%7` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%8` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%9` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%10` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 114 remove
+
+Source `KiTTY++_agent`, `%1` = `remove`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; done, blocked |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%10` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%11` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%12` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 115 remove-all
+
+Source `KiTTY++_agent`, `%1` = `remove-all`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; done, blocked |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%10` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%11` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%12` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 116 rules
+
+Source `KiTTY++_agent`, `%1` = `rules`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; changed (the rule editor's OK changed the key's destination rules), removed, refused (kageant -R: every rule of the key removed after the confirmation, or kept - No, Windows Hello refused, no interactive desktop) |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `restrict` | the key's destination rules, written as in rule; empty for a key without rules (116: every rule of the key removed) |
+| `%10` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%11` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%12` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%13` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 120 lock
+
+Source `KiTTY++_agent`, `%1` = `lock`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; done, refused, waiting, unlock-shut, shut, blocked |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%10` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%11` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%12` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 121 unlock
+
+Source `KiTTY++_agent`, `%1` = `unlock`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; done, refused, waiting, unlock-shut, shut, blocked |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%10` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%11` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%12` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 130 hello-enrol
+
+Source `KiTTY++_agent`, `%1` = `hello-enrol`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `path` | the key file |
+| `%3` | `result` | the outcome; added, denied, failed |
+| `%4` | `detail` | the detail Windows Hello reported |
+| `%5` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%6` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%7` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%8` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 131 hello-protect
+
+Source `KiTTY++_agent`, `%1` = `hello-protect`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `path` | the key file |
+| `%3` | `dest` | the protected copy written |
+| `%4` | `result` | the outcome; protected, denied, failed, startup-entry-replaced |
+| `%5` | `detail` | 130, 132: the detail Windows Hello reported; 230: the refusals the rate limit merged into this record (a number), open (a far2l clipboard open), the transfer id or the file name |
+| `%6` | `err` | the error text when the protection failed |
+| `%7` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%8` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%9` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%10` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 132 hello-unlock
+
+Source `KiTTY++_agent`, `%1` = `hello-unlock`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `path` | the key file |
+| `%3` | `result` | the outcome; hello, hello-cached, recovery-passphrase, printed-secret, denied, no-door-here, failed |
+| `%4` | `detail` | the detail Windows Hello reported |
+| `%5` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%6` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%7` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%8` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 140 keyfile-warning
+
+Source `KiTTY++_agent`, `%1` = `keyfile-warning`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `path` | the key file |
+| `%3` | `warning` | weak-protection or old-format |
+| `%4` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%5` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%6` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%7` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 150 reencrypt-all
+
+Source `KiTTY++_agent`, `%1` = `reencrypt-all`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; done, failed |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%10` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%11` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%12` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 151 reencrypt
+
+Source `KiTTY++_agent`, `%1` = `reencrypt`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; done, failed |
+| `%5` | `reason` | a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%10` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%11` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%12` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 152 decrypt
+
+Source `KiTTY++_agent`, `%1` = `decrypt`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; done, failed (a wrong passphrase), cancelled |
+| `%5` | `trigger` | what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt) |
+| `%6` | `req` | the file name of the program that asked the agent |
+| `%7` | `reqpath` | that program's full path |
+| `%8` | `pid` | the process that asked the agent, empty when none did |
+| `%9` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%10` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%11` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%12` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 160 agent
+
+Source `KiTTY++_agent`, `%1` = `agent`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `result` | the outcome; start, stop |
+| `%3` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%4` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%5` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%6` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 170 logrotate
+
+Source `KiTTY++_agent`, `%1` = `logrotate`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `result` | the outcome; failed |
+| `%3` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%4` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%5` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%6` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 171 logchain
+
+Source `KiTTY++_agent`, `%1` = `logchain`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `result` | the outcome; start, resumed (after a crash fragment), rotate, head (every 15 minutes with new records), stop, config (before a change of agentlog, agentlogpath or agentlogsink) |
+| `%3` | `run` | the id of this kageant run, 32 hex digits |
+| `%4` | `logkey` | the public Ed25519 key of this kageant run (base64), made at its start and held in its memory only. It signs every record of the run |
+| `%5` | `file` | the agent log file the chain is written to, its full path |
+| `%6` | `fragment` | resumed: the bytes of the incomplete record a crash left at the end of the file, closed with CRLF before this record |
+| `%7` | `value` | config: the setting about to change and its new value: agentlog=no, agentlog=yes, agentlogpath= the new path (empty for the default) or agentlogsink= file, eventlog or both |
+| `%8` | `rotation` | rotate: the number of this rotation of the log, counted from its first file |
+| `%9` | `keep` | rotate: agentlogkeep at this rotation, the rotated generations kept on disk |
+| `%10` | `expired` | rotate: the rotated generations the age rule (agentlogexpiredays) deleted at this rotation, empty for none |
+| `%11` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%12` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%13` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%14` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written; the head the anchor pins |
+
+### 172 repeated
+
+Source `KiTTY++_agent`, `%1` = `repeated`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `count` | how often the record of seq of was repeated after it was written in full or after the last 172 for it: every field the same, the time aside |
+| `%3` | `first` | the time of the first repeat counted (UTC, as ts in the file) |
+| `%4` | `last` | the time of the last repeat counted (UTC, as ts in the file) |
+| `%5` | `of` | the seq of the record repeated, empty when the file is not written |
+| `%6` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%7` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%8` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%9` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 200 session-open
+
+Source `KiTTY++_kitty`, `%1` = `session-open`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%5` | `proto` | the protocol; values: ssh, telnet, raw, rlogin, supdup, serial |
+| `%6` | `addr` | the address connected to (a proxy's when one is used); a serial line's name |
+| `%7` | `from` | the local end of the connection, address and port |
+| `%8` | `pid` | the process writing the record |
+
+### 201 session-close
+
+Source `KiTTY++_kitty`, `%1` = `session-close`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%5` | `result` | the outcome; closed, remote-closed, fatal, user |
+| `%6` | `reason` | the fatal error's text |
+| `%7` | `exitcode` | the remote command's exit code |
+| `%8` | `pid` | the process writing the record |
+
+### 210 hostkey-known
+
+Source `KiTTY++_kitty`, `%1` = `hostkey-known`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
+| `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%6` | `basis` | how the host key was known; values: cache, manual, ca |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+
+### 211 hostkey-new
+
+Source `KiTTY++_kitty`, `%1` = `hostkey-new`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
+| `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%6` | `result` | the outcome; accept-new, accepted, refused |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+
+### 212 hostkey-mismatch
+
+Source `KiTTY++_kitty`, `%1` = `hostkey-mismatch`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
+| `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%6` | `result` | the outcome; accept-new, accepted, refused |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+
+### 213 hostkey-update
+
+Source `KiTTY++_kitty`, `%1` = `hostkey-update`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
+| `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%6` | `result` | the outcome; stored, added (beside a stored key of its type), replaced, made-primary, removed, proof-failed, refused (the server refused the proof request), over-limit (more keys of one type than hostkeyspertype), declined (Change nothing, or no, with updatehostkeys=ask), unanswered (no answer with updatehostkeys=ask) |
+| `%7` | `oldfp` | the hash of the stored key a replaced key took the place of, for added the hash of key 1 of its type (SHA256:...), empty for every other result |
+| `%8` | `pid` | the process writing the record |
+| `%9` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+
+### 220 auth-ok
+
+Source `KiTTY++_kitty`, `%1` = `auth-ok`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
+| `%5` | `method` | the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident |
+| `%6` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+| `%9` | `for` | what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's |
+
+### 221 auth-failed
+
+Source `KiTTY++_kitty`, `%1` = `auth-failed`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
+| `%5` | `method` | the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident |
+| `%6` | `reason` | access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text |
+| `%7` | `methods` | the methods the server still offered, comma-separated (over SSH-1 from its authentication mask: publickey, password, tis, cryptocard); empty for a proxy's login |
+| `%8` | `pid` | the process writing the record |
+| `%9` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+| `%10` | `for` | what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's |
+
+### 225 proxy-used
+
+Source `KiTTY++_kitty`, `%1` = `proxy-used`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `proxy` | the proxy's type: http, socks4, socks5, telnet, local-command |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; local-command: the program's file name |
+| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; local-command: empty |
+| `%5` | `user` | the user name sent to the proxy, empty when none |
+| `%6` | `credentials` | yes when a user name or password went to the proxy, else no |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `for` | what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's |
+
+### 230 farend-refused
+
+Source `KiTTY++_kitty`, `%1` = `farend-refused`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%4` | `request` | what the far end asked for; values: osc52-read, osc5522-read, far2l-clipboard, file-read, file-write |
+| `%5` | `reason` | the reason as text |
+| `%6` | `detail` | the refusals the rate limit merged into this record (a number), open (a far2l clipboard open), the transfer id or the file name |
+| `%7` | `pid` | the process writing the record |
+
+### 240 transfer-done
+
+Source `KiTTY++_kitty`, `%1` = `transfer-done`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%5` | `user` | the user name of the login (a proxy's: the name sent to it) |
+| `%6` | `method` | zmodem or kitten-osc5113 |
+| `%7` | `direction` | put (upload, to the server) or get (download, from it) |
+| `%8` | `local` | the file's full local path; a 331 for a run that failed before any file: the local path as given |
+| `%9` | `remote` | the file's remote path - in full where the protocol names it (sftp), else as the server sent it (scp protocol: the name; ZModem download: the name rz announced, or empty; kitten: the far end's name) |
+| `%10` | `bytes` | the file's bytes moved; empty when not known |
+| `%11` | `pid` | the process writing the record |
+
+### 241 transfer-failed
+
+Source `KiTTY++_kitty`, `%1` = `transfer-failed`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%5` | `user` | the user name of the login (a proxy's: the name sent to it) |
+| `%6` | `method` | zmodem or kitten-osc5113 |
+| `%7` | `direction` | put (upload, to the server) or get (download, from it) |
+| `%8` | `local` | the file's full local path; a 331 for a run that failed before any file: the local path as given |
+| `%9` | `remote` | the file's remote path - in full where the protocol names it (sftp), else as the server sent it (scp protocol: the name; ZModem download: the name rz announced, or empty; kitten: the far end's name) |
+| `%10` | `bytes` | the file's bytes moved; empty when not known |
+| `%11` | `pid` | the process writing the record |
+| `%12` | `reason` | the reason as text |
+
+### 300 session-open
+
+Source `KiTTY++_cli`, `%1` = `session-open`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%5` | `proto` | the protocol; values: ssh, telnet, raw, rlogin, supdup, serial |
+| `%6` | `addr` | the address connected to (a proxy's when one is used); a serial line's name |
+| `%7` | `from` | the local end of the connection, address and port |
+| `%8` | `pid` | the process writing the record |
+
+### 301 session-close
+
+Source `KiTTY++_cli`, `%1` = `session-close`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%5` | `result` | the outcome; closed, remote-closed, fatal, user |
+| `%6` | `reason` | the fatal error's text |
+| `%7` | `exitcode` | the tool's own exit code; empty when there is none |
+| `%8` | `pid` | the process writing the record |
+
+### 310 hostkey-known
+
+Source `KiTTY++_cli`, `%1` = `hostkey-known`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
+| `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%6` | `basis` | how the host key was known; values: cache, manual, ca |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+
+### 311 hostkey-new
+
+Source `KiTTY++_cli`, `%1` = `hostkey-new`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
+| `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%6` | `result` | the outcome; accept-new, accepted, refused |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+
+### 312 hostkey-mismatch
+
+Source `KiTTY++_cli`, `%1` = `hostkey-mismatch`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
+| `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%6` | `result` | the outcome; accept-new, accepted, refused |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+
+### 313 hostkey-update
+
+Source `KiTTY++_cli`, `%1` = `hostkey-update`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
+| `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%6` | `result` | the outcome; stored, added (beside a stored key of its type), replaced, made-primary, removed, proof-failed, refused (the server refused the proof request), over-limit (more keys of one type than hostkeyspertype), declined (Change nothing, or no, with updatehostkeys=ask), unanswered (no answer with updatehostkeys=ask) |
+| `%7` | `oldfp` | the hash of the stored key a replaced key took the place of, for added the hash of key 1 of its type (SHA256:...), empty for every other result |
+| `%8` | `pid` | the process writing the record |
+| `%9` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+
+### 320 auth-ok
+
+Source `KiTTY++_cli`, `%1` = `auth-ok`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
+| `%5` | `method` | the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident |
+| `%6` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+| `%9` | `for` | what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's |
+
+### 321 auth-failed
+
+Source `KiTTY++_cli`, `%1` = `auth-failed`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
+| `%5` | `method` | the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident |
+| `%6` | `reason` | access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text |
+| `%7` | `methods` | the methods the server still offered, comma-separated (over SSH-1 from its authentication mask: publickey, password, tis, cryptocard); empty for a proxy's login |
+| `%8` | `pid` | the process writing the record |
+| `%9` | `proxy` | empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4 |
+| `%10` | `for` | what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's |
+
+### 325 proxy-used
+
+Source `KiTTY++_cli`, `%1` = `proxy-used`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `proxy` | the proxy's type: http, socks4, socks5, telnet, local-command |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; local-command: the program's file name |
+| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; local-command: empty |
+| `%5` | `user` | the user name sent to the proxy, empty when none |
+| `%6` | `credentials` | yes when a user name or password went to the proxy, else no |
+| `%7` | `pid` | the process writing the record |
+| `%8` | `for` | what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's |
+
+### 330 transfer-done
+
+Source `KiTTY++_cli`, `%1` = `transfer-done`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
+| `%5` | `direction` | put (upload, to the server) or get (download, from it) |
+| `%6` | `local` | the file's full local path; a 331 for a run that failed before any file: the local path as given |
+| `%7` | `remote` | the file's remote path - in full where the protocol names it (sftp), else as the server sent it (scp protocol: the name; ZModem download: the name rz announced, or empty; kitten: the far end's name) |
+| `%8` | `bytes` | the file's bytes moved; empty when not known |
+| `%9` | `pid` | the process writing the record |
+
+### 331 transfer-failed
+
+Source `KiTTY++_cli`, `%1` = `transfer-failed`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
+| `%5` | `direction` | put (upload, to the server) or get (download, from it) |
+| `%6` | `local` | the file's full local path; a 331 for a run that failed before any file: the local path as given |
+| `%7` | `remote` | the file's remote path - in full where the protocol names it (sftp), else as the server sent it (scp protocol: the name; ZModem download: the name rz announced, or empty; kitten: the far end's name) |
+| `%8` | `bytes` | the file's bytes moved; empty when not known |
+| `%9` | `pid` | the process writing the record |
+| `%10` | `reason` | the reason as text |
+
+### 400 key-generated
+
+Source `KiTTY++_kittygen`, `%1` = `key-generated`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `tool` | kittygen or kittygen-cli |
+| `%3` | `keytype` | the key's SSH type |
+| `%4` | `bits` | the key size in bits (255 for Ed25519, the curve size for ECDSA) |
+| `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%6` | `comment` | of the key generated or saved |
+| `%7` | `pid` | the process writing the record |
+
+### 401 private-saved
+
+Source `KiTTY++_kittygen`, `%1` = `private-saved`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `tool` | kittygen or kittygen-cli |
+| `%3` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%4` | `comment` | of the key generated or saved |
+| `%5` | `path` | the file written |
+| `%6` | `format` | ppk3, ppk2, openssh, ssh.com or ssh1 |
+| `%7` | `protection` | none, passphrase or hello |
+| `%8` | `result` | the outcome; saved, failed |
+| `%9` | `reason` | the reason as text |
+| `%10` | `pid` | the process writing the record |
+
+### 402 public-saved
+
+Source `KiTTY++_kittygen`, `%1` = `public-saved`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `tool` | kittygen or kittygen-cli |
+| `%3` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%4` | `path` | the file written |
+| `%5` | `format` | rfc4716, openssh or ssh1 |
+| `%6` | `result` | the outcome; saved, failed |
+| `%7` | `reason` | the reason as text |
+| `%8` | `pid` | the process writing the record |
+
+### 403 passphrase-changed
+
+Source `KiTTY++_kittygen`, `%1` = `passphrase-changed`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `tool` | kittygen or kittygen-cli |
+| `%3` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
+| `%4` | `path` | the file written |
+| `%5` | `protection` | none, passphrase or hello |
+| `%6` | `pid` | the process writing the record |
+
+### 900 program-refused
+
+Source `KiTTY++`, `%1` = `program-refused`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `check` | the check that refused the program file; values: rename, signature, integrity |
+| `%3` | `found` | what the check found; rename: the program's file name; signature: bad digest, not signed, or signer: followed by the signer name; integrity: no stamp, truncated, bad stamp, modified or cannot check |
+| `%4` | `program` | the refused program file's path |
+
+### 901 log-retention
+
+Source `KiTTY++`, `%1` = `log-retention`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `files` | the log files deleted |
+| `%3` | `kb` | the kilobytes freed |
+| `%4` | `days` | LogKeepDays as set, 0 = off |
+| `%5` | `mb` | LogKeepMB as set, 0 = off |
+| `%6` | `pattern` | the folder and the log file name pattern searched |
+
+### 902 missing-features
+
+Source `KiTTY++`, `%1` = `missing-features`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `features` | the features this Windows lacks, comma-separated |
+| `%3` | `missing` | each missing entry point with its DLL and the feature it powers, separated by semicolons |
+
+### 903 session-save-failed
+
+Source `KiTTY++`, `%1` = `session-save-failed`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `session` | the saved session's name, empty when none was loaded |
+| `%3` | `path` | the session file |
+| `%4` | `reason` | the reason as text |
+
+### 904 store-rights-not-set
+
+Source `KiTTY++`, `%1` = `store-rights-not-set`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `path` | the folder or file created without the access rights |
+| `%3` | `reason` | share (a network share without access lists), fat (a volume without access lists) or the reason setting them failed, as text |
+
+### 905 app-file-warning
+
+Source `KiTTY++`, `%1` = `app-file-warning`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `path` | the program file the Applications panel marked red |
+| `%3` | `reason` | the reason for the red verdict, as the panel shows it |
+
+### 906 helper-program
+
+Source `KiTTY++`, `%1` = `helper-program`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `result` | the outcome; refused (not started), allowed (Yes in the question), declined (No, or the question closed) |
+| `%3` | `path` | the helper program's file |
+| `%4` | `reason` | why the file was not started (refused), or the signature line the question showed (allowed, declined) |
+
+### 907 session-log-not-written
+
+Source `KiTTY++`, `%1` = `session-log-not-written`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `path` | the session log file |
+
+<!-- END generated field tables -->

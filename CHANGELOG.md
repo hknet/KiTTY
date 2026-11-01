@@ -10,6 +10,16 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- kageant: the agent log is a chain. Every line carries `seq`, `prev`
+  (the hash of the line before it) and `sig`, its signature with a key
+  kageant holds in its memory only. The anchor records (event ID 171) go to
+  the Windows Event Log with every destination. `kageant -verifylog <file>`
+  and the agent log window's Verify button check the file and its
+  generations against those anchors (exit 0 intact, 1 broken, 2 cannot
+  verify). Every agent event 100-172 gains the fields `seq`, `sig`, `ts`
+  and `prev` at its end, so each event can be checked from the Windows
+  Event Log alone. A record repeating the one before it is counted, not
+  written: one record (event ID 172) holds the count.
 - Script bridge: another program hands a terminal a script over
   `WM_COPYDATA`, played by the script engine with the session's settings
   (RuTTY's AutoHotkey interface, rebuilt). At `[KiTTY] scriptbridge=prompt`

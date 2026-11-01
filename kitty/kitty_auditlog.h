@@ -16,13 +16,21 @@
  * be appended to any event at any time; parsers carry unknown keys.
  * Timestamps are UTC (the viewer renders local time).
  *
+ * Every line ends with seq="N" prev="<base64 SHA-256 of the line before>";
+ * an anchor record also with sig="<base64 Ed25519 signature>" over the
+ * bytes before ` sig="` (kitty_auditchain.h).
+ *
  * HONESTY: a local file is evidence, never proof - same-user code can
- * delete it. The Event Log is tamper-evident (a clear is itself an event);
- * real audit comes from forwarding it off the machine.
+ * delete it. The chain shows a changed, missing or added line up to the
+ * last anchor; the anchors in the Event Log show a cut or a replaced file
+ * (a clear of the Event Log is itself an event). Real audit comes from
+ * forwarding it off the machine.
  */
 
 #ifndef KITTY_AUDITLOG_H
 #define KITTY_AUDITLOG_H
+
+#include <stddef.h>
 
 /* The sinks, for kitty_audit_set_sinks. */
 #define KITTY_AUDIT_SINK_FILE      1
@@ -61,5 +69,33 @@ int kitty_audit_is_warning(const char *ev, const char *result);
  * kitty_auditlog.c (audit_kinds) and in windows/kitty_events.mc; a kind
  * not listed there goes to the file only (the build check refuses one). */
 void kitty_audit(const char *ev, ...);
+
+/*
+ * THE CHAIN (kitty_auditchain.h): while the file is written, every line
+ * carries seq, prev and sig, signed with a key made for this run and kept
+ * in this process's memory only. The anchor records (ev="logchain", event
+ * 171) go to the Windows Event Log whatever the sinks are. A record that
+ * repeats the last one written in full is counted, not written: a summary
+ * (ev="repeated", event 172) stands for the repeats. kageant is the one
+ * writer: a kageant started as a client of a running one never configures
+ * the log, so it writes nothing.
+ *
+ * The CSPRNG the run key is drawn from; set before the first configure.
+ */
+void kitty_audit_set_random(void (*fn)(void *buf, size_t len));
+/* This run's id (32 hex digits), NULL before the chain started. */
+const char *kitty_audit_run_id(void);
+/* A head anchor when records were written since the last anchor and
+ * KITTY_AUDITCHAIN_HEAD_MS have passed, and the summary of repeats counted
+ * KITTY_AUDITCHAIN_REPEAT_MS ago; kageant calls it every 10 seconds. */
+void kitty_audit_chain_tick(void);
+/* That interval in ms (a test build takes KITTY_LOGCHAIN_HEAD_MS). */
+unsigned long kitty_audit_chain_head_ms(void);
+/* A config anchor before a change of agentlog, agentlogpath or
+ * agentlogsink takes effect: value = "<setting>=<new value>". */
+void kitty_audit_chain_config(const char *value);
+/* The summary of repeats still counted, then the stop anchor, at an
+ * orderly exit after the last record; the run key is wiped. */
+void kitty_audit_chain_end(void);
 
 #endif /* KITTY_AUDITLOG_H */
