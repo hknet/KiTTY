@@ -2655,6 +2655,71 @@
 #define KT_RUTTY_NOTICE_READ_FAILED                  "Script not sent, file not read:\n%s"
 #define KT_RUTTY_NOTICE_TIMEOUT                      "Script stopped: no expected prompt within %d s.\n%s"
 
+/* kitty_scriptbridge.c: the script bridge (WM_COPYDATA ids 5-8), the Terminal
+ * Window's Event Log lines. Never a byte of the script or of the pattern. */
+#define KT_SBRIDGE_LABEL                             "the script bridge"
+#define KT_SBRIDGE_REFUSED_SCRIPTMODE                "script bridge refused: scriptmode=no in kitty.ini"
+#define KT_SBRIDGE_REFUSED_OFF                       "script bridge refused: scriptbridge=no in kitty.ini"
+#define KT_SBRIDGE_REFUSED_SIZE                      "script bridge refused: message of %lu bytes, " \
+        "the limit is %d"
+#define KT_SBRIDGE_REFUSED_MALFORMED                 "script bridge refused: malformed message (%s)"
+#define KT_SBRIDGE_WHY_NOKEY                         "no key before the first NUL byte"
+#define KT_SBRIDGE_WHY_EMPTY                         "empty script"
+#define KT_SBRIDGE_WHY_FLAG                          "_enable takes 1 or 0"
+#define KT_SBRIDGE_WHY_PATTERN                       "pattern over 255 bytes"
+#define KT_SBRIDGE_REFUSED_KEY                       "script bridge refused: key '%s' is not the key " \
+        "of this session ('%s')"
+#define KT_SBRIDGE_REFUSED_SESSION                   "script bridge refused: this session does not " \
+        "accept it (Session > Scripting, or the Tools > Accept script bridge toggle)"
+#define KT_SBRIDGE_REFUSED_ID                        "script bridge refused: id %lu is not an inbound message"
+#define KT_SBRIDGE_REFUSED_LEVEL                     "script bridge refused: %s needs scriptbridge=prompt " \
+        "in kitty.ini (this install: %s)"
+#define KT_SBRIDGE_REFUSED_NOSESSION                 "script bridge refused: no session is running"
+#define KT_SBRIDGE_ACCEPTED                          "script bridge: script of %d bytes accepted"
+#define KT_SBRIDGE_TARGET_NOWINDOW                   "script bridge refused: _enable without a window " \
+        "handle in wParam"
+#define KT_SBRIDGE_TARGET_SELF                       "script bridge refused: the _enable target is this terminal"
+#define KT_SBRIDGE_TARGET_UNCHECKED                  "script bridge refused: the _enable target in " \
+        "process %lu could not be checked"
+#define KT_SBRIDGE_TARGET_USER                       "script bridge refused: the _enable target in " \
+        "process %lu runs as another user"
+#define KT_SBRIDGE_TARGET_INTEGRITY                  "script bridge refused: the _enable target in " \
+        "process %lu runs at a lower integrity level"
+#define KT_SBRIDGE_BOUND                             "script bridge: prompt events go to window 0x%lx " \
+        "in process %lu"
+#define KT_SBRIDGE_PATTERN_SET                       "script bridge: prompt pattern set (%d alternatives)"
+#define KT_SBRIDGE_PATTERN_CLEARED                   "script bridge: prompt pattern cleared"
+#define KT_SBRIDGE_UNBOUND                           "script bridge: prompt events stopped, %s (%u sent)"
+#define KT_SBRIDGE_WHY_DISABLE                       "_enable 0 from the program"
+#define KT_SBRIDGE_WHY_LOST                          "the target window is gone"
+#define KT_SBRIDGE_WHY_TIMEOUT                       "no answer within 1000 ms"
+#define KT_SBRIDGE_WHY_OFF                           "the bridge or this session's arm is off"
+#define KT_SBRIDGE_WHY_REBIND                        "a new target"
+#define KT_SBRIDGE_QUEUE_FULL                        "script bridge: event queue full (256 KiB), events dropped"
+#define KT_SBRIDGE_WINDOW_ON                         "script bridge accepted for this window"
+#define KT_SBRIDGE_WINDOW_OFF                        "script bridge refused for this window"
+/* the Tools menu toggle (window.c) */
+#define KT_SYSMENU_ACCEPT_SCRIPTBRIDGE               "Accept script bri&dge (Session > Scripting)"
+/* Session > Scripting: the session's arm */
+#define KT_SCRIPTING_SCRIPT_BRIDGE                   "Script bridge (other programs)"
+#define KT_SCRIPTING_ACCEPT_SCRIPT_BRIDGE            "Accept script bridge messages for this session"
+#define KT_SCRIPTING_SCRIPT_BRIDGE_NOTE              "Another program can play a script here " \
+        "(Application > KiTTY++ Settings > Automation > Script bridge)."
+/* KiTTY++ Settings > Automation > Script bridge */
+#define KT_KSET_SB_TITLE                             "Script bridge: other programs drive the script engine"
+#define KT_KSET_SB_GROUP                             "Script bridge"
+#define KT_KSET_SB_LEVEL                             "Script bridge level:"
+#define KT_KSET_SB_LEVEL_NO                          "Off"
+#define KT_KSET_SB_LEVEL_INBOUND                     "Inbound: scripts in"
+#define KT_KSET_SB_LEVEL_PROMPT                      "Inbound + prompt event out"
+#define KT_KSET_SB_NOTE                              "A program of this user hands a script to a " \
+        "terminal over WM_COPYDATA. A session takes it only with Session > Scripting > " \
+        "\"Accept script bridge messages for this session\". Refusals go to the " \
+        "Terminal Window's Event Log."
+#define KT_KSET_SB_NOTE_PROMPT                       "Prompt event: the window that enabled it gets " \
+        "the matched pattern, never the session output."
+#define KT_KSET_SB_NOTE_BOUNDARY                     "Not a security boundary against programs of the same user."
+
 /* kitty_osc52.c: the clipboard-read permission dialog */
 #define KT_OSC52_SUMMARY                             "It would send %d character%s on %d line%s, starting \"%s\"..."
 #define KT_OSC52_SUMMARY_HIDDEN                      "\r\nThe rest is hidden until you press View."

@@ -188,6 +188,17 @@ CONF_OPTION(kitty_accept_broadcast,
     SAVE_KEYWORD("AcceptBroadcast"),
 )
 
+/* KiTTY: does THIS session accept the script bridge - another program
+ * handing its script engine a script, or binding the prompt event
+ * (kitty_scriptbridge.c)? Off by default. Works only while [KiTTY]
+ * scriptbridge is not "no" and scriptmode is not "no". Edited on
+ * Session > Scripting and by Tools > Accept script bridge. */
+CONF_OPTION(kitty_accept_scriptbridge,
+    VALUE_TYPE(BOOL),
+    DEFAULT_BOOL(false),
+    SAVE_KEYWORD("AcceptScriptBridge"),
+)
+
 /* KiTTY: the key THIS session listens for. Empty = the install's key
  * ([KiTTY] sendcmdgroup, generated when unset). Setting it here aims the
  * feature: give three sessions a shared key and only they answer, even where

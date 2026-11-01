@@ -97,6 +97,7 @@
 #define KI_SAV                              "sav"
 #define KI_SAVBACKUPCOUNT                   "savbackupcount"
 #define KI_SAVEMODE                         "savemode"
+#define KI_SCRIPTBRIDGE                     "scriptbridge"    /* [KiTTY] no|inbound|prompt (kitty_scriptbridge.c) */
 #define KI_SCRIPTFILEFILTER                 "scriptfilefilter"
 #define KI_SCRIPTMODE                       "scriptmode"
 #define KI_SENDCMDGROUP                     "sendcmdgroup"

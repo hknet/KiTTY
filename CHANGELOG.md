@@ -10,6 +10,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- Script bridge: another program hands a terminal a script over
+  `WM_COPYDATA`, played by the script engine with the session's settings
+  (RuTTY's AutoHotkey interface, rebuilt). At `[KiTTY] scriptbridge=prompt`
+  a window of that program also gets a message each time the prompt pattern
+  appears, the pattern only. Off by default and per session (Session >
+  Scripting). Every refusal is in the Terminal Window's Event Log.
 - Manage Sessions: folders and sessions get a place of their own by drag
   and drop between rows. A pin marks a row with a stored place. Reset Order
   in a folder's menu forgets the places of that level. The configuration

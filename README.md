@@ -208,7 +208,7 @@ If you got a related project to this KiTTY++ please notify the repo and will lin
   extensions originally by **Ivan Sorokin**, putty4far2l by **unxed**, the 0.78.5 port by
   **Ivan Shatsky**; the [far2l](https://github.com/elfmz/far2l) file manager by **elfmz** and contributors.
 - **RuTTY** © 2013-2014 Ernst Dijk — the scripting patch behind *Session → Scripting*
-  (`kitty/rutty/`).
+  (`kitty/kitty_rutty.c`).
 - This port keeps PuTTY's **MIT licence** — see [`LICENCE`](LICENCE).
 
 The original PuTTY source README is preserved as [`README`](README).

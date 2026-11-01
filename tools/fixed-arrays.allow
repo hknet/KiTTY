@@ -486,12 +486,6 @@ kitty/kitty_zmodem.c | zm_stderr_gotdata() | screen | 512 | helper stderr text s
 
 kitty/mini/mini.c | ini_main() | buf | 256 | mini.c self-test (ini_main), readINI(sizeof)
 
-kitty/rutty/script.h | struct scriptDATA | waitfor | script_cond_size | script condition text (rutty/script.c is not built)
-kitty/rutty/script.h | struct scriptDATA | halton | script_cond_size | script condition text (rutty/script.c is not built)
-kitty/rutty/script.h | struct scriptDATA | waitfor2 | script_cond_size | script condition text (rutty/script.c is not built)
-kitty/rutty/script.h | struct scriptDATA | remotedata | script_line_size | script remote data (rutty/script.c is not built)
-kitty/rutty/script.h | struct scriptDATA | localdata | script_line_size | script local data (rutty/script.c is not built)
-
 kitty/url/urlhack.c | urlhack_launch_url() | msg | 2600 | URL-open-failed text with the URL, snprintf to sizeof (display)
 
 kitty/winfont_fallback.c | (file) | g_bmp_map | 0x10000 | per-code-point cache of the Basic Multilingual Plane (int8_t, 65536 entries)

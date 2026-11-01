@@ -205,6 +205,7 @@ hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Logging" | hard-
 hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Logging" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Session/Scripting" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Scripting" | hard-coded before the check, move to kitty_text.h when the code is next changed
+hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Scripting" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Session/Broadcast" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_session.c | ctrl_getset "Session/Broadcast" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_session.c | ctrl_settitle "Session/Startup" | hard-coded before the check, move to kitty_text.h when the code is next changed

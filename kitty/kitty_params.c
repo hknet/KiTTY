@@ -67,6 +67,7 @@
 #include "mini/mini.h"
 #include "kitty_params.h"
 #include "kitty_hostkey_acceptnew.h"   /* autostoresshkey */
+#include "kitty_scriptbridge.h"   /* scriptbridge */
 #include "kitty_hostkeys00.h"   /* updatehostkeys */
 #include "kitty_hostkeys.h"     /* the store the host key update uses */
 #include "kitty_hk00_ui.h"      /* ... and its question and notice */
@@ -1033,6 +1034,11 @@ void LoadParameters( void ) {
 		else if( !stricmp(buffer,"vt100p") || !stricmp(buffer,"vt100+") )  SetFunkeysDefault( FUNKY_VT100P ) ;
 		else if( !stricmp(buffer,"sco") )                                  SetFunkeysDefault( FUNKY_SCO ) ;
 	}
+	/* [KiTTY] scriptbridge=no|inbound|prompt: other programs and the script
+	 * engine (kitty_scriptbridge.c). Read where Automation > Script bridge
+	 * writes it; an unknown word is off. */
+	if( ReadParameterN( INIT_SECTION, KI_SCRIPTBRIDGE, buffer, sizeof(buffer) ) )
+		kitty_sbridge_set_level_text( buffer ) ;
 	/* Same case-sensitivity note: exactly "namedproxy", value "hostname" or
 	 * "sessionorhostname" (the default). */
 	if( ReadParameterN( INIT_SECTION, KI_NAMEDPROXY, buffer, sizeof(buffer) ) ) {

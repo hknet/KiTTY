@@ -3648,6 +3648,14 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
      * are the Automation > Broadcast leaf now; the tracing switch went to
      * Application > Security (it traces more than the automation). */
     kbc_leaf(b);
+    /* Automation > Script bridge: the level of kitty_scriptbridge.c. Which
+     * sessions accept it is their own setting (Session > Scripting). */
+    ctrl_settitle(b, KSET_PATH("Automation/Script bridge"), KT_KSET_SB_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Automation/Script bridge"), "scriptbridge", KT_KSET_SB_GROUP);
+    KSET_DROPLIST(s, KT_KSET_SB_LEVEL, KI_SCRIPTBRIDGE, kitty_kset_scriptbridge);
+    ctrl_text(s, KT_KSET_SB_NOTE, HELPCTX(kitty_kset_scriptbridge));
+    ctrl_text(s, KT_KSET_SB_NOTE_PROMPT, HELPCTX(kitty_kset_scriptbridge));
+    ctrl_text(s, KT_KSET_SB_NOTE_BOUNDARY, HELPCTX(kitty_kset_scriptbridge));
 
     /* ---- Terminal: the title bar and the feature switches of the terminal
      * window, with Font Fallback and Printing as leaves of their own. The

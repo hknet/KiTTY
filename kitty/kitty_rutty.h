@@ -15,6 +15,12 @@ void kitty_script_remote(const void *vdata, size_t len);
  * notice when the file is not found or not read, or the script times out. */
 int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile,
                            LogContext *logctx, HWND owner);
+/* The same with the script in memory (the script bridge, kitty_scriptbridge.c):
+ * buf is copied. False = refused (scriptmode=no, a script already running,
+ * an empty buffer); the reason is in the Event Log except for the last. */
+int kitty_script_send_buffer(Conf *conf, Backend *backend,
+                             const char *buf, size_t len,
+                             LogContext *logctx, HWND owner);
 void kitty_script_set_enabled(int on);
 void kitty_script_stop(void);
 

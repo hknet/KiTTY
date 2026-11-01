@@ -10,6 +10,7 @@
 # Terse technical English for administrators writing session files: what the
 # key does, the unit and the meaning of the values where they matter.
 
+AcceptScriptBridge	`1` lets another program play a script in this session over `WM_COPYDATA` (the script bridge), while `[KiTTY] scriptbridge` is not `no`.
 ANSIColour	`0` ignores the control sequences the host sends for coloured text.
 ApplicationCursorKeys	Initial mode of the cursor keys: `0` normal (`ESC [ A`), `1` application (`ESC O A`).
 ApplicationKeypad	Initial mode of the numeric keypad: `0` normal, `1` application.

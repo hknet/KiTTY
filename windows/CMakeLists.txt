@@ -909,6 +909,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_rutty.c
   ${KITTY_DIR}/kitty_config.c   # the sequencer; the panels are in the four files below
   ${KITTY_DIR}/kitty_config_upstream.c
+  ${KITTY_DIR}/kitty_scriptbridge.c   # KiTTY: the script bridge - other programs drive the script engine (WM_COPYDATA)
   ${KITTY_DIR}/kitty_config_shared.c
   ${KITTY_DIR}/kitty_config_session.c
   ${KITTY_DIR}/kitty_commentview.c    # KiTTY: the Session panel's comment box - wrapped, links that open

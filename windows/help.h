@@ -80,6 +80,8 @@ typedef const char *HelpCtx;
 #define WINHELP_CTX_kitty_kset_autotext      "kitty-cfg-kset-autotext"
 #define WINHELP_CTX_kitty_kset_automation    "kitty-cfg-kset-automation"
 #define WINHELP_CTX_kitty_kset_broadcast     "kitty-cfg-kset-broadcast"
+#define WINHELP_CTX_kitty_kset_scriptbridge  "kitty-cfg-kset-scriptbridge"
+#define WINHELP_CTX_kitty_scriptbridge       "kitty-cfg-scriptbridge"
 #define WINHELP_CTX_kitty_kset_window        "kitty-cfg-kset-window"
 #define WINHELP_CTX_kitty_kset_fontfb        "kitty-cfg-kset-fontfb"
 #define WINHELP_CTX_kitty_kset_printing      "kitty-cfg-kset-printing"

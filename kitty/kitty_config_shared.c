@@ -643,6 +643,7 @@ extern int  GetFunkeysDefault(void);           extern void SetFunkeysDefault(con
 extern int  GetPasteSize(void);                extern void SetPasteSize(const int);
 extern int  kitty_script_enabled(void);        extern void kitty_script_set_enabled(int);
 extern int  kitty_broadcast_default(void);     extern void kitty_broadcast_set_enabled(int);
+extern int  kitty_sbridge_level(void);         extern void kitty_sbridge_set_level(int);
 extern int  GetTitleBarFlag(void);             extern void SetTitleBarFlag(const int);
 extern int  GetPsOverlayFlag(void);            extern void SetPsOverlayFlag(const int);
 extern int  GetSizeFlag(void);                 extern void SetSizeFlag(const int);
@@ -697,6 +698,11 @@ static int  kset_get_hk00_pertype(void) { return kitty_hk00_pertype(); }
 
 static const struct kset_choice kset_prompt_choices[] = {
     { KT_KSET_CH_POPUP, "yes", 1 }, { KT_KSET_CH_TERMINAL, "no", 0 } };
+/* Automation > Script bridge: scriptbridge (kitty_scriptbridge.h KSB_LEVEL_*) */
+static const struct kset_choice kset_scriptbridge_choices[] = {
+    { KT_KSET_SB_LEVEL_NO,      "no",      0 },
+    { KT_KSET_SB_LEVEL_INBOUND, "inbound", 1 },
+    { KT_KSET_SB_LEVEL_PROMPT,  "prompt",  2 } };
 /* Host keys > Settings: updatehostkeys (kitty_hostkeys00.h KHK00_MODE_*) */
 static const struct kset_choice kset_hk00_choices[] = {
     { KT_HK_UPD_CH_YES, "yes", KHK00_MODE_YES },
@@ -840,6 +846,8 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_SCRIPTMODE,     KSET_BOOL, false, kitty_script_enabled, kitty_script_set_enabled, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_SCRIPTFILEFILTER, KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_SENDCMDMODE,    KSET_BOOL, false, kitty_broadcast_default, kitty_broadcast_set_enabled, NULL, 0, 0, 0 },
+    { INIT_SECTION, KI_SCRIPTBRIDGE,   KSET_CHOICE, false, kitty_sbridge_level, kitty_sbridge_set_level, NULL, 0, 0, 0,
+      NULL, NULL, kset_scriptbridge_choices, lenof(kset_scriptbridge_choices) },
     /* The installation's group key. Empty in the store = derived (kitty.c);
      * the Broadcast leaf's own handler drives this row, not KSET_TEXTBOX,
      * because the field SHOWS the derived key when nothing is stored. */

@@ -11,7 +11,9 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 
 ## Changed since 0.85.1.19
 
-No key added, removed or changed.
+| Change | Key | Was | Now |
+|---|---|---|---|
+| added | `AcceptScriptBridge` | - | bool |
 
 ## Keys
 
@@ -19,6 +21,7 @@ No key added, removed or changed.
 |---|---|---|---|---|
 | `AcceptBroadcast` | `0` / `1` | `0` | Session/Broadcast | One KiTTY++ can type a line into another's session, as if it had been typed at the keyboard - and a trailing Return means the far end runs it. |
 | `AcceptNewHostKeys` | `0` / `1` | `0` | Connection/SSH/Host keys | A host key not in the store yet is stored without the question and recorded in the Terminal Window's Event Log: trust on first use, as OpenSSH's `accept-new`. |
+| `AcceptScriptBridge` | `0` / `1` | `0` | Session/Scripting | `1` lets another program play a script in this session over `WM_COPYDATA` (the script bridge), while `[KiTTY] scriptbridge` is not `no`. |
 | `AddressFamily` | `0` Auto; `1` IPv4; `2` IPv6 | `0` | Connection | This option allows the user to select between the old and new Internet protocols and addressing schemes (IPv4 and IPv6). |
 | `AgentFwd` | `0` / `1` | `0` | Connection/SSH/Auth | This option allows the SSH server to open forwarded connections back to your local copy of kageant. |
 | `AltF4` | `0` / `1` | `1` | Window/Behaviour | By default, pressing ALT-F4 causes the window to close (or a warning box to appear; see "Warn before closing window"). |

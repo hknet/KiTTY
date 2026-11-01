@@ -319,6 +319,22 @@ scriptmode=no} in \c{kitty.ini}; the \e{login script} on
 \e{Connection > Login} is a different, simpler mechanism
 (\k{kitty-cfg-loginscript}) that needs none of this panel.
 
+\S{kitty-cfg-scriptbridge} \q{Accept script bridge messages for this session}
+
+Lets another program on this desktop play a script in this session
+through the same engine, with the settings above. The program sends the
+script over \c{WM_COPYDATA} (the script bridge,
+\k{kitty-cfg-kset-scriptbridge}). Off by default.
+
+Two switches must both be on: this checkbox, and the installation's
+level on Application > KiTTY++ Settings > Automation > Script bridge
+(\c{scriptbridge} under \c{[KiTTY]} in \c{kitty.ini}, not \c{no}).
+The window menu's \q{Tools > Accept script bridge} flips the window you
+are looking at. It is the same switch as this checkbox, so the
+configuration box shows what the menu did. Switching it off on a running
+window also ends a prompt binding at once. \cw{scriptmode=no} turns the
+bridge off with the engine.
+
 \H{kitty-cfg-broadcast} The Broadcast panel
 
 \S{kitty-cfg-sendcmd} \q{Accept broadcast messages for this session}
@@ -2183,6 +2199,9 @@ dialog of that command opens with, in the Windows form
 \c{Shell scripts|*.sh;*.ksh|All files|*.*|}. Blank means the built-in
 set: scripts (\c{*.ksh}, \c{*.sh}), SQL files and all files.
 
+Other programs that drive the script engine are set on the Script
+bridge leaf (\k{kitty-cfg-kset-scriptbridge}).
+
 The broadcast switch, the group key and the send console are on the
 Broadcast leaf beneath this panel (\k{kitty-cfg-kset-broadcast}); the
 tracing switch \q{Extra tracing in the Terminal Window's Event Log} is on
@@ -2249,6 +2268,78 @@ sending from here is a deliberate act and reaches every accepting
 terminal of the chosen groups.
 
 }
+
+\S{kitty-cfg-kset-scriptbridge} The Script bridge leaf
+
+Another program on this desktop - an AutoHotkey script, a test tool,
+anything that can send \c{WM_COPYDATA} - drives the script engine of a
+terminal: it hands over a script, which is played as \q{Send script
+file} plays one, with the session's delays, wait-for and halt-on texts
+(\k{kitty-cfg-scriptfile}). This is the successor of RuTTY's AutoHotkey
+interface, rebuilt on the engine's own interface.
+
+\q{Script bridge level:} is \c{scriptbridge} under \c{[KiTTY]} in
+\c{kitty.ini}:
+
+\b \q{Off} (\c{no}, the default): every message is refused, with a
+line in the Terminal Window's Event Log.
+
+\b \q{Inbound: scripts in} (\c{inbound}, also written \c{yes}): the
+program may send a script. Nothing goes back to it.
+
+\b \q{Inbound + prompt event out} (\c{prompt}): the program may also
+bind a window of its own to the terminal and set a prompt pattern. Each
+time the host's output ends with the pattern, that window gets one
+message holding the pattern that matched. The message never holds a
+byte of the session output.
+
+A value not in this list is off. Session output to another program (the
+received data, the typed data) is not offered.
+
+Each session takes part only with its own switch,
+\k{kitty-cfg-scriptbridge}. \cw{scriptmode=no} turns the bridge off
+together with the engine.
+
+\e{The messages.} \c{dwData} of \c{WM_COPYDATA} selects the message.
+\c{<key>} is the key a broadcast to the same session carries: the
+session's own broadcast key, else the installation's \c{sendcmdgroup}
+(\k{kitty-cfg-broadcast-key}). It is followed by one NUL byte.
+
+\b \c{5}, \c{_send}, in: \c{<key>\\0<script>}. The script, lines
+ending in LF or CRLF. The whole message is at most 65536 bytes. A larger
+one is refused, never cut. A script already running refuses it.
+
+\b \c{6}, \c{_enable}, in: \c{<key>\\0} followed by \c{1}: the window
+whose handle is in \c{wParam} gets the \c{_prompt} messages from now
+on. Followed by \c{0}: no more messages. Level \c{prompt} only.
+
+\b \c{7}, \c{_set}, in: \c{<key>\\0<pattern>}. The prompt pattern, in
+the form of the Wait-for text: plain text, or several alternatives each
+in double quotes (\c{"$ " "# "}). At most 255 bytes. Empty clears it.
+Level \c{prompt} only.
+
+\b \c{8}, \c{_prompt}, out: the pattern that matched, without a NUL.
+\c{wParam} is the terminal's window handle.
+
+\b \c{9} and \c{10} are kept for session output and refused.
+
+\e{The bound window.} \c{_enable} binds a window by its handle, never by
+its title. The window must exist and must not be the terminal itself.
+Its process must run as the same Windows user at an integrity level not
+below the terminal's. Before every \c{_prompt} the handle is checked
+again, window and process: a window that is gone ends the binding. The
+messages wait in a queue of 256 KiB and are sent one at a time with a
+timeout of 1000 ms. A window that does not answer in time is unbound,
+the session goes on.
+
+Every refusal, the binding, its end and every accepted script is a line
+in the Terminal Window's Event Log. The script and the pattern are never
+written there.
+
+\e{Not a security boundary.} Any program running as the same user can
+send these messages. It could type into the session by other means too.
+Like the broadcast, the two switches stop accidents and keep the
+feature off until it is wanted.
 
 \S{kitty-cfg-kset-window} The Terminal panel (KiTTY++ Settings)
 

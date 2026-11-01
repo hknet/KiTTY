@@ -86,6 +86,7 @@
 #include "../kitty/kitty_url.h"
 #include "../kitty/kitty_zmodem.h"
 #include "../kitty/kitty_rutty.h"
+#include "../kitty/kitty_scriptbridge.h"
 #include "../kitty/kitty_osc52.h"
 #include "../kitty/kitty_workplace.h"
 #include "../kitty/kitty_config.h"
@@ -105,6 +106,13 @@
 static int kitty_broadcast_armed( WinGuiSeat *wgs )
 {
     return wgs && wgs->conf && conf_get_bool( wgs->conf, CONF_kitty_accept_broadcast );
+}
+/* The script bridge's arm (kitty_scriptbridge.c), the same shape: one conf
+ * value, edited on Session > Scripting and by Tools > Accept script bridge. */
+#define IDM_SCRIPTBRIDGETOGGLE 0x01D0        /* Tools > Accept script bridge */
+static int kitty_scriptbridge_armed( WinGuiSeat *wgs )
+{
+    return wgs && wgs->conf && conf_get_bool( wgs->conf, CONF_kitty_accept_scriptbridge );
 }
 #endif /* MOD_PERSO */
 #ifdef MOD_PERSO
@@ -3447,6 +3455,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                        (conf_get_bool(wgs->conf, CONF_kitty_accept_broadcast) ? MF_CHECKED : 0),
                        IDM_BROADCASTTOGGLE,
                        KT_SYSMENU_ACCEPT_BROADCAST);
+            /* the script bridge's arm, beside it and named the same way */
+            AppendMenu(toolmenu, MF_ENABLED |
+                       (kitty_scriptbridge_armed(wgs) ? MF_CHECKED : 0),
+                       IDM_SCRIPTBRIDGETOGGLE,
+                       KT_SYSMENU_ACCEPT_SCRIPTBRIDGE);
             AppendMenu(m, MF_POPUP | MF_ENABLED, (UINT_PTR)toolmenu, KT_SYSMENU_TOOLS);
 
             /* KiTTY "Shortcuts for predefined commands": read the registry
@@ -6354,6 +6367,22 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * the one switch on dwData here.
          */
         PCOPYDATASTRUCT cds = (PCOPYDATASTRUCT)lParam;
+        if (cds && kitty_sbridge_is_id(cds->dwData)) {
+            /* The script bridge (kitty_scriptbridge.c): ids 5-10, keyed
+             * with the same key a broadcast to this session carries. */
+            struct kitty_sbridge_msg sm;
+            const char *sbgroup = conf_get_str(wgs->conf, CONF_kitty_broadcast_key);
+            if (!sbgroup || !*sbgroup) sbgroup = kitty_broadcast_group();
+            sm.cds = cds;
+            sm.self = hwnd;
+            sm.sender = (HWND)wParam;
+            sm.conf = wgs->conf;
+            sm.backend = wgs->backend;
+            sm.logctx = wgs->logctx;
+            sm.group = sbgroup;
+            sm.armed = kitty_scriptbridge_armed(wgs);
+            return kitty_sbridge_copydata(&sm);
+        }
         if (!cds || cds->cbData == 0 || cds->lpData == NULL)
             return 0;
 
@@ -7509,6 +7538,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             logevent(wgs->logctx, on ? KT_TWIN_LOG_BC_WINDOW_ON
                                      : KT_TWIN_LOG_BC_WINDOW_OFF);
             kitty_refresh_title();      /* the (BROADCAST) marker follows */
+            break;
+          }
+          case IDM_SCRIPTBRIDGETOGGLE: {
+            /* The same conf value as Session > Scripting, as the broadcast
+             * toggle above. Off also ends a prompt binding at once. */
+            int on = !kitty_scriptbridge_armed(wgs);
+            conf_set_bool(wgs->conf, CONF_kitty_accept_scriptbridge, on != 0);
+            CheckMenuItem(GetSystemMenu(hwnd, FALSE), IDM_SCRIPTBRIDGETOGGLE,
+                          MF_BYCOMMAND | (on ? MF_CHECKED : MF_UNCHECKED));
+            logevent(wgs->logctx, on ? KT_SBRIDGE_WINDOW_ON
+                                     : KT_SBRIDGE_WINDOW_OFF);
+            if (!on)
+                kitty_sbridge_unbind(KT_SBRIDGE_WHY_OFF);
             break;
           }
           case IDM_HYPERLINKTOGGLE:
@@ -13287,6 +13329,10 @@ static size_t win_seat_output(Seat *seat, SeatOutputType type,
      * interception point as ZModem; no terminal.c edits. */
     if (kitty_script_active() && type == SEAT_OUTPUT_STDOUT)
         kitty_script_remote(data, len);
+    /* The script bridge's prompt event (kitty_scriptbridge.c): observe-only
+     * as well, and whether a script runs or not. */
+    if (kitty_sbridge_bound() && type == SEAT_OUTPUT_STDOUT)
+        kitty_sbridge_remote(data, len);
 #endif
     {
         size_t consumed = term_data(wgs->term, data, len);

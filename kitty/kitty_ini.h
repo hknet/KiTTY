@@ -851,6 +851,23 @@ char default_init_file_content[] =
 ;               read the files gets the passwords.\n\
 ;PortablePasswordProtection=master\n\
 \n\
+; scriptbridge: may other programs drive the script engine of a terminal?\n\
+;    A program running as you sends WM_COPYDATA to a terminal window with a\n\
+;    script to play, as Tools > \"Send script file\" plays one. At \"prompt\" it can\n\
+;    also bind itself to hear when the host's prompt appears.\n\
+;      no      - refuse all of it, noted in the Terminal Window's Event Log\n\
+;                (default)\n\
+;      inbound - scripts in (yes means the same)\n\
+;      prompt  - scripts in, plus one message to the window that asked each\n\
+;                time the set pattern ends the host's output. The message\n\
+;                holds the pattern only, never the session output.\n\
+;    Each session takes part only with Session > Scripting > \"Accept script\n\
+;    bridge messages for this session\" (or Tools > Accept script bridge).\n\
+;    Messages carry the session's broadcast key (sendcmdgroup). scriptmode=no\n\
+;    turns the bridge off too. NOT a security boundary against programs\n\
+;    running as you.\n\
+;scriptbridge=no\n\
+\n\
 ; scriptfilefilter: file-dialog filter for local script files.\n\
 ;    Default:\n\
 ;    (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|\n\

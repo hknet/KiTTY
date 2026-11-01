@@ -17,10 +17,13 @@
  * recording + AHK + menu UI sides, and sends via backend_send (no global ldisc),
  * which is sufficient for the send + waitfor/halton functionality.
  *
- * Public API (called from window.c):
+ * Public API (called from window.c and kitty_scriptbridge.c):
  *   int  kitty_script_active(void);
  *   int  kitty_script_send_file(Conf *conf, Backend *backend, Filename *fn,
  *                               LogContext *logctx, HWND owner);
+ *   int  kitty_script_send_buffer(Conf *conf, Backend *backend,
+ *                                 const char *buf, size_t len,
+ *                                 LogContext *logctx, HWND owner);
  *   void kitty_script_remote(const void *data, size_t len);  // observe-only
  *   void kitty_script_stop(void);
  */
@@ -355,12 +358,16 @@ static int script_enabled = 1;
 int kitty_script_enabled(void) { return script_enabled; }
 void kitty_script_set_enabled(int on) { script_enabled = on; }
 
-int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile,
-                           LogContext *logctx, HWND owner)
+/*
+ * The start of a script, shared by the file and the buffer: the two refusals,
+ * then the state reset and the settings read from the session's conf. False =
+ * refused, with its Event Log line written; nothing is changed then. `label`
+ * is what the notices show as the script's name (the file path, or the
+ * script bridge's own name).
+ */
+static int script_prepare(ScriptData *s, Conf *conf, Backend *backend,
+                          LogContext *logctx, HWND owner, const char *label)
 {
-    ScriptData *s = &the_script;
-    FILE *fp;
-    long fsize;
     const char *cc;
     int script_timeout_seconds;
 
@@ -380,7 +387,7 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile,
     s->backend = backend;
     s->logctx = logctx;
     s->owner = owner;
-    s->path = dupstr(filename_to_str(scriptfile));
+    s->path = dupstr(label);
 
     /* script_init: settings from conf */
     s->line_delay = conf_get_int(conf, CONF_script_line_delay);
@@ -409,6 +416,37 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile,
     s->waitfor2_c = -1;
     s->remotedata_c = script_cond_size;
     s->remotedata[0] = '\0';
+    return true;
+}
+
+/* The script is in s->filebuffer: the first line goes out on the timer, or
+ * waits for the prompt first (wait-for-prompt without "except first"). */
+static void script_begin(ScriptData *s)
+{
+    logevent(s->logctx, KT_RUTTY_SENDING);
+
+    script_getline(s);
+    script_chkline(s);
+
+    if (s->enable && !s->except) {         /* wait-for-prompt before first line */
+        s->send = false;
+        s->latest = schedule_timer(s->timeout, script_timeout, s);
+    } else {
+        s->send = true;
+        schedule_timer(s->line_delay, script_sendline, s);
+    }
+}
+
+int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile,
+                           LogContext *logctx, HWND owner)
+{
+    ScriptData *s = &the_script;
+    FILE *fp;
+    long fsize;
+
+    if (!script_prepare(s, conf, backend, logctx, owner,
+                        filename_to_str(scriptfile)))
+        return false;
 
     /* script_sendfile: read whole file */
     fp = f_open(scriptfile, "rb", false);
@@ -438,18 +476,33 @@ int kitty_script_send_file(Conf *conf, Backend *backend, Filename *scriptfile,
         return false;
     }
     fclose(fp);
-    logevent(logctx, KT_RUTTY_SENDING);
+    script_begin(s);
+    return true;
+}
 
-    script_getline(s);
-    script_chkline(s);
+/*
+ * A script handed over whole, from the script bridge (kitty_scriptbridge.c):
+ * the same engine, the same session settings (delays, wait-for, halt-on,
+ * CR/LF), only the lines come from memory instead of a file. The buffer is
+ * copied; the caller keeps its own. An empty buffer is refused by the caller.
+ */
+int kitty_script_send_buffer(Conf *conf, Backend *backend,
+                             const char *buf, size_t len,
+                             LogContext *logctx, HWND owner)
+{
+    ScriptData *s = &the_script;
 
-    if (s->enable && !s->except) {         /* wait-for-prompt before first line */
-        s->send = false;
-        s->latest = schedule_timer(s->timeout, script_timeout, s);
-    } else {
-        s->send = true;
-        schedule_timer(s->line_delay, script_sendline, s);
-    }
+    if (!buf || len == 0 || len > (size_t)INT_MAX - 1)
+        return false;
+    if (!script_prepare(s, conf, backend, logctx, owner, KT_SBRIDGE_LABEL))
+        return false;
+    s->runs = true;
+    /* +1 for the '\r' SCRIPT_CR mode may append after the last line, as in
+     * the file reader */
+    s->nextnextline = s->filebuffer = snewn(len + 1, char);
+    s->filebuffer_end = &s->filebuffer[len];
+    memcpy(s->filebuffer, buf, len);
+    script_begin(s);
     return true;
 }
 

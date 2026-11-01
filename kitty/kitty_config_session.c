@@ -6007,6 +6007,15 @@ void scb_panel_scripting(struct controlbox *b, bool midsession)
     ctrl_checkbox(s, KT_SCRIPTING_USE_CONDITIONS_FROM_FILE, NO_SHORTCUT,
                   HELPCTX(kitty_scriptfile), kitty_checkbox_int_handler,
                   I(CONF_script_cond_use));
+    /* The script bridge (kitty_scriptbridge.c): another program plays a
+     * script through this engine. The level is the installation's
+     * (Automation > Script bridge); this is the session's arm. */
+    s = ctrl_getset(b, "Session/Scripting", "scriptbridge",
+                    KT_SCRIPTING_SCRIPT_BRIDGE);
+    ctrl_checkbox(s, KT_SCRIPTING_ACCEPT_SCRIPT_BRIDGE, NO_SHORTCUT,
+                  HELPCTX(kitty_scriptbridge), conf_checkbox_handler,
+                  I(CONF_kitty_accept_scriptbridge));
+    ctrl_text(s, KT_SCRIPTING_SCRIPT_BRIDGE_NOTE, HELPCTX(kitty_scriptbridge));
     /* ---- receiving broadcasts: its own leaf under Session -----------
      * Scripting drives THIS session from a file; a broadcast is another
      * window typing into it. Separate concerns, separate panels - and
