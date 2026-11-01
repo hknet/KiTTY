@@ -273,7 +273,8 @@ void InitShortcuts( void ) {
 					shortcuts_tab2[NbShortCuts].num = atoi(pl) ;
 				}
 				TranslateShortcuts( buffer ) ;
-				if( debug_flag ) { debug_logevent( "Remap key %s to %s", pl, buffer ) ; }
+				/* The text a key types can hold a password: the trace gives its length only */
+				if( debug_flag ) { debug_logevent( "Remap key %s to a text of %u characters", pl, (unsigned)strlen(buffer) ) ; }
 
 				shortcuts_tab2[NbShortCuts].st=(char*)malloc( strlen(buffer)+1 ) ;
 				strcpy( shortcuts_tab2[NbShortCuts].st, buffer ) ;

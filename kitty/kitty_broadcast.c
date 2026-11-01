@@ -245,12 +245,12 @@ void SendAutoCommand( HWND hwnd, const char * cmd ) {
 			SendKeyboard( hwnd, "\n" ) ;
 			fclose( fp ) ;
 			}*/
-		char *buf;
-		buf=(char*)malloc( strlen(cmd)+30 ) ;
-		strcpy( buf, "Send automatic command" ) ;
-		if( debug_flag ) { strcat( buf, ": ") ; strcat( buf, cmd ) ; }
-		if( conf_get_int(conf,CONF_protocol) != PROT_TELNET ) debug_logevent( buf ) ; // log only outside telnet (the password goes in clear there)
-		free(buf);
+		/* The command can hold a password: the line gives its length only,
+		 * never the text, and never as the format of the log call */
+		if( debug_flag )
+			debug_logevent( "Send automatic command (%u characters)", (unsigned)strlen(cmd) ) ;
+		else
+			debug_logevent( "%s", "Send automatic command" ) ;
 		if( existfile( cmd ) ) { 
 			RunScriptFile( hwnd, cmd ) ; 
 		} else if( (toupper(cmd[0])=='C')&&(toupper(cmd[1])==':')&&(toupper(cmd[2])=='\\') ) { 
