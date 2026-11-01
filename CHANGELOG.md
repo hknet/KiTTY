@@ -119,6 +119,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
+- kageant: a session-bind signed with SHA-1 is refused (`ssh-rsa` from an
+  RSA host key, every `ssh-dss` signature). The login goes on without a
+  destination, so a key restricted to destinations is not used on it.
 - Session > Scripting: with "Wait for a prompt before sending" a script ends
   right after its last line, instead of waiting for one more prompt and
   stopping with the timeout notice when none came. A condition line after

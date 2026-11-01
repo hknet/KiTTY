@@ -787,7 +787,11 @@ client from version 8.9 on - the Windows \c{ssh.exe} included - does
 the same. After the key exchange the client sends the server's host
 key, the session identifier and the server's signature over that
 identifier. kageant verifies the signature and keeps the binding for
-the connection. On a bound connection:
+the connection. A signature with SHA-1 is refused: \c{ssh-rsa} from an
+RSA host key (\c{rsa-sha2-256} and \c{rsa-sha2-512} are taken) and every
+signature of a DSA host key (\c{ssh-dss}). OpenSSH's agent accepts both.
+The login goes on. The connection then has no destination, so a key
+restricted to destinations is not used on it. On a bound connection:
 
 \b The key-use confirmation shows \q{Destination:} - the host name and
 the SHA256 fingerprint of the server's host key - and one \q{Forwarded

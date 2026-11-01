@@ -2001,9 +2001,10 @@ enum Extension { KNOWN_EXTENSIONS(DECL_EXT_ENUM) EXT_UNKNOWN };
 /*
  * KiTTY: does the server's signature over the session id verify with its
  * host key? NULL when it does, else why not (the refusal's reason). As
- * OpenSSH's agent checks a session-bind: an RSA host key's signature may be
- * ssh-rsa (SHA-1), rsa-sha2-256 or rsa-sha2-512. A certified host key
- * verifies with its key.
+ * OpenSSH's agent checks a session-bind, with one rule stricter than it: no
+ * SHA-1 signature. An RSA host key's signature must be rsa-sha2-256 or
+ * rsa-sha2-512 (ssh-rsa is refused), a DSA host key (ssh-dss, SHA-1 by
+ * nature) is refused. A certified host key verifies with its key.
  */
 static const char *session_bind_verify(ptrlen hostkey, ptrlen sid,
                                        ptrlen sig)
@@ -2023,6 +2024,10 @@ static const char *session_bind_verify(ptrlen hostkey, ptrlen sid,
     if (!key)
         return "host key does not decode";
     base = ssh_key_base_key(key);
+    if (ssh_key_alg(base) == &ssh_dsa) {
+        why = "SHA-1 signature (ssh-dss) refused";
+        goto out;
+    }
     if (ssh_key_alg(base) == &ssh_rsa) {
         BinarySource_BARE_INIT_PL(src, sig);
         ptrlen sigtype = get_string(src);
@@ -2032,8 +2037,11 @@ static const char *session_bind_verify(ptrlen hostkey, ptrlen sid,
         }
         valg = ptrlen_eq_string(sigtype, "rsa-sha2-512") ? &ssh_rsa_sha512 :
                ptrlen_eq_string(sigtype, "rsa-sha2-256") ? &ssh_rsa_sha256 :
-               ptrlen_eq_string(sigtype, "ssh-rsa")      ? &ssh_rsa :
                NULL;
+        if (!valg && ptrlen_eq_string(sigtype, "ssh-rsa")) {
+            why = "SHA-1 signature (ssh-rsa) refused";
+            goto out;
+        }
         if (!valg) {
             why = "RSA signature of an unknown type";
             goto out;
