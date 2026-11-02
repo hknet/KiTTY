@@ -27,6 +27,7 @@
 
 // KiTTY includes
 #include "kitty.h"
+#include "kitty_sendesc.h"   /* the two hex digits of \k and \x */
 #include "kitty_params.h"
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
 #include "kitty_common.h"
@@ -125,6 +126,7 @@ static int keyb_altgr_flag = 0 ;
 void SendKeyboardPlus( HWND hwnd, const char * st ) {
 	if( strlen(st) <= 0 ) return ;
 	int i=0, j=0;
+	unsigned hexv = 0 ;
 	//int internal_delay = 10 ;
 	char *buffer = NULL, stb[6] ;
 	if( ( buffer = (char*) malloc( 2*strlen( st ) ) ) != NULL ) {
@@ -164,10 +166,13 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 				keybd_event(VK_CONTROL, 0x1D, KEYEVENTF_KEYUP, 0) ;
 				buffer[0] = '\0' ; j = 0 ;
 				i++ ; 
-			} else if( st[i+1] == 'k' ) {
+			/* \k and \x take the two hex digits after the letter. Without
+			 * both, the backslash is typed as it is: the escape skips four
+			 * characters, and a text ending in "\k" or "\kA" stepped over
+			 * its NUL and copied the bytes behind it. */
+			} else if( (st[i+1] == 'k') && kitty_sendesc_hex2( st+i+2, &hexv ) ) {
 				SendKeyboard( hwnd, buffer ) ;
-				snprintf( stb, sizeof(stb), "0x%c%c", st[i+2],st[i+3] ) ;
-				sscanf( stb, "%x", &j ) ;
+				j = (int)hexv ;
 				//SendMessage(hwnd, WM_KEYDOWN, j, 0) ;
 				if( j==VK_CONTROL ) keyb_control_flag = abs( keyb_control_flag - 1 ) ;
 				else if( j==VK_SHIFT ) keyb_shift_flag = abs( keyb_shift_flag - 1 ) ;
@@ -204,10 +209,9 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 				Sleep( internal_delay ) ;
 				buffer[0] = '\0' ; j = 0 ;
 				i++ ; i++ ; i++ ;
-			} else if( st[i+1] == 'x' ) {
+			} else if( (st[i+1] == 'x') && kitty_sendesc_hex2( st+i+2, &hexv ) ) {
 				SendKeyboard( hwnd, buffer ) ;
-				snprintf( stb, sizeof(stb), "0x%c%c", st[i+2],st[i+3] ) ;
-				sscanf( stb, "%X", &j ) ;
+				j = (int)hexv ;
 				stb[0]=j ; stb[1] = '\0' ;
 				SendStrToTerminal( stb, 1 ) ;
 				Sleep( internal_delay ) ;

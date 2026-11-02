@@ -258,6 +258,12 @@ add_executable(test_droppath
   test/test_droppath.c
   kitty/kitty_droppath.c)
 
+# KiTTY: unit test for the two hex digits of the \k and \x escapes of
+# SendKeyboardPlus (kitty/kitty_sendesc.c): never read past the text's end.
+add_executable(test_sendesc
+  test/test_sendesc.c
+  kitty/kitty_sendesc.c)
+
 # KiTTY: unit test for reading the agent log's lines (kitty/kitty_auditparse.c,
 # in kageant's viewer): which lines are the old backslash-escaped form, their
 # conversion, and the field reader on current lines.
@@ -523,7 +529,7 @@ foreach(t
     test_sessionpath test_sessmenu test_menuslots test_sessorder
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
-    test_termenv test_droppath test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
+    test_termenv test_droppath test_sendesc test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
     test_agentbind test_agentrestrict
     test_auditparse test_auditchain test_eventids test_commentlinks)
   kitty_add_test(${t})
