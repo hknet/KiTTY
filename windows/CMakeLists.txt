@@ -947,6 +947,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_droppath.c     # KiTTY: the remote paths typed after a drop upload, no Win32 (test/test_droppath.c)
   ${KITTY_DIR}/kitty_sendesc.c      # KiTTY: the \k / \x operand of SendKeyboardPlus, no Win32 (test/test_sendesc.c)
   ${KITTY_DIR}/kitty_secretmask.c   # KiTTY: secrets masked out of a shown command line, no Win32 (test/test_secretmask.c)
+  ${KITTY_DIR}/kitty_zone.c         # KiTTY: Windows' zone policy for a .ktx file (ProcessUrlAction)
   ${KITTY_DIR}/kitty_startup_shortcut.c
 )
 # No file outside the five may test MOD_PORTABLE: it would land in the
@@ -1087,7 +1088,7 @@ endif()
 target_link_libraries(kitty
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
   ${KITTY_DIR}/libs/bcrypt_${KITTY_LIBS_BITS}.a
-  ${platform_libraries} wininet wintrust crypt32 msi version
+  ${platform_libraries} wininet wintrust crypt32 msi version urlmon
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 
@@ -1166,7 +1167,7 @@ endif()
 target_link_libraries(kitty_portable
   guiterminal guimisc eventloop sshclient otherbackends settings network crypto utils
   ${KITTY_DIR}/libs/bcrypt_${KITTY_LIBS_BITS}.a
-  ${platform_libraries} wininet wintrust crypt32 msi version
+  ${platform_libraries} wininet wintrust crypt32 msi version urlmon
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty_portable PROPERTIES WIN32_EXECUTABLE ON)
 

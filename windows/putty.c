@@ -461,6 +461,12 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * forced settings; load_open_settings_forced takes char*). */
                 char *kf = dupstr(cmdline_arg_to_str(arglist->args[arglistpos++]));
                 if (strlen(kf) > 0) {
+                    /* An entry that runs a program or writes a file: Windows'
+                     * zone policy for the file decides first. */
+                    if (!kitty_ktx_gate(kf)) {
+                        sfree(kf);
+                        cleanup_exit(0);
+                    }
                     load_open_settings_forced(kf, conf);
                     special_launchable_argument = true;
                 }

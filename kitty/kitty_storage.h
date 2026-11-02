@@ -126,6 +126,9 @@ settings_r *kitty_open_settings_r_file(const char *path);
 /* The same over an already-parsed (and possibly rewritten) list; the list is
  * owned by the handle from then on. */
 settings_r *kitty_open_settings_r_items(struct ksf_item *items);
+/* The items of a .ktx file, decrypted when it is encrypted; NULL when it
+ * cannot be read (kitty_settings_load.c). */
+struct ksf_item *ktx_load_items(const char *filename);
 /* The .ktx reader and writer (kitty_settings_load.c, kitty_settings_forced.c):
  * passwords as stored on read, left out on write, nothing to the store. */
 void kitty_settings_r_raw_secrets(settings_r *handle);

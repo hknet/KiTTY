@@ -4879,6 +4879,21 @@
         "anything you export from now on will be plain.\n\n" \
         "Saved passwords are unaffected: those are protected properly, with " \
         "Windows DPAPI or your master password."
+/* A .ktx file opened to connect, with entries that run a program or write a
+ * file, from a zone Windows' policy asks about or refuses
+ * (kitty_settings_load.c kitty_ktx_gate). %s = the file, %s = the entries. */
+#define KT_CAP_KTX_ZONE                              "Connection file from an untrusted place"
+#define KT_KTX_ZONE_ASK_FMT                          "%s\n\nWindows rates this file as coming " \
+        "from the internet or another untrusted place. Opening it runs a program " \
+        "or writes a file on this computer:\n\n%s\nConnect with the whole file?"
+#define KT_KTX_ZONE_ASK_WARN                         "Connect only if you know who made this file."
+#define KT_KTX_ZONE_REFUSED_FMT                      "%s\n\nNot opened: Windows places this file " \
+        "in a restricted zone. Opening it would run a program or write a file " \
+        "on this computer:\n\n%s\nIf you trust the file: Properties, General, " \
+        "Unblock, then open it again."
+#define KT_KTX_ZONE_REFUSED_ADMIN_FMT                "%s\n\nNot opened: Windows places this file " \
+        "in a restricted zone. Opening it would run a program or write a file " \
+        "on this computer:\n\n%s\nYour administrator controls which files may do this."
 #define KT_SETTINGS_FILE_NOT_FOUND                   "File %s not found !"
 
 /* kitty_store.c: the folder store's error boxes */

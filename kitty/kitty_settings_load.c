@@ -120,7 +120,9 @@ static int ktx_line_encrypted( const char *l ) {
 
 /* The file's keys. A file with encrypted lines is decoded into a scratch copy
  * first, which ksf_load then parses like any other; the copy is removed. */
-static struct ksf_item *ktx_load_items( const char *filename ) {
+/* The items of a .ktx file, decrypted when it is encrypted; NULL when it
+ * cannot be read. Also kitty_ktx_gate (kitty_zone.c). */
+struct ksf_item *ktx_load_items( const char *filename ) {
 	FILE *in = fopen( filename, "rb" ) ;
 	char *line, *tmpdir, tmp[MAX_PATH] ;
 	int encrypted = 0 ;
