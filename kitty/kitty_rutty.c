@@ -260,6 +260,8 @@ static void script_stop_internal(ScriptData *s)
     expire_timer_context(s);
     s->latest = 0;
     if (s->filebuffer != NULL) {
+        /* a script line can be a password (wait-for "password:", then it) */
+        smemclr(s->filebuffer, (size_t)(s->filebuffer_end - s->filebuffer));
         sfree(s->filebuffer);
         s->filebuffer = NULL;
     }

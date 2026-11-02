@@ -338,7 +338,7 @@ void write_setting_s(settings_w *handle, const char *key, const char *value)
                 return;
             }
             ksf_or_reg_put(handle, key, blob ? blob : "");
-            if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
+            if (blob) { smemclr(blob, strlen(blob)); free(blob); }
         }
         smemclr(plain, sizeof(plain));
         return;
@@ -583,8 +583,8 @@ static void kitty_protect_stored_secrets(settings_w *handle)
                                         kitty_save_where(handle));
             else if (blob && blob[0])
                 ksf_or_reg_put(handle, keys[slot], blob);
-            if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
-            if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+            if (blob) { smemclr(blob, strlen(blob)); free(blob); }
+            if (pt) { smemclr(pt, strlen(pt)); free(pt); }
         }
         if (stored) { smemclr(stored, strlen(stored)); sfree(stored); }
     }
@@ -1256,7 +1256,7 @@ char *read_setting_s(settings_r *handle, const char *key)
                           pt ? (int)strlen(pt) : -1, ksec_cksum(pt), rv_dbg);
         sfree(raw);
         char *ret = dupstr(pt ? pt : "");
-        if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+        if (pt) { smemclr(pt, strlen(pt)); free(pt); }
         return ret;
     }
     return raw;

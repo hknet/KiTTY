@@ -175,7 +175,7 @@ static void mpw_slot_put(ksec_keyslot *s, const unsigned char *key)
 }
 static void mpw_slot_clear(ksec_keyslot *s)
 {
-    SecureZeroMemory(s->k, sizeof(s->k));
+    smemclr(s->k, sizeof(s->k));
     s->wrapped = 0;
 }
 /* 1 and the key in out (the caller wipes it after use); 0 = it did not
@@ -186,7 +186,7 @@ static int mpw_slot_get(const ksec_keyslot *s, unsigned char *out)
     if (s->wrapped &&
         !kmpw_mem_flags("CryptUnprotectMemory", out, KSEC_MPW_KEYLEN,
                         CRYPTPROTECTMEMORY_SAME_PROCESS)) {
-        SecureZeroMemory(out, KSEC_MPW_KEYLEN);
+        smemclr(out, KSEC_MPW_KEYLEN);
         return 0;
     }
     return 1;
@@ -238,7 +238,7 @@ static char *mpw_supplied_dup(void)
     if (g_mpw_pass_wrapped &&
         !kmpw_mem_flags("CryptUnprotectMemory", p, (DWORD)g_mpw_pass_cap,
                         CRYPTPROTECTMEMORY_SAME_PROCESS)) {
-        SecureZeroMemory(p, g_mpw_pass_cap);
+        smemclr(p, g_mpw_pass_cap);
         free(p);
         return NULL;
     }
@@ -334,8 +334,8 @@ char *kitty_mpw2_unprotect_with_passphrase(const char *stored, const char *passp
         g_mpw_derive(passphrase, salt, KSEC_MPW_SALTLEN, key);
         if (g_mpw_unprotect(m1, key, &pt) == 1 && pt)
             res = ksec_dup(pt);
-        if (pt) { memset(pt, 0, strlen(pt)); sfree(pt); }
-        SecureZeroMemory(key, sizeof(key));
+        if (pt) { smemclr(pt, strlen(pt)); sfree(pt); }
+        smemclr(key, sizeof(key));
         free(m1);
     }
     free(salt);
@@ -408,7 +408,7 @@ int kitty_bundle_store_form(void) { return g_bundle_store_form; }
 void kitty_set_bundle_passphrase(const char *pass)
 {
     if (g_bundle_pass) {
-        SecureZeroMemory(g_bundle_pass, strlen(g_bundle_pass));
+        smemclr(g_bundle_pass, strlen(g_bundle_pass));
         free(g_bundle_pass);
     }
     g_bundle_pass = (pass && pass[0]) ? ksec_dup(pass) : NULL;
@@ -461,7 +461,7 @@ static void ksec_bundle_note_skip(int what, const char *where, const char *why)
 void kitty_set_master_passphrase(const char *pass)
 {
     if (g_mpw_passphrase) {
-        SecureZeroMemory(g_mpw_passphrase, g_mpw_pass_cap);
+        smemclr(g_mpw_passphrase, g_mpw_pass_cap);
         free(g_mpw_passphrase);
     }
     g_mpw_passphrase = NULL;
@@ -597,15 +597,15 @@ static int mpw_ensure_unlocked(int creating)
         !memcmp(g_mpw_fsalt, salt, KSEC_MPW_SALTLEN) && mpw_fkey_get(key)) {
         char *vpt = NULL; int rv = g_mpw_unprotect(ver, key, &vpt);
         int good = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
-        if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); }
+        if (vpt) { smemclr(vpt, strlen(vpt)); sfree(vpt); }
         if (good) {
             mpw_slot_put(&g_mpw_key, key);
-            SecureZeroMemory(key, sizeof(key));
+            smemclr(key, sizeof(key));
             memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
             g_mpw_salt_valid = 1; g_mpw_unlocked = 1;
             free(ver); return 1;
         }
-        SecureZeroMemory(key, sizeof(key));
+        smemclr(key, sizeof(key));
     }
 
     if (!have_salt)                              /* first-time setup: mint a salt */
@@ -625,7 +625,7 @@ static int mpw_ensure_unlocked(int creating)
         char *pass = from_supplied ? mpw_supplied_dup()
                    : mpw_prompt_call(first_time, ++attempt);
         if (!pass || !pass[0]) {                 /* cancelled / no prompt available */
-            if (pass) { memset(pass, 0, strlen(pass)); free(pass); }
+            if (pass) { smemclr(pass, strlen(pass)); free(pass); }
             if (!from_supplied && g_mpw_prompt) {
                 mpw_decline();
                 g_mpw_setup_declined = first_time;
@@ -633,13 +633,13 @@ static int mpw_ensure_unlocked(int creating)
             break;
         }
         g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, key);
-        memset(pass, 0, strlen(pass)); free(pass);
+        smemclr(pass, strlen(pass)); free(pass);
 
         if (ver) {                               /* verify against the stored token */
             char *vpt = NULL; int rv = g_mpw_unprotect(ver, key, &vpt);
             ok = (rv == 1 && vpt && !strcmp(vpt, KSEC_MPW_VERIFY));
-            if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); } /* snew'd by kitty_mpw */
-            if (!ok) { SecureZeroMemory(key, sizeof(key)); wrong++; } /* wrong: re-prompt */
+            if (vpt) { smemclr(vpt, strlen(vpt)); sfree(vpt); } /* snew'd by kitty_mpw */
+            if (!ok) { smemclr(key, sizeof(key)); wrong++; } /* wrong: re-prompt */
         } else {                                 /* first time: persist salt + verifier */
             /* The master password exists only once BOTH are stored. It used
              * to count as set either way, so a failed write left a store
@@ -662,7 +662,7 @@ static int mpw_ensure_unlocked(int creating)
             }
             if (!stored) {
                 kitty_pwdebug("mpw setup: salt/verifier not stored (error %lu)", (unsigned long)err);
-                SecureZeroMemory(key, sizeof(key));
+                smemclr(key, sizeof(key));
                 mpw_decline();                   /* no further setup prompts this run */
                 g_mpw_setup_declined = 1;        /* no master password exists */
                 if (g_mpw_store_failed) {
@@ -678,7 +678,7 @@ static int mpw_ensure_unlocked(int creating)
     if (ver) free(ver);
     if (ok) {
         mpw_slot_put(&g_mpw_key, key);
-        SecureZeroMemory(key, sizeof(key));
+        smemclr(key, sizeof(key));
         memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
         g_mpw_salt_valid = 1;
         g_mpw_unlocked = 1;
@@ -693,7 +693,7 @@ static int mpw_ensure_unlocked(int creating)
      * user-started action prompts again (kitty_mpw_user_action_begin). */
     if (!from_supplied && g_mpw_prompt)
         mpw_decline();
-    SecureZeroMemory(key, sizeof(key));
+    smemclr(key, sizeof(key));
     mpw_slot_clear(&g_mpw_key);
     if (wrong && g_mpw_wrong)
         g_mpw_wrong(from_supplied);
@@ -721,7 +721,7 @@ static int mpw_unprotect_with_salt(const char *m1blob,
         unsigned char bkey[KSEC_MPW_KEYLEN];
         g_mpw_derive(g_bundle_pass, salt, KSEC_MPW_SALTLEN, bkey);
         int bok = (g_mpw_unprotect(m1blob, bkey, outp) == 1 && *outp);
-        SecureZeroMemory(bkey, sizeof(bkey));
+        smemclr(bkey, sizeof(bkey));
         if (bok) return 1;
         if (*outp) { sfree(*outp); *outp = NULL; }
     }
@@ -730,7 +730,7 @@ static int mpw_unprotect_with_salt(const char *m1blob,
         unsigned char k[KSEC_MPW_KEYLEN];
         if (mpw_key_get(k)) {
             int got = (g_mpw_unprotect(m1blob, k, outp) == 1 && *outp);
-            SecureZeroMemory(k, sizeof(k));
+            smemclr(k, sizeof(k));
             if (got) return 1;
         }
         if (*outp) { sfree(*outp); *outp = NULL; }
@@ -739,7 +739,7 @@ static int mpw_unprotect_with_salt(const char *m1blob,
         unsigned char k[KSEC_MPW_KEYLEN];
         if (mpw_fkey_get(k)) {
             int got = (g_mpw_unprotect(m1blob, k, outp) == 1 && *outp);
-            SecureZeroMemory(k, sizeof(k));
+            smemclr(k, sizeof(k));
             if (got) return 1;
         }
         if (*outp) { sfree(*outp); *outp = NULL; }
@@ -761,22 +761,22 @@ static int mpw_unprotect_with_salt(const char *m1blob,
         char *pass = from_supplied ? mpw_supplied_dup()
                                    : mpw_prompt_call(0, ++attempt);
         if (!pass || !pass[0]) {
-            if (pass) { memset(pass, 0, strlen(pass)); free(pass); }
+            if (pass) { smemclr(pass, strlen(pass)); free(pass); }
             if (!from_supplied) mpw_decline();
             return 0;
         }
         unsigned char key[KSEC_MPW_KEYLEN];
         g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, key);
-        memset(pass, 0, strlen(pass)); free(pass);
+        smemclr(pass, strlen(pass)); free(pass);
         if (g_mpw_unprotect(m1blob, key, outp) == 1 && *outp) {
             mpw_slot_put(&g_mpw_fkey, key);
             memcpy(g_mpw_fsalt, salt, KSEC_MPW_SALTLEN);
             g_mpw_f_valid = 1;
-            SecureZeroMemory(key, sizeof(key));
+            smemclr(key, sizeof(key));
             return 1;
         }
         if (*outp) { sfree(*outp); *outp = NULL; }
-        SecureZeroMemory(key, sizeof(key));
+        smemclr(key, sizeof(key));
     }
     /* Three wrong answers end the prompting for this run, as a cancel does -
      * otherwise every further value of the same store prompted three more
@@ -826,11 +826,11 @@ char *ksec_wrap_with_passphrase(const char *plaintext, const char *passphrase)
     m1 = g_mpw_protect(plaintext, key);          /* "MPW1:..." (snew'd) */
     if (m1) {
         res = mpw2_compose(m1, salt);
-        memset(m1, 0, strlen(m1));
+        smemclr(m1, strlen(m1));
         sfree(m1);
     }
-    SecureZeroMemory(key, sizeof(key));
-    SecureZeroMemory(salt, sizeof(salt));
+    smemclr(key, sizeof(key));
+    smemclr(salt, sizeof(salt));
     return res;
 }
 
@@ -869,8 +869,8 @@ int ksec_unwrap_with_passphrase(const char *stored, const char *passphrase,
             *out = ksec_dup(pt);
             ok = (*out != NULL);
         }
-        if (pt) { memset(pt, 0, strlen(pt)); sfree(pt); }
-        SecureZeroMemory(key, sizeof(key));
+        if (pt) { smemclr(pt, strlen(pt)); sfree(pt); }
+        smemclr(key, sizeof(key));
         free(m1);
     }
     free(salt);
@@ -983,7 +983,7 @@ static void kmpw_consume(HANDLE fm, unsigned sz) {
                 if (!memcmp(salt, loc.salt, KSEC_MPW_SALTLEN)) {
                     char *vpt=NULL ;
                     if (g_mpw_unprotect(ver, loc.key, &vpt)==1 && vpt && !strcmp(vpt,KSEC_MPW_VERIFY)) trust = 1 ;
-                    if (vpt) { memset(vpt,0,strlen(vpt)) ; sfree(vpt) ; }
+                    if (vpt) { smemclr(vpt,strlen(vpt)) ; sfree(vpt) ; }
                 }
             }
             if (ver) free(ver) ;
@@ -993,7 +993,7 @@ static void kmpw_consume(HANDLE fm, unsigned sz) {
                 g_mpw_salt_valid = 1 ; g_mpw_unlocked = 1 ;
             }
         }
-        SecureZeroMemory(&loc, sizeof(loc)) ;
+        smemclr(&loc, sizeof(loc)) ;
     }
     CloseHandle(fm) ;
 }
@@ -1013,14 +1013,14 @@ HANDLE kitty_mpw_export_inherit_blob(const char *prefix, char *tok, size_t tokle
     blob.magic = KMPW_INHERIT_MAGIC ; blob.version = 1 ;
     memcpy(blob.salt, g_mpw_salt, KSEC_MPW_SALTLEN) ;
     /* unwrapped from this process's protection, wrapped for the logon */
-    if (!mpw_key_get(blob.key)) { SecureZeroMemory(&blob,sizeof(blob)) ; return NULL ; }
+    if (!mpw_key_get(blob.key)) { smemclr(&blob,sizeof(blob)) ; return NULL ; }
     blob.wrapped = kmpw_mem("CryptProtectMemory", blob.key, KSEC_MPW_KEYLEN) ;
     HANDLE fm = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(blob), NULL) ;
-    if (!fm || fm==INVALID_HANDLE_VALUE) { SecureZeroMemory(&blob,sizeof(blob)) ; return NULL ; }
+    if (!fm || fm==INVALID_HANDLE_VALUE) { smemclr(&blob,sizeof(blob)) ; return NULL ; }
     void *p = MapViewOfFile(fm, FILE_MAP_WRITE, 0, 0, sizeof(blob)) ;
-    if (!p) { CloseHandle(fm) ; SecureZeroMemory(&blob,sizeof(blob)) ; return NULL ; }
+    if (!p) { CloseHandle(fm) ; smemclr(&blob,sizeof(blob)) ; return NULL ; }
     memcpy(p, &blob, sizeof(blob)) ; UnmapViewOfFile(p) ;
-    SecureZeroMemory(&blob, sizeof(blob)) ;
+    smemclr(&blob, sizeof(blob)) ;
     if (tok && toklen) snprintf(tok, toklen, "%s%p:%u", prefix?prefix:"", fm, (unsigned)sizeof(blob)) ;
     return fm ;
 }
@@ -1151,7 +1151,7 @@ static char *ksec_protect_portable_x(const char *plaintext, int *locked)
         unsigned char k[KSEC_MPW_KEYLEN];
         if (mpw_ensure_unlocked(1) && mpw_key_get(k)) {
             char *mb = g_mpw_protect(plaintext, k);   /* "MPW1:..." (snew'd) */
-            SecureZeroMemory(k, sizeof(k));
+            smemclr(k, sizeof(k));
             if (mb) {
                 /* Wrap as self-contained MPW2 (salt embedded) so the value
                  * stays unlockable away from this store's Security\/registry
@@ -1347,7 +1347,7 @@ int ksec_unprotect(const char *stored, char **out)
                     free(m1);
                     if (rv == 1 && pt) {
                         char *res = ksec_dup(pt);
-                        memset(pt, 0, strlen(pt)); sfree(pt);
+                        smemclr(pt, strlen(pt)); sfree(pt);
                         free(salt);
                         *out = res; return 1;
                     }
@@ -1362,9 +1362,9 @@ int ksec_unprotect(const char *stored, char **out)
         unsigned char k[KSEC_MPW_KEYLEN];
         if (mpw_ensure_unlocked(0) && mpw_key_get(k)) {
             char *pt = NULL; int rv = g_mpw_unprotect(stored, k, &pt); /* snew'd */
-            SecureZeroMemory(k, sizeof(k));
-            if (rv == 1 && pt) { char *res = ksec_dup(pt); sfree(pt); *out = res; return 1; }
-            if (pt) sfree(pt);
+            smemclr(k, sizeof(k));
+            if (rv == 1 && pt) { char *res = ksec_dup(pt); smemclr(pt, strlen(pt)); sfree(pt); *out = res; return 1; }
+            if (pt) { smemclr(pt, strlen(pt)); sfree(pt); }
         }
         *out = ksec_dup(""); return -1;   /* MPW locked/wrong -> undecryptable (never-wipe) */
     }
@@ -1379,7 +1379,7 @@ int ksec_unprotect(const char *stored, char **out)
                                    CRYPTPROTECT_UI_FORBIDDEN, &dec)) {
                 char *pt = malloc(dec.cbData + 1);
                 if (pt) { memcpy(pt, dec.pbData, dec.cbData); pt[dec.cbData] = '\0'; }
-                if (dec.pbData) { SecureZeroMemory(dec.pbData, dec.cbData); LocalFree(dec.pbData); }
+                if (dec.pbData) { smemclr(dec.pbData, dec.cbData); LocalFree(dec.pbData); }
                 free(blob);
                 if (pt) { *out = pt; return 1; }
                 *out = ksec_dup(""); return -1;
@@ -1440,8 +1440,8 @@ int ksec_stored_keeps(const char *stored, const char *plaintext, int portable)
                 sprintf(m1, "%s%s", KSEC_MPW_MARK, dot + 1);
                 if (g_mpw_unprotect(m1, k, &pt) == 1 && pt)
                     same = !strcmp(pt, plaintext);
-                SecureZeroMemory(k, sizeof(k));
-                if (pt) { memset(pt, 0, strlen(pt)); sfree(pt); }
+                smemclr(k, sizeof(k));
+                if (pt) { smemclr(pt, strlen(pt)); sfree(pt); }
             }
             free(m1);
         }
@@ -1453,7 +1453,7 @@ int ksec_stored_keeps(const char *stored, const char *plaintext, int portable)
         return 0;
     if (ksec_unprotect(stored, &pt) == 1 && pt)
         same = !strcmp(pt, plaintext);
-    if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+    if (pt) { smemclr(pt, strlen(pt)); free(pt); }
     return same;
 }
 
@@ -1527,7 +1527,7 @@ char *kitty_pwfile_decode_copy(const char *value)
      * this tree has ever written is accepted. */
     if (ksec_unprotect(value, &pt) == 1 && pt)
         res = dupstr(pt);
-    if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+    if (pt) { smemclr(pt, strlen(pt)); free(pt); }
     return res;
 }
 
@@ -1621,7 +1621,7 @@ char *kitty_pwhandle_take(const char *value)
     }
     r = snew(struct kpwh_record);
     memcpy(r, p, sizeof(*r));
-    SecureZeroMemory(p, sz);       /* taken once: nothing is left behind */
+    smemclr(p, sz);       /* taken once: nothing is left behind */
     UnmapViewOfFile(p);
     CloseHandle(fm);
     if (r->magic == KPWH_MAGIC && r->version == 1 && r->len > 0 &&
@@ -1821,15 +1821,15 @@ static int mpw_adopt_retired_state(const char *salt_b64, const char *ver)
         char *pass = g_mpw_passphrase ? mpw_supplied_dup()
                    : mpw_prompt_call(0, ++attempt);
         if (!pass || !pass[0]) {                   /* cancelled, or no prompt */
-            if (pass) { memset(pass, 0, strlen(pass)); free(pass); }
+            if (pass) { smemclr(pass, strlen(pass)); free(pass); }
             break;
         }
         g_mpw_derive(pass, salt, KSEC_MPW_SALTLEN, key);
-        memset(pass, 0, strlen(pass)); free(pass);
+        smemclr(pass, strlen(pass)); free(pass);
         ok = (g_mpw_unprotect(ver, key, &vpt) == 1 && vpt &&
               !strcmp(vpt, KSEC_MPW_VERIFY));
-        if (vpt) { memset(vpt, 0, strlen(vpt)); sfree(vpt); }
-        if (!ok) SecureZeroMemory(key, sizeof(key));
+        if (vpt) { smemclr(vpt, strlen(vpt)); sfree(vpt); }
+        if (!ok) smemclr(key, sizeof(key));
     }
     if (!ok) {
         kitty_pwdebug("portable MPW migrate: archived state did not verify, not adopted");
@@ -1837,12 +1837,12 @@ static int mpw_adopt_retired_state(const char *salt_b64, const char *ver)
     }
     if (!portable_write_text_file(KSEC_MPW_SUBDIR, "MasterPwSalt", salt_b64)) {
         kitty_pwdebug("portable MPW migrate: verified, but Security\\ is not writable");
-        SecureZeroMemory(key, sizeof(key));
+        smemclr(key, sizeof(key));
         return 0;
     }
     portable_write_text_file(KSEC_MPW_SUBDIR, "MasterPwVerifier", ver);
     mpw_slot_put(&g_mpw_key, key);
-    SecureZeroMemory(key, sizeof(key));
+    smemclr(key, sizeof(key));
     memcpy(g_mpw_salt, salt, KSEC_MPW_SALTLEN);
     g_mpw_salt_valid = 1;
     g_mpw_unlocked = 1;                 /* prompted once, here - not again */
@@ -2245,7 +2245,7 @@ static void ksec_maskpass(char *s)   /* exact replica of kitty_crypt.c MASKPASS 
         j++; if (j >= 16) j = 0;
     }
     strcpy(s, buf);
-    memset(buf, 0, strlen(s));
+    smemclr(buf, strlen(s));
     free(buf);
 }
 /* True only if every byte is printable ASCII (0x20..0x7e). Used to
@@ -2293,7 +2293,7 @@ static char *ksec_try_legacy_key(const char *stored, const char *passkey,
         strcpy(u, out);
         ksec_maskpass(u);
         if (ksec_all_printable(u)) {
-            memset(out, 0, strlen(out)); free(out);
+            smemclr(out, strlen(out)); free(out);
             return u;
         }
         free(u);
@@ -2301,7 +2301,7 @@ static char *ksec_try_legacy_key(const char *stored, const char *passkey,
     if (raw0 && !*raw0)
         *raw0 = out;          /* keep for the caller's last-resort fallback */
     else {
-        memset(out, 0, strlen(out)); free(out);
+        smemclr(out, strlen(out)); free(out);
     }
     return NULL;
 }
@@ -2360,7 +2360,7 @@ char *ksec_legacy_decrypt_hostterm(const char *stored, const char *host,
         pt = raw0;
         raw0 = NULL;
     }
-    if (raw0) { memset(raw0, 0, strlen(raw0)); free(raw0); }
+    if (raw0) { smemclr(raw0, strlen(raw0)); free(raw0); }
     return pt;
 }
 /* Decode a password read from an IMPORTED .ktx, where the value's provenance is
@@ -2404,7 +2404,7 @@ char *kitty_secret_decode_imported(const char *stored, const char *host,
     if (kitty_secret_is_marked(stored)) {
         pt = NULL;
         if (ksec_unprotect(stored, &pt) > 0 && pt) return pt;
-        if (pt) { memset(pt, 0, strlen(pt)); free(pt); }
+        if (pt) { smemclr(pt, strlen(pt)); free(pt); }
         return ksec_dup("");
     }
     if (!try_legacy) return ksec_dup(stored);
@@ -2440,9 +2440,10 @@ char *ksec_to_utf8(char *s)
     int un = WideCharToMultiByte(CP_UTF8, 0, w, -1, NULL, 0, NULL, NULL);
     char *u = (char *)malloc(un > 0 ? un : 1);
     if (u) WideCharToMultiByte(CP_UTF8, 0, w, -1, u, un, NULL, NULL);
+    smemclr(w, (size_t)wn * sizeof(wchar_t));   /* the password, as UTF-16 */
     free(w);
     if (!u) return s;
-    memset(s, 0, strlen(s)); free(s);
+    smemclr(s, strlen(s)); free(s);
     return u;
 }
 

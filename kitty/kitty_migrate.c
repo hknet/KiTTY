@@ -381,7 +381,7 @@ static int classify_password(struct ksf_item *items)
         if (pt) free(pt);
         return KFS_PASSWORD;
     }
-    memset(pt, 0, strlen(pt));
+    smemclr(pt, strlen(pt));
     free(pt);
     return KFS_READY;
 }
@@ -684,7 +684,7 @@ static void import_open_mpw_values(struct ksf_item **items, const char *store_pa
             ksf_list_set(items, keys[k], marked);
             smemclr(marked, strlen(marked));
             sfree(marked);
-            memset(pt, 0, strlen(pt));
+            smemclr(pt, strlen(pt));
             free(pt);
         }
     }
@@ -697,7 +697,7 @@ bool kitty_import_store_pass_fits(const char *path, const char *pass)
     bool ok = false;
     if (v && kitty_secret_is_mpw(v) == 2 && pass && *pass) {
         char *pt = kitty_mpw2_unprotect_with_passphrase(v, pass);
-        if (pt) { ok = true; memset(pt, 0, strlen(pt)); free(pt); }
+        if (pt) { ok = true; smemclr(pt, strlen(pt)); free(pt); }
     }
     ksf_list_free(items);
     return ok;

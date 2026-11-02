@@ -92,7 +92,7 @@ static char *kcm_prompt(int creating)
         if (n > 0)
             WideCharToMultiByte(CP_UTF8, 0, buf, -1, res, n, NULL, NULL);
     }
-    SecureZeroMemory(buf, sizeof(buf));
+    smemclr(buf, sizeof(buf));
     return res;                  /* empty = cancelled: the store stops prompting */
 }
 

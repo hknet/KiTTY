@@ -104,7 +104,7 @@ int save_open_settings_forced(char *filename, Conf *conf) {
         smemclr(pw, sizeof(pw));
         if (!skipped)
             ksf_list_set(&items, "Password", blob ? blob : "");
-        if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
+        if (blob) { smemclr(blob, strlen(blob)); free(blob); }
     }
     {
         /* the proxy password in the same envelope. The reader
@@ -120,7 +120,7 @@ int save_open_settings_forced(char *filename, Conf *conf) {
         smemclr(pxpw, sizeof(pxpw));
         if (!pxskipped)
             ksf_list_set(&items, "ProxyPassword", blob ? blob : "");
-        if (blob) { memset(blob, 0, strlen(blob)); free(blob); }
+        if (blob) { smemclr(blob, strlen(blob)); free(blob); }
         if (pxlocked) pwlocked = 1;
     }
     sfree(where);

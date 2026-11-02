@@ -131,7 +131,7 @@ static char *exp_utf8_from_edit(HWND hdlg, int id)
     n = WideCharToMultiByte(CP_UTF8, 0, w, -1, NULL, 0, NULL, NULL);
     s = (char *)malloc(n > 0 ? (size_t)n : 1);
     if (s) WideCharToMultiByte(CP_UTF8, 0, w, -1, s, n, NULL, NULL);
-    SecureZeroMemory(w, (size_t)(wlen + 1) * sizeof(WCHAR));
+    smemclr(w, (size_t)(wlen + 1) * sizeof(WCHAR));
     free(w);
     return s;
 }
@@ -191,7 +191,7 @@ static INT_PTR CALLBACK exportpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM 
                 MessageBoxA(hdlg,
                     KT_BRIDGE_EXPORT_PW_SHORT,
                     KT_CAP_SESSION_EXPORT, MB_OK | MB_ICONINFORMATION);
-                if (p) { SecureZeroMemory(p, strlen(p)); free(p); }
+                if (p) { smemclr(p, strlen(p)); free(p); }
                 SetFocus(GetDlgItem(hdlg, IDC_EXP_PASS));
                 return TRUE;
             }
@@ -224,7 +224,7 @@ static int kitty_ask_export_password(HWND hwnd, char **pwOut, int *dpapiOut)
                    hwnd, exportpw_dlgproc);
     if (r != IDOK) {
         if (g_exp_result) {
-            SecureZeroMemory(g_exp_result, strlen(g_exp_result));
+            smemclr(g_exp_result, strlen(g_exp_result));
             free(g_exp_result);
             g_exp_result = NULL;
         }
@@ -373,7 +373,7 @@ void kitty_export_all_sessions(HWND hwnd) {
     g_expd_pw = NULL;
     sfree(msg);
 
-    if (bundlepw) { SecureZeroMemory(bundlepw, strlen(bundlepw)); free(bundlepw); }
+    if (bundlepw) { smemclr(bundlepw, strlen(bundlepw)); free(bundlepw); }
 }
 
 /* Does a saved session with this exact name already exist in the active store? */
@@ -668,7 +668,7 @@ static INT_PTR CALLBACK importpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM 
 
 static void imp_wipe(char **p)
 {
-    if (*p) { SecureZeroMemory(*p, strlen(*p)); free(*p); *p = NULL; }
+    if (*p) { smemclr(*p, strlen(*p)); free(*p); *p = NULL; }
 }
 
 /* Prompt for the bundle password and verify it against `sample` before

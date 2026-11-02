@@ -82,7 +82,7 @@ static const char *const ksm_file_sections[] = {
 
 static void ksm_wipe(char **p)
 {
-    if (*p) { SecureZeroMemory(*p, strlen(*p)); free(*p); *p = NULL; }
+    if (*p) { smemclr(*p, strlen(*p)); free(*p); *p = NULL; }
 }
 
 static int ksm_dir_exists(const char *path)
@@ -806,7 +806,7 @@ static int ksm_mint_master_state(const char *dir, const char *pass)
              ksm_write_text(sec, "MasterPwVerifier", vb);
     if (sb) free(sb);
     if (vb) sfree(vb);
-    SecureZeroMemory(key, sizeof(key));
+    smemclr(key, sizeof(key));
     sfree(sec);
     return ok;
 }

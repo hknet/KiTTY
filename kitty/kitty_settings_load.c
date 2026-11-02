@@ -179,7 +179,7 @@ static void ktx_decode_password( Conf *conf, int key, int try_legacy ) {
 		try_legacy ? conf_get_str( conf, CONF_termtype ) : NULL, try_legacy ) ;
 	smemclr( raw, sizeof(raw) ) ;
 	kitty_pw_set( conf, key, pt ? pt : "" ) ;
-	if( pt ) { memset( pt, 0, strlen( pt ) ) ; free( pt ) ; }
+	if( pt ) { smemclr( pt, strlen( pt ) ) ; free( pt ) ; }
 }
 
 void load_open_settings_forced(char *filename, Conf *conf) {

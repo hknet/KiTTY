@@ -937,8 +937,8 @@ struct ksf_item { char *key; char *val; char *raw; int crlf;
 static void ksf_item_free(struct ksf_item *it)
 {
     sfree(it->key);
-    if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
-    if (it->raw) { memset(it->raw, 0, strlen(it->raw)); sfree(it->raw); }
+    if (it->val) { smemclr(it->val, strlen(it->val)); sfree(it->val); }
+    if (it->raw) { smemclr(it->raw, strlen(it->raw)); sfree(it->raw); }
     sfree(it);
 }
 char *ksf_list_get(struct ksf_item *h, const char *key)   /* borrowed or NULL */
@@ -959,8 +959,8 @@ void ksf_list_set(struct ksf_item **h, const char *key, const char *val)
             if (it->val && !strcmp(it->val, val))
                 return;
             nv = dupstr(val);
-            if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
-            if (it->raw) { memset(it->raw, 0, strlen(it->raw)); sfree(it->raw); }
+            if (it->val) { smemclr(it->val, strlen(it->val)); sfree(it->val); }
+            if (it->raw) { smemclr(it->raw, strlen(it->raw)); sfree(it->raw); }
             it->val = nv;
             it->raw = NULL;
             return;
@@ -1078,8 +1078,8 @@ static char *ksf_line_in_form(const char *raw, const char *key, const char *val)
 static void ksf_item_to_comment(struct ksf_item *it, char *text)
 {
     sfree(it->key);
-    if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
-    if (it->raw) { memset(it->raw, 0, strlen(it->raw)); sfree(it->raw); }
+    if (it->val) { smemclr(it->val, strlen(it->val)); sfree(it->val); }
+    if (it->raw) { smemclr(it->raw, strlen(it->raw)); sfree(it->raw); }
     it->key = NULL;
     it->val = NULL;
     it->raw = text;
@@ -1118,14 +1118,14 @@ void ksf_list_set_nondefault(struct ksf_item **h, const char *key,
         }
         line = ksf_line_in_form(it->raw, key, val);
         ksf_item_to_comment(it, dupprintf("# %s", line));
-        memset(line, 0, strlen(line));
+        smemclr(line, strlen(line));
         sfree(line);
         return;
     }
     if (!strcmp(val, def))
         return;
     if (com) {
-        if (com->raw) { memset(com->raw, 0, strlen(com->raw)); sfree(com->raw); }
+        if (com->raw) { smemclr(com->raw, strlen(com->raw)); sfree(com->raw); }
         com->raw = NULL;
         com->key = dupstr(key);
         com->val = dupstr(val);
@@ -1149,7 +1149,7 @@ int ksf_list_comment_defaults(struct ksf_item *h, struct ksf_item *defs,
             continue;
         line = h->raw ? dupstr(h->raw) : ksf_line_in_form(NULL, h->key, h->val);
         ksf_item_to_comment(h, dupprintf("# %s", line));
-        memset(line, 0, strlen(line));
+        smemclr(line, strlen(line));
         sfree(line);
         n++;
     }
@@ -2228,10 +2228,10 @@ static void ksf_convert_legacy_password(struct ksf_item **head)
     pt = ksec_legacy_decrypt_hostterm(it->val,
         ksf_list_get(*head, "HostName"), ksf_list_get(*head, "TerminalType"));
     if (pt) {
-        memset(it->val, 0, strlen(it->val));
+        smemclr(it->val, strlen(it->val));
         sfree(it->val);
         it->val = dupstr(pt);
-        memset(pt, 0, strlen(pt));
+        smemclr(pt, strlen(pt));
         free(pt);
     }
 }
@@ -2336,8 +2336,8 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
             if (it->key && !strcmp(it->key, line))
                 break;
         if (it) {
-            if (it->val) { memset(it->val, 0, strlen(it->val)); sfree(it->val); }
-            if (it->raw) { memset(it->raw, 0, strlen(it->raw)); sfree(it->raw); }
+            if (it->val) { smemclr(it->val, strlen(it->val)); sfree(it->val); }
+            if (it->raw) { smemclr(it->raw, strlen(it->raw)); sfree(it->raw); }
             it->val = dupstr(val ? val : "");
             it->raw = text;
         } else {
@@ -2350,7 +2350,7 @@ struct ksf_item *ksf_load(const char *path)       /* parsed list (may be NULL) *
             *tail = it;
             tail = &it->next;
         }
-        if (val) { memset(val, 0, strlen(val)); sfree(val); }
+        if (val) { smemclr(val, strlen(val)); sfree(val); }
         sfree(line);
     }
     fclose(fp);

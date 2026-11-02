@@ -8,6 +8,7 @@
  * sitting in plain sight in memory; it is not at-rest protection.
  */
 #include "kitty_crypt.h"
+void smemclr(void *b, size_t len);   /* utils/smemclr.c (misc.h): a wipe the compiler cannot drop */
 
 int cryptstring( const int mode, char * st, const char * key ) {
 	if( mode>1 ) return strlen(st);
@@ -79,6 +80,6 @@ void MASKPASS( const int mode, char * password ) {
 		j++ ; if(MASKKEY[j]=='\0') j=0 ;
 		}
 	strcpy( password, buffer ) ;
-	memset(buffer,0,strlen(password) );
+	smemclr(buffer,strlen(password) );
 	free(buffer) ;
 }

@@ -260,7 +260,7 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 			char *pt = NULL ; kitty_secret_unwrap( lpData, &pt ) ;   /* DPAPI/MPW/plain */
 			/* Wrapped again for memory, not left in the clear in the Conf. */
 			kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
-			if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
+			if( pt ) { smemclr( pt, strlen(pt) ) ; free( pt ) ; }
 			smemclr( lpData, strlen(lpData) ) ;
 			sfree( lpData ) ;
 		}
@@ -329,7 +329,7 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 			char *pt = NULL ; kitty_secret_unwrap( v, &pt ) ;   /* DPAPI/MPW/plain */
 			/* Wrapped again for memory (kitty_pwmem.c). */
 			kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
-			if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
+			if( pt ) { smemclr( pt, strlen(pt) ) ; free( pt ) ; }
 		}
 		if( (v = ksf_list_get( items, "ProxyTelnetCommand" )) != NULL ) conf_set_str( conf, CONF_proxy_telnet_command, v ) ;
 		if( (v = ksf_list_get( items, "ProxyLogToTerm" )) != NULL ) conf_set_int( conf, CONF_proxy_log_to_term, atoi(v) ) ;
@@ -464,7 +464,7 @@ int SaveProxyInfo( Conf *conf, const char *name ) {
 		sfree( dir ) ;
 	}
 	smemclr( pxpw, sizeof(pxpw) ) ;
-	if( pwblob ) { memset( pwblob, 0, strlen(pwblob) ) ; free( pwblob ) ; }
+	if( pwblob ) { smemclr( pwblob, strlen(pwblob) ) ; free( pwblob ) ; }
 	if( pwlocked && saved ) ksec_report_locked_save( KSEC_KEPT_PROXY, name ) ;
 	if( !saved ) SetLastError( saverr ? saverr : ERROR_WRITE_FAULT ) ;
 	return saved ;
@@ -520,7 +520,7 @@ static void kitty_proxy_encrypt_in_place( const char *dstpath, const char *name 
 		char *enc = kitty_secret_wrap_current_backend_kept( kitty_secret_strip_plain( raw ), &kept ) ;   /* registry -> DPAPI1 */
 		if( enc ) {
 			RegTestOrCreate( HKEY_CURRENT_USER, dstpath, "ProxyPassword", enc ) ;
-			memset( enc, 0, strlen(enc) ) ; free( enc ) ;
+			smemclr( enc, strlen(enc) ) ; free( enc ) ;
 		} else if( kept )
 			ksec_report_locked_save( KSEC_KEPT_PROXY, name ) ;
 	}
@@ -634,7 +634,7 @@ int kitty_export_proxies_to_dir( const char *dir, int *failOut ) {
 			#undef WPD
 			fclose( fp ) ; count++ ;
 		}
-		if( pwblob ) { memset(pwblob,0,strlen(pwblob)) ; free(pwblob) ; }
+		if( pwblob ) { smemclr(pwblob,strlen(pwblob)) ; free(pwblob) ; }
 		if( pwlocked ) ksec_report_locked_save( KSEC_KEPT_EXPORT, path ) ;
 		sfree( path ) ;
 		conf_free( conf ) ;
@@ -718,7 +718,7 @@ int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedO
 				char *pt = NULL ; kitty_secret_unwrap( buf2, &pt ) ;   /* MPW2/legacy -> plain */
 				/* Wrapped again for memory (kitty_pwmem.c). */
 				kitty_pw_set( conf, CONF_proxy_password, pt ? pt : "" ) ;
-				if( pt ) { memset( pt, 0, strlen(pt) ) ; free( pt ) ; }
+				if( pt ) { smemclr( pt, strlen(pt) ) ; free( pt ) ; }
 			} else if( ReadPortableValue(buffer, "ProxyTelnetCommand", buf2, maxlen) ) {
 				conf_set_str( conf, CONF_proxy_telnet_command, buf2 ) ;
 			} else if( ReadPortableValue(buffer, "ProxyLogToTerm", buf2, maxlen) ) {
@@ -728,7 +728,7 @@ int kitty_import_proxies_from_dir( const char *dir, int overwrite, int *skippedO
 			}
 			smemclr( buf2, maxlen ) ;
 			sfree( buf2 ) ;
-			memset( buffer, 0, strlen(buffer) ) ;
+			smemclr( buffer, strlen(buffer) ) ;
 			free( buffer ) ;
 		}
 		fclose( fp ) ;

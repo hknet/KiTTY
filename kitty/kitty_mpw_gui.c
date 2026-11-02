@@ -43,6 +43,7 @@
 #include "kitty_params.h"   /* GetNoticeSeconds */
 #include "kitty_winutil.h"  /* debug_logevent: the terminal's Event Log */
 #include "kitty_registry.h" /* kitty_reach, KittyCliReport */
+void smemclr(void *b, size_t len);   /* utils/smemclr.c (misc.h): a wipe the compiler cannot drop */
 
 /* windows/window.c: the terminal's wait step (handle waits, callbacks) */
 void kitty_reconf_wait(void);
@@ -114,7 +115,7 @@ static char *utf8_from_edit(HWND hdlg, int id)
     char *s = (char *)malloc(n > 0 ? (size_t)n : 1);
     if (s)
         WideCharToMultiByte(CP_UTF8, 0, w, -1, s, n, NULL, NULL);
-    SecureZeroMemory(w, (size_t)(wlen + 1) * sizeof(WCHAR));
+    smemclr(w, (size_t)(wlen + 1) * sizeof(WCHAR));
     free(w);
     return s;
 }
@@ -294,10 +295,10 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
             if (d && d->first_time) {
                 char *p2 = utf8_from_edit(hdlg, IDC_MPW_CONFIRM);
                 int mismatch = (!p2 || strcmp(p1, p2) != 0);
-                if (p2) { SecureZeroMemory(p2, strlen(p2)); free(p2); }
+                if (p2) { smemclr(p2, strlen(p2)); free(p2); }
                 if (mismatch) {
                     mpw_show_line(hdlg, d, KT_MPW_MISMATCH);
-                    SecureZeroMemory(p1, strlen(p1)); free(p1);
+                    smemclr(p1, strlen(p1)); free(p1);
                     SetDlgItemTextA(hdlg, IDC_MPW_CONFIRM, "");
                     SetFocus(GetDlgItem(hdlg, IDC_MPW_CONFIRM));
                     return TRUE;
@@ -306,7 +307,7 @@ static INT_PTR CALLBACK mpw_dlgproc(HWND hdlg, UINT msg, WPARAM wp, LPARAM lp)
             if (d && !d->live.done)
                 d->result = p1;
             else {
-                SecureZeroMemory(p1, strlen(p1)); free(p1);
+                smemclr(p1, strlen(p1)); free(p1);
             }
             mpw_live_finish(hdlg, d ? &d->live : NULL, IDOK);
             return TRUE;
@@ -519,7 +520,7 @@ static char *gui_master_pw_prompt(int creating)
          * cancels the box; else modal */
         if (mpw_pumped_box(&d.live, owner, (LPARAM)&d) != IDOK) {
             if (d.result) {
-                SecureZeroMemory(d.result, strlen(d.result));
+                smemclr(d.result, strlen(d.result));
                 free(d.result);
                 d.result = NULL;
             }
@@ -555,7 +556,7 @@ char *kitty_mpw_gui_ask_import(HWND owner, const char *prompt)
     d.live.wake = GetCurrentThreadId();
     if (kitty_dialog_box(owner, IDD_MASTERPW, mpw_dlgproc, (LPARAM)&d) != IDOK) {
         if (d.result) {
-            SecureZeroMemory(d.result, strlen(d.result));
+            smemclr(d.result, strlen(d.result));
             free(d.result);
             d.result = NULL;
         }

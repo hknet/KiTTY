@@ -1,0 +1,3 @@
+# tools/check-secure-wipe.py: a memset before the free of a buffer that
+# holds no secret. One line each:  file | pointer | reason
+utils/unicode-norm.c | ub->buf | upstream PuTTY: Unicode normalisation scratch, no secret

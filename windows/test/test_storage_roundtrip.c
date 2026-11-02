@@ -433,13 +433,13 @@ static void test_portable(void)
                 }
                 same = hb.wrapped != 2 && !memcmp(hb.key, key, sizeof(key)) &&
                        !memcmp(hb.salt, salt, sizeof(salt));
-                SecureZeroMemory(&hb, sizeof(hb));
+                smemclr(&hb, sizeof(hb));
             }
             CloseHandle(fm);
         }
         check(same, "portable: the handed-off key is the derived key");
     }
-    SecureZeroMemory(key, sizeof(key));
+    smemclr(key, sizeof(key));
 
     kitty_set_storage_mode(0);
 
@@ -1828,7 +1828,7 @@ static void test_mpw_locked_refuses(void)
     kitty_mpw_derive(PPASS, salt, sizeof(salt), key);
     ver = kitty_mpw_protect("KiTTY-MPW-verify", key);
     saltb64 = ksec_b64_encode(salt, sizeof(salt));
-    SecureZeroMemory(key, sizeof(key));
+    smemclr(key, sizeof(key));
     check(ver && saltb64 && write_text(sec, "MasterPwSalt", saltb64) &&
           write_text(sec, "MasterPwVerifier", ver),
           "mpw locked: store seeded");

@@ -792,6 +792,27 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking fixed character arrays against tools/fixed-arrays.allow")
   add_custom_target(check_fixed_arrays ALL DEPENDS ${KITTY_FIXARR_CHECK_STAMP})
 
+  # A buffer wiped and then freed: memset(p, ...) directly before free(p) or
+  # sfree(p) is a dead store the compiler may drop, so the secret stays in
+  # freed memory; smemclr cannot be dropped. Any fill value counts, and so
+  # does any SecureZeroMemory (smemclr is the one wipe of the tree). A buffer
+  # with no secret is listed in tools/secure-wipe.allow; a stale line fails.
+  # The self-test runs first, on planted sources.
+  set(KITTY_SECWIPE_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_secwipe_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_SECWIPE_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-secure-wipe.py --self-test
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-secure-wipe.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_SECWIPE_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-secure-wipe.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/secure-wipe.allow
+            ${KITTY_CONF_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking wipes before free against tools/secure-wipe.allow")
+  add_custom_target(check_secure_wipe ALL DEPENDS ${KITTY_SECWIPE_CHECK_STAMP})
+
   # The UI texts: a KT_ define of kitty/kitty_text.h used nowhere, two KT_
   # defines with the same text, a text with say/ask/tell/names as a verb, a
   # bare "KiTTY" that is not KiTTY++, and a string literal handed directly
@@ -825,7 +846,7 @@ if(KITTY_INI_CHECK_PYTHON)
   add_dependencies(utils
     check_kitty_ini check_features_toc check_menu_ids check_kitty_events
     check_conf_types check_dialog_accelerators check_fixed_arrays
-    check_kitty_text)
+    check_kitty_text check_secure_wipe)
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)

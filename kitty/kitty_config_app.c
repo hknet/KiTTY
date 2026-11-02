@@ -6254,7 +6254,7 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
                     if (kitty_import_store_pass_fits(probe, p))
                         store_pass = p;
                     else {
-                        memset(p, 0, strlen(p));
+                        smemclr(p, strlen(p));
                         free(p);
                     }
                 }
@@ -6338,7 +6338,7 @@ static void kitty_migf_handler(dlgcontrol *ctrl, dlgparam *dlg,
             strbuf_free(names);
             kitty_namelist_clear(&dropped);
             kitty_namelist_clear(&taken);
-            if (store_pass) { memset(store_pass, 0, strlen(store_pass)); free(store_pass); }
+            if (store_pass) { smemclr(store_pass, strlen(store_pass)); free(store_pass); }
         }
         break;
     }
