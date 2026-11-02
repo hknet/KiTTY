@@ -150,6 +150,12 @@ static void gpps(settings_r *sesskey, const char *name, const char *def,
 {
     char *val = gpps_raw(sesskey, name, def);
     conf_set_str(conf, primary, val);
+    /* KiTTY: the value may be a password just decrypted from the store
+     * (Password, ProxyPassword). conf_set_str holds its own copy, so this
+     * one is cleared before it is freed. Not under MOD_PERSO: this file is
+     * built into a library without it. */
+    if (val)
+        smemclr(val, strlen(val));
     sfree(val);
 }
 

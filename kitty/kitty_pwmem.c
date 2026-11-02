@@ -470,8 +470,16 @@ void kitty_pw_seal_all(Conf *conf)
         marked = !strncmp(v, KPW_MARK_LOGON, strlen(KPW_MARK_LOGON));
 
         n = kitty_pw_unwrap_str(v, buf, sizeof(buf));
-        if (n > 0)
+        if (n > 0) {
+            /* The Conf's own string is the password in plain text when it
+             * was not ours yet. kitty_pw_set replaces it, and conf.c frees
+             * the old string without clearing it: clear it in place first,
+             * as kitty_pw_wipe does. The cast is to a string the Conf owns
+             * and is about to release. */
+            if (!marked)
+                smemclr((char *)v, strlen(v));
             kitty_pw_set(conf, kpw_keys[i], buf);
+        }
         else if (marked)
             conf_set_str(conf, kpw_keys[i], "");   /* unreadable here */
         /* else: plaintext we could not copy (longer than we carry) - leave it

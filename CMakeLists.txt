@@ -439,6 +439,11 @@ add_executable(test_conf
 )
 be_list(test_conf TestConf SSH SERIAL OTHERBACKENDS)
 target_link_libraries(test_conf sshclient otherbackends settings network crypto utils ${platform_libraries})
+# KiTTY: every free() of the test goes through its __wrap_free, which counts
+# blocks freed while still holding a watched password (test_password_wiped).
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  target_link_options(test_conf PRIVATE -Wl,--wrap=free)
+endif()
 
 # KiTTY: the session list's baseline behaviour - enumeration, order, the Folder
 # attribute, the name round-trip. Hermetic: it puts the storage layer into file

@@ -224,6 +224,24 @@ void enum_settings_finish(settings_e *handle)
 
 static int nfails = 0;
 
+/*
+ * KiTTY: every free() of this test passes through here (linked with
+ * -Wl,--wrap=free, CMakeLists.txt). A freed block that still begins with the
+ * watched password was freed without being cleared: the plain text would
+ * stay in freed memory.
+ */
+static const char *qa_watch = NULL;
+static int qa_freed_plain = 0;
+void __real_free(void *p);
+void __wrap_free(void *p);
+void __wrap_free(void *p)
+{
+    if (p && qa_watch &&
+        0 == strncmp((const char *)p, qa_watch, strlen(qa_watch)))
+        qa_freed_plain++;
+    __real_free(p);
+}
+
 void test_str_simple(int confid, const char *saveid, const char *defexp)
 {
     Conf *conf = conf_new();
@@ -1233,10 +1251,47 @@ void test_conf_key_info(void)
     }
 }
 
+/* A password loaded from the store, and a plain one sealed in a Conf: no
+ * plain copy is freed uncleared on the way (settings.c gpps,
+ * kitty_pw_seal_all). */
+static void test_password_wiped(void)
+{
+    static const char secret[] = "QAsealSECRET-7f3a91";
+    Conf *conf = conf_new();
+    do_defaults(NULL, conf);
+
+    settings_r sr = {
+        .n = 1,
+        .si[0].key = "ProxyPassword",
+        .si[0].type = SAVE_S,
+    };
+    snprintf(sr.si[0].sval, sizeof(sr.si[0].sval), "%s", secret);
+    qa_watch = secret;
+    qa_freed_plain = 0;
+    load_open_settings(&sr, conf);
+    if (qa_freed_plain) {
+        printf("fail test_password_wiped: loading ProxyPassword freed %d "
+               "block(s) still holding the password\n", qa_freed_plain);
+        nfails++;
+    }
+
+    conf_set_str(conf, CONF_password, secret);   /* plain, as before a seal */
+    qa_freed_plain = 0;
+    kitty_pw_seal_all(conf);
+    if (qa_freed_plain) {
+        printf("fail test_password_wiped: kitty_pw_seal_all freed %d "
+               "block(s) still holding the password\n", qa_freed_plain);
+        nfails++;
+    }
+    qa_watch = NULL;
+    conf_free(conf);
+}
+
 int main(void)
 {
     test_conf_key_info();
     test_simple();
     test_long_int_lists();
+    test_password_wiped();
     return nfails != 0;
 }
