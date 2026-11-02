@@ -814,3 +814,4 @@ windows/window.c | far2l_title_refresh() | now | 1024 | window title, GetWindowT
 windows/window.c | win_seat_get_userpass_input() | pw | KITTY_PW_MAX + 1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
 windows/window.c | kitty_ctx_switch_notice() | line | 2 * CTX_FIELD_MAX + 64 | OSC 3008 switch notice line, size passed
 windows/window.c | kitty_winpos_dbg() | path | MAX_PATH | debug log path %TEMP%\kitty_winpos.log; GetTempPathA result checked (n >= sizeof-20 refused)
+kitty/kitty_xfer.c | kitty_mask_line() | pw | KITTY_PW_MAX+1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)

@@ -51,6 +51,7 @@
 #include "kitty_tags.h"          /* the tag pane (hknet/KiTTY#60) */
 #include "kitty_secretstore.h"   /* the master key handed to the sessions it starts */
 #include "kitty_winutil.h"       /* kitty_create_process_with_handles */
+#include "kitty_secretmask.h"   /* kitty_mask_line: no secret in a failure report */
 
 /* windows/utils/shinydialogbox.c: Esc and Tab for modeless dialogs */
 void ShinyAddAuxDialog(HWND hwnd);
@@ -2187,10 +2188,14 @@ static void so_start_named(char **names, int n_names)
             CloseHandle(pi.hProcess);
         } else {
             /* Start / Enter used to do nothing, silently */
-            char *msg = dupprintf(KT_START_FAILED_FMT, cmd,
-                                  kitty_win_reason(GetLastError()));
+            const char *why = kitty_win_reason(GetLastError());
+            char *shown = kitty_mask_line(cmd);   /* no secret in the report */
+            char *msg = dupprintf(KT_START_FAILED_FMT, shown, why);
             MessageBox(NULL, msg, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+            smemclr(msg, strlen(msg));
             sfree(msg);
+            smemclr(shown, strlen(shown));
+            sfree(shown);
             sfree(cmd);
             break;      /* the next would fail the same way */
         }

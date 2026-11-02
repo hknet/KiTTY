@@ -27,6 +27,7 @@
 #include "kitty_auxpos.h"
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "kitty_params.h"   /* GetNoticeSeconds: RunCommand's start-failure notice */
+#include "kitty_secretmask.h"   /* kitty_mask_line: no password in the failure report */
 #include <shellapi.h>       /* ShellExecuteExA: RunCommand's fallback */
 /* wincrypt.h (CryptQueryObject / signer cert) comes in via windows.h */
 
@@ -885,11 +886,17 @@ static int run_command_ex( HWND hwnd, const char * cmd, int report ) {
 				 * the Event Log: a modal box here stood in front of the live
 				 * session and stopped it until it was answered. */
 				const char *why = kitty_win_reason( err ? err : e2 ) ;
-				char *msg = dupprintf( KT_START_FAILED_FMT, cmd, why ) ;
-				debug_logevent( KT_START_FAILED_EVENT_FMT, cmd, why ) ;
+				/* The line can carry a password (FileZilla's URL, a WinSCP
+				 * fall-back): every secret of the session masked first. */
+				char *shown = kitty_mask_line( cmd ) ;
+				char *msg = dupprintf( KT_START_FAILED_FMT, shown, why ) ;
+				debug_logevent( KT_START_FAILED_EVENT_FMT, shown, why ) ;
 				kitty_notice_show( KT_CAP_START_FAILED, msg, RGB( 190, 110, 0 ),
 				                   GetNoticeSeconds(), NULL, 0 ) ;
+				smemclr( msg, strlen( msg ) ) ;
 				sfree( msg ) ;
+				smemclr( shown, strlen( shown ) ) ;
+				sfree( shown ) ;
 			}
 			SetLastError( err ? err : e2 ) ;
 			return 0 ;

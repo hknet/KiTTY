@@ -76,6 +76,7 @@ static int kx_override_port( const char * ov ) ;
  * it works whether the password was qcat-escaped, percent-encoded or plain.
  * A zero-length span means there was no password to hide.
  */
+#include "kitty_secretmask.h"   /* kitty_mask_line: the safety net under the spans */
 static void debug_logevent_redacted2(const char *what, const char *cmd,
                                      size_t secret_at, size_t secret_len,
                                      size_t secret2_at, size_t secret2_len)
@@ -84,11 +85,9 @@ static void debug_logevent_redacted2(const char *what, const char *cmd,
     size_t n;
     if (!debug_flag)
         return;
-    if (secret_len == 0 && secret2_len == 0) {
-        debug_logevent("%s: %s", what, cmd);
-        return;
-    }
-    safe = dupstr(cmd);
+    /* Every known secret of the session first (a caller that recorded no
+     * span still leaks nothing), then the spans the caller recorded. */
+    safe = kitty_mask_line(cmd);
     n = strlen(safe);
     if (secret_len > 0 && secret_at < n) {
         size_t end = secret_at + secret_len;
@@ -115,6 +114,47 @@ static void debug_logevent_redacted(const char *what, const char *cmd,
 
 
 extern Conf *conf ;          /* the live session configuration (windows/window.c) */
+
+/* The secrets a hand-off put on a command line that are not in the Conf (a
+ * proxy list entry's password), held wrapped; the oldest goes when full. */
+#define KX_NOTED_MAX 8
+static char *kx_noted[KX_NOTED_MAX] ;
+static int kx_noted_next = 0 ;
+
+void kitty_secret_note( const char *plain ) {
+	char *w ;
+	if( !plain || !*plain ) return ;
+	if( ( w = kitty_pw_wrap_str( plain ) ) == NULL ) return ;
+	if( kx_noted[kx_noted_next] ) {
+		smemclr( kx_noted[kx_noted_next], strlen( kx_noted[kx_noted_next] ) ) ;
+		sfree( kx_noted[kx_noted_next] ) ;
+	}
+	kx_noted[kx_noted_next] = w ;
+	kx_noted_next = ( kx_noted_next + 1 ) % KX_NOTED_MAX ;
+}
+
+/* A copy of line with every secret of this session masked, in each form a
+ * hand-off writes it (kitty_secretmask.c): what a report or a log line may
+ * show. */
+char *kitty_mask_line( const char *line ) {
+	char *b = dupstr( line ? line : "" ) ;
+	char pw[KITTY_PW_MAX+1] ;
+	if( conf ) {
+		static const int keys[] = { CONF_password, CONF_proxy_password } ;
+		for( size_t i = 0 ; i < sizeof(keys)/sizeof(keys[0]) ; i++ ) {
+			kitty_pw_get( conf, keys[i], pw, sizeof(pw) ) ;
+			kitty_mask_secret( b, pw ) ;
+			smemclr( pw, sizeof(pw) ) ;
+		}
+	}
+	for( int i = 0 ; i < KX_NOTED_MAX ; i++ ) {
+		if( !kx_noted[i] ) continue ;
+		kitty_pw_unwrap_str( kx_noted[i], pw, sizeof(pw) ) ;
+		kitty_mask_secret( b, pw ) ;
+		smemclr( pw, sizeof(pw) ) ;
+	}
+	return b ;
+}
 
 /*
  * KiTTY: the key file to hand a transfer helper - or NULL.
@@ -2795,6 +2835,7 @@ static void kx_proxy_args( strbuf *buffer, int *pwfiles,
 	 * the jump host then prompts for it, which a transfer window can show. */
 	kitty_pw_unwrap_str( px ? px->password : conf_get_str(conf,CONF_proxy_password),
 	                     px_pass, sizeof(px_pass) ) ;
+	kitty_secret_note( px_pass ) ;   /* masked in any report of this line */
 	if( px_pass[0] ) {
 		char *line = NULL ; const char *pf ;
 		if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( px_pass ) ;
@@ -5351,6 +5392,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	char px_pass[KITTY_PW_MAX+1] ;
 	kitty_pw_unwrap_str( px ? px->password : conf_get_str(conf,CONF_proxy_password),
 	                     px_pass, sizeof(px_pass) ) ;
+	kitty_secret_note( px_pass ) ;   /* masked in any report of this line */
 
 	if( (px_type != PROXY_NONE) && (strlen( conf_get_str(conf, CONF_sftpconnect) )==0) ) {
 		int ptype = px_type ;

@@ -43,6 +43,7 @@
 #include "kitty_ssh.h"
 #include "kitty_bridge.h"
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
+#include "kitty_secretmask.h"   /* kitty_mask_line: no secret in a failure report */
 #endif
 
 /* KiTTY logging mode toggle (originally KiTTY logging.c) */
@@ -179,11 +180,15 @@ static void RunSessionWithConfSettings(Conf *conf) {
          * the Event Log: a modal box here stood in front of the live
          * session and stopped it until it was answered. */
         const char *why = kitty_win_reason((int)GetLastError());
-        char *msg = dupprintf(KT_START_FAILED_FMT, b ? b : "", why);
-        debug_logevent(KT_START_FAILED_EVENT_FMT, b ? b : "", why);
+        char *shown = kitty_mask_line(b ? b : "");   /* no secret in the report */
+        char *msg = dupprintf(KT_START_FAILED_FMT, shown, why);
+        debug_logevent(KT_START_FAILED_EVENT_FMT, shown, why);
         kitty_notice_show(KT_CAP_START_FAILED, msg, RGB(190, 110, 0),
                           GetNoticeSeconds(), NULL, 0);
+        smemclr(msg, strlen(msg));
         sfree(msg);
+        smemclr(shown, strlen(shown));
+        sfree(shown);
     }
     if (filemap) CloseHandle(filemap);
     if (mpwmap) CloseHandle(mpwmap);
