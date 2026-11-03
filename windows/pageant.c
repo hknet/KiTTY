@@ -1446,6 +1446,16 @@ static void kageant_keyfile_format_report(const Filename *filename)
  * line's -h and exit code read it) */
 static bool kageant_cli_add_failed = false;
 
+/* KiTTY: event 116 for rules moved from a certificate's fingerprint to its
+ * base key's at the start (kageant_rules_fold_report): result moved,
+ * merged or merged-no-destination, reason certificate */
+static void kageant_rules_fold_log(const char *fp, const char *comment,
+                                   const char *result)
+{
+    kageant_audit_rules_ex(fp, comment, result, "certificate",
+                           GetCurrentProcessId(), NULL);
+}
+
 /* KiTTY: the user's own add (Add Key, drag and drop: hello_add_offer_armed)
  * loaded a key with destination rules in the rule store - a notice with
  * them. Not for startup keys, the command line or Accept: the Key List
@@ -9431,7 +9441,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kar_ca_lookup = kageant_ca_by_name;           /* CA destinations */
         kkh_path_hook = kageant_known_hosts_path;     /* known_hosts opt-in */
         kageant_req_path_hook = kageant_req_path_dup; /* a rule's origin */
-        if (!kageant_rules_load()) {
+        if (kageant_rules_load()) {
+            /* rules an earlier version filed under a certificate: on the
+             * record, the file written with them under the base key */
+            sfree(kageant_rules_fold_report(kageant_rules_fold_log));
+        } else {
             char *t = dupprintf(KT_KARULES_DAMAGED_NOTICE_FMT,
                                 kageant_rules_damage_text());
             kitty_notice_show(KT_KARULES_NOTICE_DAMAGED, t,

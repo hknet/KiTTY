@@ -32,6 +32,31 @@
 
 static char *rules_damage = NULL;   /* why the store is damaged */
 
+/* what the last load moved from a certificate to its base key */
+struct rules_fold { char *fp, *comment; const char *result; };
+static struct rules_fold *rules_folds = NULL;
+static size_t rules_nfolds = 0, rules_foldsize = 0;
+
+static void rules_folds_clear(void)
+{
+    for (size_t i = 0; i < rules_nfolds; i++) {
+        sfree(rules_folds[i].fp);
+        sfree(rules_folds[i].comment);
+    }
+    rules_nfolds = 0;
+}
+
+static void rules_fold_note(void *ctx, const char *fp, const char *comment,
+                            const char *result)
+{
+    (void)ctx;
+    sgrowarray(rules_folds, rules_foldsize, rules_nfolds);
+    rules_folds[rules_nfolds].fp = dupstr(fp);
+    rules_folds[rules_nfolds].comment = comment ? dupstr(comment) : NULL;
+    rules_folds[rules_nfolds].result = result;
+    rules_nfolds++;
+}
+
 /* An environment variable in full, NULL when not set or empty. sfree it. */
 static char *rules_env_dup(const char *name)
 {
@@ -178,7 +203,26 @@ int kageant_rules_load(void)
     sfree(path);
     sfree(rules_damage);
     rules_damage = NULL;
+    /* rules filed under a certificate by an earlier version */
+    rules_folds_clear();
+    kar_store_fold_certs(kar_store_get(), rules_fold_note, NULL);
     return 1;
+}
+
+char *kageant_rules_fold_report(void (*fn)(const char *fp,
+                                           const char *comment,
+                                           const char *result))
+{
+    char *err;
+    if (!rules_nfolds)
+        return NULL;
+    for (size_t i = 0; i < rules_nfolds; i++)
+        if (fn)
+            fn(rules_folds[i].fp, rules_folds[i].comment,
+               rules_folds[i].result);
+    rules_folds_clear();
+    err = kageant_rules_save();
+    return err;
 }
 
 /* Write a store to the file. NULL when written, else the reason. */

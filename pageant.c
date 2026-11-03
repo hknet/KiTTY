@@ -468,6 +468,34 @@ static PageantPrivateKey *pub_to_priv(PageantPublicKey *pub)
     return priv;
 }
 
+/*
+ * KiTTY: confirm-on-use belongs to the PRIVATE key. The plain key and each
+ * of its certificates are identities of their own in the agent, but they
+ * sign with the same private key. The mode in force is the strictest one
+ * any identity of that private key carries (2 Hello > 1 ask > 0), so a
+ * certificate never signs past the confirmation set on the plain key.
+ */
+static int priv_confirm(PageantPublicKey *pub)
+{
+    PageantPrivateKey *priv = pub_to_priv(pub);
+    int m = pub->confirm;
+    for (size_t i = 0; i < puborder_n; i++)
+        if (puborder[i] != pub && puborder[i]->confirm > m &&
+            pub_to_priv(puborder[i]) == priv)
+            m = puborder[i]->confirm;
+    return m;
+}
+
+/* KiTTY: set the mode on every identity of pub's private key */
+static void priv_set_confirm(PageantPublicKey *pub, int mode)
+{
+    PageantPrivateKey *priv = pub_to_priv(pub);
+    pub->confirm = mode;
+    for (size_t i = 0; i < puborder_n; i++)
+        if (pub_to_priv(puborder[i]) == priv)
+            puborder[i]->confirm = mode;
+}
+
 static PageantPublicKey *findpubkey1(RSAKey *reqkey)
 {
     strbuf *blob = makeblob1(reqkey);
@@ -630,6 +658,9 @@ static bool pageant_add_key_common(PageantPublicKey *pub,
     if (pub_in_tree == pub) {
         /* Successfully added a new key. */
         puborder_append(pub);    /* KiTTY: new key joins the end of the offer order */
+        /* KiTTY: a certificate added later takes the mode its private
+         * key already has (priv_confirm) */
+        pub->confirm = priv_confirm(pub);
         return true;
     } else {
         /* This public key was already there. Still a success if we just
@@ -844,9 +875,10 @@ static uint32_t key_state_flags(PageantPublicKey *pub)
         flags |= LIST_EXTENDED_FLAG_HAS_NO_CLEARTEXT_KEY;
     if (priv->encrypted_key_file)
         flags |= LIST_EXTENDED_FLAG_HAS_ENCRYPTED_KEY_FILE;
-    if (pub->confirm)
+    int confirm = priv_confirm(pub);   /* KiTTY: the private key's mode */
+    if (confirm)
         flags |= LIST_EXTENDED_FLAG_CONFIRM_ON_USE;   /* KiTTY */
-    if (pub->confirm == 2)
+    if (confirm == 2)
         flags |= LIST_EXTENDED_FLAG_CONFIRM_HELLO;    /* KiTTY: mode 2 */
     return flags;
 }
@@ -1329,8 +1361,8 @@ static void kageant_arm_comment_confirm(ptrlen full_pub)
     /* The comment seeds mode 1 (click) only, and never LOWERS a mode the
      * user raised to Hello in Key details. */
     if (cpub && cpub->comment && kageant_comment_confirm_hook &&
-        kageant_comment_confirm_hook(cpub->comment) && cpub->confirm < 1)
-        cpub->confirm = 1;
+        kageant_comment_confirm_hook(cpub->comment) && priv_confirm(cpub) < 1)
+        priv_set_confirm(cpub, 1);
 }
 
 /* KiTTY: external-transport mutation notices - see pageant.h. */
@@ -2321,7 +2353,7 @@ static PageantAsyncOp *pageant_make_op(
         if (kageant_confirm_hook) {
             char *cfp = kitty_rsa1_record_fp(priv->rkey);
             struct kageant_dest cd;
-            bool confirmed = kageant_confirm_hook(pub->comment, pub->confirm,
+            bool confirmed = kageant_confirm_hook(pub->comment, priv_confirm(pub),
                                                   cfp, info_dest(pc->info, &cd));
             sfree(cfp);
             if (!confirmed) {
@@ -2457,7 +2489,7 @@ static PageantAsyncOp *pageant_make_op(
         so->pao.reqid = reqid;
         so->priv = pub_to_priv(pub);
         so->comment = pub->comment ? dupstr(pub->comment) : NULL;
-        so->confirm = pub->confirm;
+        so->confirm = priv_confirm(pub);   /* KiTTY: the private key's mode */
         /* The STORED key's blob, not the request's: the key list is built
          * from the stored one, and the two need not be byte-identical -
          * findpubkey2() has just matched them for us. */
@@ -2710,8 +2742,8 @@ static PageantAsyncOp *pageant_make_op(
                 if (cpub && (key_confirm ||
                              (kageant_comment_confirm_hook && cpub->comment &&
                               kageant_comment_confirm_hook(cpub->comment))) &&
-                    cpub->confirm < 1)
-                    cpub->confirm = 1;   /* raise to click, never lower Hello */
+                    priv_confirm(cpub) < 1)
+                    priv_set_confirm(cpub, 1);   /* raise to click, never lower Hello */
                 /* KiTTY: the key set just changed over an external
                  * transport - tell the user (a notice, never a prompt). */
                 if (pageant_external_request &&
@@ -3717,7 +3749,7 @@ bool pageant_key_decrypted_by_blob(ptrlen blob)
 int pageant_get_key_confirm(ptrlen blob)
 {
     PageantPublicKey *pub = findpubkey2(blob);
-    return pub ? pub->confirm : 0;
+    return pub ? priv_confirm(pub) : 0;
 }
 
 bool pageant_set_key_confirm(ptrlen blob, int mode)
@@ -3727,7 +3759,7 @@ bool pageant_set_key_confirm(ptrlen blob, int mode)
         return false;
     if (mode < 0 || mode > 2)
         mode = 1;
-    pub->confirm = mode;
+    priv_set_confirm(pub, mode);   /* KiTTY: every identity of the key */
     return true;
 }
 

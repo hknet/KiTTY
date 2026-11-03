@@ -2268,6 +2268,163 @@ static void test_host_port(strbuf *user, strbuf *web01, strbuf *ca,
     kar_rules_free(r);
 }
 
+/* ---- certificates: rules belong to the private key ----------------------- */
+
+static unsigned fold_dest(kar_store *s, const char *host, strbuf *key)
+{
+    kar_rule d;
+    unsigned id;
+    memset(&d, 0, sizeof(d));
+    d.to.host = dupstr(host);
+    kar_hop_add_key(&d.to, ptrlen_from_strbuf(key), false);
+    id = kar_store_dest_for(s, &d);
+    kar_hop_free(&d.to);
+    return id;
+}
+
+static char fold_last[64];
+static size_t fold_calls;
+static void fold_note(void *ctx, const char *fp, const char *comment,
+                      const char *result)
+{
+    (void)ctx; (void)fp; (void)comment;
+    fold_calls++;
+    snprintf(fold_last, sizeof(fold_last), "%s", result);
+}
+
+static bool fold_links(kar_store *s, const char *fp, unsigned dest,
+                       unsigned *flags)
+{
+    for (size_t i = 0; i < s->nlinks; i++)
+        if (!strcmp(s->links[i].fp, fp) && s->links[i].dest == dest) {
+            *flags = s->links[i].flags;
+            return true;
+        }
+    return false;
+}
+
+static size_t fold_nlinks(kar_store *s, const char *fp)
+{
+    size_t n = 0;
+    for (size_t i = 0; i < s->nlinks; i++)
+        n += !strcmp(s->links[i].fp, fp);
+    return n;
+}
+
+/* web02 is the base key of the certificate cert */
+static void test_cert_fold(strbuf *web02, strbuf *cert, strbuf *web01,
+                           strbuf *jump01, strbuf *user)
+{
+    char *base = kar_key_fp(ptrlen_from_strbuf(web02));
+    char *viacert = kar_key_fp(ptrlen_from_strbuf(cert));
+    /* what earlier versions filed a certificate's rules under */
+    char *old = ssh2_fingerprint_blob(ptrlen_from_strbuf(cert),
+                                      SSH_FPTYPE_SHA256);
+    kar_store *s;
+    unsigned d1, d2, d3, fl;
+    kar_rules *got;
+
+    expect("a certificate's fingerprint is its base key's",
+           !strcmp(base, viacert), true);
+    expect("the old certificate fingerprint differed",
+           strcmp(base, old) != 0, true);
+    expect("the old one names the certificate's algorithm",
+           !strncmp(old, "ssh-ed25519-cert-v01@openssh.com ", 33), true);
+
+    /* only the certificate had rules: they move */
+    s = kar_store_new();
+    d1 = fold_dest(s, "web01", web01);
+    kar_store_note_key(s, old, "cert key", ptrlen_from_strbuf(cert));
+    kar_store_link(s, old, d1, KAR_LINK_FORWARD);
+    fold_calls = 0;
+    expect("moved: one key changed",
+           kar_store_fold_certs(s, fold_note, NULL) == 1, true);
+    expect("moved: result moved", !strcmp(fold_last, KAR_FOLD_MOVED), true);
+    expect("moved: the base key is restricted",
+           kar_store_restricted(s, base), true);
+    expect("moved: the old fingerprint has no link",
+           kar_store_restricted(s, old), false);
+    expect("moved: the link kept its flags",
+           fold_links(s, base, d1, &fl) && fl == KAR_LINK_FORWARD, true);
+    expect("moved: one key row, under the base key",
+           s->nkeys == 1 && !strcmp(s->keys[0].fp, base), true);
+    expect("moved: a second fold changes nothing",
+           kar_store_fold_certs(s, fold_note, NULL) == 0 && fold_calls == 1,
+           true);
+    kar_store_free(s);
+
+    /* both had rules: the destinations both allow */
+    s = kar_store_new();
+    d1 = fold_dest(s, "web01", web01);
+    d2 = fold_dest(s, "jump01", jump01);
+    d3 = fold_dest(s, "user", user);
+    kar_store_note_key(s, base, "plain key", ptrlen_from_strbuf(web02));
+    kar_store_note_key(s, old, "cert key", ptrlen_from_strbuf(cert));
+    kar_store_link(s, base, d1, KAR_LINK_FORWARD);
+    kar_store_link(s, base, d2, 0);
+    kar_store_link(s, old, d1, 0);
+    kar_store_link(s, old, d3, 0);
+    expect("merged: one key changed",
+           kar_store_fold_certs(s, fold_note, NULL) == 1, true);
+    expect("merged: result merged", !strcmp(fold_last, KAR_FOLD_MERGED),
+           true);
+    expect("merged: only the destination both allowed",
+           fold_nlinks(s, base) == 1 && fold_links(s, base, d1, &fl), true);
+    expect("merged: forwarding only where both allowed it", fl == 0, true);
+    expect("merged: the certificate's links are gone",
+           fold_nlinks(s, old) == 0, true);
+    expect("merged: one key row, the base key's comment",
+           s->nkeys == 1 && !strcmp(s->keys[0].comment, "plain key"), true);
+    expect("merged: tidy dropped the unused destinations", s->ndest == 1,
+           true);
+    kar_store_free(s);
+
+    /* both had rules, none in common: restricted to no server */
+    s = kar_store_new();
+    d1 = fold_dest(s, "web01", web01);
+    d2 = fold_dest(s, "jump01", jump01);
+    kar_store_note_key(s, base, "plain key", ptrlen_from_strbuf(web02));
+    kar_store_note_key(s, old, "cert key", ptrlen_from_strbuf(cert));
+    kar_store_link(s, base, d1, 0);
+    kar_store_link(s, old, d2, 0);
+    expect("no destination in common: one key changed",
+           kar_store_fold_certs(s, fold_note, NULL) == 1, true);
+    expect("no destination in common: result merged-no-destination",
+           !strcmp(fold_last, KAR_FOLD_NONE), true);
+    expect("no destination in common: the key stays restricted",
+           kar_store_restricted(s, base), true);
+    got = kar_store_rules(s, base);
+    expect("no destination in common: one rule that matches no server",
+           got && got->n == 1 && got->v[0].to.match == KAR_MATCH_CA_DROPPED &&
+           !strcmp(got->v[0].to.host, KAR_FOLD_NONE_HOST), true);
+    kar_rules_free(got);
+    kar_store_free(s);
+
+    /* a row an earlier version kept without the blob: by its text */
+    s = kar_store_new();
+    d1 = fold_dest(s, "web01", web01);
+    kar_store_note_key(s, old, "cert key", make_ptrlen("", 0));
+    kar_store_link(s, old, d1, 0);
+    expect("no blob: moved by the algorithm name",
+           kar_store_fold_certs(s, fold_note, NULL) == 1 &&
+           kar_store_restricted(s, base) && !kar_store_restricted(s, old),
+           true);
+    kar_store_free(s);
+
+    /* the plain key alone is left alone */
+    s = kar_store_new();
+    d1 = fold_dest(s, "web01", web01);
+    kar_store_note_key(s, base, "plain key", ptrlen_from_strbuf(web02));
+    kar_store_link(s, base, d1, 0);
+    expect("a plain key's rules: nothing to fold",
+           kar_store_fold_certs(s, NULL, NULL) == 0 && s->nlinks == 1, true);
+    kar_store_free(s);
+
+    sfree(base);
+    sfree(viacert);
+    sfree(old);
+}
+
 int main(void)
 {
     strbuf *user, *web01, *web02, *jump01, *ca, *cert;
@@ -2326,6 +2483,8 @@ int main(void)
     test_dest_specs();
     test_entry_tokens();
     test_host_port(user, web01, ca, cert);
+    printf("certificates: rules of the private key\n");
+    test_cert_fold(web02, cert, web01, jump01, user);
 
     strbuf_free(ca2);
     strbuf_free(web04);

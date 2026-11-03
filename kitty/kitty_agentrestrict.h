@@ -522,6 +522,26 @@ void kar_store_set_key_rules(kar_store *s, const char *fp,
 /* Drop destinations no link uses and keys with no link. */
 void kar_store_tidy(kar_store *s);
 
+/*
+ * Rules an earlier version filed under a certificate's fingerprint move to
+ * the fingerprint of its base key (kar_key_fp). Where the base key has
+ * rules too, the key keeps the destinations both allowed (a link forwards
+ * only when both did). With no destination in common the key gets one
+ * destination that matches no server (KAR_MATCH_CA_DROPPED, host
+ * KAR_FOLD_NONE_HOST): it stays restricted and the rule editor marks it.
+ * note (may be NULL) is called once per key that changed, with its
+ * fingerprint, comment and KAR_FOLD_*. The number of such keys returned.
+ */
+#define KAR_FOLD_MOVED   "moved"
+#define KAR_FOLD_MERGED  "merged"
+#define KAR_FOLD_NONE    "merged-no-destination"
+#define KAR_FOLD_NONE_HOST "-"
+size_t kar_store_fold_certs(kar_store *s,
+                            void (*note)(void *ctx, const char *fp,
+                                         const char *comment,
+                                         const char *result),
+                            void *ctx);
+
 /* The store as the file holds it before DPAPI: a magic string, the three
  * tables and a SHA-256 of all of it. kar_store_decode fills s only when
  * every check passes; *err (static text) otherwise. */
