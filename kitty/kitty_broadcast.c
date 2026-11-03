@@ -92,22 +92,153 @@ void routine_server( void * st ) {
 }
 
 
-void SendKeyboard( HWND hwnd, const char * buffer ) {
-	int i ; 
-	if( strlen( buffer) > 0 ) {
-		for( i=0; i< strlen( buffer ) ; i++ ) {
-			if( buffer[i] == '\n' ) {
-				SendMessage(hwnd, WM_KEYDOWN, VK_RETURN, 0) ;
-				}
-			else if( buffer[i] == '\r' ) {
-				}
-			else 
-				//lpage_send(ldisc, CP_ACP, buffer+i, 1, 1);
-				SendMessage(hwnd, WM_CHAR, buffer[i], 0) ;
-			if( between_char_delay > 0 ) Sleep( between_char_delay ) ;
-			}
+/*
+ * The typing queue. SendKeyboard and SendKeyboardPlus append steps here and
+ * the terminal window's TIMER_SENDQ types them in order (kitty_sendq_tick,
+ * window.c). A pause - \p, \sNN, the delay between characters - is the
+ * timer's interval, never a Sleep on the window's thread: the window keeps
+ * painting and reading the network while a long text, a broadcast with \s30
+ * or an AutoCommand is typed. The order of everything typed stays the order
+ * of the calls, because every caller appends to the same queue.
+ */
+enum { KQ_CHAR, KQ_ENTER, KQ_WAIT, KQ_TERM, KQ_VKEY, KQ_BREAK } ;
+typedef struct { unsigned char kind ; unsigned int val ; HWND hwnd ; } kq_op ;
+static kq_op *kq = NULL ;
+static size_t kq_head = 0, kq_len = 0, kq_cap = 0 ;
+static int kq_armed = 0 ;
+
+static void kq_push( HWND hwnd, int kind, unsigned int val ) {
+	if( kq_head + kq_len == kq_cap ) {
+		if( kq_head > 0 ) {
+			memmove( kq, kq + kq_head, kq_len * sizeof(*kq) ) ;
+			kq_head = 0 ;
+		}
+		if( kq_len == kq_cap ) {
+			size_t nc = kq_cap ? 2 * kq_cap : 256 ;
+			kq_op *n = (kq_op *)realloc( kq, nc * sizeof(*kq) ) ;
+			if( n == NULL ) return ;
+			kq = n ; kq_cap = nc ;
 		}
 	}
+	kq[kq_head + kq_len].kind = (unsigned char)kind ;
+	kq[kq_head + kq_len].val = val ;
+	kq[kq_head + kq_len].hwnd = hwnd ;
+	kq_len++ ;
+}
+
+/* The timer starts the queue, unless it already runs (a pause waits on it) */
+static void kq_kick( HWND hwnd ) {
+	if( !kq_armed && kq_len ) {
+		kq_armed = 1 ;
+		SetTimer( hwnd, TIMER_SENDQ, 1, NULL ) ;
+	}
+}
+
+static int keyb_control_flag = 0 ;
+static int keyb_shift_flag = 0 ;
+static int keyb_win_flag = 0 ;
+static int keyb_alt_flag = 0 ;
+static int keyb_altgr_flag = 0 ;
+
+/* One \kXX: a modifier toggles its flag, any other key is pressed with the
+ * modifiers that are on (system-wide keybd_event, after the window is
+ * raised; the short wait between the two stays: the raise must land). */
+static void kq_vkey( HWND hwnd, int j ) {
+	char stb[6] ;
+	if( j==VK_CONTROL ) keyb_control_flag = abs( keyb_control_flag - 1 ) ;
+	else if( j==VK_SHIFT ) keyb_shift_flag = abs( keyb_shift_flag - 1 ) ;
+	else if( (j==VK_MENU)||(j==VK_LMENU) ) keyb_alt_flag = abs( keyb_alt_flag - 1 ) ;
+	else if( j==VK_RMENU ) keyb_altgr_flag = abs( keyb_altgr_flag - 1 ) ;
+	else if( (j==VK_RWIN)||(j==VK_LWIN) ) keyb_win_flag = abs( keyb_win_flag - 1 ) ;
+	else {
+		if( keyb_control_flag || keyb_shift_flag || keyb_win_flag || keyb_alt_flag || keyb_altgr_flag ) {
+			SetForegroundWindow(hwnd) ; Sleep( internal_delay ) ;
+			if( keyb_control_flag )	keybd_event(VK_CONTROL, 0x1D, 0, 0) ;
+			if( keyb_shift_flag )	keybd_event(VK_SHIFT , 0x1D, 0, 0) ;
+			if( keyb_alt_flag )	keybd_event(VK_LMENU , 0x1D, 0, 0) ;
+			if( keyb_altgr_flag )	keybd_event(VK_RMENU , 0x1D, 0, 0) ;
+			if( keyb_win_flag )	keybd_event(VK_LWIN , 0x1D, 0, 0) ;
+			keybd_event( j, 0x47, 0, 0);
+			keybd_event( j, 0x47, KEYEVENTF_KEYUP, 0) ;
+			if( keyb_win_flag )	keybd_event(VK_LWIN, 0x1D, KEYEVENTF_KEYUP, 0) ;
+			if( keyb_altgr_flag )	keybd_event(VK_RMENU, 0x1D, KEYEVENTF_KEYUP, 0) ;
+			if( keyb_alt_flag )	keybd_event(VK_LMENU, 0x1D, KEYEVENTF_KEYUP, 0) ;
+			if( keyb_shift_flag )	keybd_event(VK_SHIFT, 0x1D, KEYEVENTF_KEYUP, 0) ;
+			if( keyb_control_flag )	keybd_event(VK_CONTROL, 0x1D, KEYEVENTF_KEYUP, 0) ;
+		} else if( j==VK_ESCAPE ) {
+			keybd_event( VK_ESCAPE, 1, 0, 0);
+			keybd_event( VK_ESCAPE, 1, KEYEVENTF_KEYUP, 0) ;
+		} else if( (j==VK_END) || (j==VK_HOME) ) {
+			keybd_event( j ,0, KEYEVENTF_EXTENDEDKEY, 0 ) ;
+			keybd_event( j, 0, KEYEVENTF_EXTENDEDKEY|KEYEVENTF_KEYUP, 0 ) ;
+		} else {
+			snprintf( stb, sizeof(stb), "%c", j ) ;
+			SendStrToTerminal( stb, 1 ) ;
+		}
+	}
+}
+
+static void kq_do( const kq_op *op ) {
+	char stb[2] ;
+	switch( op->kind ) {
+	  case KQ_CHAR:
+		SendMessage( op->hwnd, WM_CHAR, (WPARAM)(char)op->val, 0 ) ;
+		break ;
+	  case KQ_ENTER:
+		SendMessage( op->hwnd, WM_KEYDOWN, VK_RETURN, 0 ) ;
+		break ;
+	  case KQ_TERM:
+		stb[0] = (char)op->val ; stb[1] = '\0' ;
+		SendStrToTerminal( stb, 1 ) ;
+		break ;
+	  case KQ_VKEY:
+		kq_vkey( op->hwnd, (int)op->val ) ;
+		break ;
+	  case KQ_BREAK:
+		keybd_event(VK_CONTROL, 0x1D, 0, 0) ;
+		keybd_event(VK_CANCEL, 0x1D, 0, 0) ;
+		keybd_event(VK_CANCEL, 0x1D, KEYEVENTF_KEYUP, 0) ;
+		keybd_event(VK_CONTROL, 0x1D, KEYEVENTF_KEYUP, 0) ;
+		break ;
+	}
+}
+
+/* TIMER_SENDQ: the steps up to the next pause (or a round's budget, so a
+ * long text gives the message pump its turn), then the timer again. A step
+ * may type into this window and start new typing: it is appended, the
+ * order holds. */
+void kitty_sendq_tick( HWND hwnd ) {
+	int budget = 4096 ;
+	KillTimer( hwnd, TIMER_SENDQ ) ;
+	kq_armed = 0 ;
+	while( kq_len && budget-- > 0 ) {
+		kq_op op = kq[kq_head] ;
+		kq_head++ ; kq_len-- ;
+		if( op.kind == KQ_WAIT ) {
+			if( op.val > 0 && kq_len ) {
+				kq_armed = 1 ;
+				SetTimer( hwnd, TIMER_SENDQ, op.val, NULL ) ;
+				return ;
+			}
+			continue ;
+		}
+		kq_do( &op ) ;
+	}
+	if( kq_len == 0 ) { kq_head = 0 ; return ; }
+	kq_armed = 1 ;
+	SetTimer( hwnd, TIMER_SENDQ, 1, NULL ) ;
+}
+
+void SendKeyboard( HWND hwnd, const char * buffer ) {
+	size_t i, n ;
+	if( buffer == NULL || ( n = strlen( buffer ) ) == 0 ) return ;
+	for( i = 0 ; i < n ; i++ ) {
+		if( buffer[i] == '\n' ) kq_push( hwnd, KQ_ENTER, 0 ) ;
+		else if( buffer[i] != '\r' ) kq_push( hwnd, KQ_CHAR, (unsigned char)buffer[i] ) ;
+		if( between_char_delay > 0 ) kq_push( hwnd, KQ_WAIT, (unsigned int)between_char_delay ) ;
+	}
+	kq_kick( hwnd ) ;
+}
 
 /*
 SetForegroundWindow(hwnd);
@@ -116,38 +247,31 @@ keybd_event(0x58, 0x47, 0, 0);
 keybd_event(0x58, 0x47, KEYEVENTF_KEYUP, 0);
 keybd_event(VK_CONTROL, 0x1D, KEYEVENTF_KEYUP, 0);
 */
-	
-static int keyb_control_flag = 0 ;
-static int keyb_shift_flag = 0 ;
-static int keyb_win_flag = 0 ;
-static int keyb_alt_flag = 0 ;
-static int keyb_altgr_flag = 0 ;
-	
+
 void SendKeyboardPlus( HWND hwnd, const char * st ) {
 	if( strlen(st) <= 0 ) return ;
 	int i=0, j=0;
 	unsigned hexv = 0 ;
-	//int internal_delay = 10 ;
 	char *buffer = NULL, stb[6] ;
 	if( ( buffer = (char*) malloc( 2*strlen( st ) ) ) != NULL ) {
 		buffer[0] = '\0' ;
 		do {
 		if( st[i] == '\\' ) {
 			if( st[i+1] == '\\' ) { buffer[j] = '\\' ; i++ ; j++ ;
-			} else if( (st[i+1] == '/') && (i==0) ) { buffer[j] = '/' ; i++ ; j++ ; 
-			} else if( st[i+1] == 't' ) { buffer[j] = '\t' ; i++ ; j++ ; 
-			} else if( st[i+1] == 'r' ) { buffer[j] = '\r' ; i++ ; j++ ; 
-			} else if( st[i+1] == 'h' ) { buffer[j] = 8 ; i++ ; j++ ; 
+			} else if( (st[i+1] == '/') && (i==0) ) { buffer[j] = '/' ; i++ ; j++ ;
+			} else if( st[i+1] == 't' ) { buffer[j] = '\t' ; i++ ; j++ ;
+			} else if( st[i+1] == 'r' ) { buffer[j] = '\r' ; i++ ; j++ ;
+			} else if( st[i+1] == 'h' ) { buffer[j] = 8 ; i++ ; j++ ;
 			} else if( st[i+1] == 'n' ) {
 				SendKeyboard( hwnd, buffer ) ; SendKeyboard( hwnd, "\n" ) ;
-				Sleep( internal_delay ) ;
+				kq_push( hwnd, KQ_WAIT, (unsigned int)internal_delay ) ;
 				buffer[0] = '\0' ; j = 0 ;
 				i++ ;
 			} else if( st[i+1] == 'p' ) { 			// \p pauses one second
 				SendKeyboard( hwnd, buffer ) ;
-				Sleep(1000);
+				kq_push( hwnd, KQ_WAIT, 1000 ) ;
 				buffer[0] = '\0' ; j = 0 ;
-				i++ ; 
+				i++ ;
 			} else if( st[i+1] == 's' ) { 			// \s03 pauses 3 seconds
 				SendKeyboard( hwnd, buffer ) ;
 				j = 1 ;
@@ -156,74 +280,37 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 					j=atoi(stb) ;
 					i++ ; i++ ;
 				}
-				Sleep(j*1000);
+				kq_push( hwnd, KQ_WAIT, (unsigned int)j * 1000 ) ;
 				buffer[0] = '\0' ; j = 0 ;
-				i++ ; 
-			} else if( st[i+1] == 'c' ) { 
-				keybd_event(VK_CONTROL, 0x1D, 0, 0) ;
-				keybd_event(VK_CANCEL, 0x1D, 0, 0) ;
-				keybd_event(VK_CANCEL, 0x1D, KEYEVENTF_KEYUP, 0) ;
-				keybd_event(VK_CONTROL, 0x1D, KEYEVENTF_KEYUP, 0) ;
+				i++ ;
+			} else if( st[i+1] == 'c' ) {
+				SendKeyboard( hwnd, buffer ) ;
+				kq_push( hwnd, KQ_BREAK, 0 ) ;
 				buffer[0] = '\0' ; j = 0 ;
-				i++ ; 
+				i++ ;
 			/* \k and \x take the two hex digits after the letter. Without
 			 * both, the backslash is typed as it is: the escape skips four
 			 * characters, and a text ending in "\k" or "\kA" stepped over
 			 * its NUL and copied the bytes behind it. */
 			} else if( (st[i+1] == 'k') && kitty_sendesc_hex2( st+i+2, &hexv ) ) {
 				SendKeyboard( hwnd, buffer ) ;
-				j = (int)hexv ;
-				//SendMessage(hwnd, WM_KEYDOWN, j, 0) ;
-				if( j==VK_CONTROL ) keyb_control_flag = abs( keyb_control_flag - 1 ) ;
-				else if( j==VK_SHIFT ) keyb_shift_flag = abs( keyb_shift_flag - 1 ) ;
-				else if( (j==VK_MENU)||(j==VK_LMENU) ) keyb_alt_flag = abs( keyb_alt_flag - 1 ) ;
-				else if( j==VK_RMENU ) keyb_altgr_flag = abs( keyb_altgr_flag - 1 ) ;
-				else if( (j==VK_RWIN)||(j==VK_LWIN) ) keyb_win_flag = abs( keyb_win_flag - 1 ) ;
-				else {
-					if( keyb_control_flag || keyb_shift_flag || keyb_win_flag || keyb_alt_flag || keyb_altgr_flag ) {
-						SetForegroundWindow(hwnd) ; Sleep( internal_delay ) ;
-						if( keyb_control_flag )	keybd_event(VK_CONTROL, 0x1D, 0, 0) ;
-						if( keyb_shift_flag )	keybd_event(VK_SHIFT , 0x1D, 0, 0) ;
-						if( keyb_alt_flag )	keybd_event(VK_LMENU , 0x1D, 0, 0) ;
-						if( keyb_altgr_flag )	keybd_event(VK_RMENU , 0x1D, 0, 0) ;
-						if( keyb_win_flag )	keybd_event(VK_LWIN , 0x1D, 0, 0) ;
-						keybd_event( j, 0x47, 0, 0); 
-						keybd_event( j, 0x47, KEYEVENTF_KEYUP, 0) ;
-						if( keyb_win_flag )	keybd_event(VK_LWIN, 0x1D, KEYEVENTF_KEYUP, 0) ;
-						if( keyb_altgr_flag )	keybd_event(VK_RMENU, 0x1D, KEYEVENTF_KEYUP, 0) ;
-						if( keyb_alt_flag )	keybd_event(VK_LMENU, 0x1D, KEYEVENTF_KEYUP, 0) ;
-						if( keyb_shift_flag )	keybd_event(VK_SHIFT, 0x1D, KEYEVENTF_KEYUP, 0) ;
-						if( keyb_control_flag )	keybd_event(VK_CONTROL, 0x1D, KEYEVENTF_KEYUP, 0) ;
-					} else if( j==VK_ESCAPE ) {
-						keybd_event( VK_ESCAPE, 1, 0, 0); 
-						keybd_event( VK_ESCAPE, 1, KEYEVENTF_KEYUP, 0) ;
-					} else if( (j==VK_END) || (j==VK_HOME) ) {
-						keybd_event( j ,0, KEYEVENTF_EXTENDEDKEY, 0 ) ;
-						keybd_event( j, 0, KEYEVENTF_EXTENDEDKEY|KEYEVENTF_KEYUP, 0 ) ; 
-					} else {
-						snprintf( stb, sizeof(stb), "%c", j ) ;
-						SendStrToTerminal( stb, 1 ) ;
-						//SendMessage(hwnd, WM_CHAR, j, 0) ;
-					}
-				}
-				Sleep( internal_delay ) ;
+				kq_push( hwnd, KQ_VKEY, hexv ) ;
+				kq_push( hwnd, KQ_WAIT, (unsigned int)internal_delay ) ;
 				buffer[0] = '\0' ; j = 0 ;
 				i++ ; i++ ; i++ ;
 			} else if( (st[i+1] == 'x') && kitty_sendesc_hex2( st+i+2, &hexv ) ) {
 				SendKeyboard( hwnd, buffer ) ;
-				j = (int)hexv ;
-				stb[0]=j ; stb[1] = '\0' ;
-				SendStrToTerminal( stb, 1 ) ;
-				Sleep( internal_delay ) ;
+				kq_push( hwnd, KQ_TERM, hexv ) ;
+				kq_push( hwnd, KQ_WAIT, (unsigned int)internal_delay ) ;
 				buffer[0] = '\0' ; j = 0 ;
 				i++ ; i++ ; i++ ;
-			} else { buffer[j] = '\\' ; j++ ; 
+			} else { buffer[j] = '\\' ; j++ ;
 			}
 		} else { buffer[j] = st[i] ; j++ ; }
 		buffer[j] = '\0' ;
-		i++ ; 
+		i++ ;
 		} while( st[i] != '\0' ) ;
-		
+
 		if( strlen( buffer ) > 0 ) {
 			if( buffer[strlen(buffer)-1]=='\\' ) { // a command ending in \ gets no carriage return
 				buffer[strlen(buffer)-1]='\0' ;
@@ -235,6 +322,7 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 			}
 		}
 		free( buffer ) ;
+		kq_kick( hwnd ) ;
 	}
 }
 

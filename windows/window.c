@@ -6096,6 +6096,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
 #endif
 #endif
+        if ((UINT_PTR)wParam == TIMER_SENDQ) {
+            kitty_sendq_tick(hwnd);   /* the typing queue (kitty_broadcast.c) */
+            return 0;
+        }
         if ((UINT_PTR)wParam == TIMER_AUTOCOMMAND) {
             KillTimer(hwnd, TIMER_AUTOCOMMAND);
             if (kitty_autocommand_tick(hwnd))

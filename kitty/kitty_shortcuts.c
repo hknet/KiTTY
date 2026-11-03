@@ -654,7 +654,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	if( (key == shortcuts_tab.inputm) ||
 	    (key == SHIFTKEY+CONTROLKEY+VK_F8) )	 	// Control window
 		{
-		MainHwnd = hwnd ; _beginthread( routine_inputbox_multiline, 0, (void*)&hwnd ) ;
+		MainHwnd = hwnd ; GetAndSendMultiLine( hwnd ) ;   /* main thread, modeless */
 		return 1 ;
 		}
 #ifdef MOD_BACKGROUNDIMAGE

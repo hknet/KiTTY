@@ -346,6 +346,22 @@ static BOOL FAR PASCAL EditMultilineCallBack(HWND hwnd, UINT message, WPARAM wPa
 	}
 
 static int EditReadOnly = 0 ;
+/* The multiline send box: modeless on the main thread, like the single-line
+ * box (it ran modal on a worker thread and shared InputBoxResult with it,
+ * so one box could free the text the other was still typing). It owns its
+ * text: read from the edit on OK, handed to the typing queue, freed. */
+static HWND InputMultiHwnd = NULL ;
+static char *multi_clipboard_text( void ) {
+	char *r = NULL, *pst ;
+	HGLOBAL hglb ;
+	if( !IsClipboardFormatAvailable( CF_TEXT ) || !OpenClipboard( NULL ) ) return NULL ;
+	if( ( hglb = GetClipboardData( CF_TEXT ) ) != NULL && ( pst = GlobalLock( hglb ) ) != NULL ) {
+		if( ( r = (char*) malloc( strlen( pst ) + 1 ) ) != NULL ) strcpy( r, pst ) ;
+		GlobalUnlock( hglb ) ;
+	}
+	CloseClipboard() ;
+	return r ;
+}
 #ifndef GWL_WNDPROC
 #define GWL_WNDPROC GWLP_WNDPROC
 #endif
@@ -371,19 +387,26 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 			kitty_dialog_icon( hwnd, MainHwnd ) ;
 			handle = GetDlgItem(hwnd,IDC_RESULT) ;
 			if( EditReadOnly ) SendMessage(handle, EM_SETREADONLY, 1, 0);
-			if( InputBoxResult == NULL ) SetWindowText(handle,"");
-			else {
-				int i,j=0;
-				buffer=(char*)malloc(2*strlen(InputBoxResult)+10);
-				for( i=0; i<=strlen(InputBoxResult);i++ ) {
-					if( (InputBoxResult[i]=='\n') && (buffer[j-1]!='\r') ) 
-						{ buffer[j]='\r';j++;}
-					buffer[j]=InputBoxResult[i];
-					j++;
+			{
+				/* the clipboard's text, as the box always started with it */
+				char *pre = multi_clipboard_text() ;
+				if( pre == NULL ) SetWindowText(handle,"");
+				else {
+					size_t i, j=0, n=strlen(pre) ;
+					buffer=(char*)malloc(2*n+10);
+					if( buffer != NULL ) {
+						for( i=0; i<=n;i++ ) {
+							if( (pre[i]=='\n') && (j==0 || buffer[j-1]!='\r') )
+								{ buffer[j]='\r';j++;}
+							buffer[j]=pre[i];
+							j++;
+							}
+						SetWindowText( handle, buffer ) ;
+						free(buffer);
+						}
+					free(pre);
 					}
-				SetWindowText( handle, buffer ) ;
-				free(buffer);
-				}
+			}
 			
 			FARPROC lpfnSubClassProc = (FARPROC)MakeProcInstance( EditMultilineCallBack, hInst );
 			if( lpfnSubClassProc )
@@ -393,33 +416,32 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 		case WM_COMMAND:
 			if (LOWORD(wParam) == IDB_OK) {
 				handle = GetDlgItem(hwnd,IDC_RESULT);
-				if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
+				{
 				size_t length = GetWindowTextLength( handle ) ;
-				InputBoxResult = (char*) malloc( length + 10 ) ;
-
-				GetWindowText(handle,InputBoxResult,length+1);
-
-				// If some text is selected, take only that
-				DWORD result = SendMessage( handle, EM_GETSEL, (WPARAM)0, (LPARAM)NULL );
-				if( LOWORD(result) != HIWORD(result) ) {
-					int i ;
-					InputBoxResult[HIWORD(result)] = '\0' ;
-					if( LOWORD(result) > 0 ) 
-						for( i=0 ; i<=(HIWORD(result)-LOWORD(result)) ; i++ )
-						InputBoxResult[i]=InputBoxResult[i+LOWORD(result)];
+				char *txt = (char*) malloc( length + 10 ) ;
+				DWORD s0 = 0, s1 = 0 ;
+				if( txt == NULL ) break ;
+				GetWindowText(handle,txt,(int)length+1);
+				/* If some text is selected, take only that: the 32-bit
+				 * offsets (the 16-bit halves of the return value wrap past
+				 * 65535 characters and sent another part of the text) */
+				SendMessage( handle, EM_GETSEL, (WPARAM)&s0, (LPARAM)&s1 );
+				if( s0 < s1 && s1 <= length ) {
+					memmove( txt, txt + s0, s1 - s0 ) ;
+					txt[s1 - s0] = '\0' ;
 					}
-				if( strlen(InputBoxResult)==0 || InputBoxResult[strlen(InputBoxResult)-1] != '\n' )
-					strcat( InputBoxResult, "\n" ) ;
-
-				SendKeyboard( MainHwnd, InputBoxResult ) ;
+				if( strlen(txt)==0 || txt[strlen(txt)-1] != '\n' )
+					strcat( txt, "\n" ) ;
+				SendKeyboard( MainHwnd, txt ) ;   /* queued: the copy goes with it */
+				free( txt ) ;
+				}
 				ShowWindow( MainHwnd, SW_RESTORE ) ;
 				BringWindowToTop( MainHwnd ) ;
 				SetFocus( handle ) ;
 				}
 			else if (LOWORD(wParam) == IDCANCEL) {
-				if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
 				EditReadOnly = 0 ;
-				EndDialog(hwnd, LOWORD(0));
+				DestroyWindow( hwnd ) ;
 				}
 			else if( HIWORD( wParam ) == EN_SETFOCUS ) {
 				ShowWindow( MainHwnd, SW_SHOWNOACTIVATE ) ;
@@ -450,7 +472,12 @@ static LRESULT CALLBACK InputMultilineCallBack (HWND hwnd, UINT message, WPARAM 
 			break ;
 		case WM_CLOSE:
 			EditReadOnly = 0 ;
-			EndDialog(hwnd, LOWORD(0));
+			DestroyWindow( hwnd ) ;
+			break;
+		case WM_DESTROY:
+			ShinyRemoveAuxDialog( hwnd ) ;
+			InputMultiHwnd = NULL ;
+			EditReadOnly = 0 ;
 			break;
 		
 		return DefWindowProc(hwnd, message, wParam, lParam);
@@ -622,26 +649,19 @@ HWND kitty_ask_text( HWND owner, const char *caption, const char *prompt,
 	return h ;
 }
 
+/* Open (or raise) the modeless multiline send box, on the main thread,
+ * registered as an aux dialog like the single-line box. No owner, as before:
+ * its caption names the terminal window it sends to. */
 char * InputBoxMultiline( HINSTANCE hInstance, HWND hwnd ) {
-	if( InputBoxResult != NULL ) { free( InputBoxResult ) ; InputBoxResult = NULL ; }
-
-	if( IsClipboardFormatAvailable(CF_TEXT) ) {
-		char * pst = NULL ;
-		if( OpenClipboard(NULL) ) {
-			HGLOBAL hglb ;
-			if( (hglb = GetClipboardData( CF_TEXT ) ) != NULL ) {
-				if( ( pst = GlobalLock( hglb ) ) != NULL ) {
-					InputBoxResult = (char*) malloc( strlen( pst ) +1 ) ;
-					strcpy( InputBoxResult, pst ) ;
-					GlobalUnlock( hglb ) ;
-					}
-				}
-			CloseClipboard();
-			}
-		}
-
-	DialogBox(hInstance, MAKEINTRESOURCE(IDD_INPUTBOXMULTI), NULL, (DLGPROC)InputMultilineCallBack) ;
-	return InputBoxResult ;
+	(void)hwnd ;
+	if( InputMultiHwnd && IsWindow( InputMultiHwnd ) ) { SetForegroundWindow( InputMultiHwnd ) ; return NULL ; }
+	InputMultiHwnd = CreateDialog( hInstance, MAKEINTRESOURCE(IDD_INPUTBOXMULTI), NULL, (DLGPROC)InputMultilineCallBack ) ;
+	if( InputMultiHwnd ) {
+		ShinyAddAuxDialog( InputMultiHwnd ) ;
+		ShowWindow( InputMultiHwnd, SW_SHOW ) ;
+		SetForegroundWindow( InputMultiHwnd ) ;
+	}
+	return NULL ;
 	}
 	
 char * InputBoxPassword( HINSTANCE hInstance, HWND hwnd ) {
@@ -658,11 +678,8 @@ void GetAndSendLine( HWND hwnd ) {
 	}
 	
 void GetAndSendMultiLine( HWND hwnd ) {
-	if( InputBox_Flag == 1 ) return ;
-
-	InputBox_Flag = 1 ;
+	/* modeless on the main thread: a second call raises the open box */
 	InputBoxMultiline( hinst, hwnd ) ;
-	InputBox_Flag = 0 ;
 	}
 
 void GetAndSendLinePassword( HWND hwnd ) {

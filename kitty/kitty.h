@@ -58,6 +58,7 @@ void SetProxySelectionFlag( const int flag ) ;
 // Stuff for drag-n-drop
 #ifndef TIMER_DND
 #define TIMER_DND 8777
+#define TIMER_SENDQ 8719   /* the typing queue of SendKeyboard/SendKeyboardPlus (kitty_broadcast.c) */
 #endif
 void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop, int typepath) ;
 

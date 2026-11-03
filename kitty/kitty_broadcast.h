@@ -24,6 +24,7 @@ const char *kitty_broadcast_send_key( void ) ;         // key a broadcast is SEN
 void routine_server( void * st ) ;
 void SendKeyboard( HWND hwnd, const char * buffer ) ;
 void SendKeyboardPlus( HWND hwnd, const char * st );
+void kitty_sendq_tick( HWND hwnd );   /* TIMER_SENDQ: the typing queue (window.c) */
 void SendAutoCommand( HWND hwnd, const char * cmd ) ;
 int SendCommandAllWindows( HWND hwnd, char * cmd ) ;
 // The send console's form: include_self=1 also reaches the terminal this
