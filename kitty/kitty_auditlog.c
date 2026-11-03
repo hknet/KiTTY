@@ -99,6 +99,7 @@ int kitty_audit_result_is_warning(const char *result)
         "denied", "refused", "blocked", "failed", "fp-refused", "cancelled",
         "not-verified", "waiting", "shut", "unlock-shut", "no-door-here",
         "sign-refused", "remove-refused", "store-damaged",
+        "expired", "not-yet-valid",   /* 141: a certificate servers refuse */
     };
     size_t i;
     if (!result || !*result)
@@ -308,6 +309,9 @@ static const char *const af_protect[] = {
 static const char *const af_keywarn[] = {
     "path", "warning", "seq", "sig", "ts", "prev", NULL
 };
+static const char *const af_cert[] = {
+    "fp", "comment", "result", "valid", "seq", "sig", "ts", "prev", NULL
+};
 static const char *const af_decrypt[] = {
     "fp", "comment", "result", "trigger", "req", "reqpath", "pid",
     "seq", "sig", "ts", "prev", NULL
@@ -352,6 +356,7 @@ static const struct audit_kind {
     { "hello-protect",   131, af_protect },
     { "hello-unlock",    132, af_hello },
     { "keyfile-warning", 140, af_keywarn },
+    { "certificate",     141, af_cert },
     { "reencrypt-all",   150, af_use },
     { "reencrypt",       151, af_use },
     { "decrypt",         152, af_decrypt },

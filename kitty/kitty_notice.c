@@ -826,6 +826,12 @@ int kitty_notice_showing(void *ctx)
     return ctx && st && st->on_close && st->close_ctx == ctx;
 }
 
+int kitty_notice_parked(void *ctx)
+{
+    return ctx && notice_park.valid && notice_park.on_close &&
+           notice_park.close_ctx == ctx;
+}
+
 void kitty_notice_close_ctx(void *ctx)
 {
     if (!kitty_notice_showing(ctx))

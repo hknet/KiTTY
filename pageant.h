@@ -412,6 +412,8 @@ int pageant_enum_keys(pageant_key_enum_fn_t callback, void *callback_ctx,
 /* KiTTY: user-controllable key offer order (see pageant.c). Unconditional:
  * the agent core compiles without MOD_PERSO, so these must not be guarded. */
 bool pageant_reorder_key(ptrlen pubblob, int dir);   /* dir<0 up, dir>0 down */
+/* KiTTY: the same for every identity of pubblob's private key at once */
+bool pageant_reorder_priv(ptrlen pubblob, int dir);
 char **pageant_get_order_fps(int *n);                /* SHA256 fps in offer order */
 void pageant_apply_key_order(char **fps, int nfps);  /* reorder to saved fps */
 int pageant_delete_key(struct pageant_pubkey *key, char **retstr);

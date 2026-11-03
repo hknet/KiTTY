@@ -1856,6 +1856,7 @@ it.
   | 131 | `hello-protect` | a key protected with Windows Hello |
   | 132 | `hello-unlock` | a Windows Hello protected key opened |
   | 140 | `keyfile-warning` | a weak or old key file |
+  | 141 | `certificate` | a certificate of a key expiring within 14 days, expired or not yet valid |
   | 150 | `reencrypt-all` | every key re-encrypted |
   | 151 | `reencrypt` | one key re-encrypted |
   | 152 | `decrypt` | a key decrypted |

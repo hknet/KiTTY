@@ -3277,6 +3277,7 @@
 #define KT_KAKEYS_COL_STATE                          "State"
 #define KT_KAKEYS_COL_LIFETIME                       "Lifetime"
 #define KT_KAKEYS_COL_CONFIRM                        "Confirm"
+#define KT_KAKEYS_COL_CERTIFICATE                    "Certificate"
 #define KT_KAKEYS_COL_COMMENT                        "Comment"
 /* the key list's right-click menu (moved there from the tray menu) */
 #define KT_KAKEYS_MENU_REMOVE_ALL                    "&Remove All Keys"
@@ -3324,6 +3325,46 @@
         "It will also stop being loaded at startup."
 #define KT_KAKEYS_REMOVE_MANY_Q_FMT                  "Remove the %d selected keys from the agent?\n\n" \
         "They will also stop being loaded at startup."
+
+/* kageant: a key's OpenSSH certificates (kitty/kitty_certinfo.c): the key
+ * list's Certificate column and Status in Key details. %s = the date in the
+ * Windows short format. Several certificates: the most urgent one, then
+ * KT_KACERT_MORE_FMT with the number of the others. */
+#define KT_KACERT_VALID                              "certificate"
+#define KT_KACERT_VALID_N_FMT                        "%u certificates"
+#define KT_KACERT_EXPIRES_DAYS_FMT                   "expires in %d days"
+#define KT_KACERT_EXPIRES_1DAY                       "expires in 1 day"
+#define KT_KACERT_EXPIRES_TODAY                      "expires today"
+#define KT_KACERT_EXPIRED_FMT                        "EXPIRED since %s"
+#define KT_KACERT_NOT_YET_FMT                        "valid from %s"
+#define KT_KACERT_MORE_FMT                           "%s (+%u)"
+/* Key details' Certificates list: a head line per certificate ("of" with
+ * two or more), then its lines. Valid: %s = the date and time. */
+#define KT_KACERT_DETAIL_HEAD                        "Certificate"
+#define KT_KACERT_DETAIL_HEAD_FMT                    "Certificate %u of %u"
+#define KT_KACERT_DETAIL_CA                          "  CA:"
+#define KT_KACERT_DETAIL_PRINCIPALS                  "  Principals:"
+#define KT_KACERT_DETAIL_VALID                       "  Valid:"
+#define KT_KACERT_DETAIL_STATUS                      "  Status:"
+#define KT_KACERT_DETAIL_CRITICAL                    "  Critical options:"
+#define KT_KACERT_VALID_RANGE_FMT                    "%s to %s"
+#define KT_KACERT_VALID_FROM_FMT                     "from %s"
+#define KT_KACERT_VALID_UNTIL_FMT                    "until %s"
+#define KT_KACERT_VALID_ALWAYS                       "always"
+#define KT_KACERT_STATUS_VALID                       "valid"
+#define KT_KACERT_NONE                               "none"
+
+/* kageant: a certificate's validity notices (windows/pageant.c), once per
+ * certificate and state. The first %s = the key's comment (or
+ * KT_KA_UNNAMED_KEY), the second the date in the Windows short format. */
+#define KT_KACERT_NOTICE_SOON                        "Certificate expires soon"
+#define KT_KACERT_NOTICE_EXPIRED                     "Certificate expired"
+#define KT_KACERT_NOTICE_NOT_YET                     "Certificate not yet valid"
+#define KT_KACERT_NOTICE_SOON_FMT                    "%s: its certificate expires on %s (in %d days). Renew it with your CA."
+#define KT_KACERT_NOTICE_SOON_1DAY_FMT               "%s: its certificate expires on %s (in 1 day). Renew it with your CA."
+#define KT_KACERT_NOTICE_TODAY_FMT                   "%s: its certificate expires on %s (today). Renew it with your CA."
+#define KT_KACERT_NOTICE_EXPIRED_FMT                 "%s: its certificate EXPIRED on %s. Servers that trust the CA refuse it. Renew it with your CA."
+#define KT_KACERT_NOTICE_NOT_YET_FMT                 "%s: its certificate is valid from %s on. Servers that trust the CA refuse it until then."
 
 /* kageant: the key details dialog (windows/pageant.c, kitty_pageant.c) */
 #define KT_KAKEYS_LIFETIME_NOT_LOADED                "not loaded"
@@ -3629,6 +3670,8 @@
 #define KT_KARULES_KEY_CA                            "CA "
 #define KT_KARULES_KEYS_NOT_LOOKED_UP                "Host keys not looked up yet."
 #define KT_KARULES_KEYS_VIA_FMT                      "Host keys of %s:"
+/* the panel of a key the agent holds a certificate of */
+#define KT_KARULES_KEY_CERT_NOTE                     "A certificate is the same private key. These rules apply to the key and every certificate of it."
 #define KT_KARULES_KEY_UNRESTRICTED                  "No destination: the key is not restricted."
 #define KT_KARULES_KEY_DESTS_FMT                     "Destinations: %d. The key signs a login to these servers only."
 /* the editor's status line */
@@ -5198,6 +5241,7 @@
 #define KT_RC_KEYDETAILS_FORGET                      "For&get a path..."
 #define KT_RC_KEYDETAILS_DEST                        "Destinations:"
 #define KT_RC_KEYDETAILS_RESTRICT                    "&Restrict..."
+#define KT_RC_KEYDETAILS_CERTS                       "Certificates:"
 /* pageant.rc: IDD_KEYRULES (caption = KT_CAP_KA_KEY_RULES) */
 #define KT_RC_KEYRULES_TREE                          "Keys and destinations:"
 #define KT_RC_KEYRULES_ADD                           "&Add destination"

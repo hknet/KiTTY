@@ -3295,7 +3295,7 @@ int kageant_fwd_blocked(int op, const char *fp)
     return 1;
 }
 
-static void kageant_trace_notice(const char *title, const char *text);
+void kageant_trace_notice(const char *title, const char *text);
 
 /* The name of a key in the hints: its comment, else its fingerprint. */
 static char *kageant_hint_name(const char *fp, const char *comment)
@@ -3463,7 +3463,7 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
 /* Test builds with KITTY_NOTICE_TRACE=<file>: a notice's title and text,
  * one line appended (a line break written as " / "), for a test harness:
  * the text of a notice is painted and cannot be read from outside. */
-static void kageant_trace_notice(const char *title, const char *text)
+void kageant_trace_notice(const char *title, const char *text)
 {
 #ifdef KITTY_TEST_BUILD_LABEL
     const char *tp = getenv("KITTY_NOTICE_TRACE");

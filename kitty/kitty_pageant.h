@@ -30,6 +30,9 @@ int  kageant_startup_active(void);
 int kageant_startup_set(int on);
 int kageant_notify_get(void);          /* default on */
 int kageant_notice_seconds(int fallback);  /* [Agent] noticetimeout */
+/* test builds with KITTY_NOTICE_TRACE=<file>: a notice's title and text
+ * appended there for a harness (nothing in a release build) */
+void kageant_trace_notice(const char *title, const char *text);
 int kageant_notify_set(int on);
 int kageant_confirm_get(void);         /* default off */
 int kageant_confirm_set(int on);
@@ -398,6 +401,8 @@ void kageant_refresh_tray_tip(void);
 #ifndef KAGEANT_NOTICE_WARN
 #define KAGEANT_NOTICE_WARN RGB(190, 110, 0)
 #define KAGEANT_NOTICE_INFO RGB(40, 70, 170)
+/* red: a certificate servers refuse (expired, not yet valid) */
+#define KAGEANT_NOTICE_ERR  RGB(175, 30, 30)
 #endif
 
 /* KiTTY: key-use tint. kageant_note_keyuse() is the kageant_keyuse_hook;

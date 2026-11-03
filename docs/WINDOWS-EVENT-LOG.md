@@ -165,7 +165,7 @@ The IDs:
 | Range | Source | Records |
 |---|---|---|
 | 0 | `KiTTY++` | text only, no longer written: listed for the records of earlier versions |
-| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), refused request (103), refused by a key's destination rules (104), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), rules changed in the rule editor (116), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), log rotation (170), log chain anchor (171), a record repeated (172) |
+| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), refused request (103), refused by a key's destination rules (104), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), rules changed in the rule editor (116), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), a certificate expiring, expired or not yet valid (141), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), log rotation (170), log chain anchor (171), a record repeated (172) |
 | 200-299 | `KiTTY++_kitty` | session opened (200) and closed (201), host key known (210), new (211), mismatch (212), host key update (213), login succeeded (220) and failed (221), proxy used (225), far-end request refused (230), file transferred (240) and failed (241) - ZModem and kitten transfers |
 | 300-399 | `KiTTY++_cli` | 300-325 as 200-225; file transferred (330) and failed (331) |
 | 400-499 | `KiTTY++_kittygen` | key generated (400), private key saved (401), public key saved (402), passphrase changed (403) |
@@ -1181,6 +1181,21 @@ Source `KiTTY++_agent`, `%1` = `keyfile-warning`.
 | `%5` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
 | `%6` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
 | `%7` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 141 certificate
+
+Source `KiTTY++_agent`, `%1` = `certificate`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `fp` | the key fingerprint; as the agent shows it (ssh-ed25519 255 SHA256:...; an SSH-1 key's bits and MD5 hash, 2048 aa:bb:...) |
+| `%3` | `comment` | the comment of the key concerned |
+| `%4` | `result` | the outcome; expiring (a certificate of a key expires within 14 days), expired, not-yet-valid |
+| `%5` | `valid` | the certificate's validity in UTC, YYYY-MM-DD HH:MM:SS to YYYY-MM-DD HH:MM:SS; from ... or until ... for an open end, always for none |
+| `%6` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%7` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%8` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%9` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
 
 ### 150 reencrypt-all
 

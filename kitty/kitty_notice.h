@@ -72,6 +72,9 @@ void kitty_notice_show_x(const char *title, const char *text, COLORREF accent,
  * out. For a caller that tracks its own notice (notifications from the host:
  * OSC 99 p=alive and p=close). */
 int kitty_notice_showing(void *ctx);
+/* Is it the sticky notice a later one parked (it comes back when that one
+ * goes)? */
+int kitty_notice_parked(void *ctx);
 void kitty_notice_close_ctx(void *ctx);
 
 /* Clicking the "SSH agent not verified" notice (kitty_win.c) posts this to

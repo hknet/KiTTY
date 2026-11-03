@@ -104,7 +104,8 @@ add_subdirectory(keygen)
 add_library(agent STATIC
   sshpubk.c pageant.c aqsync.c
   kitty/kitty_agentrestrict.c  # KiTTY: ssh-add -h, the rules pageant.c checks
-  kitty/kitty_knownhosts.c)    # KiTTY: OpenSSH's known_hosts, read on opt-in
+  kitty/kitty_knownhosts.c     # KiTTY: OpenSSH's known_hosts, read on opt-in
+  kitty/kitty_certinfo.c)      # KiTTY: what kageant shows of a certificate
 
 add_library(guiterminal STATIC
   terminal/terminal.c terminal/bidi.c
@@ -337,6 +338,15 @@ add_executable(test_agentrestrict
   sshpubk.c)
 target_link_libraries(test_agentrestrict crypto utils ${platform_libraries})
 
+# KiTTY: unit test for what kageant shows of a certificate
+# (kitty/kitty_certinfo.c, in the agent library): the fields read from
+# the blob, the state in local calendar days, the Certificate column.
+add_executable(test_certinfo
+  test/test_certinfo.c
+  kitty/kitty_certinfo.c
+  sshpubk.c)
+target_link_libraries(test_certinfo crypto utils ${platform_libraries})
+
 # KiTTY: unit test for the environment a connection sends
 # (kitty/kitty_termenv.c, in utils for ssh/mainchan.c and telnet.c): the
 # session's variables merged with the COLORTERM / TERM_PROGRAM defaults.
@@ -541,7 +551,7 @@ foreach(t
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
     test_termenv test_droppath test_sendesc test_secretmask test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
-    test_agentbind test_agentrestrict
+    test_agentbind test_agentrestrict test_certinfo
     test_auditparse test_auditchain test_eventids test_commentlinks)
   kitty_add_test(${t})
 endforeach()

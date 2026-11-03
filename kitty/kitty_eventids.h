@@ -158,6 +158,9 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 140, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "keyfile-warning",
       "path warning seq sig ts prev",
       "Warning" },
+    { 141, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "certificate",
+      "fp comment result valid seq sig ts prev",
+      "Information; Warning for expired and not-yet-valid" },
     { 150, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "reencrypt-all",
       "fp comment result reason req reqpath pid seq sig ts prev",
       "Information; Warning for a refusal or failure" },
@@ -559,6 +562,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "blocked; 130: added, denied, failed; 131: protected, denied, "
       "failed, startup-entry-replaced; 132: hello, hello-cached, "
       "recovery-passphrase, printed-secret, denied, no-door-here, failed; "
+      "141: expiring (a certificate of a key expires within 14 days), "
+      "expired, not-yet-valid; "
       "150, 151: done, failed; 152: done, failed (a wrong passphrase), "
       "cancelled; 160: start, stop; 170: failed; 171: start, resumed "
       "(after a crash fragment), rotate, head (every 15 minutes with "
@@ -610,6 +615,10 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "220, 221, 320, 321, 240, 241, 330, 331: the user name of the login "
       "(a proxy's: the name sent to it); 225, 325: the user name sent to "
       "the proxy, empty when none" },
+    { "valid",
+      "141: the certificate's validity in UTC, YYYY-MM-DD HH:MM:SS to "
+      "YYYY-MM-DD HH:MM:SS; from ... or until ... for an open end, always "
+      "for none" },
     { "value",
       "171 config: the setting about to change and its new value: "
       "agentlog=no, agentlog=yes, agentlogpath= the new path (empty for "

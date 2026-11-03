@@ -1056,6 +1056,60 @@ bool pageant_reorder_key(ptrlen pubblob, int dir)
 }
 
 /*
+ * KiTTY: the key list shows one row per private key - the plain key and
+ * each certificate of it are separate identities here. Move every identity
+ * of pubblob's private key past all identities of the nearest private key
+ * of the same SSH version before it (dir<0) or after it (dir>0). The
+ * identities of one private key end up next to each other, in their order.
+ * Returns true if anything moved.
+ */
+bool pageant_reorder_priv(ptrlen pubblob, int dir)
+{
+    PageantPublicKey *me = NULL;
+    PageantPrivateKey **groups, *mine, *t;
+    PageantPublicKey **out;
+    size_t ng = 0, gi = 0, o = 0;
+    int j;
+    for (size_t i = 0; i < puborder_n && !me; i++)
+        if (ptrlen_eq_ptrlen(puborder[i]->sort.full_pub, pubblob))
+            me = puborder[i];
+    if (!me || dir == 0)
+        return false;
+    mine = pub_to_priv(me);
+    /* the private keys in the order of their first identity */
+    groups = snewn(puborder_n, PageantPrivateKey *);
+    for (size_t i = 0; i < puborder_n; i++) {
+        PageantPrivateKey *p = pub_to_priv(puborder[i]);
+        size_t g;
+        for (g = 0; g < ng && groups[g] != p; g++);
+        if (g == ng)
+            groups[ng++] = p;
+        if (p == mine)
+            gi = g;
+    }
+    j = (int)gi + (dir < 0 ? -1 : 1);
+    while (j >= 0 && j < (int)ng &&
+           groups[j]->sort.ssh_version != mine->sort.ssh_version)
+        j += dir < 0 ? -1 : 1;
+    if (j < 0 || j >= (int)ng) {
+        sfree(groups);
+        return false;
+    }
+    t = groups[gi];
+    groups[gi] = groups[j];
+    groups[j] = t;
+    out = snewn(puborder_n, PageantPublicKey *);
+    for (size_t g = 0; g < ng; g++)
+        for (size_t i = 0; i < puborder_n; i++)
+            if (pub_to_priv(puborder[i]) == groups[g])
+                out[o++] = puborder[i];
+    memcpy(puborder, out, puborder_n * sizeof(*puborder));
+    sfree(out);
+    sfree(groups);
+    return true;
+}
+
+/*
  * KiTTY: return the SHA256 fingerprints of all keys in current offer order
  * (caller frees each string and the array). Used to persist the order.
  */

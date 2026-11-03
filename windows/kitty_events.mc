@@ -140,6 +140,12 @@ Language=English
 %1%npath: %2%nwarning: %3%nseq: %4%nsig: %5%nts: %6%nprev: %7%0
 .
 
+MessageId=141
+SymbolicName=KITTY_AGENT_CERTIFICATE
+Language=English
+%1%nfp: %2%ncomment: %3%nresult: %4%nvalid: %5%nseq: %6%nsig: %7%nts: %8%nprev: %9%0
+.
+
 MessageId=150
 SymbolicName=KITTY_AGENT_REENCRYPT_ALL
 Language=English

@@ -88,8 +88,6 @@ For each key, the list box will show you:
 \q{Ed25519} (an Ed25519 key for use with the SSH-2 protocol),
 \q{Ed448} (an Ed448 key for use with the SSH-2 protocol),
 or \q{SSH-1} (an RSA key for use with the old SSH-1 protocol).
-(If the key has an associated certificate, this is shown here with a
-\q{cert} suffix.)
 
 \b The size (in bits) of the key, for key types that come in different
 sizes. (For ECDSA \q{NIST} keys, this is indicated as \q{p256} or
@@ -122,6 +120,31 @@ tell two certificates apart.
 \b The state of deferred decryption, if enabled for this key.
 See \k{pageant-deferred-decryption}.
 
+\b \q{Certificate}: the key's OpenSSH certificates. A key and each
+certificate of it are separate entries in the agent (\c{ssh-add} adds
+both when the certificate file lies beside the key), but they sign with
+the same private key: the list shows them as one row. The column reads
+\q{certificate}, or \q{2 certificates} for two, while every one is
+valid. Amber: \q{expires in 3 days} or \q{expires today} for one that
+expires within 14 days. Red: \q{EXPIRED since <date>}, or \q{valid from
+<date>} for one that is not valid yet - servers that trust the CA refuse
+it. With several, the most urgent one comes first and \q{(+1)} counts
+the others. Remove, Move up, Move down and dragging act on the key and
+every certificate of it.
+
+\S{pageant-mainwin-certnotices} Certificate notices
+
+kageant checks the validity of its certificates shortly after keys are
+added or removed (the startup keys included), once a day and after a
+resume from sleep. A certificate that expires within 14 days gets an
+amber notice for 12 seconds. An expired one, or one that is not valid
+yet, gets a red notice that stays until it is clicked. Each certificate
+gets each of the three once per run. A click opens the key list. Each
+one is on the agent log as event 141 (\c{ev="certificate"}, the key's
+fingerprint, \c{result} \c{expiring}, \c{expired} or
+\c{not-yet-valid}, \c{valid} its validity in UTC). Expired and not
+valid yet are warnings.
+
 \S{pageant-mainwin-keydetails} The Key details window
 
 Double-click a key in the key list, or select it and press Enter, to
@@ -142,6 +165,11 @@ forms including the certificate. A key not loaded shows the
 fingerprint recorded at the last save, if there is one.
 
 \b \q{Comment:} the key's comment.
+
+\b \q{Certificates:} each certificate of the key: its CA's fingerprint,
+the principals, the validity in local time, its status (\q{valid}, or
+amber or red as in the key list) and its critical options.
+\q{none} for a key without a certificate.
 
 \b \q{Loaded from:} each key file the key was loaded from, with its
 protection: \q{passphrase}, \q{Windows Hello protected} or
@@ -291,11 +319,13 @@ Windows' own settings.
 refused by a key's destination rules or a key list they left empty, 110 add,
 111 load at startup, 112 forget a path, 113 retry, 114 remove, 115
 remove all, 116 rules changed in the rule editor, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
-132 Hello unlock, 140 key file warning, 150 re-encrypt all, 151
+132 Hello unlock, 140 key file warning, 141 a certificate expiring,
+expired or not yet valid, 150 re-encrypt all, 151
 re-encrypt one key, 152 decrypt a key, 160 agent start/stop, 170 log
 rotation, 171 log chain anchor, 172 a record repeated
 (\k{pageant-logchain}). Refusals,
-failures and key file warnings are warnings, the rest information. The
+failures, key file warnings and a certificate that is expired or not
+yet valid are warnings, the rest information. The
 fields of each ID, in order, are listed in \k{kitty-eventids}.
 
 Every refused request is a record too: kind \c{request}, result

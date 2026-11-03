@@ -113,6 +113,8 @@
 #define IDC_KEYDETAIL_DEST_LBL 118  /* the key's destination rules */
 #define IDC_KEYDETAIL_DEST 119
 #define IDC_KEYDETAIL_RESTRICT 120  /* opens the rule editor */
+#define IDC_KEYDETAIL_CERTS_LBL 121 /* the key's certificates */
+#define IDC_KEYDETAIL_CERTS 122
 
 /* KiTTY: the destination rule editor */
 #define IDC_KR_TREE_LBL 500

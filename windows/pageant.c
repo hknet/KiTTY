@@ -44,6 +44,7 @@
 #include "../kitty/kitty_anchor.h"    /* KiTTY: edge anchoring for the resizable windows */
 #include "../kitty/kitty_oldwin.h"   /* KiTTY: APIs newer than the oldest Windows we load on */
 #include "../kitty/kitty_text.h"     /* KiTTY: shared captions and menu words */
+#include "../kitty/kitty_certinfo.h" /* KiTTY: a key's certificates in the key list */
 #include "../kitty/kitty_renameguard.h"  /* KiTTY: refuse a foreign file name */
 #include "../kitty/kitty_selfcheck.h"    /* KiTTY: refuse a file changed after release */
 
@@ -97,6 +98,9 @@ static void kageant_start_failed(HWND hwnd, const char *what)
 #define TID_HELLO_CACHE  4       /* KiTTY: wipe the Hello KEK cache at TTL */
 #define TID_KL_RESUME    7       /* KiTTY: key-list Resume-button sync */
 #define TID_AUDIT_CHAIN  9       /* KiTTY: the agent log's head anchor (Q3) */
+#define TID_CERT_CHECK   10      /* KiTTY: the certificates' validity, soon */
+#define TID_CERT_DAILY   11      /* KiTTY: ... and once a day */
+#define TID_CERT_NOTE    12      /* KiTTY: the next certificate notice */
 
 #define APPNAME "kageant"
 
@@ -775,6 +779,17 @@ struct keylist_update_ctx {
     int index;                     /* KiTTY: next row to insert */
     bool enable_remove_controls;
     bool enable_reencrypt_controls;
+    /* KiTTY: every identity the agent listed, grouped into one row per
+     * private key once the list is complete (keylist_insert_groups) */
+    struct keylist_display_data **items;
+    size_t nitems, itemsize;
+};
+
+/* KiTTY: the key list's columns. The last one takes whatever width is left
+ * (keylist_fit_last_column). */
+enum {
+    KL_COL_ALG, KL_COL_BITS, KL_COL_FP, KL_COL_STATE, KL_COL_LIFETIME,
+    KL_COL_CONFIRM, KL_COL_CERT, KL_COL_COMMENT, KL_NCOLS
 };
 
 /* KiTTY: what a row's State column can say. KEYSTATE_ENCRYPTED is a deferred
@@ -817,6 +832,21 @@ struct keylist_display_data {
     int ssh_version;  /* KiTTY: 1 or 2; SSH-1 keys cannot be re-encrypted */
     int restricted;   /* KiTTY: the key has destination rules (every key
                        * while the rule file is damaged): info ink */
+    /* KiTTY: one row per private key. The agent lists the plain key and
+     * each certificate of it as identities of their own; the row stands for
+     * all of them. base is the row's identity (the base key's public blob,
+     * empty for a not-loaded entry), ids every identity's blob (blob is one
+     * of them: the plain key's, else the first certificate's), fps every
+     * fingerprint form of every identity (the key-use tint). */
+    strbuf *base;
+    strbuf **ids;
+    size_t nids, idsize;
+    char **fps;
+    size_t nfps, fpsize;
+    kcert_info *certs;    /* the row's certificates */
+    size_t ncerts, certsize;
+    char *certcol;        /* the Certificate column */
+    int certlevel;        /* its marking: 0 normal, 1 amber, 2 red */
 };
 
 static void keylist_update_callback(
@@ -828,6 +858,7 @@ static void keylist_update_callback(
     ptrlen fingerprint = ptrlen_from_asciz(fingerprints[this_type]);
 
     struct keylist_display_data *disp = snew(struct keylist_display_data);
+    memset(disp, 0, sizeof(*disp));
     disp->alg = strbuf_new();
     disp->bits = strbuf_new();
     disp->hash = strbuf_new();
@@ -835,6 +866,9 @@ static void keylist_update_callback(
     disp->info = strbuf_new();
     disp->expires = strbuf_new();
     disp->blob = strbuf_dup(ptrlen_from_strbuf(key->blob));  /* KiTTY: for reordering */
+    disp->base = key->ssh_version == 2 ?
+        kcert_base_blob(ptrlen_from_strbuf(key->blob)) :
+        strbuf_dup(ptrlen_from_strbuf(key->blob));
     /* KiTTY: keep every fingerprint form for the details dialog. */
     for (size_t t = 0; t < SSH_N_FPTYPES; t++)
         disp->fp_full[t] = fingerprints[t] ? dupstr(fingerprints[t]) : NULL;
@@ -943,24 +977,201 @@ static void keylist_update_callback(
         }
     }
 
-    /* KiTTY: one ListView row per key; the display struct rides along as the
-     * row's lParam, exactly as it used to ride in the listbox item data. */
+    /* KiTTY: the rows are made once every identity is in: a key and its
+     * certificates are one row (keylist_insert_groups). */
+    sgrowarray(ctx->items, ctx->itemsize, ctx->nitems);
+    ctx->items[ctx->nitems++] = disp;
+}
+
+/* KiTTY: one ListView row; the display struct rides along as the row's
+ * lParam, exactly as it used to ride in the listbox item data. */
+static void keylist_insert_row(HWND hlist, int index,
+                               struct keylist_display_data *disp)
+{
     LVITEM lvi;
     memset(&lvi, 0, sizeof(lvi));
     lvi.mask = LVIF_TEXT | LVIF_PARAM;
-    lvi.iItem = ctx->index;
+    lvi.iItem = index;
     lvi.pszText = disp->alg->s;
     lvi.lParam = (LPARAM)disp;
-    int row = ListView_InsertItem(ctx->hlist, &lvi);
-    ListView_SetItemText(ctx->hlist, row, 1, disp->bits->s);
-    ListView_SetItemText(ctx->hlist, row, 2, disp->hash->s);
-    ListView_SetItemText(ctx->hlist, row, 3, disp->info->s);
-    ListView_SetItemText(ctx->hlist, row, 4, disp->expires->s);
-    ListView_SetItemText(ctx->hlist, row, 5,
+    int row = ListView_InsertItem(hlist, &lvi);
+    ListView_SetItemText(hlist, row, KL_COL_BITS, disp->bits->s);
+    ListView_SetItemText(hlist, row, KL_COL_FP, disp->hash->s);
+    ListView_SetItemText(hlist, row, KL_COL_STATE, disp->info->s);
+    ListView_SetItemText(hlist, row, KL_COL_LIFETIME, disp->expires->s);
+    ListView_SetItemText(hlist, row, KL_COL_CONFIRM,
                          disp->confirm == 2 ? KT_KAKEYS_CONFIRM_HELLO :
                          disp->confirm     ? KT_KAKEYS_CONFIRM_REQUIRED : "");
-    ListView_SetItemText(ctx->hlist, row, 6, disp->comment->s);
-    ctx->index++;
+    ListView_SetItemText(hlist, row, KL_COL_CERT,
+                         disp->certcol ? disp->certcol : "");
+    ListView_SetItemText(hlist, row, KL_COL_COMMENT,
+                         disp->pending ? disp->pendpath : disp->comment->s);
+}
+
+/* KiTTY: the local time's offset from UTC now, in seconds (daylight saving
+ * time included), for the certificates' days to their expiry */
+static int64_t kageant_tzoff(void)
+{
+    FILETIME ft, lft;
+    ULARGE_INTEGER u, l;
+    GetSystemTimeAsFileTime(&ft);
+    if (!FileTimeToLocalFileTime(&ft, &lft))
+        return 0;
+    u.LowPart = ft.dwLowDateTime;
+    u.HighPart = ft.dwHighDateTime;
+    l.LowPart = lft.dwLowDateTime;
+    l.HighPart = lft.dwHighDateTime;
+    return ((int64_t)l.QuadPart - (int64_t)u.QuadPart) / 10000000;
+}
+
+/* KiTTY: a certificate's time (seconds since 1970, UTC) as the local date
+ * in the Windows short format; ctx non-NULL adds the time (hours and
+ * minutes). sfree the result. */
+static char *kageant_cert_date(uint64_t t, void *ctx)
+{
+    FILETIME ft;
+    SYSTEMTIME st, lst;
+    ULARGE_INTEGER u;
+    char d[64], h[32];
+    if (t > 253402300799ULL)            /* 9999-12-31 23:59:59 */
+        t = 253402300799ULL;
+    u.QuadPart = (t + 11644473600ULL) * 10000000ULL;
+    ft.dwLowDateTime = u.LowPart;
+    ft.dwHighDateTime = u.HighPart;
+    if (!FileTimeToSystemTime(&ft, &st))
+        return dupstr("?");
+    if (!SystemTimeToTzSpecificLocalTime(NULL, &st, &lst))
+        lst = st;
+    if (!GetDateFormatA(LOCALE_USER_DEFAULT, DATE_SHORTDATE, &lst, NULL,
+                        d, sizeof(d)))
+        snprintf(d, sizeof(d), "%04u-%02u-%02u", lst.wYear, lst.wMonth,
+                 lst.wDay);
+    if (!ctx)
+        return dupstr(d);
+    if (!GetTimeFormatA(LOCALE_USER_DEFAULT, TIME_NOSECONDS, &lst, NULL,
+                        h, sizeof(h)))
+        snprintf(h, sizeof(h), "%02u:%02u", lst.wHour, lst.wMinute);
+    return dupprintf("%s %s", d, h);
+}
+
+/* KiTTY: free one row's display struct */
+static void keylist_disp_free(struct keylist_display_data *disp)
+{
+    if (!disp)
+        return;
+    strbuf_free(disp->alg);
+    strbuf_free(disp->bits);
+    strbuf_free(disp->hash);
+    strbuf_free(disp->comment);
+    strbuf_free(disp->info);
+    strbuf_free(disp->expires);
+    strbuf_free(disp->blob);
+    if (disp->base)
+        strbuf_free(disp->base);
+    for (size_t t = 0; t < SSH_N_FPTYPES; t++)
+        sfree(disp->fp_full[t]);
+    for (size_t i = 0; i < disp->nids; i++)
+        strbuf_free(disp->ids[i]);
+    sfree(disp->ids);
+    for (size_t i = 0; i < disp->nfps; i++)
+        sfree(disp->fps[i]);
+    sfree(disp->fps);
+    for (size_t i = 0; i < disp->ncerts; i++)
+        kcert_info_free(&disp->certs[i]);
+    sfree(disp->certs);
+    sfree(disp->certcol);
+    sfree(disp->pendpath);
+    sfree(disp);
+}
+
+/* KiTTY: a certificate identity, not the plain key */
+static bool keylist_is_cert(const struct keylist_display_data *d)
+{
+    return d->ssh_version == 2 && d->base &&
+           !ptrlen_eq_ptrlen(ptrlen_from_strbuf(d->base),
+                             ptrlen_from_strbuf(d->blob));
+}
+
+static bool keylist_same_key(const struct keylist_display_data *a,
+                             const struct keylist_display_data *b)
+{
+    return a->ssh_version == b->ssh_version &&
+           ptrlen_eq_ptrlen(ptrlen_from_strbuf(a->base),
+                            ptrlen_from_strbuf(b->base));
+}
+
+/* KiTTY: the Certificate column of a row, from its certificates now */
+static void keylist_cert_column(struct keylist_display_data *disp)
+{
+    sfree(disp->certcol);
+    disp->certcol = kcert_column_text(disp->certs, disp->ncerts,
+                                      (uint64_t)time(NULL), kageant_tzoff(),
+                                      kageant_cert_date, NULL,
+                                      &disp->certlevel);
+}
+
+/*
+ * KiTTY: one row per private key. The agent lists the plain key and each
+ * certificate of it as identities of their own (ssh-add adds both, they
+ * sign with the same private key): they are grouped by their base key here.
+ * The row shows the plain key, or the first certificate when the plain key
+ * is not in the agent, with the base key's algorithm; the certificates go
+ * into the Certificate column and Key details. Rows come in the order of
+ * each private key's first identity, which is the offer order once Move
+ * up/down has kept a private key's identities together
+ * (pageant_reorder_priv).
+ */
+static void keylist_insert_groups(struct keylist_update_ctx *ctx)
+{
+    struct keylist_display_data **it = ctx->items;
+    size_t n = ctx->nitems;
+    for (size_t i = 0; i < n; i++) {
+        struct keylist_display_data *prim;
+        if (!it[i])
+            continue;
+        prim = it[i];
+        for (size_t j = i; j < n; j++)
+            if (it[j] && keylist_same_key(it[j], it[i]) &&
+                !keylist_is_cert(it[j])) {
+                prim = it[j];
+                break;
+            }
+        for (size_t j = i; j < n; j++) {
+            struct keylist_display_data *m = it[j];
+            kcert_info ci;
+            if (!m || !keylist_same_key(m, prim))
+                continue;
+            sgrowarray(prim->ids, prim->idsize, prim->nids);
+            prim->ids[prim->nids++] = strbuf_dup(ptrlen_from_strbuf(m->blob));
+            for (size_t t = 0; t < SSH_N_FPTYPES; t++)
+                if (m->fp_full[t]) {
+                    sgrowarray(prim->fps, prim->fpsize, prim->nfps);
+                    prim->fps[prim->nfps++] = dupstr(m->fp_full[t]);
+                }
+            memset(&ci, 0, sizeof(ci));
+            if (m->ssh_version == 2 &&
+                kcert_info_get(ptrlen_from_strbuf(m->blob), &ci)) {
+                sgrowarray(prim->certs, prim->certsize, prim->ncerts);
+                prim->certs[prim->ncerts++] = ci;
+            }
+            it[j] = NULL;
+            if (m != prim)
+                keylist_disp_free(m);
+        }
+        if (keylist_is_cert(prim)) {
+            /* no plain key in the agent: the key's own algorithm */
+            const ssh_keyalg *a =
+                pubkey_blob_to_alg(ptrlen_from_strbuf(prim->base));
+            if (a) {
+                char *desc = ssh_keyalg_desc(a);
+                strbuf_clear(prim->alg);
+                put_dataz(prim->alg, desc);
+                sfree(desc);
+            }
+        }
+        keylist_cert_column(prim);
+        keylist_insert_row(ctx->hlist, ctx->index++, prim);
+    }
 }
 
 /* KiTTY: fetch the display struct a ListView row carries in its lParam. */
@@ -980,22 +1191,8 @@ static struct keylist_display_data *keylist_row_data(HWND hlist, int row)
 static void keylist_free_display_data(HWND hlist)
 {
     int nitems = ListView_GetItemCount(hlist);
-    for (int i = 0; i < nitems; i++) {
-        struct keylist_display_data *disp = keylist_row_data(hlist, i);
-        if (!disp)
-            continue;
-        strbuf_free(disp->alg);
-        strbuf_free(disp->bits);
-        strbuf_free(disp->hash);
-        strbuf_free(disp->comment);
-        strbuf_free(disp->info);
-        strbuf_free(disp->expires);
-        strbuf_free(disp->blob);
-        for (size_t t = 0; t < SSH_N_FPTYPES; t++)
-            sfree(disp->fp_full[t]);
-        sfree(disp->pendpath);
-        sfree(disp);
-    }
+    for (int i = 0; i < nitems; i++)
+        keylist_disp_free(keylist_row_data(hlist, i));
 }
 
 /* KiTTY: tick the Lifetime column in place each second while the key list
@@ -1020,7 +1217,7 @@ static void keylist_tick_lifetimes(void)
                                      &set_s, &rem_s)) {
             char buf[32];
             kageant_fmt_seconds(rem_s, buf, sizeof(buf));
-            ListView_SetItemText(hlist, i, 4, buf);
+            ListView_SetItemText(hlist, i, KL_COL_LIFETIME, buf);
         }
     }
 }
@@ -1234,8 +1431,201 @@ static void keylist_refresh_actionbtn(HWND dlg)
 /*
  * Update the visible key list.
  */
+/*
+ * KiTTY: the validity of the agent's certificates. A certificate that
+ * expires within 14 days gets an amber notice (12 s), an expired or a not
+ * yet valid one a red notice that stays until it is clicked - servers that
+ * trust the CA refuse it. Each certificate gets each of the three once per
+ * run. Every one goes into the agent log (event 141 certificate); the
+ * expired and the not yet valid one are warnings, in the Windows Event Log
+ * too when the agent log writes there. Checked shortly after every change
+ * of the keys (the start's startup keys among them), once a day and after
+ * a resume from sleep. Several notices at once come one after another.
+ */
+struct kageant_certnote {
+    char *title, *text;
+    COLORREF accent;
+    int seconds;
+};
+static struct kageant_certnote *certnotes;
+static size_t ncertnotes, certnotesize;
+static bool certnote_showing;
+static char **cert_seen;            /* "<state> <certificate fingerprint>" */
+static size_t ncert_seen, cert_seensize;
+static bool cert_checking;          /* the check refreshes the key list */
+
+static void kageant_certnote_next(void);
+/* The notice window runs this while it is still the current one: the next
+ * notice comes from a timer, on a stack of its own. */
+static void kageant_certnote_closed(void *ctx, int clicked)
+{
+    (void)ctx;
+    (void)clicked;
+    certnote_showing = false;
+    if (ncertnotes && traywindow)
+        SetTimer(traywindow, TID_CERT_NOTE, 300, NULL);
+}
+
+static char certnote_ctx;            /* our notices' on_close context */
+static void kageant_certnote_next(void)
+{
+    struct kageant_certnote n;
+    /* a notice of ours parked by another one and then ended by a later
+     * sticky notice never ran its on_close: not on screen means done */
+    if (certnote_showing && !kitty_notice_showing(&certnote_ctx) &&
+        !kitty_notice_parked(&certnote_ctx))
+        certnote_showing = false;
+    if (certnote_showing || !ncertnotes || !traywindow)
+        return;
+    n = certnotes[0];
+    memmove(certnotes, certnotes + 1, (ncertnotes - 1) * sizeof(*certnotes));
+    ncertnotes--;
+    certnote_showing = true;
+    kitty_notice_show_ex(n.title, n.text, n.accent, n.seconds, traywindow,
+                         KAGEANT_WM_NOTICE_CLICK, kageant_certnote_closed,
+                         &certnote_ctx);
+    sfree(n.title);
+    sfree(n.text);
+}
+
+/* a time of a certificate as the agent log writes it: UTC */
+static void kageant_cert_utc(strbuf *sb, uint64_t t)
+{
+    time_t tt = (time_t)t;
+    struct tm *g = gmtime(&tt);
+    char buf[32];
+    if (g && strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", g))
+        put_dataz(sb, buf);
+    else
+        put_fmt(sb, "%llu", (unsigned long long)t);
+}
+
+/* event 141's valid field */
+static char *kageant_cert_valid_field(const kcert_info *ci)
+{
+    strbuf *sb = strbuf_new();
+    bool from = ci->valid_after != 0, until = ci->valid_before != UINT64_MAX;
+    if (from && until) {
+        kageant_cert_utc(sb, ci->valid_after);
+        put_dataz(sb, " to ");
+        kageant_cert_utc(sb, ci->valid_before);
+    } else if (from) {
+        put_dataz(sb, "from ");
+        kageant_cert_utc(sb, ci->valid_after);
+    } else if (until) {
+        put_dataz(sb, "until ");
+        kageant_cert_utc(sb, ci->valid_before);
+    } else {
+        put_dataz(sb, "always");
+    }
+    return strbuf_to_str(sb);
+}
+
+static void kageant_cert_check_cb(void *vctx, char **fingerprints,
+                                  const char *comment, uint32_t ext_flags,
+                                  struct pageant_pubkey *key)
+{
+    kcert_info ci;
+    int days, st, kind;
+    char *cfp, *seen, *rfp, *valid, *date;
+    const char *who, *res;
+    struct kageant_certnote n;
+    size_t i;
+    (void)vctx;
+    (void)ext_flags;
+    if (key->ssh_version != 2)
+        return;
+    memset(&ci, 0, sizeof(ci));
+    if (!kcert_info_get(ptrlen_from_strbuf(key->blob), &ci))
+        return;
+    st = kcert_state(&ci, (uint64_t)time(NULL), kageant_tzoff(), &days);
+    kind = (st == KCERT_EXPIRING || st == KCERT_EXPIRES_TODAY) ? 1 :
+           st == KCERT_EXPIRED ? 2 : st == KCERT_NOT_YET ? 3 : 0;
+    if (!kind) {
+        kcert_info_free(&ci);
+        return;
+    }
+    /* the certificate's own hash: two certificates of one key are two */
+    cfp = fingerprints[SSH_FPTYPE_SHA256_CERT] ?
+        dupstr(fingerprints[SSH_FPTYPE_SHA256_CERT]) :
+        ssh2_fingerprint_blob(ptrlen_from_strbuf(key->blob),
+                              SSH_FPTYPE_SHA256_CERT);
+    seen = dupprintf("%d %s", kind, cfp);
+    sfree(cfp);
+    for (i = 0; i < ncert_seen; i++)
+        if (!strcmp(cert_seen[i], seen))
+            break;
+    if (i < ncert_seen) {
+        sfree(seen);
+        kcert_info_free(&ci);
+        return;
+    }
+    sgrowarray(cert_seen, cert_seensize, ncert_seen);
+    cert_seen[ncert_seen++] = seen;
+
+    res = kind == 1 ? "expiring" : kind == 2 ? "expired" : "not-yet-valid";
+    rfp = kageant_record_fp_of_blob(ptrlen_from_strbuf(key->blob));
+    valid = kageant_cert_valid_field(&ci);
+    kitty_audit("certificate", "fp", rfp, "comment", comment ? comment : "",
+                "result", res, "valid", valid, (const char *)NULL);
+    sfree(valid);
+    sfree(rfp);
+
+    who = comment && *comment ? comment : KT_KA_UNNAMED_KEY;
+    date = kageant_cert_date(kind == 3 ? ci.valid_after : ci.valid_before,
+                             NULL);
+    if (kind == 1) {
+        n.title = dupstr(KT_KACERT_NOTICE_SOON);
+        n.text = st == KCERT_EXPIRES_TODAY ?
+                     dupprintf(KT_KACERT_NOTICE_TODAY_FMT, who, date) :
+                 days == 1 ?
+                     dupprintf(KT_KACERT_NOTICE_SOON_1DAY_FMT, who, date) :
+                     dupprintf(KT_KACERT_NOTICE_SOON_FMT, who, date, days);
+        n.accent = KAGEANT_NOTICE_WARN;
+        n.seconds = kageant_notice_seconds(12);
+    } else {
+        n.title = dupstr(kind == 2 ? KT_KACERT_NOTICE_EXPIRED
+                                   : KT_KACERT_NOTICE_NOT_YET);
+        n.text = dupprintf(kind == 2 ? KT_KACERT_NOTICE_EXPIRED_FMT
+                                     : KT_KACERT_NOTICE_NOT_YET_FMT,
+                           who, date);
+        n.accent = KAGEANT_NOTICE_ERR;
+        n.seconds = KITTY_NOTICE_STICKY;
+    }
+    sfree(date);
+    kageant_trace_notice(n.title, n.text);
+    sgrowarray(certnotes, certnotesize, ncertnotes);
+    certnotes[ncertnotes++] = n;
+    kcert_info_free(&ci);
+}
+
+/* Check now: the notices, and the key list's Certificate column (its days
+ * and its colours change with the date). */
+static void kageant_cert_check(void)
+{
+    char *errmsg = NULL;
+    pageant_enum_keys(kageant_cert_check_cb, NULL, &errmsg);
+    sfree(errmsg);
+    kageant_certnote_next();
+    if (keylist) {
+        cert_checking = true;
+        keylist_update();
+        cert_checking = false;
+    }
+}
+
+/* Check in a moment: a burst of key changes (the startup keys, ssh-add
+ * of a key and its certificate) makes one check. */
+static void kageant_cert_check_soon(void)
+{
+    if (traywindow && !cert_checking)
+        SetTimer(traywindow, TID_CERT_CHECK, 1500, NULL);
+}
+
 void keylist_update(void)
 {
+    /* KiTTY: a key came or went - its certificates' validity */
+    kageant_cert_check_soon();
     if (!keylist)
         return;
 
@@ -1264,10 +1654,12 @@ void keylist_update(void)
              * every other pending row after the rebuild, so skip them. */
             if (!disp || !disp->blob->len)
                 continue;
+            /* the row's base key: the row stays the same when a
+             * certificate or the plain key comes or goes */
             if (st & LVIS_SELECTED)
-                selblobs[nsel++] = strbuf_dup(ptrlen_from_strbuf(disp->blob));
+                selblobs[nsel++] = strbuf_dup(ptrlen_from_strbuf(disp->base));
             if (st & LVIS_FOCUSED)
-                focusblob = strbuf_dup(ptrlen_from_strbuf(disp->blob));
+                focusblob = strbuf_dup(ptrlen_from_strbuf(disp->base));
         }
     }
 
@@ -1283,9 +1675,13 @@ void keylist_update(void)
     ctx->index = 0;
     ctx->enable_remove_controls = false;
     ctx->enable_reencrypt_controls = false;
+    ctx->items = NULL;
+    ctx->nitems = ctx->itemsize = 0;
     int status = pageant_enum_keys(keylist_update_callback, ctx, &errmsg);
     assert(status == PAGEANT_ACTION_OK);
     assert(!errmsg);
+    keylist_insert_groups(ctx);
+    sfree(ctx->items);
 
     /*
      * KiTTY: append the startup entries that are NOT in the agent - file
@@ -1303,6 +1699,8 @@ void keylist_update(void)
                 continue;
             struct keylist_display_data *disp =
                 snew(struct keylist_display_data);
+            memset(disp, 0, sizeof(*disp));
+            disp->base = strbuf_new();   /* no key in the agent */
             disp->alg = strbuf_new();
             put_dataz(disp->alg, KT_KAKEYS_ALG_NOT_LOADED);
             disp->bits = strbuf_new();
@@ -1338,19 +1736,10 @@ void keylist_update(void)
             disp->pendpath = dupstr(path);
             disp->ssh_version = 0;
 
-            LVITEM lvi;
-            memset(&lvi, 0, sizeof(lvi));
-            lvi.mask = LVIF_TEXT | LVIF_PARAM;
-            lvi.iItem = ctx->index;
-            lvi.pszText = disp->alg->s;
-            lvi.lParam = (LPARAM)disp;
-            int row = ListView_InsertItem(hlist, &lvi);
-            ListView_SetItemText(hlist, row, 2, disp->hash->s);
-            ListView_SetItemText(hlist, row, 3, disp->info->s);
             /* The path is the only name these entries have - it goes in the
-             * comment column, where the eye looks for "which key is this". */
-            ListView_SetItemText(hlist, row, 6, disp->pendpath);
-            ctx->index++;
+             * comment column, where the eye looks for "which key is this"
+             * (keylist_insert_row). */
+            keylist_insert_row(hlist, ctx->index++, disp);
             /* Removing a dead entry is the point of showing them. */
             ctx->enable_remove_controls = true;
         }
@@ -1361,9 +1750,9 @@ void keylist_update(void)
         int nitems = ListView_GetItemCount(hlist);
         for (int i = 0; i < nitems; i++) {
             struct keylist_display_data *disp = keylist_row_data(hlist, i);
-            if (!disp)
+            if (!disp || !disp->base->len)
                 continue;
-            ptrlen blob = ptrlen_from_strbuf(disp->blob);
+            ptrlen blob = ptrlen_from_strbuf(disp->base);
             UINT st = 0;
             for (int j = 0; j < nsel; j++) {
                 if (ptrlen_eq_ptrlen(blob, ptrlen_from_strbuf(selblobs[j]))) {
@@ -1809,7 +2198,6 @@ static bool keylist_layout_ready = false;
  * deleted - it costs nothing, and it is what a downgrade would read.
  */
 #define KL_COLS_REGVAL "KeyListColumns2"
-#define KL_NCOLS 7
 
 /*
  * Give the LAST column whatever width is left over.
@@ -1955,6 +2343,8 @@ static const struct kl_anchor keydetail_anchors[] = {
     {IDC_KEYDETAIL_STATE,   KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_FPS,     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_COMMENT, KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
+    {IDC_KEYDETAIL_CERTS_LBL, KL_ANCH_LEFT | KL_ANCH_TOP},
+    {IDC_KEYDETAIL_CERTS,   KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_PATHS,   KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_KEYDETAIL_LOCATE,  KL_ANCH_RIGHT | KL_ANCH_TOP},
     {IDC_KEYDETAIL_DEST_LBL, KL_ANCH_LEFT | KL_ANCH_TOP},
@@ -2027,14 +2417,15 @@ static void keylist_save_geometry(HWND hwnd)
     HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
     if (hlist) {
         char cols[80];
-        sprintf(cols, "%d,%d,%d,%d,%d,%d,%d",
+        sprintf(cols, "%d,%d,%d,%d,%d,%d,%d,%d",
                 ListView_GetColumnWidth(hlist, 0),
                 ListView_GetColumnWidth(hlist, 1),
                 ListView_GetColumnWidth(hlist, 2),
                 ListView_GetColumnWidth(hlist, 3),
                 ListView_GetColumnWidth(hlist, 4),
                 ListView_GetColumnWidth(hlist, 5),
-                ListView_GetColumnWidth(hlist, 6));
+                ListView_GetColumnWidth(hlist, 6),
+                ListView_GetColumnWidth(hlist, 7));
         kageant_setting_str_set(KI_AGENT_KEYLISTCOLUMNS2, KL_COLS_REGVAL, cols);
     }
 }
@@ -2941,6 +3332,41 @@ static void kr_match_follow_host(struct kr_dest *d)
         d->match = KAR_MATCH_STORED_NOW;
 }
 
+/* KiTTY: does the agent hold a certificate of the key filed under fp
+ * (kar_key_fp: a certificate is filed under its base key)? */
+struct kr_certfind { const char *fp; bool found; };
+static void kr_certfind_cb(void *vctx, char **fingerprints,
+                           const char *comment, uint32_t ext_flags,
+                           struct pageant_pubkey *key)
+{
+    struct kr_certfind *f = (struct kr_certfind *)vctx;
+    strbuf *base;
+    (void)fingerprints;
+    (void)comment;
+    (void)ext_flags;
+    if (f->found || key->ssh_version != 2)
+        return;
+    base = kcert_base_blob(ptrlen_from_strbuf(key->blob));
+    if (!ptrlen_eq_ptrlen(ptrlen_from_strbuf(base),
+                          ptrlen_from_strbuf(key->blob))) {
+        char *kfp = kar_key_fp(ptrlen_from_strbuf(key->blob));
+        f->found = !strcmp(kfp, f->fp);
+        sfree(kfp);
+    }
+    strbuf_free(base);
+}
+
+static bool kr_key_has_cert(const char *fp)
+{
+    struct kr_certfind f;
+    char *errmsg = NULL;
+    f.fp = fp;
+    f.found = false;
+    pageant_enum_keys(kr_certfind_cb, &f, &errmsg);
+    sfree(errmsg);
+    return f.found;
+}
+
 /* The right-hand panel for the selection. */
 static void kr_show(HWND hwnd, struct kr_state *st)
 {
@@ -2996,6 +3422,9 @@ static void kr_show(HWND hwnd, struct kr_state *st)
             put_dataz(sb, KT_KARULES_KEY_UNRESTRICTED);
         else
             put_fmt(sb, KT_KARULES_KEY_DESTS_FMT, (int)k->n);
+        /* KiTTY: once per key, on the key's own panel */
+        if (kr_key_has_cert(k->fp))
+            put_fmt(sb, "\r\n\r\n%s", KT_KARULES_KEY_CERT_NOTE);
     } else {
         SetDlgItemText(hwnd, IDC_KR_HEAD, "");
     }
@@ -3758,6 +4187,90 @@ static void keydetail_show_dest(HWND hwnd, ptrlen blob, int ssh_version)
     sfree(lines);
 }
 
+/* KiTTY: one line of Key details' Certificates list; level (0 normal, 1
+ * amber, 2 red) rides in the row's lParam for the custom draw */
+static void keydetail_cert_row(HWND lv, const char *label, const char *value,
+                               int level)
+{
+    LVITEM lvi;
+    int row;
+    memset(&lvi, 0, sizeof(lvi));
+    lvi.mask = LVIF_TEXT | LVIF_PARAM;
+    lvi.iItem = ListView_GetItemCount(lv);
+    lvi.pszText = (char *)label;
+    lvi.lParam = level;
+    row = ListView_InsertItem(lv, &lvi);
+    ListView_SetItemText(lv, row, 1, (char *)value);
+}
+
+/* KiTTY: Key details' Certificates list: one block per certificate of the
+ * row's key (the agent's identities of the same private key) - CA,
+ * principals, validity, state, critical options - the state marked as in
+ * the key list's Certificate column */
+static void keydetail_show_certs(HWND hwnd,
+                                 const struct keylist_display_data *disp)
+{
+    HWND lv = GetDlgItem(hwnd, IDC_KEYDETAIL_CERTS);
+    uint64_t now = (uint64_t)time(NULL);
+    int64_t tz = kageant_tzoff();
+    LVCOLUMN col;
+    RECT r;
+    int w0;
+
+    ListView_SetExtendedListViewStyle(lv, LVS_EX_FULLROWSELECT |
+                                      LVS_EX_LABELTIP | LVS_EX_DOUBLEBUFFER);
+    r.left = r.top = r.bottom = 0;
+    r.right = 64;
+    MapDialogRect(hwnd, &r);
+    w0 = r.right;
+    memset(&col, 0, sizeof(col));
+    col.mask = LVCF_WIDTH;
+    col.cx = w0;
+    ListView_InsertColumn(lv, 0, &col);
+    GetClientRect(lv, &r);
+    col.cx = r.right - w0 - GetSystemMetrics(SM_CXVSCROLL);
+    if (col.cx < 60)
+        col.cx = 60;
+    ListView_InsertColumn(lv, 1, &col);
+
+    if (!disp->ncerts) {
+        keydetail_cert_row(lv, KT_KACERT_NONE, "", 0);
+        return;
+    }
+    for (size_t i = 0; i < disp->ncerts; i++) {
+        const kcert_info *ci = &disp->certs[i];
+        int days, st = kcert_state(ci, now, tz, &days);
+        bool from = ci->valid_after != 0;
+        bool until = ci->valid_before != UINT64_MAX;
+        char *a = from ? kageant_cert_date(ci->valid_after, hwnd) : NULL;
+        char *b = until ? kageant_cert_date(ci->valid_before, hwnd) : NULL;
+        char *v = from && until ? dupprintf(KT_KACERT_VALID_RANGE_FMT, a, b) :
+                  from ? dupprintf(KT_KACERT_VALID_FROM_FMT, a) :
+                  until ? dupprintf(KT_KACERT_VALID_UNTIL_FMT, b) :
+                  dupstr(KT_KACERT_VALID_ALWAYS);
+        char *s = st == KCERT_VALID ? dupstr(KT_KACERT_STATUS_VALID) :
+                  kcert_state_text(ci, st, days, kageant_cert_date, NULL);
+        char *h = disp->ncerts == 1 ? dupstr(KT_KACERT_DETAIL_HEAD) :
+                  dupprintf(KT_KACERT_DETAIL_HEAD_FMT, (unsigned)(i + 1),
+                            (unsigned)disp->ncerts);
+        keydetail_cert_row(lv, h, "", 0);
+        keydetail_cert_row(lv, KT_KACERT_DETAIL_CA, ci->ca_fp, 0);
+        keydetail_cert_row(lv, KT_KACERT_DETAIL_PRINCIPALS,
+                           *ci->principals ? ci->principals : KT_KACERT_NONE,
+                           0);
+        keydetail_cert_row(lv, KT_KACERT_DETAIL_VALID, v, 0);
+        keydetail_cert_row(lv, KT_KACERT_DETAIL_STATUS, s,
+                           kcert_state_level(st));
+        if (*ci->critical)
+            keydetail_cert_row(lv, KT_KACERT_DETAIL_CRITICAL, ci->critical, 0);
+        sfree(h);
+        sfree(s);
+        sfree(v);
+        sfree(a);
+        sfree(b);
+    }
+}
+
 static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                                        WPARAM wParam, LPARAM lParam)
 {
@@ -3828,6 +4341,7 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         }
 
         SetDlgItemText(hwnd, IDC_KEYDETAIL_COMMENT, disp->comment->s);
+        keydetail_show_certs(hwnd, disp);
 
         if (disp->pending) {
             /* The stored path IS the identity of a not-loaded entry. */
@@ -4008,6 +4522,36 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
         if (wParam == TID_KEYDETAIL_LIFETIME)
             keydetail_show_lifetime(hwnd);
         return 0;
+      case WM_NOTIFY: {
+        /* KiTTY: the Status line of a certificate in amber or red. Its row
+         * asks for each cell, and each cell starts from the list's own ink,
+         * as the colour of the cell before would carry over. */
+        NMHDR *nm = (NMHDR *)lParam;
+        if (nm->idFrom == IDC_KEYDETAIL_CERTS && nm->code == NM_CUSTOMDRAW) {
+            NMLVCUSTOMDRAW *cd = (NMLVCUSTOMDRAW *)lParam;
+            LRESULT res = CDRF_DODEFAULT;
+            int level = (int)cd->nmcd.lItemlParam;
+            if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) {
+                res = CDRF_NOTIFYITEMDRAW;
+            } else if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+                if (level)
+                    res = CDRF_NOTIFYSUBITEMDRAW;
+            } else if (cd->nmcd.dwDrawStage ==
+                       (CDDS_ITEMPREPAINT | CDDS_SUBITEM)) {
+                COLORREF ink = ListView_GetTextColor(nm->hwndFrom);
+                cd->clrText = ink == CLR_DEFAULT ?
+                    GetSysColor(COLOR_WINDOWTEXT) : ink;
+                if (cd->iSubItem == 1 && level)
+                    cd->clrText = kitty_theme_ink(
+                        kitty_theme_window_dark(hwnd),
+                        level == 2 ? KITTY_INK_BAD : KITTY_INK_WARN);
+                res = CDRF_NEWFONT;
+            }
+            SetWindowLongPtr(hwnd, DWLP_MSGRESULT, res);
+            return 1;
+        }
+        return 0;
+      }
       case WM_HELP: {
         /* KiTTY: F1 - the Destinations part opens the restriction
          * section, the rest this window's own */
@@ -4364,6 +4908,10 @@ static int keylist_row_of_blob(HWND hlist, ptrlen blob)
         struct keylist_display_data *disp = keylist_row_data(hlist, i);
         if (disp && ptrlen_eq_ptrlen(ptrlen_from_strbuf(disp->blob), blob))
             return i;
+        /* KiTTY: a certificate of the row's key */
+        for (size_t k = 0; disp && k < disp->nids; k++)
+            if (ptrlen_eq_ptrlen(ptrlen_from_strbuf(disp->ids[k]), blob))
+                return i;
     }
     return -1;
 }
@@ -6190,6 +6738,8 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 {KT_KAKEYS_COL_STATE, 66, LVCFMT_LEFT},
                 {KT_KAKEYS_COL_LIFETIME, 40, LVCFMT_RIGHT},
                 {KT_KAKEYS_COL_CONFIRM, 44, LVCFMT_LEFT},
+                /* KiTTY: "EXPIRED since <date> (+1)" is the long one */
+                {KT_KAKEYS_COL_CERTIFICATE, 70, LVCFMT_LEFT},
                 {KT_KAKEYS_COL_COMMENT, 104, LVCFMT_LEFT},
             };
             HWND hlist = GetDlgItem(hwnd, IDC_KEYLIST_LISTBOX);
@@ -6220,9 +6770,18 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                                                    KL_COLS_REGVAL);
             if (colstr) {
                 int cw[KL_NCOLS];
-                if (sscanf(colstr, "%d,%d,%d,%d,%d,%d,%d",
-                           &cw[0], &cw[1], &cw[2], &cw[3], &cw[4], &cw[5],
-                           &cw[6]) == KL_NCOLS) {
+                int got = sscanf(colstr, "%d,%d,%d,%d,%d,%d,%d,%d",
+                                 &cw[0], &cw[1], &cw[2], &cw[3], &cw[4],
+                                 &cw[5], &cw[6], &cw[7]);
+                if (got == KL_NCOLS - 1) {
+                    /* written before the Certificate column: the seventh
+                     * width is the comment's, the new column keeps its
+                     * default */
+                    cw[KL_COL_COMMENT] = cw[KL_COL_CERT];
+                    cw[KL_COL_CERT] = 0;
+                    got = KL_NCOLS;
+                }
+                if (got == KL_NCOLS) {
                     for (int i = 0; i < KL_NCOLS; i++)
                         if (cw[i] >= 8)
                             ListView_SetColumnWidth(hlist, i, cw[i]);
@@ -6338,11 +6897,21 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
              * entries, not keys the agent holds. */
             NMLVCUSTOMDRAW *cd = (NMLVCUSTOMDRAW *)lParam;
             LRESULT res = CDRF_DODEFAULT;
+            /* KiTTY: a row with an amber or red Certificate cell asks for
+             * each cell: every cell then starts from the list's own ink,
+             * as the colour of the cell before would carry over */
+            bool cell = cd->nmcd.dwDrawStage ==
+                        (CDDS_ITEMPREPAINT | CDDS_SUBITEM);
             if (cd->nmcd.dwDrawStage == CDDS_PREPAINT) {
                 res = CDRF_NOTIFYITEMDRAW;
-            } else if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT) {
+            } else if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT || cell) {
                 struct keylist_display_data *disp =
                     (struct keylist_display_data *)cd->nmcd.lItemlParam;
+                if (cell) {
+                    COLORREF ink = ListView_GetTextColor(nm->hwndFrom);
+                    cd->clrText = ink == CLR_DEFAULT ?
+                        GetSysColor(COLOR_WINDOWTEXT) : ink;
+                }
                 /* Any colour we set here is only honoured if we say we changed
                  * something: CDRF_DODEFAULT means "nothing to see", and the
                  * control then paints in its own colours. */
@@ -6372,6 +6941,10 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                         if (disp->fp_full[t] &&
                             kageant_flash_get(disp->fp_full[t], &allowed))
                             hit = 1;
+                    /* KiTTY: a signature through a certificate of the key */
+                    for (t = 0; t < disp->nfps && !hit; t++)
+                        if (kageant_flash_get(disp->fps[t], &allowed))
+                            hit = 1;
                     if (!hit && !disp->pending && disp->restricted) {
                         /* KiTTY: a key with destination rules: its text in
                          * the theme's info ink. Grey (not loaded) and the
@@ -6395,7 +6968,21 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                         cd->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);
                         res = CDRF_NEWFONT;
                     }
+                    /* KiTTY: the Certificate cell: amber for a certificate
+                     * that expires within 14 days, red for an expired or a
+                     * not yet valid one (kcert_state_level). The key-use
+                     * tint keeps its white. */
+                    if (cell && !hit && cd->iSubItem == KL_COL_CERT &&
+                        disp->certlevel)
+                        cd->clrText = kitty_theme_ink(
+                            kitty_theme_window_dark(hwnd),
+                            disp->certlevel == 2 ? KITTY_INK_BAD
+                                                 : KITTY_INK_WARN);
+                    if (!cell && disp->certlevel)
+                        res |= CDRF_NOTIFYSUBITEMDRAW;
                 }
+                if (cell)
+                    res = CDRF_NEWFONT;
             }
             SetWindowLongPtr(hwnd, DWLP_MSGRESULT, res);
             return 1;
@@ -6473,7 +7060,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 int steps = (dst > src) ? dst - src : src - dst;
                 bool moved = false;
                 while (steps-- > 0 &&
-                       pageant_reorder_key(ptrlen_from_strbuf(blob), dir))
+                       pageant_reorder_priv(ptrlen_from_strbuf(blob), dir))
                     moved = true;
                 if (moved) {
                     kageant_save_key_order();
@@ -6608,7 +7195,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                 if (!disp)
                     break;
                 int dir = (LOWORD(wParam) == IDC_KEYLIST_MOVEUP) ? -1 : 1;
-                if (pageant_reorder_key(ptrlen_from_strbuf(disp->blob), dir)) {
+                if (pageant_reorder_priv(ptrlen_from_strbuf(disp->blob), dir)) {
                     kageant_save_key_order();
                     keylist_update();
                     kageant_setting_failure_box(hwnd);
@@ -6676,31 +7263,43 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
                         kageant_drop_pending(disp->pendpath);
                         continue;
                     }
-                    ptrlen blob = ptrlen_from_strbuf(disp->blob);
-                    /* KiTTY: the record names the key; read before the
-                     * delete (disp stays valid: Remove rebuilds nothing) */
-                    char *rfp = kageant_record_fp_of_blob(blob);
-                    bool removed = false;
-                    if (disp->blob->len &&
-                        pageant_delete_ssh2_key_by_blob(blob)) {
-                        /* and stop loading it at every start - the startup
-                         * list is otherwise only written when a key is ADDED,
-                         * so a removed key came back. */
-                        kageant_forget_loaded_by_blob(blob);
-                        removed = true;
-                    } else if (row < pageant_count_ssh1_keys()) {
-                        removed = pageant_delete_nth_ssh1_key(row);
+                    /* KiTTY: the row is the private key - the plain key
+                     * and every certificate of it go. A certificate left
+                     * behind would sign on, out of the list's sight. */
+                    size_t nid = disp->nids ? disp->nids : 1;
+                    for (size_t k = 0; k < nid; k++) {
+                        ptrlen blob = disp->nids ?
+                            ptrlen_from_strbuf(disp->ids[k]) :
+                            ptrlen_from_strbuf(disp->blob);
+                        /* KiTTY: the record names the key; read before the
+                         * delete (disp stays valid: Remove rebuilds
+                         * nothing) */
+                        char *rfp = kageant_record_fp_of_blob(blob);
+                        bool removed = false;
+                        if (blob.len &&
+                            pageant_delete_ssh2_key_by_blob(blob)) {
+                            /* and stop loading it at every start - the
+                             * startup list is otherwise only written when
+                             * a key is ADDED, so a removed key came back. */
+                            kageant_forget_loaded_by_blob(blob);
+                            removed = true;
+                        } else if (k == 0 &&
+                                   row < pageant_count_ssh1_keys()) {
+                            removed = pageant_delete_nth_ssh1_key(row);
+                        }
+                        if (removed)
+                            kageant_audit_use("remove", rfp,
+                                              disp->comment->s, "done",
+                                              "gui", 0);
+                        /* KiTTY: its rules stay in the rule store - the
+                         * hint, once for the private key */
+                        if (removed && blob.len && k == 0) {
+                            char *kfp = kar_key_fp(blob);
+                            kageant_rules_kept_add(kfp, disp->comment->s);
+                            sfree(kfp);
+                        }
+                        sfree(rfp);
                     }
-                    if (removed)
-                        kageant_audit_use("remove", rfp, disp->comment->s,
-                                          "done", "gui", 0);
-                    /* KiTTY: its rules stay in the rule store - the hint */
-                    if (removed && disp->blob->len) {
-                        char *kfp = kar_key_fp(blob);
-                        kageant_rules_kept_add(kfp, disp->comment->s);
-                        sfree(kfp);
-                    }
-                    sfree(rfp);
                 }
                 {
                     char *kept = kageant_rules_kept_take();
@@ -8034,7 +8633,28 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE)
             keylist_update();          /* the View Keys window, if it is open */
         break;
+      case WM_POWERBROADCAST:
+        /* KiTTY: back from sleep - the certificates' validity again, the
+         * daily check counted from now */
+        if (wParam == PBT_APMRESUMEAUTOMATIC ||
+            wParam == PBT_APMRESUMESUSPEND) {
+            SetTimer(hwnd, TID_CERT_DAILY, 24 * 3600 * 1000, NULL);
+            kageant_cert_check_soon();
+        }
+        break;
       case WM_TIMER:
+        /* KiTTY: the certificates' validity (kageant_cert_check) */
+        if (wParam == TID_CERT_NOTE) {
+            KillTimer(hwnd, TID_CERT_NOTE);
+            kageant_certnote_next();
+            break;
+        }
+        if (wParam == TID_CERT_CHECK || wParam == TID_CERT_DAILY) {
+            if (wParam == TID_CERT_CHECK)
+                KillTimer(hwnd, TID_CERT_CHECK);
+            kageant_cert_check();
+            break;
+        }
         /* KiTTY: no double click arrived - deliver the left-click menu */
         if (wParam == TID_TRAYCLICK) {
             KillTimer(hwnd, TID_TRAYCLICK);
@@ -9712,6 +10332,12 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kageant_load_startup_keys();
         pageant_forget_passphrases();
         kageant_apply_saved_order();   /* restore the user's offer order */
+    }
+    /* KiTTY: the certificates' validity once a day; the start's own check
+     * comes with the startup keys (keylist_update) */
+    if (!already_running && traywindow) {
+        SetTimer(traywindow, TID_CERT_DAILY, 24 * 3600 * 1000, NULL);
+        kageant_cert_check_soon();
     }
 
     /*

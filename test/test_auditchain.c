@@ -1169,7 +1169,7 @@ static void test_event_copies(void)
         sfree(s);
         sfree(buf);
     }
-    ok_if(nids == 25 && !bad,
+    ok_if(nids == 26 && !bad,
           "events: the line rebuilt from the event, every agent ID (quotes, backslashes, empty fields, a control byte)");
     tl_free(&t);
 
