@@ -171,7 +171,8 @@ track and for a key file without a passphrase.
 
 \b \q{Confirm each use:} \q{no}, \q{ask before each use} (a
 confirmation box before each signature) or \q{ask with Windows Hello}
-(a Windows Hello gesture before each signature). It applies to the
+(a Windows Hello gesture before each signature, also while the agent
+never asks for confirmation). It applies to the
 loaded key at once. The startup entry keeps it when the startup list
 tracks the key. Greyed for a key not loaded.
 

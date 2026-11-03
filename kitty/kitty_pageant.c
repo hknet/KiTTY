@@ -3760,10 +3760,14 @@ int kageant_do_confirm(const char *comment, int key_confirm, const char *fp,
                        const struct kageant_dest *d)
 {
     int mode = kageant_confirm_mode();
-    /* Every use -> always; By comment -> only if this key's own flag is set
-     * (the comment merely seeds that flag when the key is added, so a per-key
-     * "No" set in Key details wins); Never -> never, even a flagged key. */
-    int needs = (mode == KAGEANT_CONFIRM_YES) ||
+    /* A key set to Hello confirm always asks, whatever the global mode: the
+     * mode is a plain setting that same-user code can write, the Hello check
+     * is what that code cannot fake. Otherwise: Every use -> always; By
+     * comment -> only if this key's own flag is set (the comment merely
+     * seeds that flag when the key is added, so a per-key "No" set in Key
+     * details wins); Never -> never. */
+    int needs = (key_confirm == 2) ||
+                (mode == KAGEANT_CONFIRM_YES) ||
                 (mode == KAGEANT_CONFIRM_AUTO && key_confirm);
     char *box, *dest, *fwd;
     int allowed;

@@ -2497,7 +2497,8 @@ public half of an unprotected key to the AI agent's servers.
 ```text
 kageant key list > the key > key details > "Confirm each use:"
   the Yes/No entry:          a Yes/No box per signature
-  the Windows Hello entry:   a Windows Hello gesture per signature
+  the Windows Hello entry:   a Windows Hello gesture per signature,
+                             also with askconfirmation=no
 for every key: kageant Settings > "Confirmations require Windows Hello"
   (kitty.ini [Agent] helloconfirm=yes)
 ```
