@@ -26,15 +26,6 @@ char *kageant_rules_path_dup(void);
  * empty store. 1 loaded or absent; 0 damaged, with the record written. */
 int kageant_rules_load(void);
 
-/* What the last kageant_rules_load moved from a certificate's fingerprint
- * to its base key's (kar_store_fold_certs): fn is called once per key, then
- * the store is written when anything moved. Only the agent calls this, so
- * a command-line run that reads the file never writes it. NULL when
- * nothing moved or the file was written, else the reason (sfree it). */
-char *kageant_rules_fold_report(void (*fn)(const char *fp,
-                                           const char *comment,
-                                           const char *result));
-
 /* Why the store is damaged, as the window shows it; NULL when it is not. */
 const char *kageant_rules_damage_text(void);
 

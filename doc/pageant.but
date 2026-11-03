@@ -924,11 +924,7 @@ Rules and \q{Confirm each use:} belong to the private key. A key and
 each certificate of it are separate entries in the agent (\c{ssh-add}
 adds both when the certificate file lies beside the key), but they sign
 with the same private key. A rule or a confirmation set on either entry
-applies to all of them. Rules an earlier version stored for a
-certificate alone move to its key at the start: when the key had rules
-too, it keeps the destinations both allowed. With none in common it
-signs for no server until its destinations are set again. The agent
-log records each such move (event 116, reason \c{certificate}).
+applies to all of them.
 
 \b \e{From the key list}: double-click the key, then \q{Restrict...}
 beside \q{Destinations:}. The rule editor shows every key with rules,
