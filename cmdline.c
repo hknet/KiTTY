@@ -1140,6 +1140,22 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         SAVEABLE(0);
         conf_set_bool(conf, CONF_even_proxy_localhost, true);
     }
+    /* KiTTY: the proxy's password in memory from KiTTY++ itself, as
+     * -pwhandle carries the session's: an inherited mapping, taken once
+     * (kitty_pwhandle_take wipes it and closes the handle). */
+    if (!strcmp(p, "-proxypwhandle")) {
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(1);
+        char *pxpw = kitty_pwhandle_take(value);
+        if (!pxpw) {
+            cmdline_error("unable to read a password from handle '%s'", value);
+        } else {
+            kitty_pw_set(conf, CONF_proxy_password, pxpw);
+            smemclr(pxpw, strlen(pxpw));
+            sfree(pxpw);
+        }
+    }
     if (!strcmp(p, "-proxypwfile")) {
         RETURN(2);
         UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);

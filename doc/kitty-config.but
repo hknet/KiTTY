@@ -1226,26 +1226,27 @@ verbatim (\c{FileZillaOptions}).
 
 \b \q{How the session password reaches FileZilla} is your choice,
 because FileZilla, unlike WinSCP, cannot read a password from a private
-file (\c{FileZillaPasswordMode}):
+file (\c{FileZillaPasswordMode}). Either way FileZilla starts on one
+predefined site in a private temporary file (an \c{fzdefaults.xml}):
+user, host, port and the folder to open (the shell's folder with OSC 7
+tracking on) are in it, so a user name with \c{@} or \c{\\} reaches
+FileZilla as it is. The file's folder has rights for your account alone
+and a random name. KiTTY++ deletes it as soon as FileZilla has read it
+(its window is up), at the latest after a minute. Your own FileZilla
+settings and sites stay as they are - the file only adds the one entry.
 
 \lcont{
 
-\b \q{Ask in FileZilla}: only user, host and port are handed over and
-FileZilla prompts for the password itself (\c{--logontype=ask}). No secret
-leaves KiTTY++. The default.
+\b \q{Ask in FileZilla}: FileZilla prompts for the password itself. No
+secret leaves KiTTY++. The default.
 
-\b \q{Temporary configuration file}: the credentials are written to a private
-temporary file (an \c{fzdefaults.xml} with one predefined site, the
-password in FileZilla's own base64 form) that FileZilla reads at start;
-KiTTY++ deletes it a minute later. Your own FileZilla settings and sites
-stay as they are - the file only adds the one entry.
-
-\b \q{Command line (readable by other processes)}: the password travels
-in the URL on FileZilla's command line. Every other process of your user
-can read it for as long as FileZilla runs. Offered because it is the
-simplest; the label states what it costs.
+\b \q{Temporary configuration file}: the password is in the site entry
+too, in FileZilla's own base64 form.
 
 }
+
+A session saved with the former choice \q{Command line (readable by
+other processes)} gets the temporary configuration file.
 
 The preferred way needs none of this: an SSH key served by the agent
 (kageant). Then only user, host and port are handed over

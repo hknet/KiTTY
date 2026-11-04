@@ -26,6 +26,7 @@
 
 #include "kitty.h"
 #include "kitty_params.h"
+#include "kitty_store_acl.h"   /* kitty_store_acl_attrs: owner-only password files */
 #include "kitty_common.h"    /* MASKPASS */
 
 #include "kitty_tools.h"     /* existfile/existdirectory, poss, set_env */
@@ -2023,7 +2024,7 @@ static LRESULT CALLBACK ktx_wndproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const char *intro,
                            int arriving, const char *open_file, const char *open_dir,
                            const char *stage_dir, const char *final_dir, HANDLE lock,
-                           kx_drop_t *drop, int drop_idx, HANDLE pwmap ) {
+                           kx_drop_t *drop, int drop_idx, HANDLE pwmap, HANDLE pxmap ) {
 	static int registered = 0 ;
 	HINSTANCE hi = GetModuleHandle( NULL ) ;
 	if( !registered ) {
@@ -2049,11 +2050,16 @@ static int kitty_run_xfer( HWND parent, char *cmdline, const char *what, const c
 	si.hStdOutput = wr ; si.hStdError = wr ; si.hStdInput = GetStdHandle( STD_INPUT_HANDLE ) ;
 	memset( &pi, 0, sizeof(pi) ) ;
 	/* kscp is PSCPPath: started only through the signature check. With its
-	 * password in a mapping (-pwhandle), it inherits that and its output pipe
-	 * and nothing else; the caller closes the mapping after the start. */
-	if( pwmap ? !kitty_helper_start_handles( PSCPPath, cmdline, CREATE_NO_WINDOW, NULL, &si, &pi,
-	                                         (HANDLE[]){ wr, pwmap }, 2 )
-	          : !kitty_helper_start( PSCPPath, cmdline, TRUE, CREATE_NO_WINDOW, NULL, &si, &pi ) ) {
+	 * passwords in mappings (-pwhandle, -proxypwhandle), it inherits those and
+	 * its output pipe and nothing else; the caller closes the mappings after
+	 * the start. */
+	HANDLE hl[3] ; int nhl = 0 ;
+	hl[nhl++] = wr ;
+	if( pwmap ) hl[nhl++] = pwmap ;
+	if( pxmap ) hl[nhl++] = pxmap ;
+	if( nhl > 1 ? !kitty_helper_start_handles( PSCPPath, cmdline, CREATE_NO_WINDOW, NULL, &si, &pi,
+	                                           hl, nhl )
+	            : !kitty_helper_start( PSCPPath, cmdline, TRUE, CREATE_NO_WINDOW, NULL, &si, &pi ) ) {
 		CloseHandle( rd ) ; CloseHandle( wr ) ;
 		kx_rerun_free( &kx_rerun_next ) ;
 		kx_report( KT_CAP_XFER, KT_XFER_LAUNCH_FAILED ) ;
@@ -2222,7 +2228,12 @@ static void pathcat( strbuf *dst, const char *s ) {
 /* The paths in full: a %TEMP% Windows cannot give whole (GetTempPath's
  * answer longer than its buffer) is no folder for a password file - the file
  * is then not made and the caller's fallback applies. */
-struct kx_pwfiles { int n ; char *path[KX_PWFILES_MAX] ; } ;
+struct kx_pwfiles {
+	int n ;
+	char *path[KX_PWFILES_MAX] ;
+	char *lockpath[KX_PWFILES_MAX] ;   /* "<name>.lock" beside each file */
+	HANDLE lock[KX_PWFILES_MAX] ;      /* held, no sharing for delete: the file is in use */
+} ;
 static struct kx_pwfiles kx_pw = { 0 } ;
 /* The delayed deletes not yet done (the password files here, FileZilla's
  * temporary directory below) and the WinSCP password pipes still served. A
@@ -2230,21 +2241,51 @@ static struct kx_pwfiles kx_pw = { 0 } ;
  * (kitty_xfer_cli_open). */
 static volatile LONG kx_deletes_pending = 0 ;
 
+/* "<dir>\\<stem>.lock" can go: nobody holds it (or it is not there). A
+ * process that writes a password file holds its lock open without sharing
+ * for delete for as long as the file may exist, so a lock that cannot be
+ * deleted belongs to a living process - its file stays. One that crashed
+ * held nothing any more: Windows closed the handle with the process. */
+static int kx_lock_free( const char *lockpath ) {
+	SetFileAttributes( lockpath, FILE_ATTRIBUTE_NORMAL ) ;
+	if( DeleteFile( lockpath ) ) return 1 ;
+	return GetLastError() == ERROR_FILE_NOT_FOUND ;
+}
+
+/* At every start: the password files an earlier run left behind (a crash,
+ * a kill), never one a running KiTTY++ still holds. */
 static void kx_pwfiles_sweep( void ) {
-	char *tmp, *pat, *full ;
+	char *tmp, *pat, *full, *lock ;
 	WIN32_FIND_DATA fd ; HANDLE h ;
 	if( ( tmp = kitty_temp_path_dup() ) == NULL ) return ;
 	pat = dupprintf( "%skitty_pw_*.tmp", tmp ) ;
 	h = FindFirstFile( pat, &fd ) ;
 	sfree( pat ) ;
-	if( h == INVALID_HANDLE_VALUE ) { sfree( tmp ) ; return ; }
-	do {
-		full = dupprintf( "%s%s", tmp, fd.cFileName ) ;
-		SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ;
-		DeleteFile( full ) ;
-		sfree( full ) ;
-	} while( FindNextFile( h, &fd ) ) ;
-	FindClose( h ) ;
+	if( h != INVALID_HANDLE_VALUE ) {
+		do {
+			size_t n = strlen( fd.cFileName ) ;
+			full = dupprintf( "%s%s", tmp, fd.cFileName ) ;
+			lock = dupprintf( "%s%.*s.lock", tmp, (int)( n - 4 ), fd.cFileName ) ;
+			if( kx_lock_free( lock ) ) {
+				SetFileAttributes( full, FILE_ATTRIBUTE_NORMAL ) ;
+				DeleteFile( full ) ;
+			}
+			sfree( lock ) ; sfree( full ) ;
+		} while( FindNextFile( h, &fd ) ) ;
+		FindClose( h ) ;
+	}
+	/* a lock whose file is gone already */
+	pat = dupprintf( "%skitty_pw_*.lock", tmp ) ;
+	h = FindFirstFile( pat, &fd ) ;
+	sfree( pat ) ;
+	if( h != INVALID_HANDLE_VALUE ) {
+		do {
+			full = dupprintf( "%s%s", tmp, fd.cFileName ) ;
+			kx_lock_free( full ) ;
+			sfree( full ) ;
+		} while( FindNextFile( h, &fd ) ) ;
+		FindClose( h ) ;
+	}
 	sfree( tmp ) ;
 }
 
@@ -2252,120 +2293,71 @@ static void kx_pwfiles_sweep( void ) {
  * Set from the SAME variables the builder decided on - never worked out a
  * second time - so what the window shows is what the code did. */
 #define KX_PW_NONE        0   /* key or agent login: nothing to hand over */
-#define KX_PW_FILE_ENC    1
-#define KX_PW_FILE_PLAIN  2
-#define KX_PW_CMD_ENC     3
-#define KX_PW_CMD_PLAIN   4
 #define KX_PW_HANDLE      5   /* in memory handed to the helper alone (-pwhandle) */
+#define KX_PW_NOT_HANDED  6   /* the helper cannot take it in memory: none handed */
 
 static const char *kx_pw_handover_line( int mode ) {
 	switch( mode ) {
-		case KX_PW_FILE_ENC:   return KT_XFER_PW_FILE_ENCRYPTED ;
-		case KX_PW_FILE_PLAIN: return KT_XFER_PW_FILE_PLAIN ;
-		case KX_PW_CMD_ENC:    return KT_XFER_PW_CMDLINE_ENCRYPTED ;
-		case KX_PW_CMD_PLAIN:  return KT_XFER_PW_CMDLINE_PLAIN ;
 		case KX_PW_HANDLE:     return KT_XFER_PW_HANDLE ;
+		case KX_PW_NOT_HANDED: return KT_XFER_PW_NOT_HANDED ;
 		default:               return NULL ;
 	}
 }
 
-/* Can the helper at `path` read a PROTECTED password file, or only a plain one?
- *
- * The password file replaces "-pw <password>" on the command line, where every
- * process lister and audit log on the machine could read it. What may go IN the
- * file depends entirely on the helper: a password file is read VERBATIM by every
- * RELEASED helper - ours through 0.85.1.8-beta and stock pscp/psftp alike, where
- * cmdline.c is `chomp(fgetline(fp))` and nothing more - so handing one of those
- * the protected form makes the marker and the base64 the password, and the login
- * fails with "Access denied". That is not hypothetical; it is what happened.
- *
- * A NAME test cannot answer this, and that was the bug: "kscp.exe" shows nothing
- * about which kscp it is, and `PSCPPath` commonly resolves to an INSTALLED KiTTY
- * rather than the build the running window came from. So the helper is queried
- * about ITSELF, through its own version resource:
- *
- *   - "KiTTYPasswordFile" >= 1 in its StringFileInfo (windows/version.rc2) - the
- *     capability flag every binary built from this change onward carries; or
- *   - a numeric file version >= 0.85.1.9, so a future binary that somehow lost
- *     the string still qualifies.
- *
- * Anything else - a missing field, an unreadable resource, any error at all - is
- * "plain only". Every released helper and every stock PuTTY lands there, which
- * is the safe answer: the plain file still keeps the password off the command
- * line, and the file is private to this user and deleted after the start.
- *
- * The flag is in the BINARY, so an installed newer helper is recognised whatever
- * file name it has been given. */
-#define KX_HELPER_PROTECTED_MS  ((0UL << 16) | 85UL)        /* 0.85 */
-#define KX_HELPER_PROTECTED_LS  ((1UL << 16) |  9UL)        /* .1.9 */
+BOOLEAN NTAPI SystemFunction036( PVOID, ULONG ) ;   /* RtlGenRandom, advapi32 */
 
-static int kx_helper_reads_protected( const char *path ) {
-	DWORD dummy, sz ;
-	void *buf ;
-	int ok = 0 ;
-
-	if( path == NULL || path[0] == '\0' ) return 0 ;
-	sz = GetFileVersionInfoSizeA( path, &dummy ) ;
-	if( sz == 0 ) return 0 ;
-	if( (buf = malloc( sz )) == NULL ) return 0 ;
-	if( GetFileVersionInfoA( path, 0, sz, buf ) ) {
-		/* The capability flag, in whichever translation the file declares -
-		 * ours is 0x0809/1200, but a rebuild elsewhere need not be. */
-		struct { WORD lang, cp ; } *xlat = NULL ;
-		UINT n = 0 ;
-		if( VerQueryValueA( buf, "\\VarFileInfo\\Translation", (void **)&xlat, &n )
-		    && xlat != NULL ) {
-			UINT i ;
-			for( i = 0 ; i < n / sizeof(*xlat) && !ok ; i++ ) {
-				char sub[64] ; char *val = NULL ; UINT vlen = 0 ;
-				snprintf( sub, sizeof(sub),
-				          "\\StringFileInfo\\%04x%04x\\KiTTYPasswordFile",
-				          xlat[i].lang, xlat[i].cp ) ;
-				if( VerQueryValueA( buf, sub, (void **)&val, &vlen )
-				    && val != NULL && vlen > 0 && atoi( val ) >= 1 )
-					ok = 1 ;
-			}
-		}
-		if( !ok ) {
-			/* No flag: a build new enough by its NUMBER still qualifies. */
-			VS_FIXEDFILEINFO *ffi = NULL ; UINT flen = 0 ;
-			if( VerQueryValueA( buf, "\\", (void **)&ffi, &flen )
-			    && ffi != NULL && flen >= sizeof(*ffi) ) {
-				if( ffi->dwFileVersionMS > KX_HELPER_PROTECTED_MS
-				    || ( ffi->dwFileVersionMS == KX_HELPER_PROTECTED_MS
-				         && ffi->dwFileVersionLS >= KX_HELPER_PROTECTED_LS ) )
-					ok = 1 ;
-			}
-		}
-	}
-	free( buf ) ;
-	return ok ;
+/* "<prefix><32 hex digits>": 128 random bits, a name no other process can
+ * guess and create first (which made the write fail and the password go on
+ * the command line). NULL when Windows gives no random bytes. */
+static char *kx_random_name( const char *dir, const char *prefix ) {
+	unsigned char rnd[16] ;
+	char hex[33] ;
+	int i ;
+	if( !SystemFunction036( rnd, sizeof(rnd) ) ) return NULL ;
+	for( i = 0 ; i < 16 ; i++ ) sprintf( hex + 2 * i, "%02x", rnd[i] ) ;
+	smemclr( rnd, sizeof(rnd) ) ;
+	return dupprintf( "%s%s%s", dir, prefix, hex ) ;
 }
 
-/* Write `secret` to a fresh private temp file; the path (static storage,
- * valid until the release) or NULL when no file could be made - the caller
- * then falls back to the plain value, so a transfer never fails for this. */
+/* Write `secret` to a fresh private temp file (WinSCP before 6.0, a WinSCP
+ * already running, no pipe): a random name created new, rights for this
+ * account alone (kitty_store_acl_attrs, as the folder store's files), and
+ * beside it "<name>.lock" this process holds while the file may exist. The
+ * path (static storage, valid until the release) or NULL when no file could
+ * be made - the caller then hands no password over. */
 static const char *kx_password_file( const char *secret ) {
-	char *tmp ; HANDLE h = INVALID_HANDLE_VALUE ; DWORD written ; int i ;
-	static unsigned serial = 0 ;
+	char *tmp, *stem, *path, *lockpath ;
+	HANDLE h, lk ; DWORD written ;
+	SECURITY_ATTRIBUTES sa ;
 	if( kx_pw.n >= KX_PWFILES_MAX ) return NULL ;
+	if( !kitty_store_acl_attrs( 0, &sa ) ) return NULL ;
 	if( ( tmp = kitty_temp_path_dup() ) == NULL ) return NULL ;
-	for( i = 0 ; i < 16 ; i++ ) {
-		char *p = dupprintf( "%skitty_pw_%08lx_%u.tmp", tmp,
-		                     (unsigned long)GetTickCount() ^ (unsigned long)GetCurrentProcessId(), ++serial ) ;
-		h = CreateFile( p, GENERIC_WRITE, 0, NULL, CREATE_NEW,
-		                FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY, NULL ) ;
-		if( h != INVALID_HANDLE_VALUE ) { kx_pw.path[kx_pw.n] = p ; break ; }
-		sfree( p ) ;
-	}
+	stem = kx_random_name( tmp, "kitty_pw_" ) ;
 	sfree( tmp ) ;
-	if( h == INVALID_HANDLE_VALUE ) return NULL ;
+	if( !stem ) return NULL ;
+	path = dupprintf( "%s.tmp", stem ) ;
+	lockpath = dupprintf( "%s.lock", stem ) ;
+	sfree( stem ) ;
+	lk = CreateFile( lockpath, GENERIC_READ, FILE_SHARE_READ, &sa, CREATE_NEW,
+	                 FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY, NULL ) ;
+	if( lk == INVALID_HANDLE_VALUE ) { sfree( path ) ; sfree( lockpath ) ; return NULL ; }
+	h = CreateFile( path, GENERIC_WRITE, 0, &sa, CREATE_NEW,
+	                FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY, NULL ) ;
+	if( h == INVALID_HANDLE_VALUE ) {
+		CloseHandle( lk ) ; DeleteFile( lockpath ) ;
+		sfree( path ) ; sfree( lockpath ) ;
+		return NULL ;
+	}
 	if( !WriteFile( h, secret, (DWORD)strlen(secret), &written, NULL ) || written != strlen(secret) ) {
-		CloseHandle( h ) ; DeleteFile( kx_pw.path[kx_pw.n] ) ;
-		sfree( kx_pw.path[kx_pw.n] ) ; kx_pw.path[kx_pw.n] = NULL ;
+		CloseHandle( h ) ; DeleteFile( path ) ;
+		CloseHandle( lk ) ; DeleteFile( lockpath ) ;
+		sfree( path ) ; sfree( lockpath ) ;
 		return NULL ;
 	}
 	CloseHandle( h ) ;
+	kx_pw.path[kx_pw.n] = path ;
+	kx_pw.lockpath[kx_pw.n] = lockpath ;
+	kx_pw.lock[kx_pw.n] = lk ;
 	return kx_pw.path[kx_pw.n++] ;
 }
 
@@ -2374,37 +2366,83 @@ static void kx_pwfiles_delete( struct kx_pwfiles *f ) {
 	for( i = 0 ; i < f->n ; i++ ) {
 		SetFileAttributes( f->path[i], FILE_ATTRIBUTE_NORMAL ) ; DeleteFile( f->path[i] ) ;
 		sfree( f->path[i] ) ; f->path[i] = NULL ;
+		if( f->lock[i] && f->lock[i] != INVALID_HANDLE_VALUE ) CloseHandle( f->lock[i] ) ;
+		f->lock[i] = NULL ;
+		if( f->lockpath[i] ) { kx_lock_free( f->lockpath[i] ) ; sfree( f->lockpath[i] ) ; }
+		f->lockpath[i] = NULL ;
 	}
 	f->n = 0 ;
 }
 
+/* Has the started reader `pid` had its files? It reads them at its start:
+ * once a window of it is up (and 3 s more), or it has ended, or at the
+ * latest after `max_ms`. pid 0 (no process id of the start): max_ms. */
+static BOOL CALLBACK kx_reader_win( HWND hwnd, LPARAM lp ) {
+	DWORD *w = (DWORD *)lp, pid = 0 ;
+	GetWindowThreadProcessId( hwnd, &pid ) ;
+	if( pid == w[0] && IsWindowVisible( hwnd ) ) { w[1] = 1 ; return FALSE ; }
+	return TRUE ;
+}
+static void kx_wait_reader( DWORD pid, DWORD max_ms ) {
+	HANDLE proc ;
+	DWORD start = GetTickCount() ;
+	if( !pid ) { Sleep( max_ms ) ; return ; }
+	proc = OpenProcess( SYNCHRONIZE, FALSE, pid ) ;
+	if( !proc ) {
+		/* no such process any more: it ended, after reading at its start
+		 * (the starter closed its handle, so the id can be gone already) */
+		if( GetLastError() == ERROR_INVALID_PARAMETER ) return ;
+		Sleep( max_ms ) ;
+		return ;
+	}
+	while( GetTickCount() - start < max_ms ) {
+		DWORD w[2] = { pid, 0 } ;
+		if( WaitForSingleObject( proc, 250 ) == WAIT_OBJECT_0 ) break ;
+		EnumWindows( kx_reader_win, (LPARAM)w ) ;
+		if( w[1] ) { WaitForSingleObject( proc, 3000 ) ; break ; }
+	}
+	CloseHandle( proc ) ;
+}
+
+struct kx_pwdel { struct kx_pwfiles f ; DWORD pid ; } ;
 static DWORD WINAPI kx_pwfiles_delete_thread( LPVOID p ) {
-	struct kx_pwfiles *f = (struct kx_pwfiles *)p ;
-	Sleep( 60000 ) ;
-	kx_pwfiles_delete( f ) ;
-	free( f ) ;
+	struct kx_pwdel *d = (struct kx_pwdel *)p ;
+	kx_wait_reader( d->pid, 60000 ) ;
+	kx_pwfiles_delete( &d->f ) ;
+	free( d ) ;
 	InterlockedDecrement( &kx_deletes_pending ) ;
 	return 0 ;
 }
 
-/* After the start: delete the files in a minute (WinSCP reads them at
- * startup). `now` deletes at once - the start was cancelled. The delayed
- * delete owns the paths from here on. */
-static void kx_pwfiles_release( int now ) {
-	struct kx_pwfiles *copy ; HANDLE t ;
+/* After the start: delete the files as soon as `pid` (the WinSCP started,
+ * 0 = not known) has had them - see kx_wait_reader. `now` deletes at once:
+ * the start was cancelled. The delayed delete owns the paths from here on. */
+static void kx_pwfiles_release( int now, DWORD pid ) {
+	struct kx_pwdel *d ; HANDLE t ;
 	if( kx_pw.n == 0 ) return ;
 	if( now ) {
 		kx_pwfiles_delete( &kx_pw ) ;
-	} else if( (copy = (struct kx_pwfiles *)malloc( sizeof(*copy) )) != NULL ) {
-		*copy = kx_pw ;
+	} else if( (d = (struct kx_pwdel *)malloc( sizeof(*d) )) != NULL ) {
+		d->f = kx_pw ;
+		d->pid = pid ;
 		memset( &kx_pw, 0, sizeof(kx_pw) ) ;
 		InterlockedIncrement( &kx_deletes_pending ) ;   /* the thread takes it off */
-		t = CreateThread( NULL, 0, kx_pwfiles_delete_thread, copy, 0, NULL ) ;
-		if( t ) CloseHandle( t ) ; else { kx_pwfiles_delete_thread( copy ) ; }
+		t = CreateThread( NULL, 0, kx_pwfiles_delete_thread, d, 0, NULL ) ;
+		if( t ) CloseHandle( t ) ; else { kx_pwfiles_delete_thread( d ) ; }
 	} else {
 		kx_pwfiles_delete( &kx_pw ) ;
 	}
 	memset( &kx_pw, 0, sizeof(kx_pw) ) ;
+}
+
+/* The terminal window's process ends: the deletes still pending (a reader
+ * that has not shown a window yet) are given up to `max_ms`. A file left
+ * then is still locked by nobody once this process is gone: the sweep of
+ * the next start takes it. */
+void kitty_xfer_wait_deletes( DWORD max_ms ) {
+	DWORD start = GetTickCount() ;
+	while( kx_deletes_pending > 0 && GetTickCount() - start < max_ms )
+		Sleep( 100 ) ;
 }
 
 /* ---- WinSCP 6.0 and later: the password through a NAMED PIPE ---------------
@@ -2788,7 +2826,7 @@ static void kx_pipes_release( DWORD pid ) {
  * does; a helper that reads the protected form gets it protected.
  * Appends to `buffer`; the password's span is noted for the redacted log. */
 static int kx_helper_has_flag( const char *path, const char *flag ) ;
-static void kx_proxy_args( strbuf *buffer, int *pwfiles,
+static void kx_proxy_args( strbuf *buffer, HANDLE *pxmap, int *px_nohandle,
                            size_t *px_at, size_t *px_len ) {
 	const struct kitty_proxy_snapshot *px = kitty_proxy_connection() ;
 	int          px_type = px ? px->type           : conf_get_int(conf,CONF_proxy_type) ;
@@ -2800,6 +2838,8 @@ static void kx_proxy_args( strbuf *buffer, int *pwfiles,
 	char px_pass[KITTY_PW_MAX+1] ;
 
 	*px_at = *px_len = 0 ;
+	*pxmap = NULL ;
+	*px_nohandle = 0 ;
 	if( px_type == PROXY_NONE ) return ;
 	/* an explicit -sftpconnect sets its own route to the host */
 	if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) return ;
@@ -2828,34 +2868,32 @@ static void kx_proxy_args( strbuf *buffer, int *pwfiles,
 	if( px_user && px_user[0] ) { bcat( buffer, "-proxyuser " ) ; qcat( buffer, px_user ) ; bcat( buffer, " " ) ; }
 
 	/* Both sources hold the password WRAPPED (kitty_pwmem.c); unwrapped once
-	 * here, the buffer burned before this returns. Into a private file, the
-	 * protected form when the helper reads it - exactly as the session's
-	 * password goes (see the -pwfile block in kx_kscp_line). No file at all:
-	 * the option is left out rather than put a password on the command line;
-	 * the jump host then prompts for it, which a transfer window can show. */
+	 * here, the buffer burned before this returns. It goes as the session's
+	 * does: in memory handed to this helper alone ("KiTTYProxyPasswordHandle":
+	 * -proxypwhandle), or not at all - never a file, never the command line.
+	 * Without it the jump host prompts, which -batch turns into a refusal the
+	 * transfer window shows with the reason (*px_nohandle). */
 	kitty_pw_unwrap_str( px ? px->password : conf_get_str(conf,CONF_proxy_password),
 	                     px_pass, sizeof(px_pass) ) ;
 	kitty_secret_note( px_pass ) ;   /* masked in any report of this line */
 	if( px_pass[0] ) {
-		char *line = NULL ; const char *pf ;
-		if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( px_pass ) ;
-		pf = kx_password_file( line ? line : px_pass ) ;
-		if( pf ) {
-			bcat( buffer, "-proxypwfile " ) ;
+		char tok[64] ;
+		if( kx_helper_has_flag( PSCPPath, "KiTTYProxyPasswordHandle" )
+		    && ( *pxmap = kitty_pwhandle_make( px_pass, tok, sizeof(tok) ) ) != NULL ) {
+			bcat( buffer, "-proxypwhandle " ) ;
 			*px_at = buffer->len ;
-			qcat( buffer, pf ) ;
+			bcat( buffer, tok ) ;
 			*px_len = buffer->len - *px_at ;
 			bcat( buffer, " " ) ;
-			(*pwfiles)++ ;
+		} else {
+			*px_nohandle = 1 ;
 		}
-		if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
 	}
 	smemclr( px_pass, sizeof(px_pass) ) ;
 }
 
 /* A capability flag in the helper's own version resource, in whichever
- * translation the file declares; 0 on any doubt. kx_helper_reads_protected
- * above is the same test for the password-file flag, kept as it is. */
+ * translation the file declares; 0 on any doubt. */
 static int kx_helper_has_flag( const char *path, const char *flag ) {
 	DWORD dummy, sz ; void *buf ; int ok = 0 ;
 	if( path == NULL || path[0] == '\0' ) return 0 ;
@@ -2886,8 +2924,9 @@ static int kx_helper_has_flag( const char *path, const char *flag ) {
  * directions cannot drift apart. Each caller appends its source and target.
  */
 typedef struct {
-	int pwfiles ;              /* password files to delete once kscp has them */
 	HANDLE pwmap ;             /* the password's mapping (-pwhandle), closed after the start */
+	HANDLE pxmap ;             /* the proxy password's (-proxypwhandle), the same */
+	int px_nohandle ;          /* a proxy password this helper cannot take in memory */
 	int pw_mode ;              /* how the password travelled (kx_pw_handover_line) */
 	size_t pw_at, pw_len ;     /* where the password landed, for the redacted log */
 	size_t px_at, px_len ;     /* ... and the proxy password file's path */
@@ -3001,30 +3040,15 @@ static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k, const char *rpath ) 
 	if( conf_get_int(conf, CONF_sshprot) == 3 ) { bcat( buffer, "-2 " ) ; }   // SSH-2 Only
 
 	if( !kitty_pw_empty(conf,CONF_password) ) {
-		/* The password goes over in a PRIVATE FILE, not on the command line,
-		 * where every process lister and audit log on the machine can read it.
-		 * The file holds one line: the DPAPI-protected form when this Windows
-		 * can produce it, else the password itself - the plain format -pwfile
-		 * has always accepted. It is deleted after the start
-		 * (kx_pwfiles_release below). Only if no file can be made at all does
-		 * the password go on the command line, so a transfer never fails for
-		 * this; qcat escapes any quote, so it cannot inject a switch. The span
-		 * is noted either way, so the debug log can blank it - see
-		 * debug_logevent_redacted().
-		 * What goes IN the file, and what goes after -pw when no file could
-		 * be made, is decided by the HELPER and not by us:
-		 * kx_helper_reads_protected() tests whether the binary itself reads
-		 * the protected form. A capable helper gets that form in either place,
-		 * so even the command-line fallback carries no readable password;
-		 * every released helper, and stock pscp/psftp, gets the plain value.
-		 * The window shows which of the four it was -
-		 * kx_pw_handover_line(). */
-		/* A helper of ours that declares it in its version resource
-		 * ("KiTTYPasswordHandle") gets it in MEMORY instead: a mapping only
-		 * it inherits (kitty_pwhandle_make), "-pwhandle <handle>:<size>" on
-		 * its command line - no file on disk at all. The file stays for the
-		 * others, and for this one if no mapping can be made. */
-		char pw[KITTY_PW_MAX+1] ; const char *pf ; char *line = NULL ; int enc ;
+		/* The password goes to a helper of ours in MEMORY only: a mapping it
+		 * alone inherits (kitty_pwhandle_make), "-pwhandle <handle>:<size>" on
+		 * its command line, when it declares that in its version resource
+		 * ("KiTTYPasswordHandle"). Any other helper - PuTTY's pscp, an older
+		 * kscp - gets no password at all: no private file, no command line,
+		 * where every process lister and audit log can read it. -batch then
+		 * turns the server's question into a refusal, and the transfer window
+		 * says why (KT_XFER_PW_NOT_HANDED). Keys and the agent still work. */
+		char pw[KITTY_PW_MAX+1] ;
 		char tok[64] ;
 		kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
 		if( kx_helper_has_flag( PSCPPath, "KiTTYPasswordHandle" )
@@ -3036,18 +3060,7 @@ static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k, const char *rpath ) 
 			bcat( buffer, " " ) ;
 			k->pw_mode = KX_PW_HANDLE ;
 		} else {
-			if( kx_helper_reads_protected( PSCPPath ) ) line = kitty_pwfile_line( pw ) ;
-			enc = kitty_pwfile_line_is_protected( line ) ;
-			pf = kx_password_file( line ? line : pw ) ;
-			bcat( buffer, pf ? "-pwfile " : "-pw " ) ;
-			k->pw_at = buffer->len ;
-			qcat( buffer, pf ? pf : ( enc ? line : pw ) ) ;
-			k->pw_len = buffer->len - k->pw_at ;   /* the span covers whatever was written */
-			bcat( buffer, " " ) ;
-			if( pf ) k->pwfiles++ ;
-			k->pw_mode = pf ? ( enc ? KX_PW_FILE_ENC : KX_PW_FILE_PLAIN )
-			                : ( enc ? KX_PW_CMD_ENC  : KX_PW_CMD_PLAIN ) ;
-			if( line ) { smemclr( line, strlen(line) ) ; sfree( line ) ; }
+			k->pw_mode = KX_PW_NOT_HANDED ;
 		}
 		smemclr( pw, sizeof(pw) ) ;
 	}
@@ -3057,7 +3070,7 @@ static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k, const char *rpath ) 
 	{ const char *kf = kx_helper_keyfile(conf) ;
 	  if( kf != NULL ) { bcat( buffer, "-i " ) ; qcat( buffer, kf ) ; bcat( buffer, " " ) ; }
 	}
-	kx_proxy_args( buffer, &k->pwfiles, &k->px_at, &k->px_len ) ;   /* the connection's proxy, if any */
+	kx_proxy_args( buffer, &k->pxmap, &k->px_nohandle, &k->px_at, &k->px_len ) ;   /* the connection's proxy, if any */
 	return 1 ;
 }
 
@@ -3207,6 +3220,10 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 	    if( hand != NULL ) {
 		char *t = dupprintf( "%s%s\r\n\r\n", intro, hand ) ;
 		sfree( intro ) ; intro = t ;
+	    }
+	    if( k.px_nohandle ) {
+		char *t = dupprintf( "%s%s\r\n\r\n", intro, KT_XFER_PXPW_NOT_HANDED ) ;
+		sfree( intro ) ; intro = t ;
 	    } }
 	  /* files leaving: the balloon's click opens the local upload folder */
 	  updir = kitty_xfer_upload_dir_dup( conf ) ;
@@ -3219,15 +3236,15 @@ static void kx_send_one( HWND hwnd, char * directory, char * filename, char * di
 		kx_rerun_next.drop_idx = drop_idx ;
 	  }
 	  if( kitty_run_xfer( hwnd, buffer->s, whatbuf, intro, 0, NULL, updir, NULL, NULL, INVALID_HANDLE_VALUE,
-	                      drop, drop_idx, k.pwmap ) != 0 )
+	                      drop, drop_idx, k.pwmap, k.pxmap ) != 0 )
 		kx_drop_settle( drop, drop_idx, 0 ) ;   /* not started: the window never took it */
 	  sfree( intro ) ; sfree( note ) ; sfree( whatbuf ) ; sfree( updir ) ; }
 
 	strbuf_free( buffer ) ;                     /* cleared: it may hold the password */
 	strbuf_free( tgt ) ;
 	sfree( remotedir ) ;
-	if( k.pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
 	if( k.pwmap ) CloseHandle( k.pwmap ) ;      /* kscp holds its own handle to it */
+	if( k.pxmap ) CloseHandle( k.pxmap ) ;
 	}
 
 void SendFileList( HWND hwnd, char * filelist ) {
@@ -3404,6 +3421,11 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
        * actually did. Nothing of it when the login uses a key or the agent. */
       const char *hand = kx_pw_handover_line( k.pw_mode ) ;
       char *intro = hand ? dupprintf( "%s%s\r\n\r\n", note ? note : "", hand ) : NULL ;
+      if( k.px_nohandle ) {
+          char *t2 = dupprintf( "%s%s\r\n\r\n", intro ? intro : ( note ? note : "" ),
+                                KT_XFER_PXPW_NOT_HANDED ) ;
+          sfree( intro ) ; intro = t2 ;
+      }
       /* Staged (wildcard/folder): kscp wrote into `dir` (the staging folder);
        * on success the files move to final_dir. The balloon opens final_dir. */
       if( k.shared ) {              /* a refused channel: again on its own login */
@@ -3417,13 +3439,13 @@ void GetOneFileStaged( HWND hwnd, char * directory, const char * filename, const
       }
       kitty_run_xfer( hwnd, buffer->s, whatbuf, intro ? intro : note, 1, one,
                       final_dir ? final_dir : dir,
-                      final_dir ? dir : NULL, final_dir, lock, NULL, 0, k.pwmap ) ;
+                      final_dir ? dir : NULL, final_dir, lock, NULL, 0, k.pwmap, k.pxmap ) ;
       sfree( intro ) ; sfree( one ) ; sfree( note ) ; sfree( whatbuf ) ; }
 
     strbuf_free( buffer ) ;                     /* cleared: it may hold the password */
     sfree( dir ) ;
-    if( k.pwfiles ) kx_pwfiles_release( 0 ) ;   /* the password file, once kscp has had it */
     if( k.pwmap ) CloseHandle( k.pwmap ) ;      /* kscp holds its own handle to it */
+    if( k.pxmap ) CloseHandle( k.pxmap ) ;
 }
 
 /* --- Where received files go ------------------------------------------------
@@ -4017,11 +4039,13 @@ static int kx_keyfile_silent( const char *kf ) {
 	return !enc ;
 }
 
-/* Can kscp log in on its own without a prompt: a password, a key file
- * without a passphrase, or an agent? */
+/* Can kscp log in on its own without a prompt: a password it can take in
+ * memory (the only way one is handed over), a key file without a
+ * passphrase, or an agent? */
 static int kx_gf_own_login( void ) {
 	const char *kf ;
-	if( !kitty_pw_empty( conf, CONF_password ) ) return 1 ;
+	if( !kitty_pw_empty( conf, CONF_password ) &&
+	    kx_helper_has_flag( PSCPPath, "KiTTYPasswordHandle" ) ) return 1 ;
 	if( ( kf = kx_helper_keyfile( conf ) ) != NULL && kx_keyfile_silent( kf ) ) return 1 ;
 	if( conf_get_bool( conf, CONF_tryagent ) && agent_exists() ) return 1 ;
 	return 0 ;
@@ -4057,7 +4081,7 @@ static int kx_gf_start_check( kx_gf_check_t *c ) {
 	if( !CreatePipe( &c->rd_out, &wr_out, &sa, 0 ) || !CreatePipe( &c->rd_err, &wr_err, &sa, 0 ) ) {
 		if( wr_out ) CloseHandle( wr_out ) ;
 		if( k.pwmap ) CloseHandle( k.pwmap ) ;
-		if( k.pwfiles ) kx_pwfiles_release( 1 ) ;
+		if( k.pxmap ) CloseHandle( k.pxmap ) ;
 		strbuf_free( buffer ) ;
 		return 0 ;
 	}
@@ -4069,12 +4093,13 @@ static int kx_gf_start_check( kx_gf_check_t *c ) {
 	memset( &pi, 0, sizeof(pi) ) ;
 	hs[nh++] = wr_out ; hs[nh++] = wr_err ;
 	if( k.pwmap ) hs[nh++] = k.pwmap ;
+	if( k.pxmap ) hs[nh++] = k.pxmap ;
 	chdir( InitialDirectory ) ;
 	ok = kitty_helper_start_handles( PSCPPath, buffer->s, CREATE_NO_WINDOW, NULL, &si, &pi, hs, nh ) ;
 	strbuf_free( buffer ) ;                     /* cleared: it may hold the password */
 	CloseHandle( wr_out ) ; CloseHandle( wr_err ) ;
 	if( k.pwmap ) CloseHandle( k.pwmap ) ;
-	if( k.pwfiles ) kx_pwfiles_release( ok ? 0 : 1 ) ;   /* once kscp has had it */
+	if( k.pxmap ) CloseHandle( k.pxmap ) ;
 	if( !ok ) return 0 ;
 	CloseHandle( pi.hThread ) ;
 	c->proc = pi.hProcess ;
@@ -4530,12 +4555,12 @@ static void kx_fl_list( HWND hwnd, const char *folder ) {
 	what = dupprintf( KT_XFER_LISTING_OF, folder ) ;
 	kx_listing_next = 1 ;
 	kitty_run_xfer( hwnd, buffer->s, what, NULL, 0, NULL, NULL, NULL, NULL,
-	                INVALID_HANDLE_VALUE, NULL, 0, k.pwmap ) ;
+	                INVALID_HANDLE_VALUE, NULL, 0, k.pwmap, k.pxmap ) ;
 	kx_listing_next = 0 ;
 	sfree( what ) ;
 	strbuf_free( buffer ) ;                     /* cleared: it may hold the password */
-	if( k.pwfiles ) kx_pwfiles_release( 0 ) ;
 	if( k.pwmap ) CloseHandle( k.pwmap ) ;
+	if( k.pxmap ) CloseHandle( k.pxmap ) ;
 }
 
 /* A folder on the server: WinSCP there, else FileZilla there, else the path
@@ -4732,7 +4757,7 @@ static int kx_fl_probe_start( kx_fl_probe_t *p, char **why ) {
 	SECURITY_ATTRIBUTES sa ;
 	HANDLE wr = NULL, hs[2], t, pwmap = NULL ;
 	STARTUPINFOA si ; PROCESS_INFORMATION pi ;
-	int nh = 0, ok, pwfiles = 0 ;
+	int nh = 0, ok ;
 	*why = NULL ;
 	if( !klink[0] || !existfile( klink ) ) {
 		*why = dupprintf( KT_OSC8_FILE_PROBE_NOKLINK, klink ) ;
@@ -4746,14 +4771,11 @@ static int kx_fl_probe_start( kx_fl_probe_t *p, char **why ) {
 	if( !kitty_pw_empty( conf, CONF_password ) ) {
 		char pw[KITTY_PW_MAX+1], tok[64] ;
 		kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
+		/* in memory or not at all, as for kscp (kx_kscp_line): a klink
+		 * that cannot take it tries the key and the agent alone */
 		if( kx_helper_has_flag( klink, "KiTTYPasswordHandle" )
 		    && ( pwmap = kitty_pwhandle_make( pw, tok, sizeof(tok) ) ) != NULL ) {
 			bcat( cmd, "-pwhandle " ) ; bcat( cmd, tok ) ; bcat( cmd, " " ) ;
-		} else {
-			char *line = kx_helper_reads_protected( klink ) ? kitty_pwfile_line( pw ) : NULL ;
-			const char *pf = kx_password_file( line ? line : pw ) ;
-			if( pf ) { bcat( cmd, "-pwfile " ) ; qcat( cmd, pf ) ; bcat( cmd, " " ) ; pwfiles++ ; }
-			if( line ) { smemclr( line, strlen( line ) ) ; sfree( line ) ; }
 		}
 		smemclr( pw, sizeof(pw) ) ;
 	}
@@ -4770,7 +4792,6 @@ static int kx_fl_probe_start( kx_fl_probe_t *p, char **why ) {
 	if( !CreatePipe( &p->rd, &wr, &sa, 0 ) ) {
 		*why = dupprintf( KT_OSC8_FILE_PROBE_NOSTART, kitty_win_reason( GetLastError() ) ) ;
 		if( pwmap ) CloseHandle( pwmap ) ;
-		if( pwfiles ) kx_pwfiles_release( 1 ) ;
 		strbuf_free( cmd ) ; sfree( klink ) ;
 		return 0 ;
 	}
@@ -4788,7 +4809,6 @@ static int kx_fl_probe_start( kx_fl_probe_t *p, char **why ) {
 	sfree( klink ) ;
 	CloseHandle( wr ) ;
 	if( pwmap ) CloseHandle( pwmap ) ;
-	if( pwfiles ) kx_pwfiles_release( ok ? 0 : 1 ) ;
 	if( !ok ) { CloseHandle( p->rd ) ; p->rd = NULL ; return 0 ; }
 	CloseHandle( pi.hThread ) ;
 	p->proc = pi.hProcess ;
@@ -5498,8 +5518,8 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 #endif
 		strbuf_free( cmd ) ;
 		kx_pipes_release( pid ) ;
+		kx_pwfiles_release( 0, pid ) ;   /* gone once this WinSCP has them */
 	}
-	kx_pwfiles_release( 0 ) ;
 }
 
 	
@@ -5611,10 +5631,14 @@ static void b64cat( strbuf *dst, const char *s ) {
  * a minute later (FileZilla reads fzdefaults.xml at startup). In full; NULL
  * = none. */
 static char *kx_fzdir = NULL ;
+/* "kitty.lock" in the folder, held without sharing for delete while the
+ * folder may exist: the sweep of a later start leaves a held one alone */
+static HANDLE kx_fzdir_lock = NULL ;
+#define KX_FZDIR_LOCK "kitty.lock"
 
 static void kx_fzdir_remove( const char *dir ) {
 	static const char *const names[] = { "fzdefaults.xml", "sitemanager.xml", "filezilla.xml",
-	                                     "recentservers.xml", "lockfile" } ;
+	                                     "recentservers.xml", "lockfile", KX_FZDIR_LOCK } ;
 	size_t i ;
 	for( i = 0 ; i < sizeof(names)/sizeof(names[0]) ; i++ ) {
 		char *full = dupprintf( "%s\\%s", dir, names[i] ) ;
@@ -5624,11 +5648,14 @@ static void kx_fzdir_remove( const char *dir ) {
 	RemoveDirectory( dir ) ;
 }
 
+struct kx_fzdel { char *dir ; HANDLE lock ; DWORD pid ; } ;
 static DWORD WINAPI kx_fzdir_delete_thread( LPVOID p ) {
-	char *dir = (char *)p ;
-	Sleep( 60000 ) ;
-	kx_fzdir_remove( dir ) ;
-	sfree( dir ) ;
+	struct kx_fzdel *d = (struct kx_fzdel *)p ;
+	kx_wait_reader( d->pid, 60000 ) ;      /* FileZilla reads it at its start */
+	if( d->lock ) CloseHandle( d->lock ) ;
+	kx_fzdir_remove( d->dir ) ;
+	sfree( d->dir ) ;
+	free( d ) ;
 	InterlockedDecrement( &kx_deletes_pending ) ;
 	return 0 ;
 }
@@ -5643,8 +5670,12 @@ static void kx_fzdir_sweep( void ) {
 	if( h == INVALID_HANDLE_VALUE ) { sfree( tmp ) ; return ; }
 	do {
 		if( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) {
+			char *lock ;
 			full = dupprintf( "%s%s", tmp, fd.cFileName ) ;
-			kx_fzdir_remove( full ) ;
+			lock = dupprintf( "%s\\%s", full, KX_FZDIR_LOCK ) ;
+			if( kx_lock_free( lock ) )      /* nobody holds it: an earlier run's */
+				kx_fzdir_remove( full ) ;
+			sfree( lock ) ;
 			sfree( full ) ;
 		}
 	} while( FindNextFile( h, &fd ) ) ;
@@ -5652,28 +5683,63 @@ static void kx_fzdir_sweep( void ) {
 	sfree( tmp ) ;
 }
 
+/* A remote folder as FileZilla's site entry keeps it in <RemoteDir>: the
+ * server type (1 = Unix), the prefix length (0), then each folder name with
+ * its length in UTF-16 units in front, separated by spaces -
+ * "/var/log" is "1 0 3 var 3 log" (tested against FileZilla 3, row
+ * filezilla_e2e leg RemoteDir). The root is "1 0". */
+static void kx_fz_remotedir( strbuf *xml, const char *path ) {
+	const char *p = path, *q ;
+	strbuf *v = strbuf_new() ;
+	put_dataz( v, "1 0" ) ;
+	while( *p ) {
+		int n ;
+		while( *p == '/' ) p++ ;
+		if( !*p ) break ;
+		for( q = p ; *q && *q != '/' ; q++ ) ;
+		n = MultiByteToWideChar( CP_UTF8, 0, p, (int)( q - p ), NULL, 0 ) ;
+		if( n <= 0 ) n = (int)( q - p ) ;
+		put_fmt( v, " %d %.*s", n, (int)( q - p ), p ) ;
+		p = q ;
+	}
+	xmlcat( xml, v->s ) ;
+	strbuf_free( v ) ;
+}
+
 /* Write the Site Manager entry; returns the directory (kx_fzdir, until the
- * release) or NULL. keyfile non-NULL: the logon type "Key file" with that
- * path, no password - FileZilla has no command-line form for a key file, so
- * a key session reaches it only this way (it asks for the passphrase
- * itself). */
+ * release) or NULL. Every start goes through it - nothing goes in a URL, so
+ * a user name with '@' or '\\' and a password with '@' reach FileZilla as
+ * they are. logontype: FileZilla's own - 1 normal (password non-NULL,
+ * base64 as FileZilla stores it), 2 ask (FileZilla prompts), 3 interactive
+ * (no password: the agent's keys first), 5 key file (keyfile, no password:
+ * FileZilla has no command-line form for a key file). rdir: the remote
+ * folder to open (NULL = FileZilla's default). The folder is new with a
+ * random name and rights for this account alone, its "kitty.lock" held
+ * until the release (kx_fzdir_lock). */
 static const char *kx_fzdir_make( const char *host, int port, int fzproto,
                                   const char *user, const char *password,
-                                  const char *keyfile ) {
+                                  const char *keyfile, int logontype,
+                                  const char *rdir ) {
 	char *tmp, *file ;
 	strbuf *xml ;
-	HANDLE h ; DWORD written ; int i ;
-	static unsigned serial = 0 ;
+	HANDLE h ; DWORD written ;
+	SECURITY_ATTRIBUTES sad, saf ;
+	if( !kitty_store_acl_attrs( 1, &sad ) || !kitty_store_acl_attrs( 0, &saf ) ) return NULL ;
 	if( ( tmp = kitty_temp_path_dup() ) == NULL ) return NULL ;
-	for( i = 0 ; i < 16 ; i++ ) {
-		kx_fzdir = dupprintf( "%skitty_fz_%08lx_%u", tmp,
-		                      (unsigned long)GetTickCount() ^ (unsigned long)GetCurrentProcessId(), ++serial ) ;
-		if( CreateDirectory( kx_fzdir, NULL ) ) break ;
-		sfree( kx_fzdir ) ; kx_fzdir = NULL ;
-	}
+	kx_fzdir = kx_random_name( tmp, "kitty_fz_" ) ;
 	sfree( tmp ) ;
-	if( i == 16 ) return NULL ;
-	xml = strbuf_new_nm() ;                /* it holds the password: cleared when it goes */
+	if( !kx_fzdir ) return NULL ;
+	if( !CreateDirectory( kx_fzdir, &sad ) ) { sfree( kx_fzdir ) ; kx_fzdir = NULL ; return NULL ; }
+	file = dupprintf( "%s\\%s", kx_fzdir, KX_FZDIR_LOCK ) ;
+	kx_fzdir_lock = CreateFile( file, GENERIC_READ, FILE_SHARE_READ, &saf, CREATE_NEW,
+	                            FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY, NULL ) ;
+	sfree( file ) ;
+	if( kx_fzdir_lock == INVALID_HANDLE_VALUE ) {
+		kx_fzdir_lock = NULL ;
+		kx_fzdir_remove( kx_fzdir ) ; sfree( kx_fzdir ) ; kx_fzdir = NULL ;
+		return NULL ;
+	}
+	xml = strbuf_new_nm() ;                /* it may hold the password: cleared when it goes */
 	bcat( xml, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
 	           "<FileZilla3>\n"
 	           "\t<Servers>\n\t\t<Server>\n\t\t\t<Host>" ) ;
@@ -5681,15 +5747,21 @@ static const char *kx_fzdir_make( const char *host, int port, int fzproto,
 	put_fmt( xml, "</Host>\n\t\t\t<Port>%d</Port>\n\t\t\t<Protocol>%d</Protocol>\n", port, fzproto ) ;
 	bcat( xml, "\t\t\t<Type>0</Type>\n\t\t\t<User>" ) ;
 	xmlcat( xml, user ) ;
+	bcat( xml, "</User>\n" ) ;
 	if( keyfile != NULL ) {
-		/* FileZilla's logon type 5 = key file */
-		bcat( xml, "</User>\n\t\t\t<Keyfile>" ) ;
+		bcat( xml, "\t\t\t<Keyfile>" ) ;
 		xmlcat( xml, keyfile ) ;
-		bcat( xml, "</Keyfile>\n\t\t\t<Logontype>5</Logontype>\n" ) ;
-	} else {
-		bcat( xml, "</User>\n\t\t\t<Pass encoding=\"base64\">" ) ;
+		bcat( xml, "</Keyfile>\n" ) ;
+	} else if( password != NULL ) {
+		bcat( xml, "\t\t\t<Pass encoding=\"base64\">" ) ;
 		b64cat( xml, password ) ;
-		bcat( xml, "</Pass>\n\t\t\t<Logontype>1</Logontype>\n" ) ;
+		bcat( xml, "</Pass>\n" ) ;
+	}
+	put_fmt( xml, "\t\t\t<Logontype>%d</Logontype>\n", logontype ) ;
+	if( rdir != NULL && rdir[0] == '/' ) {
+		bcat( xml, "\t\t\t<RemoteDir>" ) ;
+		kx_fz_remotedir( xml, rdir ) ;
+		bcat( xml, "</RemoteDir>\n" ) ;
 	}
 	bcat( xml, "\t\t\t<EncodingType>Auto</EncodingType>\n"
 	           "\t\t\t<BypassProxy>0</BypassProxy>\n\t\t\t<Name>" ) ;
@@ -5698,14 +5770,13 @@ static const char *kx_fzdir_make( const char *host, int port, int fzproto,
 	           "\t\t\t<DirectoryComparison>0</DirectoryComparison>\n"
 	           "\t\t</Server>\n\t</Servers>\n</FileZilla3>\n" ) ;
 	file = dupprintf( "%s\\fzdefaults.xml", kx_fzdir ) ;
-	h = CreateFile( file, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_HIDDEN, NULL ) ;
+	h = CreateFile( file, GENERIC_WRITE, 0, &saf, CREATE_NEW, FILE_ATTRIBUTE_HIDDEN, NULL ) ;
 	sfree( file ) ;
-	if( h == INVALID_HANDLE_VALUE ) {
-		RemoveDirectory( kx_fzdir ) ; sfree( kx_fzdir ) ; kx_fzdir = NULL ;
-		strbuf_free( xml ) ; return NULL ;
-	}
-	if( !WriteFile( h, xml->s, (DWORD)xml->len, &written, NULL ) || written != xml->len ) {
-		CloseHandle( h ) ; kx_fzdir_remove( kx_fzdir ) ; sfree( kx_fzdir ) ; kx_fzdir = NULL ;
+	if( h == INVALID_HANDLE_VALUE ||
+	    !WriteFile( h, xml->s, (DWORD)xml->len, &written, NULL ) || written != xml->len ) {
+		if( h != INVALID_HANDLE_VALUE ) CloseHandle( h ) ;
+		CloseHandle( kx_fzdir_lock ) ; kx_fzdir_lock = NULL ;
+		kx_fzdir_remove( kx_fzdir ) ; sfree( kx_fzdir ) ; kx_fzdir = NULL ;
 		strbuf_free( xml ) ; return NULL ;
 	}
 	CloseHandle( h ) ;
@@ -5713,20 +5784,35 @@ static const char *kx_fzdir_make( const char *host, int port, int fzproto,
 	return kx_fzdir ;
 }
 
-/* The delayed delete owns the directory's name from here on. */
-static void kx_fzdir_release( int now ) {
+/* The delayed delete owns the directory's name from here on: gone once
+ * FileZilla `pid` (0 = not known) has read it (kx_wait_reader). `now`: at
+ * once, the start did not happen. */
+static void kx_fzdir_release( int now, DWORD pid ) {
 	HANDLE t ;
+	struct kx_fzdel *d ;
 	char *dir = kx_fzdir ;
+	HANDLE lock = kx_fzdir_lock ;
 	if( dir == NULL ) return ;
 	kx_fzdir = NULL ;
-	if( now ) {
+	kx_fzdir_lock = NULL ;
+	if( now || ( d = (struct kx_fzdel *)malloc( sizeof(*d) ) ) == NULL ) {
+		if( lock ) CloseHandle( lock ) ;
 		kx_fzdir_remove( dir ) ;
 		sfree( dir ) ;
 	} else {
+		d->dir = dir ; d->lock = lock ; d->pid = pid ;
 		InterlockedIncrement( &kx_deletes_pending ) ;   /* the thread takes it off */
-		t = CreateThread( NULL, 0, kx_fzdir_delete_thread, dir, 0, NULL ) ;
-		if( t ) CloseHandle( t ) ; else kx_fzdir_delete_thread( dir ) ;
+		t = CreateThread( NULL, 0, kx_fzdir_delete_thread, d, 0, NULL ) ;
+		if( t ) CloseHandle( t ) ; else kx_fzdir_delete_thread( d ) ;
 	}
+}
+
+/* At every start of the program: the password files and FileZilla folders
+ * an earlier run left behind (kitty_startup.c) - never one a running
+ * KiTTY++ still holds */
+void kitty_xfer_startup_sweep( void ) {
+	kx_pwfiles_sweep() ;
+	kx_fzdir_sweep() ;
 }
 
 /* Tools > Start FileZilla. */
@@ -5742,6 +5828,7 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
 	const char *proto ; int fzproto, fzprot, port, p ;
 	size_t pw_at = 0, pw_len = 0 ;
 	int mode = conf_get_int( conf, CONF_filezilla_pwmode ) ;
+	DWORD before, fzpid = 0 ;
 	/* The Conf holds the password wrapped (kitty_pwmem.c); FileZilla's own
 	 * modes need the value, so it is unwrapped into this buffer, which is
 	 * burned on every way out of this function. */
@@ -5824,13 +5911,19 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
 	/* An SFTP session with a key file: the key goes in the site entry (the
 	 * path is no secret, so whatever the password mode). A Hello-protected
 	 * key stays with the agent (kx_helper_keyfile answers NULL). */
+	/* Every start goes through a site entry: a key file (logon type 5),
+	 * the password (1, "Temporary configuration file"), FileZilla's own
+	 * prompt (2, "Ask in FileZilla"), or no password at all (3: the
+	 * agent's keys first). User, host and folder go in the entry, not in a
+	 * URL: FileZilla takes a URL as written, so a '%XX' of an '@' or '\\'
+	 * reached the server as it was. A stored mode 2 (the password on the
+	 * command line, gone) counts as 1. */
+	if( mode == 2 ) mode = 1 ;
 	{ const char *kf = fzproto == 1 ? kx_helper_keyfile( conf ) : NULL ;
-	  if( kf != NULL )
-		fzdir = kx_fzdir_make( host, port, fzproto, user, NULL, kf ) ;
-	  else if( havepw && mode == 1 ) {
-		fzdir = kx_fzdir_make( host, port, fzproto, user, pw, NULL ) ;
-		if( fzdir == NULL ) mode = 0 ;      /* no directory: fall back to mode 0, never to the command line */
-	  }
+	  const char *fdir = dir ? dir : kitty_current_dir() ;
+	  int lt = kf != NULL ? 5 : !havepw ? 3 : mode == 1 ? 1 : 2 ;
+	  fzdir = kx_fzdir_make( host, port, fzproto, user, lt == 1 ? pw : NULL, kf, lt,
+	                         ( fdir && fdir[0] ) ? fdir : NULL ) ;
 	}
 	if( fzdir != NULL ) {
 		bcat( cmd, " --site=\"1/" ) ; bcat( cmd, KT_FZ_SITE_NAME ) ; bcat( cmd, "\"" ) ;
@@ -5843,12 +5936,6 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
 		size_t at ;
 		bcat( url, proto ) ; bcat( url, "://" ) ;
 		urlcat( url, user ) ;
-		if( havepw && mode == 2 ) {
-			bcat( url, ":" ) ;
-			pw_at = url->len ;
-			urlcat( url, pw ) ;
-			pw_len = url->len - pw_at ;
-		}
 		bcat( url, "@" ) ;
 		if( poss( ":", host ) > 0 ) { bcat( url, "[" ) ; bcat( url, host ) ; bcat( url, "]" ) ; }
 		else bcat( url, host ) ;
@@ -5882,16 +5969,19 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
 
 	debug_logevent_redacted( "Start FileZilla", cmd->s, pw_at, pw_len ) ;
 	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", fzdir ) ;
+	before = kitty_last_started_pid() ;
 #if KX_CHECK_SELF_UPDATING_TOOLS
 	kitty_helper_run( hwnd, FileZillaPath, cmd->s ) ;
 #else
-	RunCommand( hwnd, cmd->s ) ;       /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
+	if( RunCommand( hwnd, cmd->s )      /* not checked: KX_CHECK_SELF_UPDATING_TOOLS */
+	    && kitty_last_started_pid() != before )
+		fzpid = kitty_last_started_pid() ;
 #endif
 	if( fzdir != NULL ) SetEnvironmentVariable( "FZ_DATADIR", NULL ) ;
 	strbuf_free( cmd ) ;
 	sfree( user ) ; sfree( host ) ;
 	smemclr( pw, sizeof(pw) ) ;
-	kx_fzdir_release( 0 ) ;
+	kx_fzdir_release( 0, fzpid ) ;      /* gone once this FileZilla has read it */
 }
 
 /* ---- kitty.exe -load <session> -winscp / -filezilla ------------------------

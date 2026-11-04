@@ -77,6 +77,10 @@ BEGIN
 	    /* reads the session password from an inherited mapping:
 	     * -pwhandle (cmdline.c, kitty_secretstore.c kitty_pwhandle_take) */
 	    VALUE "KiTTYPasswordHandle",	"1"
+	    /* reads the proxy's password from an inherited mapping too:
+	     * -proxypwhandle (cmdline.c). KiTTY++ hands passwords to its own
+	     * helpers in memory only: a helper without these two gets none. */
+	    VALUE "KiTTYProxyPasswordHandle",	"1"
 	    /*
 	     * The same shape for the proxy options (-proxytype, -proxyhost,
 	     * -proxyport, -proxylocalhost, -proxyuser, -proxypwfile): a helper

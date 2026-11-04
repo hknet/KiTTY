@@ -125,6 +125,11 @@ static void kitty_settings_load_hook(const char *section, Conf *conf, bool exist
                 kitty_xfer_migrate_protocol(conf, oldprot);
             close_settings_r(r);
         }
+        /* FileZillaPasswordMode 2 (the password on FileZilla's command
+         * line) is gone: such a session gets the temporary configuration */
+        if (conf_get_int(conf, CONF_filezilla_pwmode) == 2) {
+            conf_set_int(conf, CONF_filezilla_pwmode, 1);
+        }
     }
 
     /*

@@ -8811,8 +8811,7 @@ void scb_panel_ssh(struct controlbox *b, bool midsession, int protocol, int prot
                           HELPCTX(kitty_filezilla_session),
                           conf_radiobutton_handler, I(CONF_filezilla_pwmode),
                           KT_FZ_PW_ASK,     NO_SHORTCUT, I(0),
-                          KT_FZ_PW_TEMPCFG, NO_SHORTCUT, I(1),
-                          KT_FZ_PW_CMDLINE, NO_SHORTCUT, I(2));
+                          KT_FZ_PW_TEMPCFG, NO_SHORTCUT, I(1));
         ctrl_text(s, KT_FZ_KEY_PREFERRED, HELPCTX(kitty_filezilla_session));
         {
             dlgcontrol *note, *btn;

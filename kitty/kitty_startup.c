@@ -1008,6 +1008,9 @@ void InitWinMain( void ) {
 	 * modal box raised from right here, which stopped every start dead. */
 	kitty_notes_mark_pending() ;
 
+	/* password files and FileZilla folders a crashed run left behind */
+	kitty_xfer_startup_sweep() ;
+
 	// Generate an initialisation file for all the sessions (the file read whole)
 	{
 		char *updt = dupprintf( "%s\\%s.ses.updt", InitialDirectory, appname ) ;

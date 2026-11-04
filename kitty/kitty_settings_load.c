@@ -212,6 +212,10 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 		    read_setting_i( src, "KscpProtocol", absent ) == absent &&
 		    read_setting_i( src, "FileZillaProtocol", absent ) == absent )
 			kitty_xfer_migrate_protocol( conf, oldprot ) ;
+		/* FileZillaPasswordMode 2 (the password on FileZilla's command line)
+		 * is gone: such a session gets the temporary configuration */
+		if( conf_get_int( conf, CONF_filezilla_pwmode ) == 2 )
+			conf_set_int( conf, CONF_filezilla_pwmode, 1 ) ;
 		/* SCPAutoPwd retired: its sessions get OSC 7 cwd tracking instead */
 		if( read_setting_i( src, "SCPAutoPwd", 0 ) )
 			conf_set_bool( conf, CONF_osc7_cwd_tracking, true ) ;

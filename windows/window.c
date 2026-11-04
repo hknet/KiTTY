@@ -3720,6 +3720,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         !GetSystemMetrics(SM_SHUTTINGDOWN))
         kitty_respawn_config_box();
 #endif
+#ifdef MOD_PERSO
+    /* KiTTY: a password file of a helper started just now goes once it has
+     * read it - at most 10 s more here, the next start's sweep after that */
+    kitty_xfer_wait_deletes(10000);
+#endif
     cleanup_exit(msg.wParam);          /* this doesn't return... */
     return msg.wParam;                 /* ... but optimiser doesn't know */
 }

@@ -14,6 +14,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | Change | Key | Was | Now |
 |---|---|---|---|
 | added | `AcceptScriptBridge` | - | bool |
+| type changed | `FileZillaPasswordMode` | enum 0/1/2 | enum 0/1 |
 
 ## Keys
 
@@ -128,7 +129,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | `Far2lClientIds` | text | *(empty)* | Window/Copy & Paste/Remote clipboard | far2l client IDs always allowed clipboard access in this session, comma-separated. |
 | `Far2lImages` | `0` / `1` | `1` | Terminal/Image Protocols | far2l can place pictures over the text: its image viewer, for one. |
 | `FileZillaOptions` | text | *(empty)* | Connection/SSH/FileZilla | Extra command-line options appended for FileZilla. |
-| `FileZillaPasswordMode` | `0` Ask in FileZilla; `1` Temporary configuration file; `2` Command line (readable by other processes) | `0` | Connection/SSH/FileZilla | How the session password reaches FileZilla. |
+| `FileZillaPasswordMode` | `0` Ask in FileZilla; `1` Temporary configuration file | `0` | Connection/SSH/FileZilla | How the session password reaches FileZilla. |
 | `FileZillaPort` | text | *(empty)* | - | Port FileZilla connects to; empty = the protocol's standard port. |
 | `FileZillaProtocol` | number | `1` | - | Protocol FileZilla is started with: `1` SFTP, `2` FTP, `3` FTPS (implicit TLS), `4` FTPS (explicit TLS). |
 | `Folder` | text | `Default` | - | Folder the session is filed under in the session list; `Default` = the top level. |

@@ -1169,7 +1169,6 @@
 #define KT_FZ_PASSWORD_HOW                           "How the session password reaches FileZilla:"
 #define KT_FZ_PW_ASK                                 "Ask in FileZilla"
 #define KT_FZ_PW_TEMPCFG                             "Temporary configuration file"
-#define KT_FZ_PW_CMDLINE                             "Command line (readable by other processes)"
 #define KT_FZ_KEY_PREFERRED                          "Preferred: an SSH key served by the agent (kageant). Then only user, host and port are handed over and FileZilla needs no password."
 #define KT_FZ_PATH_IS_GLOBAL                         "The path to the FileZilla executable is a global setting."
 #define KT_FZ_OPEN_GLOBAL_PANEL                      "Open App Settings"
@@ -1182,7 +1181,7 @@
 #define KT_XFER_WINSCP_NOT_FOUND                     "WinSCP was not found. Set its path on Application > KiTTY++ Settings > Transfers & Tools > WinSCP."
 /* The Terminal Window's Event Log at Start WinSCP: how the passwords went over */
 #define KT_XFER_WINSCP_PW_PIPE                       "WinSCP: password handed over through a named pipe only the started WinSCP can read"
-#define KT_XFER_WINSCP_PW_FILE_OLD                   "WinSCP: password handed over through a temporary file (not WinSCP 6.0 or later by its file version)"
+#define KT_XFER_WINSCP_PW_FILE_OLD                   "WinSCP: password handed over through a temporary file (not WinSCP 6.0 or later by its file version) - WinSCP 6.0 or later takes it in memory through a pipe"
 #define KT_XFER_WINSCP_PW_FILE_RUNNING               "WinSCP: password handed over through a temporary file (a WinSCP is already running and can take over the session)"
 #define KT_XFER_WINSCP_PW_FILE_NOPIPE                "WinSCP: password handed over through a temporary file (no named pipe available)"
 #define KT_XFER_START_FILEZILLA_ANYWAY               "%sStart FileZilla anyway?"
@@ -2523,11 +2522,11 @@
 /* How the password reached the helper, stated once at the top of the transfer
  * window before the transfer starts. Nothing is printed when the login uses a
  * key or the agent: there is no password to hand over then. */
-#define KT_XFER_PW_FILE_ENCRYPTED                    "Password handover: encrypted, in a private file"
-#define KT_XFER_PW_FILE_PLAIN                        "Password handover: plain, in a private file (this helper does not read the encrypted form)"
-#define KT_XFER_PW_CMDLINE_ENCRYPTED                 "Password handover: encrypted, on the command line (no private file could be created)"
-#define KT_XFER_PW_CMDLINE_PLAIN                     "Password handover: on the command line (no private file could be created)"
 #define KT_XFER_PW_HANDLE                            "Password handover: encrypted, in memory handed to this helper alone"
+/* a helper that cannot take the password in memory gets none (PuTTY's pscp,
+ * an older kscp): keys and the agent still work */
+#define KT_XFER_PW_NOT_HANDED                        "Password not handed over: this helper cannot take it in memory. A current kscp, ksftp or klink of KiTTY++ is needed for that."
+#define KT_XFER_PXPW_NOT_HANDED                      "Proxy password not handed over: this helper cannot take it in memory. A current kscp, ksftp or klink of KiTTY++ is needed for that."
 #define KT_XFER_TRANSFER                             "Transfer"
 #define KT_XFER_FILE                                 "file"
 #define KT_XFER_BTN_CANCEL                           "&Cancel"
