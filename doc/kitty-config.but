@@ -1381,6 +1381,12 @@ until this terminal closes.
 request to \e{read} files from this PC still shows the dialog, whatever is
 chosen here.
 
+With \q{Ask once per session} and \q{Never ask} a later request writes
+files without a dialog. A request is text in the terminal's output, so
+\c{cat} of a file or a log line can make one, not only \c{kitten
+transfer}. Files a transfer brings carry no Mark of the Web, as files
+copied with scp do not: Windows does not check them as downloads.
+
 \b \q{Always open Save Dialog} opens the folder picker
 for every file the far end sends, instead of saving
 straight into the download folder. \q{Get file} always opens the picker,

@@ -1021,6 +1021,9 @@
 #define KT_TRANSFERS_PERM_ALWAYS                     "Ask every time"
 #define KT_TRANSFERS_PERM_FIRST                      "Ask once per session"
 #define KT_TRANSFERS_PERM_NEVER                      "Never ask"
+/* under the three choices: what the last two mean (no Mark of the Web is
+ * written on a file a transfer brings, as for scp) */
+#define KT_TRANSFERS_PERM_NOTE                       "With the last two choices a later request writes files without a dialog - also one that is only text in the output (cat, a log)."
 #define KT_TRANSFERS_MAX_MB                          "Max transfer size (MB):"
 #define KT_TRANSFERS_MAX_MB_NOTE                     "Per arriving file; 0 = no limit."
 #define KT_TRANSFERS_GLOBAL_MAX_MB                   "Global: %d MB"

@@ -9215,6 +9215,9 @@ void scb_panel_transfers(struct controlbox *b)
                       KT_TRANSFERS_PERM_ALWAYS, NO_SHORTCUT, I(0),
                       KT_TRANSFERS_PERM_FIRST,  NO_SHORTCUT, I(1),
                       KT_TRANSFERS_PERM_NEVER,  NO_SHORTCUT, I(2));
+    /* KiTTY: what the last two choices mean - a request is an escape
+     * sequence, any output can carry one */
+    ctrl_text(s, KT_TRANSFERS_PERM_NOTE, HELPCTX(kitty_transfers_kitten));
     ctrl_checkbox(s, KT_TRANSFERS_ALWAYS_ASK_DESTINATION, NO_SHORTCUT,
                   HELPCTX(kitty_transfers_kitten),
                   conf_checkbox_handler, I(CONF_xfer_ask_destination));
