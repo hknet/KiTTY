@@ -4232,8 +4232,8 @@ enum { SC_CTX_ALIST, SC_CTX_AKEY, SC_CTX_ASAVE, SC_CTX_ADEFAULT,
        SC_CTX_TNEW };
 enum { SC_SUBCLASS_ACTIONS = 7, SC_SUBCLASS_TEXTS = 8 };
 
-struct sc_text { char name[64]; char text[512]; int code; };
-#define SC_TEXTS_MAX 64                 /* AutoText rows the editor lists */
+/* One AutoText row: its key's name and its text as stored, both read whole */
+struct sc_text { char *name; char *text; int code; };
 
 struct sc_data {
     dlgparam *dlg;
@@ -4242,7 +4242,7 @@ struct sc_data {
     int asel;                       /* the selected action, -1 = none */
     int acode;                      /* the key in its capture field */
     int asort_col; bool asort_desc;
-    struct sc_text texts[SC_TEXTS_MAX]; int ntexts;
+    struct sc_text *texts; int ntexts;   /* sc_store: every remap of the list */
     int tsel;                       /* the selected AutoText row, -1 = none / New */
     int tcode;
     bool tediting;                  /* a row is selected, or New was pressed */
@@ -4428,28 +4428,49 @@ static void sc_save_action(struct sc_data *sc, int code)
 
 /* The entries of the [Shortcuts] list line, each with its own line: read
  * as InitShortcuts reads them, the text raw (the escapes as typed). */
+/* The rows live here, not in the box's own data (freed with the box, which
+ * would leave them behind): every read frees the rows of the last one. */
+static struct sc_text *sc_store = NULL;
+static size_t sc_nstore = 0, sc_storesize = 0;
+
 static void sc_read_texts(struct sc_data *sc)
 {
-    char list[4096], *p, *q;
+    char *list, *p, *q;
+    for (size_t i = 0; i < sc_nstore; i++) {
+        sfree(sc_store[i].name);
+        if (sc_store[i].text) {
+            smemclr(sc_store[i].text, strlen(sc_store[i].text));
+            sfree(sc_store[i].text);
+        }
+    }
+    sc_nstore = 0;
+    sc->texts = sc_store;
     sc->ntexts = 0;
-    if (!ReadParameterN(KI_SECTION_SHORTCUTS, KI_SC_LIST, list, sizeof(list)))
-        return;
+    list = ReadParameterDup(KI_SECTION_SHORTCUTS, KI_SC_LIST);
     p = list;
-    while (*p && sc->ntexts < SC_TEXTS_MAX) {
-        struct sc_text *t = &sc->texts[sc->ntexts];
+    while (*p) {
+        char *text;
         while (*p == ' ') p++;
         if (!*p) break;
         q = p;
         while (*q && *q != ' ') q++;
         if (*q) *q++ = '\0';
-        memset(t, 0, sizeof(*t));
-        snprintf(t->name, sizeof(t->name), "%s", p);
-        if (ReadParameterN(KI_SECTION_SHORTCUTS, t->name, t->text, sizeof(t->text))) {
-            t->code = (t->name[0] >= '0' && t->name[0] <= '9') ? atoi(t->name) : DefineShortcuts(t->name);
-            sc->ntexts++;
+        text = ReadParameterDup(KI_SECTION_SHORTCUTS, p);
+        if (text[0]) {
+            struct sc_text *t;
+            sgrowarray(sc_store, sc_storesize, sc_nstore);
+            t = &sc_store[sc_nstore++];
+            t->name = dupstr(p);
+            t->text = text;
+            t->code = (p[0] >= '0' && p[0] <= '9') ? atoi(p) : DefineShortcuts(t->name);
+        } else {
+            sfree(text);
         }
         p = q;
     }
+    sfree(list);
+    sc->texts = sc_store;
+    sc->ntexts = (int)sc_nstore;
 }
 
 /* The list line rewritten with one name taken out and one put in (either
@@ -4457,11 +4478,9 @@ static void sc_read_texts(struct sc_data *sc)
  * their own - stay where they were. */
 static void sc_write_list(const char *remove, const char *add)
 {
-    char list[4096], out[4096], *p, *q;
+    char *list = ReadParameterDup(KI_SECTION_SHORTCUTS, KI_SC_LIST), *p, *q;
+    strbuf *out = strbuf_new();
     bool present = false;
-    out[0] = '\0';
-    if (!ReadParameterN(KI_SECTION_SHORTCUTS, KI_SC_LIST, list, sizeof(list)))
-        list[0] = '\0';
     p = list;
     while (*p) {
         while (*p == ' ') p++;
@@ -4471,17 +4490,17 @@ static void sc_write_list(const char *remove, const char *add)
         if (*q) *q++ = '\0';
         if (remove && !strcmp(p, remove)) { p = q; continue; }
         if (add && !strcmp(p, add)) present = true;
-        if (strlen(out) + strlen(p) + 2 < sizeof(out)) {
-            if (out[0]) strcat(out, " ");
-            strcat(out, p);
-        }
+        if (out->len) put_byte(out, ' ');
+        put_dataz(out, p);
         p = q;
     }
-    if (add && !present && strlen(out) + strlen(add) + 2 < sizeof(out)) {
-        if (out[0]) strcat(out, " ");
-        strcat(out, add);
+    if (add && !present) {
+        if (out->len) put_byte(out, ' ');
+        put_dataz(out, add);
     }
-    writeINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, KI_SC_LIST, out);
+    writeINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, KI_SC_LIST, out->s);
+    strbuf_free(out);
+    sfree(list);
 }
 
 static int sc_cmp_text(const void *av, const void *bv)

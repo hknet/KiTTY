@@ -81,6 +81,7 @@
 #include "../kitty/kitty_startup.h"
 #include "../kitty/kitty_broadcast.h"
 #include "kitty_gui.h"
+#include "kitty_params.h"   /* kitty_antiidle_report_cut */
 #include "../kitty/kitty_bridge.h"
 #include "../kitty/kitty_common.h"
 #include "../kitty/kitty_url.h"
@@ -1639,6 +1640,10 @@ static void start_backend(WinGuiSeat *wgs)
 
     vt = backend_vt_from_conf(wgs->conf);
     kitty_wev_start(wgs, vt);   /* KiTTY: event 200 names this target */
+#ifdef MOD_PERSO
+    /* KiTTY: an antiidle= text too long for its buffer, on the record */
+    kitty_antiidle_report_cut(wgs->logctx);
+#endif
 
 #ifdef MOD_PORTKNOCKING
     /* KiTTY feature: knock the configured port sequence before connecting. */

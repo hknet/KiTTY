@@ -202,6 +202,8 @@ extern char InitialDirectory[4096] ;
 // Counter for sending the anti-idle string
 extern int AntiIdleSeconds ;   /* KiTTY: keepalive interval, in seconds */
 extern char AntiIdleStr[128] ;
+/* [KiTTY] antiidle= cut to AntiIdleStr: the line in this Event Log, once */
+void kitty_antiidle_report_cut( LogContext *logctx ) ;
 int ReadParameterN( const char * key, const char * name, char * value, size_t size ) ;
 /* The parameter whole (sfree it); "" when it is not set. */
 char * ReadParameterDup( const char * key, const char * name ) ;

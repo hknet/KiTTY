@@ -119,14 +119,10 @@ kitty/kitty_config_app.c | kbc_probe_enum() | cls | 256 | window class name from
 kitty/kitty_config_app.c | kbc_load_handler() | chunk | 4096 | fread chunk, size passed
 kitty/kitty_config_app.c | scb_panel_kitty_settings_leaves() | lines | 256 | label lines of the shared-position panel, snprintf to 256 each
 kitty/kitty_config_app.c | scb_panel_kitty_settings_leaves() | lines | 256 | label lines of the shell-integration state, filled by a function taking lines[5][256]
-kitty/kitty_config_app.c | struct sc_text | text | 512 | shortcut text from kitty.ini, ReadParameterN(sizeof)
 kitty/kitty_config_app.c | sc_collides() | msg | 256 | shortcut collision text, snprintf to sizeof
 kitty/kitty_config_app.c | sc_fill_list() | left | 512 | shortcut list column, size passed
 kitty/kitty_config_app.c | sc_fill_list() | right | 512 | shortcut list column, size passed
 kitty/kitty_config_app.c | sc_note() | line | 256 | user-command note, snprintf to sizeof
-kitty/kitty_config_app.c | sc_read_texts() | list | 4096 | shortcut list from kitty.ini, ReadParameterN(sizeof)
-kitty/kitty_config_app.c | sc_write_list() | list | 4096 | shortcut list from kitty.ini, ReadParameterN(sizeof)
-kitty/kitty_config_app.c | sc_write_list() | out | 4096 | rebuilt shortcut list, each strcat length-checked
 kitty/kitty_config_app.c | scb_panel_shortcut_editor() | note | 256 | user-command note, snprintf to sizeof
 kitty/kitty_config_app.c | scb_panel_kitty_settings() | buf | 4096 | kitty.ini values shown on the Storage panel (class name, file ending, salt), ReadParameterN(sizeof)
 kitty/kitty_config_app.c | scb_panel_kitty_settings() | line | 1400 | Storage panel line naming the store folder / kitty.ini / backup paths, snprintf to sizeof: a path over ~1300 characters shows cut (display only)
@@ -379,7 +375,6 @@ kitty/kitty_settings_load.c | ktx_load_items() | tmp | MAX_PATH | GetTempFileNam
 kitty/kitty_settings_load.c | ktx_decode_password() | raw | KITTY_PW_MAX + 1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
 
 kitty/kitty_shortcuts.c | InitShortcuts() | buffer | 4096 | shortcut value from kitty.ini, readINI / ReadParameterN(sizeof), then heap copy
-kitty/kitty_shortcuts.c | InitShortcuts() | list | 4096 | shortcut list from kitty.ini, ReadParameterN(sizeof)
 kitty/kitty_shortcuts.c | kitty_menu_show_shortcuts() | base | 256 | menu item text, strncpy sizeof-1
 kitty/kitty_shortcuts.c | kitty_menu_show_shortcuts() | label | 320 | menu item with key text, snprintf to sizeof
 kitty/kitty_shortcuts.c | kitty_menu_show_shortcuts() | old | 256 | menu item text, size passed

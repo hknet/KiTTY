@@ -230,7 +230,7 @@ struct TShortcuts {
 	} ;
 extern struct TShortcuts shortcuts_tab ;
 struct TShortcuts2 { int num ; char * st ; } ;
-extern struct TShortcuts2 shortcuts_tab2[512] ;
+extern struct TShortcuts2 *shortcuts_tab2 ;   /* NbShortCuts entries */
 extern int NbShortCuts ;
 int DefineShortcuts( char * buf ) ;
 void TranslateShortcuts( char * st ) ;

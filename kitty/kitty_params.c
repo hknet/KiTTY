@@ -417,6 +417,9 @@ int ImageSlideDelay = - 1 ;
  * made the ini value mean three times what it stated. */
 int AntiIdleSeconds = 180 ;
 char AntiIdleStr[128] = "" ;  // e.g. " \x08": type a space and erase it at once
+/* [KiTTY] antiidle= longer than AntiIdleStr holds: its length, reported once
+ * in the Event Log (kitty_antiidle_report_cut); 0 when it fitted */
+static size_t AntiIdleReadLen = 0 ;
 
 
 // Path to the WinSCP program
@@ -617,6 +620,16 @@ int ReadParameterN( const char * key, const char * name, char * value, size_t si
 	return set ;
 	}
 	
+/* The [KiTTY] antiidle= text was cut to AntiIdleStr's size: once per
+ * process, into the Event Log of the session starting (start_backend) */
+void kitty_antiidle_report_cut( LogContext *logctx ) {
+	static int done = 0 ;
+	if( !AntiIdleReadLen || done || !logctx ) return ;
+	done = 1 ;
+	logeventf( logctx, KT_ANTIIDLE_CUT_FMT, (unsigned)AntiIdleReadLen,
+	           (unsigned)( sizeof(AntiIdleStr) - 1 ) ) ;
+}
+
 // Delete a parameter (readonly=yes: nothing, KITTY_RO_REFUSED)
 int DelParameter( const char * key, const char * name ) {
 	char buffer[4096] ;
@@ -875,7 +888,17 @@ void LoadParameters( void ) {
 		kitty_hk00_set_pertype( atoi( buffer ) ) ;
 
 	/* The remaining keys have richer semantics and stay hand-written. */
-	if( ReadParameterN( INIT_SECTION, KI_ANTIIDLE, buffer, sizeof(buffer) ) ) { buffer[127]='\0'; strcpy( AntiIdleStr, buffer ) ; }
+	{
+		/* read whole, so a cut is known and can be reported */
+		char *ai = ReadParameterDup( INIT_SECTION, KI_ANTIIDLE ) ;
+		if( ai[0] ) {
+			size_t n = strlen( ai ) ;
+			AntiIdleReadLen = n >= sizeof(AntiIdleStr) ? n : 0 ;
+			snprintf( AntiIdleStr, sizeof(AntiIdleStr), "%s", ai ) ;
+			smemclr( ai, n ) ;
+		}
+		sfree( ai ) ;
+	}
 	if( ReadParameterN( INIT_SECTION, KI_ANTIIDLEDELAY, buffer, sizeof(buffer) ) ) {
 		/* Plain seconds, floored at 5 AND capped at a day. 0 or nonsense
 		 * leaves the default.

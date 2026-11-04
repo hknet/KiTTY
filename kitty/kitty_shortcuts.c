@@ -43,7 +43,10 @@ extern HWND MainHwnd ;                  /* kitty.c: the terminal window */
 /* The tables themselves (types in kitty.h). */
 struct TShortcuts shortcuts_tab ;
 int NbShortCuts = 0 ;
-struct TShortcuts2 shortcuts_tab2[512] ;
+/* The [Shortcuts] list's remapped keys: as many as the list names (it used
+ * to be 512 entries, filled with no bound) */
+struct TShortcuts2 *shortcuts_tab2 = NULL ;
+static size_t shortcuts_tab2_size = 0 ;
 
 // Shortcut handling
 #define SHIFTKEY 500
@@ -247,7 +250,7 @@ int ShortcutActionDefault( int i ) { return ( i >= 0 && i < ShortcutActionCount(
 
 // Init shortcuts map at startup
 void InitShortcuts( void ) {
-	char buffer[4096], list[4096], *pl ;
+	char buffer[4096], *list, *pl ;
 	int i, t=0 ;
 	/* An action's key: the kitty.ini value when there is one and it parses
 	 * (an empty value parses to 0 = no key), the default otherwise. */
@@ -259,26 +262,33 @@ void InitShortcuts( void ) {
 
 	if( NbShortCuts>0 ) for( i=0 ; i<NbShortCuts ; i++ ) { if( shortcuts_tab2[i].st!=NULL ) { free(shortcuts_tab2[i].st) ; } }
 	NbShortCuts=0 ;
-	if( ReadParameterN( KI_SECTION_SHORTCUTS, KI_SC_LIST, list, sizeof(list) ) ) {
+	/* The list and each key's text read whole (a list is never read into
+	 * a fixed buffer: ReadParameterN cut it at 4095 characters) */
+	list = ReadParameterDup( KI_SECTION_SHORTCUTS, KI_SC_LIST ) ;
+	if( list[0] ) {
 		pl=list ;
 		while( strlen(pl) > 0 ) {
 			i=0;
 			while( (i<strlen(pl))&&(pl[i]!=' ') ) { i++ ; }
 			if( pl[i]==' ' ) { pl[i]='\0' ; t=1 ; }
-			if( strlen(pl)>0 )
-			if( ReadParameterN( KI_SECTION_SHORTCUTS, pl, buffer, sizeof(buffer) ) ) {
-				if( (pl[0]<'0')||(pl[0]>'9') ) {
-					shortcuts_tab2[NbShortCuts].num = DefineShortcuts( pl );
-				} else {
-					shortcuts_tab2[NbShortCuts].num = atoi(pl) ;
-				}
-				TranslateShortcuts( buffer ) ;
-				/* The text a key types can hold a password: the trace gives its length only */
-				if( debug_flag ) { debug_logevent( "Remap key %s to a text of %u characters", pl, (unsigned)strlen(buffer) ) ; }
+			if( strlen(pl)>0 ) {
+				char *text = ReadParameterDup( KI_SECTION_SHORTCUTS, pl ) ;
+				if( text[0] ) {
+					sgrowarray( shortcuts_tab2, shortcuts_tab2_size, (size_t)NbShortCuts ) ;
+					if( (pl[0]<'0')||(pl[0]>'9') ) {
+						shortcuts_tab2[NbShortCuts].num = DefineShortcuts( pl );
+					} else {
+						shortcuts_tab2[NbShortCuts].num = atoi(pl) ;
+					}
+					TranslateShortcuts( text ) ;
+					/* The text a key types can hold a password: the trace gives its length only */
+					if( debug_flag ) { debug_logevent( "Remap key %s to a text of %u characters", pl, (unsigned)strlen(text) ) ; }
 
-				shortcuts_tab2[NbShortCuts].st=(char*)malloc( strlen(buffer)+1 ) ;
-				strcpy( shortcuts_tab2[NbShortCuts].st, buffer ) ;
-				NbShortCuts++;
+					shortcuts_tab2[NbShortCuts].st=(char*)malloc( strlen(text)+1 ) ;
+					strcpy( shortcuts_tab2[NbShortCuts].st, text ) ;
+					NbShortCuts++;
+				}
+				sfree( text ) ;
 			}
 			if( t==1 ) { pl[i]=' ' ; t = 0 ; pl=pl+i+1 ; }
 			else pl=pl+i ;
@@ -286,6 +296,7 @@ void InitShortcuts( void ) {
 			while( pl[0]==' ' ) pl++ ;
 		}
 	}
+	sfree( list ) ;
 }
 
 /* Menu text for a shortcut code: the inverse of DefineShortcuts, for the keys

@@ -186,6 +186,9 @@
 #define KT_SCRIPTING_USE_CONDITIONS_FROM_FILE        "Use conditions from file"
 
 /* Session/Broadcast */
+/* the Event Log, once: [KiTTY] antiidle= longer than it may be. %u = its
+ * length, %u = the characters kept */
+#define KT_ANTIIDLE_CUT_FMT                          "kitty.ini antiidle= is %u characters long: only the first %u are sent"
 #define KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS  "Options controlling broadcasts between KiTTY++ windows"
 /* the sender's Event Log: a window that did not take a broadcast. %s =
  * its title, %lu its process id, %d the seconds waited */
