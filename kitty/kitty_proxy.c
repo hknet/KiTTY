@@ -12,6 +12,7 @@
  */
 #include "putty.h"
 #include "kitty.h"
+#include "kitty_atomicfile.h"   /* kitty_write_file_whole: whole or not at all */
 #include "kitty_tools.h"
 #include "kitty_registry.h"
 #include "kitty_proxy.h"
@@ -610,13 +611,17 @@ int kitty_export_proxies_to_dir( const char *dir, int *failOut ) {
 		int pwlocked = 0, pwskipped = 0 ;
 		char *pwblob = kitty_secret_wrap_export( pxpw, KSEC_EXPORT_PROXY_PW, proxies[i].name, &pwlocked, &pwskipped ) ;
 		smemclr( pxpw, sizeof(pxpw) ) ;
-		FILE *fp = fopen( path, "w" ) ;
-		if( fp ) {
+		/* Built in memory, then written whole or not at all
+		 * (kitty_write_file_whole): a cut file lost the password and
+		 * counted as written. The lines end in CRLF, as the text-mode
+		 * file they replace did. */
+		strbuf *ps = strbuf_new_nm() ;
+		{
 			int dns = (conf_get_int(conf, CONF_proxy_dns) + 2) % 3 ;
 			int local = conf_get_bool(conf, CONF_even_proxy_localhost) ? 1 : 0 ;
 			/* each value escaped in full (up to three bytes per character) */
-			#define WPS(K,V) do { char *mv = mungestr_dup( (V) ) ; fprintf(fp, "%s\\%s\\\n", (K), mv) ; smemclr( mv, strlen(mv) ) ; sfree( mv ) ; } while(0)
-			#define WPD(K,D) fprintf(fp, "%s\\%d\\\n", (K), (D))
+			#define WPS(K,V) do { char *mv = mungestr_dup( (V) ) ; put_fmt(ps, "%s\\%s\\\r\n", (K), mv) ; smemclr( mv, strlen(mv) ) ; sfree( mv ) ; } while(0)
+			#define WPD(K,D) put_fmt(ps, "%s\\%d\\\r\n", (K), (D))
 			WPS( "ProxyExcludeList", conf_get_str(conf, CONF_proxy_exclude_list) ) ;
 			WPD( "ProxyDNS", dns ) ;
 			WPD( "ProxyLocalhost", local ) ;
@@ -632,8 +637,20 @@ int kitty_export_proxies_to_dir( const char *dir, int *failOut ) {
 				WPD( "ProxyHostIs", conf_get_int(conf, CONF_proxy_host_kind) ) ;
 			#undef WPS
 			#undef WPD
-			fclose( fp ) ; count++ ;
 		}
+		if( kitty_write_file_whole( path, ps->s, ps->len ) ) {
+			count++ ;
+		} else {
+			/* not written: listed with the skipped ones, the old file (if
+			 * any) untouched */
+			char *why = dupprintf( KT_PROXY_NOT_WRITTEN_FMT, win_strerror( (int)GetLastError() ) ) ;
+			g_px_skipped++ ;
+			if( failOut ) (*failOut)++ ;
+			if( !g_px_skip_lines ) g_px_skip_lines = strbuf_new() ;
+			put_fmt( g_px_skip_lines, KT_BUNDLE_PROXY_SKIPPED_FMT, proxies[i].name, why ) ;
+			sfree( why ) ;
+		}
+		strbuf_free( ps ) ;
 		if( pwblob ) { smemclr(pwblob,strlen(pwblob)) ; free(pwblob) ; }
 		if( pwlocked ) ksec_report_locked_save( KSEC_KEPT_EXPORT, path ) ;
 		sfree( path ) ;

@@ -47,7 +47,8 @@ int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD v
 void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR oldvalue, LPCTSTR value  ) ;
 
 // Export a whole registry key
-void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out, char * text  ) ;
+struct strbuf ;   /* QuerySubKey writes the .reg into one */
+void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, struct strbuf * out, char * text  ) ;
 
 // Delete a registry key value
 BOOL RegDelValue (HKEY hKeyRoot, LPCTSTR lpSubKey, LPCTSTR lpValue ) ;
@@ -133,7 +134,8 @@ void RemoveFileAssoc( void ) ;
 // Check that the KiTTY key exists, otherwise copy it from PuTTY
 void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) ;
 
-void InitRegistryAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename, char * text ) ;
+/* 1 when the .reg is written whole; 0 not (the reason in GetLastError) */
+int InitRegistryAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename, char * text ) ;
 
 // Set values in every session from the contents of a kitty.ses.updt file
 void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename ) ;

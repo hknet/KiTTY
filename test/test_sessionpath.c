@@ -81,6 +81,9 @@ void delete_handle_wait(HandleWait *hw)
 { unreachable("no event loop in this test"); }
 
 void old_keyfile_warning(void) {}
+/* the Event Log line of a launcher entry not updated (kitty_sessionrename.c):
+ * nothing to log to here */
+void debug_logevent(const char *fmt, ...) { (void)fmt; }
 const bool share_can_be_upstream = false;
 const bool share_can_be_downstream = false;
 

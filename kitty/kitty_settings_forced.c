@@ -18,6 +18,7 @@
 #include <string.h>
 #include "putty.h"
 #include "kitty.h"
+#include "kitty_atomicfile.h"   /* kitty_write_file_whole: whole or not at all */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
@@ -47,7 +48,8 @@
 static void ktx_write_line(const char *key, const char *val, void *ctx)
 {
     char *mv = ksf_munge(val ? val : "");
-    fprintf((FILE *)ctx, "%s\\%s\\\n", key, mv ? mv : "");
+    /* CRLF: the text-mode file this replaced wrote one */
+    put_fmt((strbuf *)ctx, "%s\\%s\\\r\n", key, mv ? mv : "");
     if (mv) { smemclr(mv, strlen(mv)); sfree(mv); }
 }
 
@@ -55,7 +57,7 @@ static void ktx_write_line(const char *key, const char *val, void *ctx)
 static void store_write_line(const char *key, const char *val, void *ctx)
 {
     char *mv = ksf_munge(val ? val : "");
-    fprintf((FILE *)ctx, "%s=%s\n", key, mv ? mv : "");
+    put_fmt((strbuf *)ctx, "%s=%s\n", key, mv ? mv : "");
     if (mv) { smemclr(mv, strlen(mv)); sfree(mv); }
 }
 
@@ -127,15 +129,16 @@ int save_open_settings_forced(char *filename, Conf *conf) {
     if (pwlocked)
         ksec_report_locked_save(KSEC_KEPT_EXPORT, filename);
 
-    if ((fp = fopen(filename, store_form ? "wb" : "w")) == NULL) {
+    /* built in memory, written whole or not at all: a failure left a cut
+     * file in place of the old one (kitty_write_file_whole keeps it) */
+    {
+        strbuf *sb = strbuf_new_nm();
+        ksf_list_foreach(items, store_form ? store_write_line : ktx_write_line, sb);
         ksf_list_free(items);
-        return 0;
+        ok = kitty_write_file_whole(filename, sb->s, sb->len);
+        err = ok ? 0 : GetLastError();
+        strbuf_free(sb);
     }
-    ksf_list_foreach(items, store_form ? store_write_line : ktx_write_line, fp);
-    ksf_list_free(items);
-    ok = !ferror(fp);
-    err = GetLastError();
-    if (fclose(fp) != 0 && ok) { ok = 0; err = GetLastError(); }
     if (!ok) SetLastError(err ? err : ERROR_WRITE_FAULT);
     return ok;
 }

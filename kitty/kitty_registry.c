@@ -9,6 +9,7 @@
  * and the file association, with their console-or-message-box reports.
  */
 #include <winsock2.h>   /* before kitty_registry.h's windows.h: putty.h pulls it in further down */
+#include "kitty_atomicfile.h"   /* kitty_write_file_whole: whole or not at all */
 #include "kitty_registry.h"
 
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
@@ -183,7 +184,7 @@ void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTST
 }
 	
 // Export a whole registry key
-void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out, char * text  ) { 
+void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, strbuf * out, char * text  ) { 
 	HKEY hKey ;
     TCHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
     DWORD    cbName;                   // size of name string 
@@ -227,9 +228,9 @@ void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out, char * text  )
 			if (retCode == ERROR_SUCCESS) {
 				buffer = (char*) malloc( strlen( TEXT(lpSubKey) ) + strlen( achKey ) + 100 ) ;
 				sprintf( buffer, "[HKEY_CURRENT_USER\\%s\\%s]", TEXT(lpSubKey), achKey ) ;
-				fprintf( fp_out, "\r\n%s\r\n", buffer ) ;
+				put_fmt( out, "\r\n%s\r\n", buffer ) ;
 				if( text!=NULL ) 
-					if( strlen( text ) > 0 ) fprintf( fp_out, "%s\r\n", text ) ;
+					if( strlen( text ) > 0 ) put_fmt( out, "%s\r\n", text ) ;
 				free( buffer );				
 				}
 			}
@@ -237,15 +238,17 @@ void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, FILE * fp_out, char * text  )
 	RegCloseKey( hKey ) ;
 	}
 
-void InitRegistryAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename, char * text ) {
-	FILE * fp;
-	if( (fp=fopen( filename, "wb" )) != NULL ) {
-		char * buf = dupprintf( "%s\\%s", lpSubKey, SubKeyName ) ;
-		fprintf( fp, "Windows Registry Editor Version 5.00\r\n" ) ;
-		QuerySubKey( hMainKey, (LPCTSTR)buf, fp, text ) ;
-		sfree( buf ) ;
-		fclose( fp ) ;
-		}
+/* 1 when the .reg is written whole; 0 not (the reason in GetLastError) */
+int InitRegistryAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename, char * text ) {
+	strbuf * sb = strbuf_new() ;
+	char * buf = dupprintf( "%s\\%s", lpSubKey, SubKeyName ) ;
+	int ok ;
+	put_fmt( sb, "Windows Registry Editor Version 5.00\r\n" ) ;
+	QuerySubKey( hMainKey, (LPCTSTR)buf, sb, text ) ;
+	sfree( buf ) ;
+	ok = kitty_write_file_whole( filename, sb->s, sb->len ) ;
+	strbuf_free( sb ) ;
+	return ok ;
 	}
 
 /* The file is read whole: a 4096-byte read used to put its NUL one byte past
@@ -261,10 +264,12 @@ void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char *
 		fclose( fp ) ;
 		str_rtrim( sb->s, "\n\r" ) ;
 		f = dupprintf( "%s.reg", filename ) ;
-		InitRegistryAllSessions( hMainKey, lpSubKey, SubKeyName, f, sb->s ) ;
+		/* the source goes only when its .reg is written: else the next
+		 * start tries again, nothing lost */
+		if( InitRegistryAllSessions( hMainKey, lpSubKey, SubKeyName, f, sb->s ) )
+			unlink(filename);
 		sfree( f ) ;
 		strbuf_free( sb ) ;
-		unlink(filename);
 		}
 	}
 	

@@ -11,6 +11,7 @@
 #include "putty.h"
 #include "storage.h"
 #include "kitty.h"
+#include "kitty_atomicfile.h"   /* kitty_write_file_whole: whole or not at all */
 #include "kitty_defs.h"
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h"
@@ -22,6 +23,7 @@
 #include "kitty_common.h"
 #include "kitty_text.h"
 #include "kitty_tools.h"
+#include "kitty_winutil.h"   /* debug_logevent: the Event Log line of a launcher entry not updated */
 
 bool kitty_session_exists_own(const char *name)
 {
@@ -281,9 +283,13 @@ static void rk_launcher_dir_walk(const char *dir, const char *from,
                 }
                 fclose(fp);
             }
-            if (hit && (fp = fopen(full, "wb")) != NULL) {
-                fprintf(fp, "%s\\%s\\", rk_launcher_label(to), to);
-                fclose(fp);
+            if (hit) {
+                /* whole or not at all: a cut entry pointed nowhere */
+                char *entry = dupprintf("%s\\%s\\", rk_launcher_label(to), to);
+                if (!kitty_write_file_whole(full, entry, strlen(entry)))
+                    debug_logevent(KT_SESSRENAME_LAUNCHER_NOT_WRITTEN_FMT, full,
+                                   win_strerror((int)GetLastError()));
+                sfree(entry);
             }
         }
         sfree(full);

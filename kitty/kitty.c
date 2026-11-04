@@ -30,6 +30,7 @@
 
 // Windows-specific includes (windows.h must come first)
 #include <windows.h>
+#include "kitty_atomicfile.h"   /* kitty_write_file_whole: whole or not at all */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include <psapi.h>
 #include <iphlpapi.h>
@@ -646,18 +647,32 @@ char * GetHelpMessage(void) {
 #include "kitty_ini.h"
 #include "kitty_store_acl.h"   /* a new kitty.ini of the folder store: owner-only rights */
 void CreateIniFile( const char * filename ) {
-	FILE *fp;
+	int made = 0 ;
+	strbuf *sb ;
+	const char *c ;
 	if( GetReadOnlyFlag() ) return ;   /* readonly=yes: the store is not written */
-	if( IniFileFlag == SAVEMODE_DIR ) kitty_store_acl_new_file( filename ) ;
-	if( (fp=fopen(filename,"w")) != NULL ) {
-		if( IniFileFlag == SAVEMODE_DIR ) {
-			int p = poss( ";savemode=registry", default_init_file_content );
+	/* the folder store's new file gets owner-only rights first: the whole
+	 * write below keeps the rights of the file it replaces */
+	if( IniFileFlag == SAVEMODE_DIR ) made = kitty_store_acl_new_file( filename ) ;
+	if( IniFileFlag == SAVEMODE_DIR ) {
+		int p = poss( ";savemode=registry", default_init_file_content );
+		if( p > 0 ) {
 			del( default_init_file_content, p, 18 );
 			insert( default_init_file_content, "savemode=dir", p );
 		}
-		fputs(default_init_file_content,fp);
-		fclose(fp);
 	}
+	/* CRLF line ends, as the text-mode file this replaces had */
+	sb = strbuf_new() ;
+	for( c = default_init_file_content ; *c ; c++ ) {
+		if( *c == '\n' && ( c == default_init_file_content || c[-1] != '\r' ) ) put_byte( sb, '\r' ) ;
+		put_byte( sb, *c ) ;
+	}
+	if( !kitty_write_file_whole( filename, sb->s, sb->len ) && made ) {
+		/* the empty file made for its rights goes: the caller sees no
+		 * kitty.ini and reports it (KT_MAIN_INI_CREATE_FAILED) */
+		DeleteFileA( filename ) ;
+	}
+	strbuf_free( sb ) ;
 }
 
 #ifdef MOD_PERSO

@@ -32,6 +32,7 @@
 
 #include "putty.h"
 #include "kitty.h"
+#include "kitty_atomicfile.h"   /* kitty_write_file_whole: whole or not at all */
 #include "kitty_params.h"
 #include "kitty_win.h"
 #include "kitty_winutil.h"
@@ -125,13 +126,10 @@ static int ksm_write_text(const char *dir, const char *name, const char *val)
 {
     char *m = ksf_munge(name);
     char *path = dupprintf("%s\\%s", dir, m);
-    FILE *fp = fopen(path, "wb");
-    int ok = 0;
-    if (fp) {
-        fputs(val ? val : "", fp);
-        fputc('\n', fp);
-        ok = (fclose(fp) == 0);
-    }
+    char *body = dupcat(val ? val : "", "\n");
+    int ok = kitty_write_file_whole(path, body, strlen(body));   /* whole or not at all */
+    smemclr(body, strlen(body));
+    sfree(body);
     sfree(path);
     sfree(m);
     return ok;

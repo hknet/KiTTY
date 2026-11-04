@@ -3276,6 +3276,12 @@
         "computer is lost, ONLY the printed secret opens " \
         "this key. Store the printout. Continue?"
 
+/* a named proxy not written into an export folder: the reason in the
+ * skipped list (KT_BUNDLE_PROXY_SKIPPED_FMT), %s = Windows' reason */
+#define KT_PROXY_NOT_WRITTEN_FMT                     "the file could not be written (%s)"
+/* the Event Log: a launcher entry not updated after a session rename.
+ * %s = the entry's file, %s = Windows' reason */
+#define KT_SESSRENAME_LAUNCHER_NOT_WRITTEN_FMT        "Launcher entry %s not updated after the rename: %s"
 /* kageant: the key list window - cells, columns, buttons (windows/pageant.c) */
 #define KT_KAKEYS_COL_ALGORITHM                      "Algorithm"
 #define KT_KAKEYS_COL_BITS                           "Bits"
