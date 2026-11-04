@@ -13,6 +13,7 @@
 #include "network.h"
 #include "proxy.h"
 #include "kitty/kitty_winevent.h"   /* KiTTY: proxy event records */
+#include "kitty/kitty_knock.h"      /* KiTTY: kitty_proxy_applies */
 
 #define do_proxy_dns(conf) \
     (conf_get_int(conf, CONF_proxy_dns) == FORCE_ON || \
@@ -396,6 +397,15 @@ static char *dns_log_msg(const char *host, int addressfamily,
                      (addressfamily == ADDRTYPE_IPV4 ? " (IPv4)" :
                       addressfamily == ADDRTYPE_IPV6 ? " (IPv6)" :
                       ""), reason);
+}
+
+/* KiTTY: whether a connection to host:port goes through the configured
+ * proxy - port knocking takes the connection's route (kitty/kitty_knock.c).
+ * By name, as name_lookup decides before an address exists. */
+bool kitty_proxy_applies(const char *host, int port, Conf *conf)
+{
+    return conf_get_int(conf, CONF_proxy_type) != PROXY_NONE &&
+           proxy_for_destination(NULL, host, port, conf);
 }
 
 SockAddr *name_lookup(const char *host, int port, char **canonicalname,

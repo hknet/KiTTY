@@ -382,9 +382,6 @@ kitty/kitty_shortcuts.c | kitty_menu_show_shortcuts() | old | 256 | menu item te
 kitty/kitty_specialmenu.c | ReadSpecialMenu() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
 kitty/kitty_specialmenu.c | ReadSpecialMenu() | lpData | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
 
-kitty/kitty_ssh.c | vprint() | buf | 1024 | port-knocking debug line, vsnprintf to sizeof
-kitty/kitty_ssh.c | ManagePortKnocking() | portstr | 256 | port-knock sequence token, length clamped
-kitty/kitty_ssh.c | ManagePortKnocking() | protostr | 256 | port-knock protocol token, length clamped
 
 kitty/kitty_startup.c | MigratePuttyIni() | err | 256 | FormatMessage text, size passed
 kitty/kitty_startup.c | ConsolidateKittyIniLocked() | tbuf | MAX_PATH | GetTempFileNameA output (MAX_PATH by the API) in the folder of the kitty.ini; a longer folder fails the call
@@ -778,8 +775,8 @@ windows/window.c | kitty_open_cfgpanel_window_args() | exe | MAX_PATH | own exe 
 windows/window.c | far2l_key_message() | kb | 256 | GetKeyboardState/ToUnicode key-state array, 256 entries defined by the API
 windows/window.c | win_seat_notify_session_started() | nb | 512 | update notice text from kitty_update_notice, size passed
 windows/window.c | win_seat_notify_session_started() | wnb | 512 | wide copy of the update notice, MultiByteToWideChar(lenof); on failure the narrow text is used
-windows/window.c | start_backend() | wp | 256 | workplace proxy name from kitty_workplace_query (the shared-memory record holds proxy[256]; arming refuses a longer name)
-windows/window.c | start_backend() | tnf | 256 | test-build environment switch KITTY_TEST_NONFATAL, size passed
+windows/window.c | start_backend_connect() | wp | 256 | workplace proxy name from kitty_workplace_query (the shared-memory record holds proxy[256]; arming refuses a longer name)
+windows/window.c | start_backend_connect() | tnf | 256 | test-build environment switch KITTY_TEST_NONFATAL, size passed
 windows/window.c | WinMain() | label | 256 | menu label with shortcut key, size passed
 windows/window.c | WinMain() | label | 256 | menu label with shortcut key, size passed
 windows/window.c | win_seat_connection_fatal() | wp | 256 | workplace proxy name from kitty_workplace_query (the shared-memory record holds proxy[256]; arming refuses a longer name)

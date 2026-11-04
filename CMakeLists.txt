@@ -95,7 +95,9 @@ add_library(network STATIC
   proxy/telnet.c
   proxy/newmain.c
   proxy/local.c
-  proxy/interactor.c)
+  proxy/interactor.c
+  kitty/kitty_knock.c          # KiTTY: port knocking, kitty.exe and the tools
+  kitty/kitty_knockparse.c)    # KiTTY: the knock sequence, read and checked
 
 add_library(keygen STATIC
   import.c)
@@ -347,6 +349,14 @@ add_executable(test_certinfo
   sshpubk.c)
 target_link_libraries(test_certinfo crypto utils ${platform_libraries})
 
+# KiTTY: unit test for the port-knocking sequence (kitty/kitty_knockparse.c,
+# in the network library): the entry forms, the separators, the port range,
+# the pause limit, the entry shown when one is not valid.
+add_executable(test_knock
+  test/test_knock.c
+  kitty/kitty_knockparse.c)
+target_link_libraries(test_knock utils ${platform_libraries})
+
 # KiTTY: unit test for the environment a connection sends
 # (kitty/kitty_termenv.c, in utils for ssh/mainchan.c and telnet.c): the
 # session's variables merged with the COLORTERM / TERM_PROGRAM defaults.
@@ -401,6 +411,7 @@ target_link_libraries(bidi_test guiterminal utils ${platform_libraries})
 
 add_executable(plink
   ${platform}/plink.c
+  kitty/kitty_knock_cli.c      # KiTTY: knocking before the connect
   stubs/no-lineedit.c)
 # Note: if we ever port Plink to a platform where we can't implement a
 # serial backend, this be_list command will need to become platform-
@@ -415,7 +426,8 @@ target_link_libraries(plink
 installed_program(plink)
 
 add_executable(pscp
-  pscp.c)
+  pscp.c
+  kitty/kitty_knock_cli.c)     # KiTTY: knocking before the connect
 be_list(pscp PSCP SSH)
 target_link_libraries(pscp
   sftpclient eventloop console sshclient settings network crypto utils
@@ -423,7 +435,8 @@ target_link_libraries(pscp
 installed_program(pscp)
 
 add_executable(psftp
-  psftp.c)
+  psftp.c
+  kitty/kitty_knock_cli.c)     # KiTTY: knocking before the connect
 be_list(psftp PSFTP SSH)
 target_link_libraries(psftp
   sftpclient eventloop console sshclient settings network crypto utils

@@ -27,7 +27,6 @@
 #include "kitty_gui.h"
 #include "kitty_image.h"
 #include "kitty_tools.h"
-#include "kitty_ssh.h"
 #include "kitty_bridge.h"
 #include "kitty_exportbundle.h"
 #endif

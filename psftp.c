@@ -14,6 +14,7 @@
 #include "kitty/kitty_sessionpath.h"   /* KiTTY: a session named by its folder path */
 #include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
 #include "kitty/kitty_winevent.h"   /* KiTTY: transfers in the Windows Event Log */
+#include "kitty/kitty_knock.h"      /* KiTTY: port knocking before the connect */
 #include "ssh.h"
 #include "ssh/sftp.h"
 
@@ -2668,6 +2669,8 @@ static void usage(void)
     printf("            use 'command' as local proxy\n");
     printf("  -preconnectcommand command\n");
     printf("            run 'command' before making network connection\n");
+    printf("  -knock sequence\n");
+    printf("            port knocking before the connection (2001,1:s,2002:udp)\n");
     printf("  -sshlog file\n");
     printf("  -sshrawlog file\n");
     printf("            log protocol details to a file\n");
@@ -2871,6 +2874,7 @@ static int psftp_connect(char *userhost, char *user, int portnumber)
     kitty_wev_target(conf_get_str(conf, CONF_host),
                      conf_get_int(conf, CONF_port),
                      backend_vt_from_proto(conf_get_int(conf, CONF_protocol))->id);
+    kitty_knock_run_cli(conf, psftp_logctx);   /* KiTTY: the knocks first */
     err = backend_init(backend_vt_from_proto(
                            conf_get_int(conf, CONF_protocol)),
                        psftp_seat, &backend, psftp_logctx, conf,

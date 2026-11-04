@@ -873,7 +873,6 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_notice.c
   ${KITTY_DIR}/kitty_hk00_ui.c  # KiTTY: the host key update's question and notice
   ${KITTY_DIR}/kitty_notes.c    # KiTTY: the application notification (uses the parameter store)
-  ${KITTY_DIR}/kitty_ssh.c
   ${KITTY_DIR}/kitty_store.c
   ${KITTY_DIR}/kitty_tools.c
   ${KITTY_DIR}/blocnote/notepad.c

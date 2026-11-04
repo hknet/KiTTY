@@ -14,6 +14,7 @@
 #include "../kitty/kitty_selfcheck.h"      /* KiTTY: refuse a file changed after release */
 #include "../kitty/kitty_termenv.h"        /* KiTTY: the refused-variables NOTE */
 #include "../kitty/kitty_console_store.h"  /* KiTTY: the folder store, KITTYPP_DIR */
+#include "../kitty/kitty_knock.h"          /* KiTTY: port knocking before the connect */
 #include "ssh.h"
 #include "storage.h"
 #include "tree234.h"
@@ -195,6 +196,8 @@ static void usage(void)
     printf("            use 'command' as local proxy\n");
     printf("  -preconnectcommand command\n");
     printf("            run 'command' before making network connection\n");
+    printf("  -knock sequence\n");
+    printf("            port knocking before the connection (2001,1:s,2002:udp)\n");
     printf("  -sercfg configuration-string (e.g. 19200,8,n,1,X)\n");
     printf("            Specify the serial configuration (serial only)\n");
     printf("The following options only apply to SSH connections:\n");
@@ -722,6 +725,7 @@ int main(int argc, char **argv)
         kitty_wev_main_seat(plink_seat);
         kitty_wev_target(conf_get_str(conf, CONF_host),
                          conf_get_int(conf, CONF_port), vt->id);
+        kitty_knock_run_cli(conf, logctx);   /* KiTTY: the knocks first */
         error = backend_init(vt, plink_seat, &backend, logctx, conf,
                              conf_get_str(conf, CONF_host),
                              conf_get_int(conf, CONF_port),

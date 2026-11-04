@@ -27,6 +27,7 @@
 #include "kitty/kitty_sessionpath.h"   /* KiTTY: a session named by its folder path */
 #include "kitty/kitty_text.h"   /* KiTTY: the agent texts name kageant (KT_AGENT_*, KT_CLI_USAGE_*) */
 #include "kitty/kitty_winevent.h"   /* KiTTY: the transfer in the Windows Event Log */
+#include "kitty/kitty_knock.h"      /* KiTTY: port knocking before the connect */
 
 static bool list = false;
 static bool statmode = false;   /* KiTTY: -stat, the check of Get File */
@@ -595,6 +596,7 @@ static void do_cmd(char *host, char *user, char *cmd)
     kitty_wev_target(conf_get_str(conf, CONF_host),
                      conf_get_int(conf, CONF_port),
                      backend_vt_from_proto(conf_get_int(conf, CONF_protocol))->id);
+    kitty_knock_run_cli(conf, logctx);   /* KiTTY: the knocks first */
     err = backend_init(backend_vt_from_proto(
                            conf_get_int(conf, CONF_protocol)),
                        pscp_seat, &backend, logctx, conf,
@@ -2488,6 +2490,8 @@ static void usage(void)
     printf("            use 'command' as local proxy\n");
     printf("  -preconnectcommand command\n");
     printf("            run 'command' before making network connection\n");
+    printf("  -knock sequence\n");
+    printf("            port knocking before the connection (2001,1:s,2002:udp)\n");
     printf("  -unsafe   allow server-side wildcards (DANGEROUS)\n");
     printf("  -sftp     force use of SFTP protocol\n");
     printf("  -scp      force use of SCP protocol\n");

@@ -240,6 +240,10 @@ struct WinGuiSeat {
      * connection, and the offer was made (once per window). */
     bool kitty_newkey_stored;
     bool kitty_offer_made;
+    /* KiTTY: the port-knocking sequence running before the connect
+     * (kitty/kitty_knock.c), NULL = none. Unconditional: one struct, one
+     * layout. */
+    struct KittyKnock *knock;
 };
 
 extern const LogPolicyVtable win_gui_logpolicy_vt; /* in dialog.c */

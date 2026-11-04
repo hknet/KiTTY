@@ -16,6 +16,7 @@
 #include "putty.h"
 #include "network.h"
 #include "../kitty/kitty_oldwin.h"  /* KiTTY: record a fallback we had to take */
+#include "../kitty/kitty_knock.h"   /* KiTTY: kitty_sk_addr_each */
 #include "kitty_perf.h"
 #include "tree234.h"
 #include "ssh.h"
@@ -612,6 +613,39 @@ static bool sk_nextaddr(SockAddr *addr, SockAddrStep *step)
     } else {
         return false;
     }
+}
+
+/*
+ * KiTTY: every address of a looked-up name, each as a socket address with
+ * port 0, for a caller that has to reach all of them (port knocking,
+ * kitty/kitty_knock.c). Returns how many there were.
+ */
+int kitty_sk_addr_each(SockAddr *addr, kitty_sk_addr_fn fn, void *ctx)
+{
+    SockAddrStep step;
+    int n = 0;
+
+    if (addr->superfamily != IP)
+        return 0;
+    START_STEP(addr, step);
+    do {
+#ifndef NO_IPV6
+        if (step.ai) {
+            fn(ctx, step.ai->ai_addr, (int)step.ai->ai_addrlen);
+            n++;
+            continue;
+        }
+#endif
+        if (step.curraddr < addr->naddresses) {
+            struct sockaddr_in a;
+            memset(&a, 0, sizeof(a));
+            a.sin_family = AF_INET;
+            a.sin_addr.s_addr = p_htonl(addr->addresses[step.curraddr]);
+            fn(ctx, &a, (int)sizeof(a));
+            n++;
+        }
+    } while (sk_nextaddr(addr, &step));
+    return n;
 }
 
 void sk_getaddr(SockAddr *addr, char *buf, int buflen)

@@ -948,7 +948,8 @@ void kitty_sync_transparency_menu(HMENU menu, Conf *conf, UINT id_up,
 /* Restore the normal icon after a reconnect (undo SetConnBreakIcon). */
 /* KiTTY-specific About dialog. */
 #ifdef MOD_PORTKNOCKING
-/* Port-knocking: knock the configured host:port sequence before connecting. */
+/* Port knocking before the connect (kitty/kitty_knock.c). */
+#include "../kitty/kitty_knock.h"
 #endif
 #ifdef MOD_PROXY
 /* Proxy selection: overlay a named saved proxy definition before connecting. */
@@ -1622,12 +1623,27 @@ static void kitty_wev_start(WinGuiSeat *wgs, const struct BackendVtable *vt)
 }
 #endif
 
+static void start_backend_connect(WinGuiSeat *wgs);
+
+#ifdef MOD_PORTKNOCKING
+/* KiTTY: the knock sequence is out - connect now */
+static void kitty_knock_done_gui(void *ctx)
+{
+    WinGuiSeat *wgs = (WinGuiSeat *)ctx;
+
+    wgs->knock = NULL;
+    start_backend_connect(wgs);
+}
+#endif
+
 static void start_backend(WinGuiSeat *wgs)
 {
-    const struct BackendVtable *vt;
-    char *error, *realhost;
-    int i;
-
+#ifdef MOD_PORTKNOCKING
+    /* KiTTY: Restart Session or a reconnect while a sequence runs - the
+     * running sequence connects when it is done */
+    if (wgs->knock)
+        return;
+#endif
     wgs->cmdline_get_passwd_state = cmdline_get_passwd_input_state_new;
 
 #ifdef MOD_RECONNECT
@@ -1638,6 +1654,35 @@ static void start_backend(WinGuiSeat *wgs)
     KillTimer(wgs->term_hwnd, TIMER_RECONNECT_WAIT);
 #endif
 
+#ifdef MOD_PORTKNOCKING
+    /*
+     * KiTTY feature: port knocking. The sequence runs from the event loop,
+     * so a pause leaves the window working, along the route the connection
+     * is about to take: the proxy override is applied to a throwaway copy
+     * here exactly as below. The backend starts from the done callback.
+     */
+    if (conf_get_str(wgs->conf, CONF_portknockingoptions)[0]) {
+        Conf *kc = conf_copy(wgs->conf);
+#ifdef MOD_PROXY
+        conf_set_int(kc, CONF_proxy_chain_max, GetProxyChainMax());
+        kitty_proxy_select(kc);
+#endif
+        wgs->knock = kitty_knock_start(kc, wgs->logctx,
+                                       kitty_knock_done_gui, wgs);
+        conf_free(kc);
+        if (wgs->knock)
+            return;
+    }
+#endif
+    start_backend_connect(wgs);
+}
+
+static void start_backend_connect(WinGuiSeat *wgs)
+{
+    const struct BackendVtable *vt;
+    char *error, *realhost;
+    int i;
+
     vt = backend_vt_from_conf(wgs->conf);
     kitty_wev_start(wgs, vt);   /* KiTTY: event 200 names this target */
 #ifdef MOD_PERSO
@@ -1645,10 +1690,6 @@ static void start_backend(WinGuiSeat *wgs)
     kitty_antiidle_report_cut(wgs->logctx);
 #endif
 
-#ifdef MOD_PORTKNOCKING
-    /* KiTTY feature: knock the configured port sequence before connecting. */
-    kitty_port_knock(wgs->conf);
-#endif
 #ifdef MOD_PROXY
     /*
      * KiTTY feature: apply the selected proxy override for THIS CONNECTION ONLY.
@@ -6507,6 +6548,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       }
 #endif
       case WM_DESTROY:
+#ifdef MOD_PORTKNOCKING
+        /* KiTTY: a running knock sequence must not connect a closed window */
+        kitty_knock_cancel(wgs->knock);
+        wgs->knock = NULL;
+#endif
 #ifdef MOD_PERSO
         /* KiTTY: remember this window's position (topology-keyed) for next time. */
         kitty_on_window_closing(wgs, hwnd);

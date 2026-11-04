@@ -81,6 +81,8 @@ use kscp:
 \c             use 'command' as local proxy
 \c   -preconnectcommand command
 \c             run 'command' before making network connection
+\c   -knock sequence
+\c             port knocking before the connection (2001,1:s,2002:udp)
 \c   -unsafe   allow server-side wildcards (DANGEROUS)
 \c   -sftp     force use of SFTP protocol
 \c   -scp      force use of SCP protocol

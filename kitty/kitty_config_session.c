@@ -7531,8 +7531,8 @@ void scb_panel_connection(struct controlbox *b, bool midsession, int protocol)
                          conf_editbox_handler, I(CONF_pre_connect_command), ED_STR);
 
 #ifdef MOD_PORTKNOCKING
-            /* KiTTY: port-knocking sequence. Backend = kitty_port_knock() /
-             * ManagePortKnocking(), fired from start_backend() before connect. */
+            /* KiTTY: port-knocking sequence. Sent by kitty/kitty_knock.c,
+             * started from start_backend() before the connect. */
             ctrl_editbox(s, KT_CONNECTION_PORT_KNOCKING_SEQUENCE, NO_SHORTCUT, 100,
                          HELPCTX(kitty_knocking), conf_editbox_handler,
                          I(CONF_portknockingoptions), ED_STR);

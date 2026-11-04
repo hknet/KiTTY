@@ -784,6 +784,13 @@ int cmdline_process_param(CmdlineArg *arg, CmdlineArg *nextarg,
         SAVEABLE(1);
         conf_set_str(conf, CONF_pre_connect_command, value);
     }
+    if (!strcmp(p, "-knock")) {
+        /* KiTTY: the port-knocking sequence (kitty/kitty_knock.c) */
+        RETURN(2);
+        UNAVAILABLE_IN(TOOLTYPE_NONNETWORK);
+        SAVEABLE(1);
+        conf_set_str(conf, CONF_portknockingoptions, value);
+    }
     if (!strcmp(p, "-hostkey")) {
         char *dup;
         RETURN(2);

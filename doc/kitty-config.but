@@ -1691,15 +1691,29 @@ the confirmation like any other helper program.
 
 A sequence of connection attempts that a firewall watches for, and
 opens the real port only after seeing it. KiTTY++ performs the sequence
-before connecting, so the session opens without a separate tool.
+before connecting, so the session opens without a separate tool. kscp,
+ksftp and klink knock the same way: KiTTY++ hands them the sequence with
+\c{-knock}.
 
-The field is a comma-separated list of \c{port:protocol} knocks.
-Protocols are \c{tcp} and \c{udp}, and \c{s} is a pause rather than a
-knock, so
+The field is a list of \c{port:protocol} knocks, separated by commas,
+spaces or semicolons. Ports are 1 to 65535. Protocols are \c{tcp} (the
+default) and \c{udp}. A pause is written \c{N:s}, in seconds (at most
+60), so
 
 \c 2001:tcp, 1:s, 2002:udp
 
 knocks 2001 over TCP, waits a second, then knocks 2002 over UDP.
+
+The knocks take the connection's route. Without a proxy every address of
+the host is knocked, IPv4 and IPv6. Through a proxy or an SSH jump host
+each TCP knock is a connection to the host's port through it, so the
+firewall sees the address the session connects from. A UDP knock cannot
+go through a proxy: such a sequence is not sent at all.
+
+An entry that is not valid stops the whole sequence before the first
+knock. Each knock, pause and failure is a line in the Terminal Window's
+Event Log. kscp, ksftp and klink also print the failures on standard
+error. The window keeps working during a pause.
 
 \H{kitty-cfg-comment} The Comment & Lock panel
 

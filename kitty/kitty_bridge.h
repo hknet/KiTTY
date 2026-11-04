@@ -40,7 +40,6 @@ int kitty_closegroup_request(HWND hwnd);
 int kitty_closegroup_poll(HWND hwnd, int *count);
 void kitty_closegroup_answer(int yes);
 void kitty_negative(HWND hwnd);
-void kitty_port_knock(Conf *conf);
 void kitty_print(HWND hwnd);
 void kitty_protect(HWND hwnd, TermWin *tw, Conf *conf);
 void kitty_proxy_select(Conf *conf);

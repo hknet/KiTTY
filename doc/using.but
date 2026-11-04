@@ -1296,6 +1296,13 @@ This option specifies an external command to run just before opening
 the main network connection. See \k{config-preconn-hook} for more
 details.
 
+\S2{using-cmdline-knock} \i\c{\-knock}: port knocking before the
+connection
+
+This option gives the port-knocking sequence sent before the network
+connection opens, in the form of the Connection panel's field
+(\k{kitty-cfg-knocking}), for example \c{-knock 2001,1:s,2002:udp}.
+
 \S2{using-cmdline-share-noshare} \i\c{\-share}, \i\c{\-noshare}:
 enable/disable connection sharing
 

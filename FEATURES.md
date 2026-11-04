@@ -824,7 +824,7 @@ A host certificate **without names** (signed without `ssh-keygen -n`) is valid f
 
 Port knocking lets you hide a server's SSH port behind a secret sequence of connection attempts, so the real service stays closed to anyone who doesn't know the pattern. KiTTY++ can send this knock sequence automatically just before it opens the actual connection, making it easy to reach servers that are otherwise locked down against attacks from the internet. You define the sequence as a comma-separated list, and KiTTY++ performs the knocks for you each time you connect.
 
-**How to enable:** Configuration > **Connection** panel, *Port knocking* group: define the sequence of host:port knocks sent before the real connection is opened.
+**How to enable:** Configuration > **Connection** panel, *Port knocking sequence*: the knocks sent before the real connection is opened. The knocks take the connection's route: every address of the host without a proxy, otherwise through the session's proxy or SSH jump host. kscp, ksftp and klink knock the same way (`-knock`). Each knock and each failure is a line in the Terminal Window's Event Log.
 
 (no screenshot)
 

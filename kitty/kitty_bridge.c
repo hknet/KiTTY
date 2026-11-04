@@ -40,7 +40,6 @@
 #include "kitty_gui.h"
 #include "kitty_image.h"
 #include "kitty_tools.h"
-#include "kitty_ssh.h"
 #include "kitty_bridge.h"
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
 #include "kitty_secretmask.h"   /* kitty_mask_line: no secret in a failure report */
@@ -1229,25 +1228,6 @@ void kitty_antiidle_tick(HWND hwnd)
     else if (AntiIdleStr[0] != '\0')
         SendAutoCommand(hwnd, AntiIdleStr);
 }
-
-#ifdef MOD_PORTKNOCKING
-/* KiTTY feature: port-knocking. Before the connection is opened, send the
- * configured knock sequence (CONF_portknockingoptions) to the target host.
- * ManagePortKnocking (kitty_ssh.c) opens a socket to each host:port[:proto]
- * entry in turn (with a small inter-knock delay), which is exactly what a
- * port-knock daemon listens for. Called from start_backend() before
- * backend_init(). No-global: takes the seat conf. */
-void kitty_port_knock(Conf *conf)
-{
-    const char *host = conf_get_str(conf, CONF_host);
-    const char *seq  = conf_get_str(conf, CONF_portknockingoptions);
-    if (seq == NULL || seq[0] == '\0')
-        return;
-    if (host == NULL || host[0] == '\0')
-        return;
-    ManagePortKnocking((char *)host, (char *)seq);
-}
-#endif
 
 #ifdef MOD_PROXY
 /* KiTTY feature: proxy selection. Before connecting, if the proxy-selector is
