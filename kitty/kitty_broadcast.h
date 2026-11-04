@@ -30,6 +30,11 @@ int SendCommandAllWindows( HWND hwnd, char * cmd ) ;
 // The send console's form: include_self=1 also reaches the terminal this
 // process owns (MainHwnd), which /command deliberately skips.
 int SendCommandAllWindowsEx( HWND hwnd, char * cmd, int include_self ) ;
+// How long a broadcast waits for one window before it goes on to the next
+#define KITTY_BROADCAST_TIMEOUT_MS 2000
+// The windows the last broadcast gave up on (no answer within the timeout,
+// or hung); each is named in the Event Log. -sendcmd exits 2 when not 0.
+int kitty_broadcast_skipped( void ) ;
 int ResizeWinList( HWND hwnd, int width, int height ) ;
 // How many KiTTY windows (terminals and configuration boxes) are open.
 int WindowsCount( HWND hwnd ) ;

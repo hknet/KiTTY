@@ -187,6 +187,9 @@
 
 /* Session/Broadcast */
 #define KT_BROADCAST_OPTIONS_CONTROLLING_BROADCASTS  "Options controlling broadcasts between KiTTY++ windows"
+/* the sender's Event Log: a window that did not take a broadcast. %s =
+ * its title, %lu its process id, %d the seconds waited */
+#define KT_BROADCAST_SKIPPED_FMT                     "Broadcast: window \"%s\" (process %lu) did not answer within %d s - skipped"
 #define KT_SCRIPTING_ACCEPT_BROADCASTS_FROM_OTHER_KITTY "Accept broadcasts from other KiTTY++ windows"
 #define KT_SCRIPTING_ACCEPT_BROADCAST_MESSAGES       "Accept broadcast messages for this session"
 #define KT_SCRIPTING_ANOTHER_KITTY_CAN_TYPE_INTO     "Another KiTTY++ can type into this session (/command)."

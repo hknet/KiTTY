@@ -403,6 +403,12 @@ nothing. \c{-sendcmdkey} applies to it as well. The same can be done
 from the configuration window: the send console on Application >
 KiTTY++ Settings > Automation > Broadcast.
 
+The windows get the line one after another. A window that does not
+answer within 2 seconds (hung, or held by a dialog) is skipped. The
+sender's Event Log records the window. The next windows still get the
+line.
+\c{-sendcmd} and \c{-sendcmdfile} then exit with code 2, else 0.
+
 \e{Why a broadcast can look like it does nothing}: THREE locks must
 all be open before any window types a line, and each exists so that no
 single mistake can reach a production session -

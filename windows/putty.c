@@ -571,7 +571,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 if (strlen(cmd) > 0)
                     SendCommandAllWindows(NULL, cmd);
                 sfree(cmd);
-                cleanup_exit(0);
+                /* KiTTY: 2 when a window did not take it (hung, or no
+                 * answer within the broadcast's timeout) */
+                cleanup_exit(kitty_broadcast_skipped() ? 2 : 0);
             } else if (!strcmp(p, "-sendcmdfile")) {
                 /*
                  * The file form of -sendcmd: every line of the file is one
@@ -585,6 +587,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                  * bytes (a BOM is skipped); CRLF and LF both end a line.
                  * -sendcmdkey applies as for -sendcmd. Then quit.
                  */
+                bool skipped_any = false;   /* KiTTY: exit 2 when a window did not take a line */
                 if (!arglist->args[arglistpos])
                     cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
                 {
@@ -622,6 +625,8 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                                     Sleep(autocommand_delay);
                                 first = false;
                                 SendCommandAllWindows(NULL, len ? line : "\\n");
+                                if (kitty_broadcast_skipped())
+                                    skipped_any = true;
                                 sfree(line);
                                 s = nl ? nl + 1 : end;
                             }
@@ -630,7 +635,7 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                     }
                     sfree(path);
                 }
-                cleanup_exit(0);
+                cleanup_exit(skipped_any ? 2 : 0);
             } else if (!strcmp(p, "-edit")) {
                 /* Open the KiTTY session-file editor on a file, then quit. */
                 if (!arglist->args[arglistpos])

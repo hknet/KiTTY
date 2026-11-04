@@ -58,6 +58,8 @@
 #include "kitty_int.h"   /* MainHwnd */
 // Count of the KiTTY windows currently open
 static int NbWindows = 0 ;
+// The windows the last broadcast gave up on (SendCommandAllWindowsEx)
+static int NbSkipped = 0 ;
 
 
 //extern const int Default_Port ;
@@ -496,9 +498,28 @@ static BOOL CALLBACK SendCommandProc( HWND hwnd, LPARAM lParam ) {
 			data.dwData = 2 ;
 			data.cbData = (DWORD)( glen + 1 + tlen + 1 ) ;
 			data.lpData = payload ;
-			SendMessage( hwnd, WM_COPYDATA, (WPARAM)(HWND)MainHwnd, (LPARAM) (LPVOID)&data ) ;
+			/* One window after the other: WM_COPYDATA only goes with a call
+			 * that waits. A window that does not answer (hung, or held by a
+			 * modal box) is given up after KITTY_BROADCAST_TIMEOUT_MS - a
+			 * hung one at once - and the next one still gets the text. */
+			{
+				DWORD_PTR res = 0 ;
+				if( SendMessageTimeout( hwnd, WM_COPYDATA, (WPARAM)(HWND)MainHwnd,
+				                        (LPARAM)(LPVOID)&data,
+				                        SMTO_NORMAL | SMTO_ABORTIFHUNG,
+				                        KITTY_BROADCAST_TIMEOUT_MS, &res ) ) {
+					NbWindows++ ;
+				} else {
+					char title[128] = "" ;
+					DWORD pid = 0 ;
+					GetWindowThreadProcessId( hwnd, &pid ) ;
+					GetWindowText( hwnd, title, sizeof(title) ) ;
+					debug_logevent( KT_BROADCAST_SKIPPED_FMT, title, (unsigned long)pid,
+					                KITTY_BROADCAST_TIMEOUT_MS / 1000 ) ;
+					NbSkipped++ ;
+				}
+			}
 			free( payload ) ;
-			NbWindows++ ;
 		}
 	}
 	return TRUE ;
@@ -507,6 +528,7 @@ static BOOL CALLBACK SendCommandProc( HWND hwnd, LPARAM lParam ) {
 int SendCommandAllWindowsEx( HWND hwnd, char * cmd, int include_self ) {
 	struct kitty_sendcmd_job job ;
 	NbWindows=0 ;
+	NbSkipped=0 ;
 	if( cmd==NULL ) return 0 ;
 	if( strlen(cmd) > 0 ) {
 		job.cmd = cmd ;
@@ -514,6 +536,10 @@ int SendCommandAllWindowsEx( HWND hwnd, char * cmd, int include_self ) {
 		EnumWindows( SendCommandProc, (LPARAM)&job ) ;
 	}
 	return NbWindows ;
+}
+
+int kitty_broadcast_skipped( void ) {
+	return NbSkipped ;
 }
 
 int SendCommandAllWindows( HWND hwnd, char * cmd ) {
