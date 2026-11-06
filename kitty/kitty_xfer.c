@@ -2461,13 +2461,19 @@ void kitty_xfer_wait_deletes( DWORD max_ms ) {
  * waits on. After a minute, or once the started WinSCP has ended, the pipe is
  * closed whatever happened. The copy of the password is wiped.
  *
+ * A WinSCP already running: the WinSCP started hands its whole command line
+ * to the running instance (WinSCP tracker 2265) and ends. The running one
+ * opens the pipe and takes the session as a tab. The pipe then also accepts
+ * a client whose program file is WinSCPPath (the same file by its volume
+ * serial number and file index, so a junction or subst path matches), and
+ * the end of the WinSCP started no longer closes it: the minute does. A
+ * running WinSCP of another program file is refused, and WinSCP then asks
+ * for the password. /newinstance in WinSCPOptions keeps the session in the
+ * WinSCP started, which reads the pipe itself.
+ *
  * The temporary file stays for:
  *   - a WinSCP before 6.0, or a file without a version resource (a .bat in
  *     WinSCPPath). Read by its file version, as the kscp check above.
- *   - a WinSCP already running. WinSCP may hand a session started from the
- *     command line to the running instance (WinSCP tracker 2265), which is
- *     another process and would be refused. The file keeps that login
- *     working.
  *   - a Windows without GetNamedPipeClientProcessId or without
  *     PIPE_REJECT_REMOTE_CLIENTS (XP): the reader cannot be checked.
  *   - a pipe that cannot be created.
@@ -2480,7 +2486,7 @@ void kitty_xfer_wait_deletes( DWORD max_ms ) {
 
 #define KX_PIPE_YES      0
 #define KX_PIPE_OLD      1   /* not WinSCP 6.0 or later by its file version */
-#define KX_PIPE_RUNNING  2   /* a WinSCP is running: tracker 2265 */
+#define KX_PIPE_RUNNING  2   /* a WinSCP is running: the pipe accepts it too */
 #define KX_PIPE_NONE     3   /* no check of the reader on this Windows */
 
 BOOLEAN NTAPI SystemFunction036( PVOID, ULONG ) ;   /* RtlGenRandom, advapi32 */
@@ -2503,9 +2509,11 @@ struct kx_pwpipe {
 struct kx_pwpipes {
 	int n ;
 	struct kx_pwpipe p[KX_PWFILES_MAX] ;
-	DWORD pid ;               /* the WinSCP started: the only reader */
+	DWORD pid ;               /* the WinSCP started: a reader */
 	HANDLE proc ;             /* that process, to end the pipes when it ends */
 	HANDLE stop ;             /* set by the watchdog at the time-out */
+	char *exe ;               /* a WinSCP was running: its program file (full,
+	                           * long path) is a reader too; NULL otherwise */
 } ;
 static struct kx_pwpipes kx_pp ;
 static int kx_pw_pipes_on = 0 ;   /* this start of WinSCP hands passwords over by pipe */
@@ -2551,6 +2559,75 @@ static int kx_winscp_running( const char *path ) {
 	}
 	CloseHandle( snap ) ;
 	return found ;
+}
+
+/* A test build with KITTY_QA_PIPE_TRACE=<file> appends what each pipe sees:
+ * every client with its process id, accepted or refused, and what it read.
+ * A normal build has none of it. */
+#ifdef KITTY_TEST_BUILD_LABEL
+static void kx_pipe_trace( const char *fmt, ... ) {
+	const char *path = getenv( "KITTY_QA_PIPE_TRACE" ) ;
+	FILE *f ;
+	va_list ap ;
+	if( !path || !*path || ( f = fopen( path, "a" ) ) == NULL ) return ;
+	fprintf( f, "%lu ", (unsigned long)GetTickCount() ) ;
+	va_start( ap, fmt ) ;
+	vfprintf( f, fmt, ap ) ;
+	va_end( ap ) ;
+	fputc( '\n', f ) ;
+	fclose( f ) ;
+}
+#define KX_PIPE_TRACE(...) kx_pipe_trace(__VA_ARGS__)
+#else
+#define KX_PIPE_TRACE(...) ((void)0)
+#endif
+
+/* The full form of a program path (sfree it), or NULL. */
+static char *kx_long_path( const char *path ) {
+	return kitty_full_path_dup( path ) ;
+}
+
+/* The identity of a file: its volume serial number and file index. The
+ * same file reached through a junction, a subst drive or an 8.3 name has
+ * the same identity under another path. 0 = not read. */
+static int kx_file_id( const char *path, BY_HANDLE_FILE_INFORMATION *fi ) {
+	HANDLE f = CreateFileA( path, FILE_READ_ATTRIBUTES,
+	                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+	                        NULL, OPEN_EXISTING, 0, NULL ) ;
+	int ok ;
+	if( f == INVALID_HANDLE_VALUE ) return 0 ;
+	ok = GetFileInformationByHandle( f, fi ) ;
+	CloseHandle( f ) ;
+	return ok ;
+}
+
+/* Process `pid` runs from program file `exe` (a kx_long_path): the same
+ * file, by its identity. Unknown counts as no. */
+static int kx_pid_runs( DWORD pid, const char *exe ) {
+	BY_HANDLE_FILE_INFORMATION a, b ;
+	HANDLE h ;
+	char *img ;
+	int same = 0, ida = 0, idb = 0 ;
+	if( !exe || !pid ) return 0 ;
+	if( ( h = OpenProcess( PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid ) ) == NULL ) {
+		KX_PIPE_TRACE( "pid=%lu not opened (error %lu)", (unsigned long)pid, (unsigned long)GetLastError() ) ;
+		return 0 ;
+	}
+	if( ( img = kitty_process_image_path_dup( h ) ) != NULL ) {
+		ida = kx_file_id( img, &a ) ;
+		idb = kx_file_id( exe, &b ) ;
+		same = ida && idb
+		       && a.dwVolumeSerialNumber == b.dwVolumeSerialNumber
+		       && a.nFileIndexHigh == b.nFileIndexHigh
+		       && a.nFileIndexLow == b.nFileIndexLow ;
+		KX_PIPE_TRACE( "pid=%lu runs %s (id %s), WinSCPPath %s (id %s): %s", (unsigned long)pid,
+		               img, ida ? "read" : "not read", exe, idb ? "read" : "not read",
+		               same ? "the same file" : "another file" ) ;
+		sfree( img ) ;
+	} else
+		KX_PIPE_TRACE( "pid=%lu program file not read (error %lu)", (unsigned long)pid, (unsigned long)GetLastError() ) ;
+	CloseHandle( h ) ;
+	return same ;
 }
 
 /* Pipe or file for this start of WinSCP (KX_PIPE_*). */
@@ -2676,12 +2753,17 @@ static DWORD WINAPI kx_pipe_serve_thread( LPVOID v ) {
 				if( !ok ) { DisconnectNamedPipe( pp->h ) ; continue ; }
 			} else break ;
 		}
-		/* the process started, nobody else */
+		/* the process started, or (a WinSCP was running) a process of the
+		 * same program file; nobody else */
 		cpid = 0 ;
-		if( !kx_pipe_client_pid( pp->h, &cpid ) || cpid != set->pid ) {
+		if( !kx_pipe_client_pid( pp->h, &cpid )
+		    || ( cpid != set->pid && !kx_pid_runs( cpid, set->exe ) ) ) {
+			KX_PIPE_TRACE( "%s client pid=%lu refused (started pid=%lu)", pp->name, (unsigned long)cpid, (unsigned long)set->pid ) ;
 			DisconnectNamedPipe( pp->h ) ;
 			continue ;
 		}
+		KX_PIPE_TRACE( "%s client pid=%lu accepted (%s)", pp->name, (unsigned long)cpid,
+		               cpid == set->pid ? "the WinSCP started" : "a running WinSCP of WinSCPPath" ) ;
 		memset( &ov, 0, sizeof(ov) ) ;
 		ResetEvent( ev ) ;
 		ov.hEvent = ev ;
@@ -2696,9 +2778,14 @@ static DWORD WINAPI kx_pipe_serve_thread( LPVOID v ) {
 		 * without reading (a probe of the path): then the next connection. A
 		 * client that neither reads nor closes is disconnected by the
 		 * watchdog at the time-out. */
-		if( ok && FlushFileBuffers( pp->h ) ) break ;
+		if( ok && FlushFileBuffers( pp->h ) ) {
+			KX_PIPE_TRACE( "%s client pid=%lu read the password (%lu bytes)", pp->name, (unsigned long)cpid, (unsigned long)got ) ;
+			break ;
+		}
+		KX_PIPE_TRACE( "%s client pid=%lu did not read the password", pp->name, (unsigned long)cpid ) ;
 		DisconnectNamedPipe( pp->h ) ;
 	}
+	KX_PIPE_TRACE( "%s closed%s", pp->name, WaitForSingleObject( set->stop, 0 ) == WAIT_OBJECT_0 ? " (time-out)" : "" ) ;
 	/* Closed here and now, not at the time-out: the client reads the end of
 	 * the stream and goes on to the next password. */
 	EnterCriticalSection( &pp->cs ) ;
@@ -2759,6 +2846,7 @@ static DWORD WINAPI kx_pipes_watch_thread( LPVOID v ) {
 		}
 		kx_pipes_close( set ) ;
 		if( set->proc ) CloseHandle( set->proc ) ;
+		sfree( set->exe ) ;
 		CloseHandle( set->stop ) ;
 		free( set ) ;
 	}
@@ -2770,7 +2858,7 @@ static DWORD WINAPI kx_pipes_watch_thread( LPVOID v ) {
  * started. 0 = not started, or started without a process id (the
  * ShellExecute fallback): the pipes close at once, nobody can be checked,
  * and WinSCP prompts for the password. */
-static void kx_pipes_release( DWORD pid ) {
+static void kx_pipes_release( DWORD pid, const char *running_exe ) {
 	struct kx_pwpipes *set ;
 	HANDLE t ;
 	int i ;
@@ -2785,9 +2873,14 @@ static void kx_pipes_release( DWORD pid ) {
 	*set = kx_pp ;
 	memset( &kx_pp, 0, sizeof(kx_pp) ) ;
 	set->pid = pid ;
-	set->proc = OpenProcess( SYNCHRONIZE, FALSE, pid ) ;
+	/* A WinSCP was running: the WinSCP started hands the session over and
+	 * ends, so its end does not close the pipes (the minute does), and the
+	 * running WinSCP of the same program file reads them. */
+	set->exe = running_exe ? kx_long_path( running_exe ) : NULL ;
+	set->proc = set->exe ? NULL : OpenProcess( SYNCHRONIZE, FALSE, pid ) ;
 	if( ( set->stop = CreateEvent( NULL, TRUE, FALSE, NULL ) ) == NULL ) {
 		if( set->proc ) CloseHandle( set->proc ) ;
+		sfree( set->exe ) ;
 		kx_pipes_close( set ) ;
 		free( set ) ;
 		return ;
@@ -5287,7 +5380,8 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 
 	/* WinSCP 6.0 and later: the passwords below through named pipes */
 	pipes_why = kx_pipes_decide( WinSCPPath ) ;
-	kx_pw_pipes_on = ( pipes_why == KX_PIPE_YES ) ;
+	kx_pw_pipes_on = ( pipes_why == KX_PIPE_YES || pipes_why == KX_PIPE_RUNNING ) ;
+	KX_PIPE_TRACE( "start: decision %d", pipes_why ) ;
 
 	cmd = strbuf_new_nm() ;                /* cleared when it goes: it may hold a password */
 	if( conf_get_int(conf,CONF_protocol) == PROT_SSH ) {
@@ -5499,14 +5593,14 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	 * always was (key files and the agent are untouched by this). */
 	if( pwfiles ) bcat( cmd, " /passwordsfromfiles" ) ;
 	debug_logevent_redacted2( "Start WinSCP", cmd->s, pw_at, pw_len, proxy_pw_at, proxy_pw_len ) ;
-	if( kx_pp.n ) debug_logevent( "%s", KT_XFER_WINSCP_PW_PIPE ) ;
+	if( kx_pp.n ) debug_logevent( "%s", pipes_why == KX_PIPE_RUNNING ? KT_XFER_WINSCP_PW_PIPE_RUNNING
+	                                                                 : KT_XFER_WINSCP_PW_PIPE ) ;
 	if( kx_pw.n ) debug_logevent( "%s", pipes_why == KX_PIPE_OLD ? KT_XFER_WINSCP_PW_FILE_OLD
-	                                  : pipes_why == KX_PIPE_RUNNING ? KT_XFER_WINSCP_PW_FILE_RUNNING
 	                                  : KT_XFER_WINSCP_PW_FILE_NOPIPE ) ;
 	{
-		/* The process of this start is the only reader of the pipes. A
-		 * start without a new process id (the ShellExecute fallback): the
-		 * pipes close at once. */
+		/* The process of this start reads the pipes; a WinSCP was running:
+		 * a process of the same program file too. A start without a new
+		 * process id (the ShellExecute fallback): the pipes close at once. */
 		DWORD before = kitty_last_started_pid(), pid = 0 ;
 #if KX_CHECK_SELF_UPDATING_TOOLS
 		(void)before ;
@@ -5517,7 +5611,8 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			pid = kitty_last_started_pid() ;
 #endif
 		strbuf_free( cmd ) ;
-		kx_pipes_release( pid ) ;
+		KX_PIPE_TRACE( "start: WinSCP pid=%lu, pipes %d, files %d", (unsigned long)pid, kx_pp.n, kx_pw.n ) ;
+		kx_pipes_release( pid, pipes_why == KX_PIPE_RUNNING ? WinSCPPath : NULL ) ;
 		kx_pwfiles_release( 0, pid ) ;   /* gone once this WinSCP has them */
 	}
 }

@@ -49,6 +49,7 @@ word | KT_PROXY_NAMED_PROXY_PRE_SETS | named | "named proxy" is the feature's na
 word | KT_WORKPLACE_PROXY_NEEDS_NAMED | named | "named proxy" is the feature's name, not the verb
 word | KT_XFER_WINSCP_PW_PIPE | named | "named pipe" is the Windows object, not the verb
 word | KT_XFER_WINSCP_PW_FILE_NOPIPE | named | "named pipe" is the Windows object, not the verb
+word | KT_XFER_WINSCP_PW_PIPE_RUNNING | named | "named pipe" is the Windows object, not the verb
 word | KT_WINFEAT_WINSCP_PIPE | named | "named pipe" is the Windows object, not the verb
 word | KT_KA_WMCD_OWN_FMT | named | "named pipe" is the Windows object, not the verb
 word | KT_KA_WMCD_OWN_REFUSED_FMT | named | "named pipe" is the Windows object, not the verb

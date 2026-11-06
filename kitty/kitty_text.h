@@ -1199,7 +1199,7 @@
 /* The Terminal Window's Event Log at Start WinSCP: how the passwords went over */
 #define KT_XFER_WINSCP_PW_PIPE                       "WinSCP: password handed over through a named pipe only the started WinSCP can read"
 #define KT_XFER_WINSCP_PW_FILE_OLD                   "WinSCP: password handed over through a temporary file (not WinSCP 6.0 or later by its file version) - WinSCP 6.0 or later takes it in memory through a pipe"
-#define KT_XFER_WINSCP_PW_FILE_RUNNING               "WinSCP: password handed over through a temporary file (a WinSCP is already running and can take over the session)"
+#define KT_XFER_WINSCP_PW_PIPE_RUNNING               "WinSCP: password handed over through a named pipe (a WinSCP is already running: the started WinSCP or a running WinSCP of the same program file can read it)"
 #define KT_XFER_WINSCP_PW_FILE_NOPIPE                "WinSCP: password handed over through a temporary file (no named pipe available)"
 #define KT_XFER_START_FILEZILLA_ANYWAY               "%sStart FileZilla anyway?"
 #define KT_FZ_SITE_NAME                              "KiTTY++ session"

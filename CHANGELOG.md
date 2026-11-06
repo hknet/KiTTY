@@ -172,8 +172,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - Start WinSCP and the launcher's Open in WinSCP: WinSCP 6.0 and later get
   the session, proxy and tunnel passwords through a named pipe instead of
   a temporary file. Only the WinSCP just started can read it, once. No file
-  with the password is written. An older WinSCP, or a start while a WinSCP
-  is already running, still gets the temporary file. `kitty.exe -winscp`
+  with the password is written. While a WinSCP is already running, the
+  pipe also opens for that WinSCP (the same program file), which takes the
+  session as a tab. An older WinSCP still gets the temporary file.
+  `kitty.exe -winscp`
   ends once WinSCP has read the password. Refs cyd01/KiTTY#419.
 - kageant command line as ssh-add: `-h <destination>` restricts the key
   files of the call (host, user@host, via>host, host:port, a pattern), the
