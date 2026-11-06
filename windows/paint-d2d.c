@@ -261,6 +261,8 @@ typedef struct D2DPainter {
     D3D11CreateDevice_t create_d3d;    /* bound once, used again to re-create */
     bool force_warp;                   /* the card failed too often: WARP only */
     bool dead;                         /* WARP failed too: no more frames */
+    char *adapter_note;                /* the adapter's Event Log line, until the
+                                        * window's log takes it (d2d_begin) */
     bool lost;                         /* no device: re-create at the next frame */
     int fail_run;                      /* failures in the current run */
     DWORD fail_tick;                   /* GetTickCount of the last failure */
@@ -642,6 +644,11 @@ static bool d2d_begin(KittyPainter *p, HDC given)
 {
     D2DPainter *d = (D2DPainter *)p;
     /* given: WM_PAINT's DC, not ours to use */
+    if (d->adapter_note && kitty_eventlog_ready()) {
+        do_eventlog(d->adapter_note);
+        sfree(d->adapter_note);
+        d->adapter_note = NULL;
+    }
     if (d->dead)
         return false;
     if (d->lost && !d->in_frame) {
@@ -1763,18 +1770,20 @@ static void release_device(D2DPainter *d)
     d->width = d->height = 0;
 }
 
-#ifdef KITTY_TEST_BUILD_LABEL
-/* Which adapter the device got. kind: "warp" when the hardware device
- * could not be made and WARP was asked for; "basic" when a hardware
- * device landed on the Microsoft Basic Render Driver (vendor 0x1414,
- * device 0x8c: no GPU driver, rasterised by WARP all the same); "software"
- * for any other adapter DXGI flags as software; else "hardware". */
-static void trace_adapter(D2DPainter *d, IDXGIAdapter *adapter)
+/* Which adapter the device got, as one line for the Terminal Window's Event
+ * Log (kept in adapter_note until the window's log exists: the painter is
+ * made before it). A test build also traces it. kind: "warp" when the
+ * hardware device could not be made and WARP was asked for; "basic" when a
+ * hardware device landed on the Microsoft Basic Render Driver (vendor
+ * 0x1414, device 0x8c: no GPU driver, rasterised by WARP all the same);
+ * "software" for any other adapter DXGI flags as software; else
+ * "hardware". */
+static void describe_adapter(D2DPainter *d, IDXGIAdapter *adapter)
 {
     DXGI_ADAPTER_DESC desc;
     IDXGIAdapter1 *a1 = NULL;
     UINT flags = 0;
-    char name[256];
+    char *name;
     const char *kind;
     if (FAILED(IDXGIAdapter_GetDesc(adapter, &desc)))
         return;
@@ -1785,9 +1794,8 @@ static void trace_adapter(D2DPainter *d, IDXGIAdapter *adapter)
             flags = d1.Flags;
         IDXGIAdapter1_Release(a1);
     }
-    if (!WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, name,
-                             sizeof(name), NULL, NULL))
-        strcpy(name, "?");
+    if ((name = kitty_wide_to_acp_dup(desc.Description)) == NULL)
+        name = dupstr("?");
     if (d->warp)
         kind = "warp";
     else if (desc.VendorId == 0x1414 && desc.DeviceId == 0x8c)
@@ -1798,8 +1806,17 @@ static void trace_adapter(D2DPainter *d, IDXGIAdapter *adapter)
         kind = "hardware";
     D2D_TRACE("adapter: %s vendor=0x%04x device=0x%04x kind=%s", name,
               (unsigned)desc.VendorId, (unsigned)desc.DeviceId, kind);
+    sfree(d->adapter_note);
+    d->adapter_note = dupprintf(strcmp(kind, "hardware") ? KT_D2D_ADAPTER_SOFT_EVENT
+                                                         : KT_D2D_ADAPTER_EVENT,
+                                name, (unsigned)desc.VendorId, (unsigned)desc.DeviceId);
+    sfree(name);
+    if (kitty_eventlog_ready()) {      /* a re-creation: the log is there */
+        do_eventlog(d->adapter_note);
+        sfree(d->adapter_note);
+        d->adapter_note = NULL;
+    }
 }
-#endif
 
 /* The device and everything made from it, at the window's current size:
  * the hardware device, or WARP when there is none or the card has failed
@@ -1844,9 +1861,7 @@ static int create_device(D2DPainter *d)
 
     if (FAILED(IDXGIDevice_GetAdapter(dxgidev, &adapter)))
         { failstep = 8; goto done; }
-#ifdef KITTY_TEST_BUILD_LABEL
-    trace_adapter(d, adapter);
-#endif
+    describe_adapter(d, adapter);
     if (FAILED(IDXGIAdapter_GetParent(adapter, &IID_IDXGIFactory2,
                                       (void **)&dxgifactory)))
         { failstep = 9; goto done; }
@@ -2008,6 +2023,8 @@ static void d2d_destroy(D2DPainter *d)
     int i;
     RemovePropA(d->hwnd, "KiTTY.renderer");
     KillTimer(d->hwnd, D2D_RETRY_TIMER_ID);
+    sfree(d->adapter_note);
+    d->adapter_note = NULL;
     badge_free(d);
     release_device(d);
     for (i = 0; i < d->nfb; i++)

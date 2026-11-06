@@ -719,7 +719,6 @@ windows/pageant.c | WinMain() | b | 2048 | upstream: own exe folder + kitty.exe,
 windows/pageant.c | WinMain() | oerr | 1024 | OpenSSH-agent integration error text, size passed
 
 windows/paint-d2d.c | d2d_text_a() | w | 512 | text run converted for Direct2D, MultiByteToWideChar(512)
-windows/paint-d2d.c | trace_adapter() | name | 256 | GPU adapter description for the test-build trace
 
 windows/plink.c | stdin_gotdata() | buf | 4096 | upstream: FormatMessage text of a stdin read error, nSize = lenof, last byte forced to NUL
 windows/plink.c | stdouterr_sent() | buf | 4096 | upstream: FormatMessage text of a stdout/stderr write error, nSize = lenof, last byte forced to NUL

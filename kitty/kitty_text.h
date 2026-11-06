@@ -1657,6 +1657,9 @@
 #define KT_D2D_BADGE                                 "D2D"   /* the renderer badge, paint-d2d.c */
 #define KT_D2D_FALLBACK_EVENT                        "Direct2D renderer: the graphics device failed %d times in a row " \
         "(last loss 0x%08lX); this window now draws with the software renderer (WARP)."   /* the Terminal Window's Event Log, paint-d2d.c */
+/* the Terminal Window's Event Log, paint-d2d.c: the graphics adapter the device runs on */
+#define KT_D2D_ADAPTER_EVENT                         "Direct2D renderer: graphics adapter %s (vendor 0x%04X, device 0x%04X)"
+#define KT_D2D_ADAPTER_SOFT_EVENT                    "Direct2D renderer: graphics adapter %s (vendor 0x%04X, device 0x%04X), software rendering"
 #define KT_KSET_WD_FRAMEPACE                         "Frame pacing:"
 #define KT_KSET_WD_FP_AUTO                           "Follow the display (auto)"
 #define KT_KSET_WD_FP_30                             "30fps"

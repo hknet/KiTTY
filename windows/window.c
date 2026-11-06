@@ -13986,6 +13986,9 @@ void do_eventlog(const char *st) {
     if (kitty_active_wgs && kitty_active_wgs->logctx)
         logevent(kitty_active_wgs->logctx, st);
 }
+int kitty_eventlog_ready(void) {
+    return kitty_active_wgs && kitty_active_wgs->logctx;
+}
 /* KiTTY: text (in the ANSI code page) typed into the terminal window hwnd as
  * a paste would be: through term_do_paste, so it is bracketed when the
  * program asked for bracketed paste and goes through the line discipline.

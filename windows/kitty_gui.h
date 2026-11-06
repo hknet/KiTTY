@@ -54,6 +54,7 @@ void kitty_pace_set_sizing(bool on);
 void ResetWindow(int reinit);
 void SendStrToTerminal(const char *str, const int len);
 void do_eventlog(const char *st);
+int kitty_eventlog_ready(void);   /* do_eventlog has a window's log to write to */
 int kitty_active_seat_workplace_proxied(void);
 int kitty_active_seat_root(void);   /* OSC 3008 root, ContextRootFrame on */
 /* OSC 3008: who the host's active context runs as changed (ctx_runs_as) -
