@@ -310,12 +310,38 @@ static void knock_proxied(KittyKnock *k, unsigned port)
                                              : KNOCK_PROXY_CAP_MS);
 }
 
+/*
+ * One knock through the proxy ends: its outcome from the proxy's answer,
+ * read by number where the proxy gave one (knock_classify). A refused
+ * connection at the far end is a knock that arrived. Without an answer, a
+ * reached proxy (or an open jump host channel) counts as sent: its request
+ * is out, and a knock port that drops it never answers.
+ */
 static void knock_proxy_end(KittyKnock *k)
 {
-    if (k->pconnected)
-        knock_log(k, false, KT_KNOCK_PROXY_SENT_FMT, k->pport, k->host);
-    else if (k->perror)
+    int kind = KNOCK_REPLY_NONE;
+    unsigned code = 0;
+    bool answered = k->psock && kitty_proxy_reply(k->psock, &kind, &code);
+
+    if (answered && k->perror) {
+        switch (knock_classify(kind, code)) {
+          case KNOCK_SENT:
+            knock_log(k, false, KT_KNOCK_PROXY_ANSWER_FMT, k->pport, k->host,
+                      k->perror);
+            break;
+          case KNOCK_FAILED:
+            knock_note(k, KT_KNOCK_PROXY_FAILED_FMT, k->pport, k->perror);
+            break;
+          default:
+            knock_note(k, KT_KNOCK_PROXY_UNKNOWN_FMT, k->pport, k->host,
+                       k->perror);
+            break;
+        }
+    } else if (k->perror)
+        /* no answer to read: the proxy not reached, its login refused */
         knock_note(k, KT_KNOCK_PROXY_FAILED_FMT, k->pport, k->perror);
+    else if (k->pconnected)
+        knock_log(k, false, KT_KNOCK_PROXY_SENT_FMT, k->pport, k->host);
     else
         knock_note(k, KT_KNOCK_PROXY_WAIT_FMT, k->pport,
                   (unsigned)(knock_ssh_proxy(k->conf) ? KNOCK_SSHPROXY_CAP_MS

@@ -77,6 +77,30 @@ KittyKnock *kitty_knock_start(Conf *conf, LogContext *logctx,
 /* Stops a running sequence; done is not called. NULL is allowed. */
 void kitty_knock_cancel(KittyKnock *k);
 
+/*
+ * The proxy's answer to a knock's connection, read by number - SOCKS4/5
+ * reply code, HTTP status, SSH channel-open failure reason (0 = the channel
+ * opened) - and what it says about the knock (kitty_knockparse.c):
+ * KNOCK_SENT when the far end got the SYN (a refused connection included,
+ * the usual answer of a knock port), KNOCK_FAILED when it provably did not,
+ * KNOCK_UNKNOWN when the answer leaves it open.
+ */
+typedef enum {
+    KNOCK_REPLY_NONE, KNOCK_REPLY_SOCKS4, KNOCK_REPLY_SOCKS5,
+    KNOCK_REPLY_HTTP, KNOCK_REPLY_SSH
+} KnockReplyKind;
+typedef enum { KNOCK_SENT, KNOCK_FAILED, KNOCK_UNKNOWN } KnockOutcome;
+KnockOutcome knock_classify(int kind, unsigned code);
+
+/* proxy/proxy.c: the answer of the proxy a Socket goes through, false when
+ * none came (yet); an SSH jump host's comes from proxy/sshproxy.c
+ * (proxy/nosshproxy.c: never). */
+bool kitty_proxy_reply(Socket *s, int *kind, unsigned *code);
+bool kitty_sshproxy_reply(Socket *s, int *kind, unsigned *code);
+/* ssh/ssh.c: the reason code of the last refused channel open. */
+void ssh_kitty_note_open_failure(Ssh *ssh, unsigned code);
+bool ssh_kitty_open_failure(Backend *be, unsigned *code);
+
 /* kitty_knock_cli.c: the command-line tools knock to the end, in line; a
  * refused sequence ends the tool with exit code 1. */
 void kitty_knock_run_cli(Conf *conf, LogContext *logctx);

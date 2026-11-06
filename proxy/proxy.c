@@ -408,6 +408,26 @@ bool kitty_proxy_applies(const char *host, int port, Conf *conf)
            proxy_for_destination(NULL, host, port, conf);
 }
 
+static const SocketVtable ProxySocket_sockvt;
+
+/* KiTTY: the proxy's answer to a connection made through it, by number,
+ * for port knocking (kitty/kitty_knock.c): false when none came yet. An
+ * SSH jump host answers through proxy/sshproxy.c. */
+bool kitty_proxy_reply(Socket *s, int *kind, unsigned *code)
+{
+    if (!s)
+        return false;
+    if (s->vt == &ProxySocket_sockvt) {
+        ProxySocket *ps = container_of(s, ProxySocket, sock);
+        if (ps->kitty_reply_kind == KNOCK_REPLY_NONE)
+            return false;
+        *kind = ps->kitty_reply_kind;
+        *code = ps->kitty_reply_code;
+        return true;
+    }
+    return kitty_sshproxy_reply(s, kind, code);
+}
+
 SockAddr *name_lookup(const char *host, int port, char **canonicalname,
                       Conf *conf, int addressfamily, LogContext *logctx,
                       const char *reason)
@@ -557,6 +577,8 @@ Socket *new_connection(SockAddr *addr, const char *hostname,
         ps->remote_port = port;
 
         ps->error = NULL;
+        ps->kitty_reply_kind = KNOCK_REPLY_NONE;   /* KiTTY */
+        ps->kitty_reply_code = 0;
         ps->pending_eof = false;
         ps->freeze = false;
 

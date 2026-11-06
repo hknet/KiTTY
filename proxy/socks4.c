@@ -7,6 +7,7 @@
 #include "proxy.h"
 #include "socks.h"
 #include "sshcr.h"
+#include "kitty/kitty_knock.h"   /* KiTTY: KNOCK_REPLY_SOCKS4 */
 
 typedef struct Socks4ProxyNegotiator {
     int crLine;
@@ -99,6 +100,10 @@ static void proxy_socks4_process_queue(ProxyNegotiator *pn)
                                   (int)data[0], SOCKS4_REPLY_VERSION);
             crStopV;
         }
+
+        /* KiTTY: the reply code, for port knocking (kitty_proxy_reply) */
+        pn->ps->kitty_reply_kind = KNOCK_REPLY_SOCKS4;
+        pn->ps->kitty_reply_code = data[1];
 
         switch (data[1]) {
           case SOCKS4_RESP_SUCCESS:

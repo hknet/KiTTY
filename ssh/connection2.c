@@ -11,6 +11,7 @@
 #include "channel.h"
 #include "sshcr.h"
 #include "connection2.h"
+#include "kitty/kitty_knock.h"   /* KiTTY: ssh_kitty_note_open_failure */
 
 static void ssh2_connection_free(PacketProtocolLayer *);
 static void ssh2_connection_process_queue(PacketProtocolLayer *);
@@ -93,7 +94,9 @@ static const ConnectionLayerVtable ssh2_connlayer_vtable = {
     .termination_pending = ssh2_termination_pending,
 };
 
-static char *ssh2_channel_open_failure_error_text(PktIn *pktin)
+/* KiTTY: *code_out gets the reason code as a number (port knocking) */
+static char *ssh2_channel_open_failure_error_text(PktIn *pktin,
+                                                  unsigned *code_out)
 {
     static const char *const reasons[] = {
         NULL,
@@ -108,6 +111,7 @@ static char *ssh2_channel_open_failure_error_text(PktIn *pktin)
     ptrlen reason;
 
     reason_code = get_uint32(pktin);
+    *code_out = reason_code;
     if (reason_code < lenof(reasons) && reasons[reason_code]) {
         reason_code_string = reasons[reason_code];
     } else {
@@ -545,7 +549,12 @@ static bool ssh2_connection_filter_queue(struct ssh2_connection_state *s)
               case SSH2_MSG_CHANNEL_OPEN_FAILURE: {
                 assert(c->halfopen);
 
-                char *err = ssh2_channel_open_failure_error_text(pktin);
+                unsigned kitty_code;
+                char *err = ssh2_channel_open_failure_error_text(
+                    pktin, &kitty_code);
+                /* KiTTY: the reason by number, for port knocking through
+                 * a jump host (kitty/kitty_knock.c) */
+                ssh_kitty_note_open_failure(s->ppl.ssh, kitty_code);
                 chan_open_failed(c->chan, err);
                 sfree(err);
 

@@ -1713,12 +1713,19 @@ session then connects without knocks. Behind a proxy, as in an office,
 the knocks are usually not needed.
 
 A sequence with an entry that is not valid or with more than 64 entries
-is refused: no knock is sent and no connection is made. A knock through a
-proxy or jump host that fails or gets no answer is also shown in the
-terminal, as is a sequence not sent because of a UDP knock: a connection
-that then fails may stem from it. Each knock, pause and failure is a line in the
-Terminal Window's Event Log. kscp, ksftp and klink also print the
-failures on standard error. The window keeps working during a pause.
+is refused: no knock is sent and no connection is made.
+
+Through a proxy or jump host a knock counts as sent when the proxy's
+answer shows that the far end got it - a refused connection included,
+the usual answer of a knock port. The line then carries the proxy's
+answer. A knock through a proxy or jump host that fails, that gets no
+answer or whose answer leaves open whether it arrived is also shown in
+the terminal, as is a sequence not sent because of a UDP knock: a
+connection that then fails may stem from it.
+
+Each knock, pause and failure is a line in the Terminal Window's Event
+Log. kscp, ksftp and klink also print the failures on standard error.
+The window keeps working during a pause.
 
 \H{kitty-cfg-comment} The Comment & Lock panel
 

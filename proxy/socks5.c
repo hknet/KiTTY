@@ -8,6 +8,7 @@
 #include "socks.h"
 #include "sshcr.h"
 #include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
+#include "kitty/kitty_knock.h"   /* KiTTY: KNOCK_REPLY_SOCKS5 */
 
 static inline const char *socks5_auth_name(unsigned char m)
 {
@@ -473,6 +474,10 @@ static void proxy_socks5_process_queue(ProxyNegotiator *pn)
                                   (int)data[0], SOCKS5_REPLY_VERSION);
             crStopV;
         }
+
+        /* KiTTY: the reply code, for port knocking (kitty_proxy_reply) */
+        pn->ps->kitty_reply_kind = KNOCK_REPLY_SOCKS5;
+        pn->ps->kitty_reply_code = data[1];
 
         if (data[1] != SOCKS5_RESP_SUCCESS) {
             pn->error = dupprintf("SOCKS proxy failed to connect, error %d "

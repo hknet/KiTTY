@@ -1,7 +1,8 @@
 /*
  * test_knock.c - the port-knocking sequence as read by
  * kitty/kitty_knockparse.c: the entry forms, the separators, the port range,
- * the pause and its limit, the entry shown when one is not valid.
+ * the pause and its limit, the entry shown when one is not valid; and what
+ * a proxy's answer says about a knock sent through it (knock_classify).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -122,6 +123,38 @@ int main(void)
         put_fmt(sb, "2000");
         check(sb->s, "!too many", NULL);
         strbuf_free(sb);
+    }
+
+    /* a proxy's answer: S = the far end got the SYN, F = it did not,
+     * U = the answer leaves it open */
+    {
+        static const struct { int kind; unsigned code; char want; } c[] = {
+            { KNOCK_REPLY_SOCKS5, 0, 'S' }, { KNOCK_REPLY_SOCKS5, 1, 'F' },
+            { KNOCK_REPLY_SOCKS5, 2, 'F' }, { KNOCK_REPLY_SOCKS5, 3, 'F' },
+            { KNOCK_REPLY_SOCKS5, 4, 'F' }, { KNOCK_REPLY_SOCKS5, 5, 'S' },
+            { KNOCK_REPLY_SOCKS5, 6, 'S' }, { KNOCK_REPLY_SOCKS5, 7, 'F' },
+            { KNOCK_REPLY_SOCKS5, 8, 'F' }, { KNOCK_REPLY_SOCKS5, 9, 'U' },
+            { KNOCK_REPLY_SOCKS4, 90, 'S' }, { KNOCK_REPLY_SOCKS4, 91, 'U' },
+            { KNOCK_REPLY_SOCKS4, 92, 'F' }, { KNOCK_REPLY_SOCKS4, 93, 'F' },
+            { KNOCK_REPLY_HTTP, 200, 'S' }, { KNOCK_REPLY_HTTP, 204, 'S' },
+            { KNOCK_REPLY_HTTP, 407, 'F' }, { KNOCK_REPLY_HTTP, 403, 'U' },
+            { KNOCK_REPLY_HTTP, 502, 'U' }, { KNOCK_REPLY_HTTP, 504, 'U' },
+            { KNOCK_REPLY_SSH, 0, 'S' }, { KNOCK_REPLY_SSH, 1, 'F' },
+            { KNOCK_REPLY_SSH, 2, 'S' }, { KNOCK_REPLY_SSH, 3, 'F' },
+            { KNOCK_REPLY_SSH, 4, 'F' }, { KNOCK_REPLY_SSH, 5, 'U' },
+            { KNOCK_REPLY_NONE, 0, 'U' },
+        };
+        size_t i;
+        for (i = 0; i < lenof(c); i++) {
+            KnockOutcome o = knock_classify(c[i].kind, c[i].code);
+            char got = o == KNOCK_SENT ? 'S' : o == KNOCK_FAILED ? 'F' : 'U';
+            if (got != c[i].want) {
+                char *what = dupprintf("kind %d code %u: got %c, expected %c",
+                                       c[i].kind, c[i].code, got, c[i].want);
+                fail("knock_classify", what);
+                sfree(what);
+            }
+        }
     }
 
     if (fails) {

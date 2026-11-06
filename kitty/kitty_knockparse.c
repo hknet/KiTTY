@@ -175,6 +175,58 @@ bool knock_parse(const char *text, KnockList *list)
     return true;
 }
 
+KnockOutcome knock_classify(int kind, unsigned code)
+{
+    switch (kind) {
+      case KNOCK_REPLY_SOCKS5:
+        switch (code) {
+          case 0:              /* succeeded */
+          case 5:              /* connection refused: the far end answered */
+          case 6:              /* TTL expired: the SYN was under way */
+            return KNOCK_SENT;
+          case 1:              /* general failure */
+          case 2:              /* not allowed by the proxy's ruleset */
+          case 3:              /* network unreachable */
+          case 4:              /* host unreachable */
+          case 7:              /* command not supported */
+          case 8:              /* address type not supported */
+            return KNOCK_FAILED;
+          default:
+            return KNOCK_UNKNOWN;
+        }
+      case KNOCK_REPLY_SOCKS4:
+        switch (code) {
+          case 90:             /* granted */
+            return KNOCK_SENT;
+          case 92:             /* the identd the proxy wants is not there */
+          case 93:             /* the identd answer does not match */
+            return KNOCK_FAILED;
+          default:             /* 91: refused by the far end or the proxy */
+            return KNOCK_UNKNOWN;
+        }
+      case KNOCK_REPLY_HTTP:
+        if (code >= 200 && code < 300)
+            return KNOCK_SENT;
+        if (code == 407)       /* the proxy wants a login: nothing forwarded */
+            return KNOCK_FAILED;
+        return KNOCK_UNKNOWN;  /* 502, 504 and the rest: either way */
+      case KNOCK_REPLY_SSH:
+        switch (code) {
+          case 0:              /* the channel opened */
+          case 2:              /* connect failed at the far end */
+            return KNOCK_SENT;
+          case 1:              /* administratively prohibited */
+          case 3:              /* unknown channel type */
+          case 4:              /* resource shortage */
+            return KNOCK_FAILED;
+          default:
+            return KNOCK_UNKNOWN;
+        }
+      default:
+        return KNOCK_UNKNOWN;
+    }
+}
+
 void knock_list_free(KnockList *list)
 {
     sfree(list->steps);

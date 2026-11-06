@@ -7,6 +7,7 @@
 #include "proxy.h"
 #include "sshcr.h"
 #include "kitty/kitty_pwmem.h"   /* the proxy password is wrapped in memory */
+#include "kitty/kitty_knock.h"   /* KiTTY: KNOCK_REPLY_HTTP */
 
 static bool read_line(bufchain *input, strbuf *output, bool is_header)
 {
@@ -538,6 +539,11 @@ static void proxy_http_process_queue(ProxyNegotiator *pn)
             if (n_scanned < 3) {
                 pn->error = dupstr("HTTP response was absent or malformed");
                 crStopV;
+            }
+            /* KiTTY: the status, for port knocking (kitty_proxy_reply) */
+            if (s->http_status >= 0) {
+                pn->ps->kitty_reply_kind = KNOCK_REPLY_HTTP;
+                pn->ps->kitty_reply_code = (unsigned)s->http_status;
             }
 
             if (maj_ver < 1 || (maj_ver == 1 && min_ver < 1)) {

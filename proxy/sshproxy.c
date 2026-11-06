@@ -16,6 +16,7 @@
 #include "kitty/kitty_sessionpath.h"   /* a jump host named by a session path */
 #include "kitty/kitty_jumphost.h"   /* -proxyhostkey, -proxy-accept-new */
 #include "kitty/kitty_text.h"       /* the jump host in a fatal error */
+#include "kitty/kitty_knock.h"      /* KiTTY: kitty_sshproxy_reply */
 
 const bool ssh_proxy_supported = true;
 
@@ -143,6 +144,28 @@ static const SocketVtable SshProxy_sock_vt = {
     .socket_error = sshproxy_socket_error,
     .endpoint_info = nullsock_endpoint_info,
 };
+
+/* KiTTY: the jump host's answer to the channel this connection opens, for
+ * port knocking (kitty_proxy_reply): 0 once it opened, else the reason
+ * code of its refusal. False before either. */
+bool kitty_sshproxy_reply(Socket *s, int *kind, unsigned *code)
+{
+    SshProxy *sp;
+
+    if (!s || s->vt != &SshProxy_sock_vt)
+        return false;
+    sp = container_of(s, SshProxy, sock);
+    if (sp->conn_established) {
+        *kind = KNOCK_REPLY_SSH;
+        *code = 0;
+        return true;
+    }
+    if (sp->backend && ssh_kitty_open_failure(sp->backend, code)) {
+        *kind = KNOCK_REPLY_SSH;
+        return true;
+    }
+    return false;
+}
 
 static void sshproxy_eventlog(LogPolicy *lp, const char *event)
 {

@@ -724,6 +724,8 @@
 #define KT_KNOCK_ROUTE_PROXY_FMT  "Port knocking: the knocks to %s go through the proxy"
 #define KT_KNOCK_PROXY_SENT_FMT   "Port knocking: TCP %u sent to %s through the proxy"
 #define KT_KNOCK_PROXY_FAILED_FMT "Port knocking: TCP %u through the proxy failed: %s"
+#define KT_KNOCK_PROXY_ANSWER_FMT "Port knocking: TCP %u sent to %s through the proxy (the proxy answered: %s)"
+#define KT_KNOCK_PROXY_UNKNOWN_FMT "Port knocking: TCP %u to %s through the proxy: the proxy answered %s - whether the knock arrived is unknown"
 #define KT_KNOCK_PROXY_WAIT_FMT   "Port knocking: TCP %u through the proxy: no answer within %u s - next knock"
 #define KT_KNOCK_PAUSE_FMT        "Port knocking: pause of %u ms"
 #define KT_KNOCK_PAUSE_CUT_FMT    "Port knocking: the pause \"%s\" is longer than %u s - cut to %u s"

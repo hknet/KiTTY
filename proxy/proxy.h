@@ -51,6 +51,10 @@ struct ProxySocket {
      * written - decided at creation (proxy_wev_decide) */
     bool kwev_ok;
     const char *kwev_for;   /* KiTTY: session, forward or x11 */
+    /* KiTTY: the proxy's answer to the connect request, by number, for
+     * port knocking (kitty_proxy_reply): KNOCK_REPLY_* and its code */
+    int kitty_reply_kind;
+    unsigned kitty_reply_code;
 
     Socket sock;
     Plug plugimpl;

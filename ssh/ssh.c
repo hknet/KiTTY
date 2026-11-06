@@ -22,6 +22,7 @@
 #include "kitty/kitty_connstage.h"   /* KiTTY: the server's close, told early */
 #ifndef NO_GSSAPI
 #include "gssc.h"
+#include "kitty/kitty_knock.h"   /* KiTTY: ssh_kitty_open_failure */
 #include "gss.h"
 #define MIN_CTXT_LIFETIME 5     /* Avoid rekey with short lifetime (seconds) */
 #define GSS_KEX_CAPABLE (1<<0)  /* Can do GSS KEX */
@@ -31,6 +32,11 @@
 #endif
 
 struct Ssh {
+    /* KiTTY: the reason code of the last refused channel open, for port
+     * knocking through a jump host (ssh_kitty_open_failure) */
+    unsigned kitty_open_failure;
+    bool kitty_open_failure_set;
+
     Socket *s;
     Seat *seat;
     Conf *conf;
@@ -1441,3 +1447,27 @@ const BackendVtable sshconn_backend = {
     .protocol = PROT_SSHCONN,
     .flags = BACKEND_SUPPORTS_NC_HOST | BACKEND_NOTIFIES_SESSION_START,
 };
+
+/* KiTTY: the reason code of the last refused channel open, for port
+ * knocking through a jump host (kitty/kitty_knock.c by way of
+ * proxy/sshproxy.c) */
+void ssh_kitty_note_open_failure(Ssh *ssh, unsigned code)
+{
+    if (!ssh)
+        return;
+    ssh->kitty_open_failure = code;
+    ssh->kitty_open_failure_set = true;
+}
+
+bool ssh_kitty_open_failure(Backend *be, unsigned *code)
+{
+    Ssh *ssh;
+
+    if (!be)
+        return false;
+    ssh = container_of(be, Ssh, backend);
+    if (!ssh->kitty_open_failure_set)
+        return false;
+    *code = ssh->kitty_open_failure;
+    return true;
+}
