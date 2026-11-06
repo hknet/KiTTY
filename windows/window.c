@@ -8312,6 +8312,16 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #endif
         break;
       case WM_SIZE:
+#ifdef MOD_PERSO
+        /* KiTTY: a window coming back from minimised can first report an
+         * empty client area (a layered window: 288 x 0 before its real
+         * size). The terminal must not take it: shrunk to one row it drops
+         * every line below the cursor, and the server would get the size
+         * too. Only a minimised window has no client area. */
+        if (wParam != SIZE_MINIMIZED &&
+            (LOWORD(lParam) == 0 || HIWORD(lParam) == 0))
+            return 0;
+#endif
         /* The painter's surfaces follow the client area (a GPU painter
          * re-creates its swap chain buffers; GDI has nothing to do). */
         if (wgs->painter)
