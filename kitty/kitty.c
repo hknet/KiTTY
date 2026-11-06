@@ -1301,8 +1301,10 @@ void ManageInitScript( const char * input_str, const int len ) {
 	expect = (const char *)blob ;
 	send = expect + strlen( expect ) + 1 ;  /* the copy ends in two zero bytes */
 
-	st = (char*) malloc( len+2 ) ;
-	memcpy( st, input_str, len+1 ) ;
+	/* exactly the server's len bytes, NUL-terminated (it read one byte past
+	 * the data and left the copy unterminated: strstr ran into stale heap
+	 * and could send the next reply early) */
+	st = mkstr( make_ptrlen( input_str, len ) ) ;
 	for( i=0 ; i<len ; i++ ) if( st[i]=='\0' ) st[i]=' ' ;
 
 	if( strstr( st, expect ) != NULL ) {
@@ -1314,7 +1316,7 @@ void ManageInitScript( const char * input_str, const int len ) {
 	}
 	smemclr( blob, blen + 2 ) ;
 	sfree( blob ) ;
-	free( st ) ;
+	sfree( st ) ;
 }
 
 /* At-rest protection for the login script: the same chokepoint saved passwords
