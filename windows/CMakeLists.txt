@@ -692,6 +692,49 @@ target_compile_definitions(test_osc52 PRIVATE MOD_PERSO MOD_FAR2L)
 target_link_libraries(test_osc52
   guiterminal settings eventloop utils ${platform_libraries})
 
+# KiTTY: rows below the cursor kept across a shrink-and-grow resize
+# (test/test_resizekeep.c). terminal.c is compiled in with the same defines
+# as test_osc52, for the same reason: guiterminal is built without MOD_PERSO.
+add_executable(test_resizekeep
+  ${CMAKE_SOURCE_DIR}/test/test_resizekeep.c
+  ${CMAKE_SOURCE_DIR}/terminal/terminal.c
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_osc.c         # KiTTY: the OSC/DCS strings do_osc hands over
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_search.c      # KiTTY: search the scrollback (Ctrl+Shift+F)
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_reflow.c      # KiTTY: re-wrap on a width change
+  ${CMAKE_SOURCE_DIR}/terminal/kitty_clipboard.c   # KiTTY: OSC 52 + OSC 5522
+  # KiTTY: the OSC 133 prompt marks terminal.c sets (ps_osc133; base64 for the rest)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_progstatus.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_ctx3008.c   # KiTTY: OSC 3008 contexts, kitty_osc.c's
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_oscnotify.c
+  # KiTTY: far2l images (request 'i'), called from terminal.c under MOD_FAR2L
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_far2l_image_term.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_wic.c   # its WIC decoder
+  # KiTTY: the kitty graphics protocol (APC _G), called from terminal.c under MOD_PERSO
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_gfx.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_gfx_term.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sixel.c   # KiTTY: Sixel, the decoder
+  # far2l's own base64, and its include dir below: MOD_FAR2L makes terminal.c
+  # include cdecode.h/cencode.h, which live under kitty/far2l/ and are not on the
+  # default include path.
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/cdecode.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/cencode.c
+  ${CMAKE_SOURCE_DIR}/kitty/far2l/far2l_proto.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-storage.c
+  ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
+  no-jump-list.c)
+target_include_directories(test_resizekeep PRIVATE ${CMAKE_SOURCE_DIR}/kitty/far2l)
+# MOD_FAR2L as well as MOD_PERSO, so this target compiles terminal.c with the SAME
+# defines the shipping kitty target does. Without it the far2l APC paths - including
+# the accumulation-buffer ceiling that made large clipboard payloads vanish - are
+# not compiled here at all, and a test of them would pass by testing nothing. The
+# Terminal struct is unaffected either way: far2l's fields are unconditional
+# storage precisely so these builds share one layout.
+target_compile_definitions(test_resizekeep PRIVATE MOD_PERSO MOD_FAR2L)
+target_link_libraries(test_resizekeep
+  guiterminal settings eventloop utils ${platform_libraries})
+
 # far2l terminal extensions without a window (test/test_far2l.c): the
 # request stack, client IDs, the clipboard read gate, chunked uploads, data
 # IDs and the format conversions of kitty/far2l/far2l_proto.c.

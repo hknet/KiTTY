@@ -2510,8 +2510,25 @@ void term_seen_key_event(Terminal *term)
 /*
  * Same as power_on(), but an external function.
  */
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the rows a shrinking resize kept below the cursor (term_size) are
+ * only right as long as nothing changed the screen meanwhile: any output,
+ * a reset, a cleared scrollback, a width change or the alternate screen
+ * drops them, and the grow adds blank rows as upstream does.
+ */
+static void kitty_below_drop(Terminal *term)
+{
+    while (term->kitty_nbelow > 0)
+        freetermline(term->kitty_below[--term->kitty_nbelow]);
+}
+#endif
+
 void term_pwron(Terminal *term, bool clear)
 {
+#ifdef MOD_PERSO
+    kitty_below_drop(term);            /* KiTTY: a reset forgets them */
+#endif
     power_on(term, clear);
     if (term->ldisc)                   /* cause ldisc to notice changes */
         ldisc_echoedit_update(term->ldisc);
@@ -2976,6 +2993,9 @@ void term_clrsb(Terminal *term)
      * scrollback somewhere until now.
      */
     term->disptop = 0;
+#ifdef MOD_PERSO
+    kitty_below_drop(term);            /* KiTTY: the kept rows go as well */
+#endif
 
     /*
      * Clear the actual scrollback.
@@ -3351,6 +3371,8 @@ void term_free(Terminal *term)
     }
     sfree(term->disptext);
 #ifdef MOD_PERSO
+    kitty_below_drop(term);            /* KiTTY: the rows a shrink kept */
+    sfree(term->kitty_below);
     sfree(term->fm_lines);             /* KiTTY: the mark strip's list */
     sfree(term->im_marks);             /* KiTTY: the command columns */
 #endif
@@ -3499,6 +3521,12 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
         viewtop = count234(term->scrollback) + term->disptop;
 #endif
 
+#ifdef MOD_PERSO
+    /* KiTTY: rows kept below the cursor by an earlier shrink belong to this
+     * width and to the main screen in front: otherwise they go */
+    if (save_alt_which || newcols != term->cols)
+        kitty_below_drop(term);
+#endif
     deselect(term);
     swap_screen(term, 0, false, false);
 
@@ -3560,6 +3588,13 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
             term->alt_y += 1;
             term->alt_savecurs.y += 1;
         } else {
+#ifdef MOD_PERSO
+            /* KiTTY: a row an earlier shrink kept below the cursor comes
+             * back first (lineptr fits its width as for any line) */
+            if (term->kitty_nbelow > 0)
+                line = term->kitty_below[--term->kitty_nbelow];
+            else
+#endif
             /* Add a new blank line at the bottom of the screen. */
             line = newtermline(term, newcols, false);
             addpos234(term->screen, line, count234(term->screen));
@@ -3571,6 +3606,16 @@ void term_size(Terminal *term, int newrows, int newcols, int newsavelines)
         if (term->curs.y < term->rows - 1) {
             /* delete bottom row, unless it contains the cursor */
             line = delpos234(term->screen, term->rows - 1);
+#ifdef MOD_PERSO
+            /* KiTTY: kept, not freed - the grow puts it back. Upstream
+             * PuTTY frees it, so a window made small and large again lost
+             * every row below the cursor. */
+            if (!save_alt_which) {
+                sgrowarray(term->kitty_below, term->kitty_belowsize,
+                           term->kitty_nbelow);
+                term->kitty_below[term->kitty_nbelow++] = line;
+            } else
+#endif
             freetermline(line);
 #ifdef MOD_PERSO
             /* KiTTY: kitty graphics on the deleted row are deleted with it */
@@ -12370,6 +12415,12 @@ static void term_added_data(Terminal *term, bool called_from_term_data)
 
 size_t term_data(Terminal *term, const void *data, size_t len)
 {
+#ifdef MOD_PERSO
+    /* KiTTY: output may change the screen; rows a shrink kept below the
+     * cursor would then come back stale */
+    if (len > 0)
+        kitty_below_drop(term);
+#endif
     bufchain_add(&term->inbuf, data, len);
     term_added_data(term, true);
     return bufchain_size(&term->inbuf);

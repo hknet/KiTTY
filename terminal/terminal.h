@@ -124,6 +124,14 @@ struct terminal_tag {
     int tempsblines;                   /* number of lines of .scrollback that
                                           can be retrieved onto the terminal
                                           ("temporary scrollback") */
+    /* KiTTY: the rows below the cursor that a shrinking resize took off the
+     * main screen, the topmost last; a later grow puts them back below the
+     * screen before it adds blank rows. Dropped by any output, a reset, a
+     * cleared scrollback, a width change or the alternate screen
+     * (terminal.c, kitty_below_drop). Unconditional storage: test targets
+     * compile terminal.c with and without MOD_PERSO. */
+    termline **kitty_below;
+    size_t kitty_nbelow, kitty_belowsize;
 
     termline **disptext;               /* buffer of text on real screen */
 

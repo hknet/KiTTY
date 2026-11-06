@@ -559,6 +559,7 @@ endforeach()
 foreach(t
     test_host_strfoo test_decode_utf8 test_tree234
     test_wildcard test_cert_expr test_bpp test_lineedit test_terminal
+    test_resizekeep
     test_osc7 test_transfer_parse test_conf test_sessionlist test_osc52
     test_sessionpath test_sessmenu test_menuslots test_sessorder
     test_textrun test_mpw_params test_hello_container
