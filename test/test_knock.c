@@ -39,7 +39,10 @@ static void check(const char *text, const char *expect, const char *cut)
     size_t i;
 
     if (!ok) {
-        put_fmt(got, "!%s", l.bad ? l.bad : "(null)");
+        if (l.too_many)
+            put_fmt(got, "!too many");
+        else
+            put_fmt(got, "!%s", l.bad ? l.bad : "(null)");
     } else {
         for (i = 0; i < l.n; i++) {
             const KnockStep *s = &l.steps[i];
@@ -70,7 +73,9 @@ int main(void)
     check("", "", NULL);
     check("  ,; ", "", NULL);
     /* every separator, and the spaces around ':' */
-    check("1;2,3-4\t5", "T1 T2 T3 T4 T5", NULL);
+    check("1;2,3\t4", "T1 T2 T3 T4", NULL);
+    /* '-' is no separator: a range-like entry is refused */
+    check("2001-2005", "!2001-2005", NULL);
     check("2001 : UDP , 0.5 : s", "U2001 P500", NULL);
     check("2001:TCP", "T2001", NULL);
     /* the port range: 1-65535, nothing else */
@@ -98,6 +103,26 @@ int main(void)
     check("x:s", "!x:s", NULL);
     check("1.2.3:s", "!1.2.3:s", NULL);
     check(":s", "!:s", NULL);
+    /* a bad entry is shown with its control bytes as \xNN */
+    check("2001, 20\x1b[2J01", "!20\\x1B[2J01", NULL);
+    check("2001:udp\x7f", "!2001:udp\\x7F", NULL);
+    check("2001:\xc3\xa4", "!2001:\\xC3\\xA4", NULL);
+    /* at most KNOCK_MAX_STEPS entries */
+    {
+        strbuf *sb = strbuf_new();
+        unsigned j;
+        for (j = 0; j < KNOCK_MAX_STEPS; j++)
+            put_fmt(sb, "%u,", 1000 + j);
+        {
+            KnockList l;
+            if (!knock_parse(sb->s, &l) || l.n != KNOCK_MAX_STEPS)
+                fail("64 entries", "not taken");
+            knock_list_free(&l);
+        }
+        put_fmt(sb, "2000");
+        check(sb->s, "!too many", NULL);
+        strbuf_free(sb);
+    }
 
     if (fails) {
         printf("%d check(s) failed\n", fails);

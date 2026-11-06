@@ -9,7 +9,7 @@
 
 static bool knock_sep(char c)
 {
-    return c == ' ' || c == '\t' || c == ',' || c == ';' || c == '-' ||
+    return c == ' ' || c == '\t' || c == ',' || c == ';' ||
            c == '\r' || c == '\n';
 }
 
@@ -86,11 +86,23 @@ static bool knock_word(const char *s, size_t len, const char *word)
     return true;
 }
 
+/* the entry as written, for the Event Log and standard error: a byte
+ * outside printable ASCII (an escape sequence in a -knock value) is shown
+ * as \xNN, never passed to the console */
 static char *knock_entry_text(const char *from, const char *to)
 {
+    strbuf *sb = strbuf_new();
+
     while (to > from && knock_sep(to[-1]))
         to--;
-    return dupprintf("%.*s", (int)(to - from), from);
+    for (; from < to; from++) {
+        unsigned char c = (unsigned char)*from;
+        if (c < 0x20 || c > 0x7e)
+            put_fmt(sb, "\\x%02X", c);
+        else
+            put_byte(sb, c);
+    }
+    return strbuf_to_str(sb);
 }
 
 bool knock_parse(const char *text, KnockList *list)
@@ -152,6 +164,10 @@ bool knock_parse(const char *text, KnockList *list)
                 list->bad = knock_entry_text(start, p);
                 return false;
             }
+        }
+        if (list->n >= KNOCK_MAX_STEPS) {
+            list->too_many = true;
+            return false;
         }
         sgrowarray(list->steps, list->size, list->n);
         list->steps[list->n++] = st;

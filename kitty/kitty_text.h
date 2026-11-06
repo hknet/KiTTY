@@ -727,8 +727,9 @@
 #define KT_KNOCK_PROXY_WAIT_FMT   "Port knocking: TCP %u through the proxy: no answer within %u s - next knock"
 #define KT_KNOCK_PAUSE_FMT        "Port knocking: pause of %u ms"
 #define KT_KNOCK_PAUSE_CUT_FMT    "Port knocking: the pause \"%s\" is longer than %u s - cut to %u s"
-#define KT_KNOCK_BAD_FMT          "Port knocking: \"%s\" is not a valid entry (port 1-65535 with tcp or udp, or a pause N:s) - no knock sent"
-#define KT_KNOCK_UDP_PROXY_FMT    "Port knocking: UDP %u cannot go through the proxy - no knock sent"
+#define KT_KNOCK_BAD_FMT          "Port knocking: \"%s\" is not a valid entry (port 1-65535 with tcp or udp, or a pause N:s) - no knock sent, no connection"
+#define KT_KNOCK_UDP_PROXY_FMT    "Port knocking: UDP %u cannot go through the proxy - no knock sent, connecting without knocks"
+#define KT_KNOCK_TOO_MANY_FMT     "Port knocking: the sequence has more than %u entries - no knock sent, no connection"
 #define KT_KNOCK_LOOKUP_FMT       "Port knocking: the address of %s was not found (%s) - no knock sent"
 #define KT_KNOCK_DONE             "Port knocking: sequence done"
 

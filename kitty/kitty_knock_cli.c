@@ -43,8 +43,16 @@ static bool knock_cli_post(void *ctx, size_t index)
 void kitty_knock_run_cli(Conf *conf, LogContext *logctx)
 {
     bool done = false;
+    char *refusal = NULL;
 
-    if (!kitty_knock_start(conf, logctx, knock_cli_done, &done))
+    if (!kitty_knock_start(conf, logctx, knock_cli_done, NULL, &done,
+                           &refusal)) {
+        if (refusal) {
+            /* the line is on standard error already: no connection */
+            sfree(refusal);
+            cleanup_exit(1);
+        }
         return;
+    }
     cli_main_loop(knock_cli_pre, knock_cli_post, &done);
 }

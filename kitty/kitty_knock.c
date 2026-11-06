@@ -37,6 +37,7 @@ struct KittyKnock {
     char *perror;
     unsigned long next;         /* the pending timer */
     kitty_knock_done_fn done;
+    kitty_knock_note_fn note;
     void *ctx;
 };
 
@@ -59,6 +60,43 @@ static void knock_log(KittyKnock *k, bool failure, const char *fmt, ...)
             logevent(k->logctx, msg);
     } else if (failure)
         fprintf(stderr, "%s\n", msg);
+    sfree(msg);
+}
+
+/* a sequence refused: the failure line, also handed to the caller, which
+ * then does not connect */
+static void knock_refuse(KittyKnock *k, char **refusal, const char *fmt, ...)
+    PRINTF_LIKE(3, 4);
+
+static void knock_refuse(KittyKnock *k, char **refusal, const char *fmt, ...)
+{
+    va_list ap;
+    char *msg;
+
+    va_start(ap, fmt);
+    msg = dupvprintf(fmt, ap);
+    va_end(ap);
+    knock_log(k, true, "%s", msg);
+    if (refusal)
+        *refusal = msg;
+    else
+        sfree(msg);
+}
+
+/* a failure the caller may also show (kitty_knock_set_note) */
+static void knock_note(KittyKnock *k, const char *fmt, ...) PRINTF_LIKE(2, 3);
+
+static void knock_note(KittyKnock *k, const char *fmt, ...)
+{
+    va_list ap;
+    char *msg;
+
+    va_start(ap, fmt);
+    msg = dupvprintf(fmt, ap);
+    va_end(ap);
+    knock_log(k, true, "%s", msg);
+    if (k->note)
+        k->note(k->ctx, msg);
     sfree(msg);
 }
 
@@ -251,7 +289,7 @@ static void knock_proxied(KittyKnock *k, unsigned port)
                     "port knocking");
     sfree(canon);
     if ((err = sk_addr_error(a)) != NULL) {
-        knock_log(k, true, KT_KNOCK_PROXY_FAILED_FMT, port, err);
+        knock_note(k, KT_KNOCK_PROXY_FAILED_FMT, port, err);
         sk_addr_free(a);
         knock_after(k, KNOCK_GAP_MS);
         return;
@@ -262,7 +300,7 @@ static void knock_proxied(KittyKnock *k, unsigned port)
     k->psock = new_connection(a, k->host, (int)port, false, true, false,
                               false, &k->plug, k->conf, NULL);
     if ((err = sk_socket_error(k->psock)) != NULL) {
-        knock_log(k, true, KT_KNOCK_PROXY_FAILED_FMT, port, err);
+        knock_note(k, KT_KNOCK_PROXY_FAILED_FMT, port, err);
         sk_close(k->psock);
         k->psock = NULL;
         knock_after(k, KNOCK_GAP_MS);
@@ -277,9 +315,9 @@ static void knock_proxy_end(KittyKnock *k)
     if (k->pconnected)
         knock_log(k, false, KT_KNOCK_PROXY_SENT_FMT, k->pport, k->host);
     else if (k->perror)
-        knock_log(k, true, KT_KNOCK_PROXY_FAILED_FMT, k->pport, k->perror);
+        knock_note(k, KT_KNOCK_PROXY_FAILED_FMT, k->pport, k->perror);
     else
-        knock_log(k, true, KT_KNOCK_PROXY_WAIT_FMT, k->pport,
+        knock_note(k, KT_KNOCK_PROXY_WAIT_FMT, k->pport,
                   (unsigned)(knock_ssh_proxy(k->conf) ? KNOCK_SSHPROXY_CAP_MS
                                                       : KNOCK_PROXY_CAP_MS)
                   / 1000u);
@@ -336,7 +374,9 @@ static void knock_next(KittyKnock *k)
 }
 
 KittyKnock *kitty_knock_start(Conf *conf, LogContext *logctx,
-                              kitty_knock_done_fn done, void *ctx)
+                              kitty_knock_done_fn done,
+                              kitty_knock_note_fn note, void *ctx,
+                              char **refusal)
 {
     const char *seq = conf_get_str(conf, CONF_portknockingoptions);
     const char *host = conf_get_str(conf, CONF_host);
@@ -344,14 +384,21 @@ KittyKnock *kitty_knock_start(Conf *conf, LogContext *logctx,
     KittyKnock *k;
     size_t i;
 
+    if (refusal)
+        *refusal = NULL;
     if (!seq || !seq[0] || !host || !host[0] ||
         conf_get_int(conf, CONF_protocol) == PROT_SERIAL)
         return NULL;
     k = snew(KittyKnock);
     memset(k, 0, sizeof(*k));
     k->logctx = logctx;
+    k->note = note;
+    k->ctx = ctx;
     if (!knock_parse(seq, &k->list)) {
-        knock_log(k, true, KT_KNOCK_BAD_FMT, k->list.bad);
+        if (k->list.too_many)
+            knock_refuse(k, refusal, KT_KNOCK_TOO_MANY_FMT, KNOCK_MAX_STEPS);
+        else
+            knock_refuse(k, refusal, KT_KNOCK_BAD_FMT, k->list.bad);
         knock_free(k);
         return NULL;
     }
@@ -367,8 +414,8 @@ KittyKnock *kitty_knock_start(Conf *conf, LogContext *logctx,
     if (k->proxied) {
         for (i = 0; i < k->list.n; i++)
             if (k->list.steps[i].kind == KNOCK_UDP) {
-                knock_log(k, true, KT_KNOCK_UDP_PROXY_FMT,
-                          k->list.steps[i].port);
+                /* no knock, the connection goes ahead */
+                knock_note(k, KT_KNOCK_UDP_PROXY_FMT, k->list.steps[i].port);
                 knock_free(k);
                 return NULL;
             }
@@ -387,7 +434,6 @@ KittyKnock *kitty_knock_start(Conf *conf, LogContext *logctx,
     k->host = dupstr(host);
     k->conf = conf_copy(conf);
     k->done = done;
-    k->ctx = ctx;
     if (k->proxied)
         knock_log(k, false, KT_KNOCK_ROUTE_PROXY_FMT, host);
     /* the first step from the event loop: done never runs inside here */

@@ -1624,6 +1624,7 @@ static void kitty_wev_start(WinGuiSeat *wgs, const struct BackendVtable *vt)
 #endif
 
 static void start_backend_connect(WinGuiSeat *wgs);
+static void start_backend_connect_ex(WinGuiSeat *wgs, const char *refusal);
 
 #ifdef MOD_PORTKNOCKING
 /* KiTTY: the knock sequence is out - connect now */
@@ -1633,6 +1634,17 @@ static void kitty_knock_done_gui(void *ctx)
 
     wgs->knock = NULL;
     start_backend_connect(wgs);
+}
+
+/* KiTTY: a knock through the proxy failed or got no answer, or a UDP knock
+ * kept the sequence from going through the proxy - also in the terminal,
+ * where a later connection failure is read */
+static void kitty_knock_note_gui(void *ctx, const char *line)
+{
+    WinGuiSeat *wgs = (WinGuiSeat *)ctx;
+
+    if (wgs->term)
+        kitty_term_print_inline_error(wgs->term, line, 0);
 }
 #endif
 
@@ -1667,11 +1679,20 @@ static void start_backend(WinGuiSeat *wgs)
         conf_set_int(kc, CONF_proxy_chain_max, GetProxyChainMax());
         kitty_proxy_select(kc);
 #endif
+        char *refusal = NULL;
         wgs->knock = kitty_knock_start(kc, wgs->logctx,
-                                       kitty_knock_done_gui, wgs);
+                                       kitty_knock_done_gui,
+                                       kitty_knock_note_gui, wgs, &refusal);
         conf_free(kc);
         if (wgs->knock)
             return;
+        if (refusal) {
+            /* a sequence that cannot be sent as configured: no connection,
+             * the failure shown as a connection's own */
+            start_backend_connect_ex(wgs, refusal);
+            sfree(refusal);
+            return;
+        }
     }
 #endif
     start_backend_connect(wgs);
@@ -1679,9 +1700,21 @@ static void start_backend(WinGuiSeat *wgs)
 
 static void start_backend_connect(WinGuiSeat *wgs)
 {
+    start_backend_connect_ex(wgs, NULL);
+}
+
+/* refusal: KiTTY's port knocking refused the sequence - no connection is
+ * tried, the failure takes the path of a connection that failed */
+static void start_backend_connect_ex(WinGuiSeat *wgs, const char *refusal)
+{
     const struct BackendVtable *vt;
     char *error, *realhost;
     int i;
+
+    if (refusal) {
+        error = dupstr(refusal);
+        goto connect_failed;
+    }
 
     vt = backend_vt_from_conf(wgs->conf);
     kitty_wev_start(wgs, vt);   /* KiTTY: event 200 names this target */
@@ -1837,6 +1870,7 @@ static void start_backend_connect(WinGuiSeat *wgs)
     /* The backend has taken its own copy by now. */
     if (proxyconf) { conf_free(proxyconf); proxyconf = NULL; connconf = wgs->conf; }
 #endif
+  connect_failed:
     if (error) {
         char *str = dupprintf("%s Error", kitty_product_name());
         char *msg;
@@ -1853,7 +1887,8 @@ static void start_backend_connect(WinGuiSeat *wgs)
          * (a name lookup, a refused or timed-out connection) - the condition
          * table decides, with the backoff */
         bool rc_wait = false;
-        if (GetAutoreconnectFlag() && conf_get_int(wgs->conf, CONF_failure_reconnect)
+        if (!refusal && GetAutoreconnectFlag() &&
+            conf_get_int(wgs->conf, CONF_failure_reconnect)
             && wgs->ever_authenticated &&
             kitty_reconnect_failure(wgs, msg, &rc_wait)) {
             lp_eventlog(&wgs->logpolicy, msg);
@@ -1892,7 +1927,8 @@ static void start_backend_connect(WinGuiSeat *wgs)
         bool wp_asked = false;
         {
             char wp[256];
-            if (wgs->workplace_proxied && kitty_workplace_query(wp, sizeof(wp))) {
+            if (!refusal && wgs->workplace_proxied &&
+                kitty_workplace_query(wp, sizeof(wp))) {
                 char *q = dupprintf(
                     KT_TWIN_WORKPLACE_FAILED_Q, msg, wp);
                 if (kitty_confirm_box(NULL, KT_CAP_CONNECTION_FAILED, q, NULL))
