@@ -647,12 +647,12 @@ Windows' own \cw{ssh.exe} instead of its own copy:
 \b In the Git for Windows installer: on the page \q{Choosing the SSH
 executable}, pick \q{Use external OpenSSH}.
 
-\b For an existing installation, run once in PowerShell or a command
-prompt:
+\b For an existing installation, run once in PowerShell:
 
 \lcont{
 
-\c git config --global core.sshCommand C:/Windows/System32/OpenSSH/ssh.exe
+\c $ssh = 'C:/Windows/System32/OpenSSH/ssh.exe'
+\c git config --global core.sshCommand $ssh
 
 Use forward slashes: \cw{git} runs this command through its own shell,
 which takes a backslash as an escape character.
@@ -829,7 +829,10 @@ messages. The sender passes a window of its choice, so any program could
 pose as another. Over the named pipe Windows itself reports the program. A
 request by window messages is therefore served for an unknown program:
 it never uses a key unlocked for another program, and neither the notices
-nor the agent log show a program.
+nor the agent log show a program. A \c{session-bind@openssh.com} over
+window messages is refused (\c{SSH_AGENT_EXTENSION_FAILURE}): every such request
+reaches the agent as the same client, so a binding would apply to the
+requests of other programs.
 
 Off, such a request answers \c{SSH_AGENT_FAILURE}, and the agent log
 records the refused request (103) with reason \c{window-messages}.

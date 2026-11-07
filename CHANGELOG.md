@@ -217,6 +217,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   dropped from a CA destination opened while the CA's Valid hosts has no
   port condition. Key details and the rule editor show "port ignored for
   clients that send none" only while it applies.
+- kageant refuses `session-bind@openssh.com` over window messages
+  (WM_COPYDATA). Every such request reaches the agent as one client, so a
+  binding applied to the later requests of other programs.
 - docs/KITTY-INI.md listed `askconfirmation=hello`, which kageant never
   read. Windows Hello for every confirmation is `helloconfirm=yes`.
 - An ed25519 public key of the wrong length ended the program that

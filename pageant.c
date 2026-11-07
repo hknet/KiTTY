@@ -3296,6 +3296,15 @@ static PageantAsyncOp *pageant_make_op(
             PageantClientInfo *info = pc->info;
             const char *why;
 
+            /* KiTTY: never over window messages (WM_COPYDATA). Every such
+             * request shares one client, so a binding would apply to the
+             * later requests of other programs. Refused before anything is
+             * recorded with that client. */
+            if (pageant_external_wmcd) {
+                fail("session-bind: refused over window messages");
+                goto responded;
+            }
+
             /* KiTTY: attempted, whatever comes of it - a restricted key is
              * refused on a connection whose bind failed */
             info->bind_attempted = true;
