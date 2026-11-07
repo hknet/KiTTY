@@ -42,6 +42,7 @@
 #include "kitty_inifile.h"     /* kitty_store_readonly: readonly=yes */
 #include "kitty_store_acl.h"   /* owner-only rights for what the store creates */
 #include "kitty_sessorder.h"   /* ksp_order_store_current */
+#include "kitty_buildlabel.h"  /* KITTY_TEST_BUILD_LABEL: kitty_pwdebug */
 
 /*
  * KiTTY: the registry root is chosen at RUNTIME (kitty.ini KiClassName).
@@ -864,20 +865,18 @@ int kitty_session_origin(const char *sessionname)
 static int  g_store_mode = 0;        /* 0 = registry; nonzero = portable file mode */
 static char *g_sess_dir = kstr_none;   /* directory holding per-session files */
 
-/* Lightweight diagnostic log (no plaintext: lengths + a weak checksum only).
- * Writes to %TEMP%\kitty_pwdebug.log when env KITTY_PWDEBUG is set. Shared with
- * window.c (auth-send) via the exported kitty_pwdebug(). */
-unsigned ksec_cksum(const char *s)
-{
-    unsigned h = 0;
-    if (s) for (; *s; s++) h = h * 131 + (unsigned char)*s;
-    return h & 0xffff;
-}
+/* Password-flow diagnostic log, TEST BUILDS ONLY: with env KITTY_PWDEBUG
+ * set, kitty_pwdebug.log beside the running exe. It records lengths, store
+ * modes and the KIND of a stored value - never characters of a password
+ * and no checksum of one (a checksum with the length gives a short
+ * password away). A release build writes nothing, whatever the
+ * environment holds. Shared with window.c (auth-send). */
 void kitty_pwdebug(const char *fmt, ...)
 {
-    /* Off by default (release): set env KITTY_PWDEBUG=1 to trace the password
-     * flow to kitty_pwdebug.log next to the running exe. Logs only lengths +
-     * a weak checksum + storage mode, never plaintext. */
+#ifndef KITTY_TEST_BUILD_LABEL
+    (void)fmt;
+    return;
+#else
     if (!GetEnvironmentVariableA("KITTY_PWDEBUG", NULL, 0)) return;
     char *exe = kitty_module_path_dup(NULL), *path, *bs;
     if (exe && (bs = strrchr(exe, '\\')) != NULL) {
@@ -894,6 +893,7 @@ void kitty_pwdebug(const char *fmt, ...)
     va_end(ap);
     fputc('\n', f);
     fclose(f);
+#endif
 }
 void kitty_set_storage_mode(int mode) { g_store_mode = mode; }
 /* The configuration directory (kitty.ini configdir): Proxies, Launcher and

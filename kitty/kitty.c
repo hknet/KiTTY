@@ -509,7 +509,7 @@ void RenewPassword( Conf *conf ) {
  * silently altered a password that legitimately ends in one. No
  * DebugAddPassword() call here: that writes the password in clear to a file
  * beside the exe, and this is a path every interactive login takes.
- * KITTY_PWDEBUG (lengths and checksums only) is the diagnostic. */
+ * KITTY_PWDEBUG (test builds only, lengths and kinds) is the diagnostic. */
 void SetPasswordInConfig( const char * password ) {
 	if( GetUserPassSSHNoSave() || (password==NULL) || (conf==NULL) ) { return ; }
 	kitty_pw_set( conf, CONF_password, password ) ;

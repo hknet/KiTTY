@@ -13529,10 +13529,7 @@ static SeatPromptResult win_seat_get_userpass_input(Seat *seat, prompts_t *p)
         size_t pwlen = kitty_pw_get(wgs->conf, CONF_password, pw, sizeof(pw));
         wgs->autopw_tried = true;
         if (pwlen > 0) {
-            unsigned h = 0; const char *q;
-            for (q = pw; *q; q++) h = h * 131 + (unsigned char)*q;
-            kitty_pwdebug("AUTH send pw: len=%d cksum=%04x prompt=[%s]",
-                          (int)pwlen, h & 0xffff,
+            kitty_pwdebug("AUTH send pw: len=%d prompt=[%s]", (int)pwlen,
                           p->prompts[0]->prompt ? p->prompts[0]->prompt : "");
             prompt_set_result(p->prompts[0], pw);
             spr = SPR_OK;

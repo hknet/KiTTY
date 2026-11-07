@@ -264,9 +264,9 @@ int portable_write_text_file(const char *subdir, const char *name,
                              const char *value);
 char *portable_read_text_file(const char *subdir, const char *name);
 
-/* ---- the password diagnostic log (%TEMP%\kitty_pwdebug.log while
- * KITTY_PWDEBUG is set; lengths and a weak checksum, never plaintext) ---- */
-unsigned ksec_cksum(const char *s);
+/* ---- the password diagnostic log (test builds only: kitty_pwdebug.log
+ * beside the exe while KITTY_PWDEBUG is set; lengths, modes and the kind
+ * of a stored value, never password characters or a checksum) ---- */
 void kitty_pwdebug(const char *fmt, ...);
 
 /* ---- "the configuration store changed" flag ----

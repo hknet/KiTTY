@@ -1251,9 +1251,15 @@ char *read_setting_s(settings_r *handle, const char *key)
              * handed back an EMPTY string instead of failing, so the session
              * authenticates with a blank password and says nothing. That is
              * exactly how the SAVEABLE -masterpwfile defect presented. */
-            kitty_pwdebug("LOAD pw: mode=%d filemode=%d rawmark=%.7s declen=%d cksum=%04x rv=%d",
-                          kitty_storage_mode(), handle->is_file, raw ? raw : "(null)",
-                          pt ? (int)strlen(pt) : -1, ksec_cksum(pt), rv_dbg);
+            /* the KIND of the stored value only: its first characters are
+             * the password itself for an old unmarked value */
+            kitty_pwdebug("LOAD pw: mode=%d filemode=%d stored=%s declen=%d rv=%d",
+                          kitty_storage_mode(), handle->is_file,
+                          !raw ? "none" :
+                          kitty_secret_is_mpw(raw) == 2 ? "MPW2" :
+                          kitty_secret_is_mpw(raw) == 1 ? "MPW1" :
+                          kitty_secret_is_marked(raw) ? "marked" : "unmarked",
+                          pt ? (int)strlen(pt) : -1, rv_dbg);
         sfree(raw);
         char *ret = dupstr(pt ? pt : "");
         if (pt) { smemclr(pt, strlen(pt)); free(pt); }
