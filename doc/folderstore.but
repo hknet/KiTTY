@@ -220,6 +220,9 @@ master password alone.
 \c{Security\\MasterPwSalt}. Read, no longer written.
 
 \b \c{DPAPI1:<base64>}: Windows DPAPI, this account on this PC only.
+DPAPI protects against other users and other PCs. Any program that runs
+as this user can decrypt the value, by DPAPI's design: the master
+password (\c{MPW2}) is the stronger choice against that.
 
 \b \c{PLAIN:<password>}: clear text for provisioning scripts; never
 written by KiTTY++.
