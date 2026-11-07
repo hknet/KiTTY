@@ -4203,6 +4203,9 @@
  * Event Log line per outcome; klink, kscp and ksftp write it to standard
  * error too. %s = type and fingerprint as accept-new's record shows them */
 #define KT_HOSTKEY_UPDATE_STORED                     "Host key stored (proven by the server): %s, %s port %d"
+/* hostkeys-00: an offered key that is not taken, %s the key type, then host and port */
+#define KT_HOSTKEY_UPDATE_SKIP_DSA                   "Host key not taken from the server's offer: %s proves itself with SHA-1 only (%s port %d)"
+#define KT_HOSTKEY_UPDATE_SKIP_WARN                  "Host key not taken from the server's offer: %s is below the warn line of this session's host-key list (%s port %d)"
 #define KT_HOSTKEY_UPDATE_REPLACED                   "Host key replaced (proven by the server): %s, was %s, %s port %d"
 #define KT_HOSTKEY_UPDATE_REMOVED                    "Host key removed (no longer offered by the server): %s, %s port %d"
 #define KT_HOSTKEY_UPDATE_FAILED                     "Host key not stored (the server's proof failed): %s, %s port %d"

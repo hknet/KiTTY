@@ -20,6 +20,7 @@
 #include "../ssh/ppl.h"
 #include "../ssh/channel.h"
 #include "../ssh/connection2.h"
+#include "../ssh/transport2.h"   /* ssh2_hostkey_algs: a type and its place in the host-key list */
 #include "storage.h"
 #include "kitty_hostkeys00.h"
 #include "kitty_hostkey_acceptnew.h"   /* the record's second destination */
@@ -110,6 +111,35 @@ static void hk00_record(struct ssh2_connection_state *s, char *line)
     ppl_logevent("%s", line);
     kitty_hostkey_accept_new_report(line);
     sfree(line);
+}
+
+/* An offered key this program does not take from hostkeys-00, or NULL:
+ *   - a DSA key: its proof is an SHA-1 signature, which session-bind
+ *     refuses as well (no SHA-1 proof is taken);
+ *   - a type below the warn line of the session's host-key list
+ *     (CONF_ssh_hklist): a type the connection itself would only accept
+ *     after a warning is not stored silently through an update. */
+static const char *hk00_skip_reason(Conf *conf, const ssh_keyalg *alg)
+{
+    int id = -1;
+    if (alg == &ssh_dsa)
+        return KT_HOSTKEY_UPDATE_SKIP_DSA;
+    for (size_t j = 0; j < N_HOSTKEY_ALGORITHMS; j++)
+        if (!ssh2_hostkey_algs[j].alg->is_certificate &&
+            !strcmp(ssh2_hostkey_algs[j].alg->cache_id, alg->cache_id)) {
+            id = ssh2_hostkey_algs[j].id;
+            break;
+        }
+    if (id < 0)
+        return NULL;
+    for (int i = 0; i < HK_MAX; i++) {
+        int pref = conf_get_int_int(conf, CONF_ssh_hklist, i);
+        if (pref == id)
+            return NULL;               /* above the warn line */
+        if (pref == HK_WARN)
+            return KT_HOSTKEY_UPDATE_SKIP_WARN;
+    }
+    return NULL;
 }
 
 /* The same outcome as a Windows Event Log record (213/313), under the
@@ -604,6 +634,14 @@ void kitty_hk00_received(struct ssh2_connection_state *s, PktIn *pktin)
         const ssh_keyalg *alg = get_err(src) ? NULL : find_pubkey_alg_len(name);
         if (!alg || alg->is_certificate)
             continue;                   /* a type this program has no use for */
+        {
+            const char *skip = hk00_skip_reason(s->conf, alg);
+            if (skip) {                 /* not taken: one line with the reason */
+                hk00_record(s, dupprintf(skip, alg->ssh_id, req->host,
+                                         req->port));
+                continue;
+            }
+        }
         ssh_key *key = ssh_key_new_pub(alg, blob);
         if (!key || req->n == HK00_MAX) {
             if (key)

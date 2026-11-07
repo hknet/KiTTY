@@ -234,6 +234,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - kageant: a repeat of an identical session-bind is answered with
   success, as OpenSSH's agent does. It was refused and logged as a failed
   bind.
+- Host keys a server offers after login (hostkeys-00) are not stored for
+  DSA (its proof is SHA-1 only) or for a type below the warn line of the
+  session's host-key list. One Event Log line reports each.
 
 ## 0.85.1.19-beta — 2026-10-28
 
