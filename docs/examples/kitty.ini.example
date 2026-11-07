@@ -1057,6 +1057,12 @@
 ; progress to error or paused; 0 = never. 0-10, default 2.
 ;osc7501notice=2
 
+; eventlognotice: how many seconds the Event Log notice shows at the
+; bottom of the terminal when a notable line enters the terminal's Event
+; Log (the latest two). A click opens the Event Log. Never while the
+; Event Log is open. 0 = never. 0-10, default 2.
+;eventlognotice=2
+
 ; userpasssshnosave: what happens to a login you TYPE. By default (no) the
 ;    user name and password typed at a login prompt are copied into the
 ;    running session's settings, as if entered on its Login panel - so a

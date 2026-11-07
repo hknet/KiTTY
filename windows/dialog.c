@@ -456,6 +456,16 @@ static void pds_initdialog_finish(PortableDialogStuff *pds)
 static char *events_initial[LOGEVENT_INITIAL_MAX];
 static char *events_circular[LOGEVENT_CIRCULAR_MAX];
 static int ninitial = 0, ncircular = 0, circular_first = 0;
+/* KiTTY: a notable line (kitty_eventlog_line_hook), kept beside its text so
+ * the text stays as logged. The Event Log window draws it marked. */
+static bool events_initial_notable[LOGEVENT_INITIAL_MAX];
+static bool events_circular_notable[LOGEVENT_CIRCULAR_MAX];
+static bool *event_notable(char **location)
+{
+    if (location >= events_initial && location < events_initial + LOGEVENT_INITIAL_MAX)
+        return &events_initial_notable[location - events_initial];
+    return &events_circular_notable[location - events_circular];
+}
 
 #define PRINTER_DISABLED_STRING "None (printing disabled)"
 
@@ -603,12 +613,21 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
         SendDlgItemMessage(hwnd, IDN_LIST, LB_SETTABSTOPS, 2,
                            (LPARAM) tabs);
 
-        for (i = 0; i < ninitial; i++)
-            SendDlgItemMessage(hwnd, IDN_LIST, LB_ADDSTRING,
-                               0, (LPARAM) events_initial[i]);
-        for (i = 0; i < ncircular; i++)
-            SendDlgItemMessage(hwnd, IDN_LIST, LB_ADDSTRING,
-                               0, (LPARAM) events_circular[(circular_first + i) % LOGEVENT_CIRCULAR_MAX]);
+        for (i = 0; i < ninitial; i++) {
+            int at = (int)SendDlgItemMessage(hwnd, IDN_LIST, LB_ADDSTRING,
+                                             0, (LPARAM) events_initial[i]);
+            if (at >= 0)
+                SendDlgItemMessage(hwnd, IDN_LIST, LB_SETITEMDATA, at,
+                                   events_initial_notable[i]);
+        }
+        for (i = 0; i < ncircular; i++) {
+            int k = (circular_first + i) % LOGEVENT_CIRCULAR_MAX;
+            int at = (int)SendDlgItemMessage(hwnd, IDN_LIST, LB_ADDSTRING,
+                                             0, (LPARAM) events_circular[k]);
+            if (at >= 0)
+                SendDlgItemMessage(hwnd, IDN_LIST, LB_SETITEMDATA, at,
+                                   events_circular_notable[k]);
+        }
         update_logbox_horizontal_extent(hwnd);
 
         logbox_layout(hwnd);
@@ -624,6 +643,84 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
         mmi->ptMinTrackSize.x = 320;
         mmi->ptMinTrackSize.y = 200;
         return 0;
+      }
+      case WM_MEASUREITEM: {
+        /* KiTTY: the list draws its own rows (a notable line marked): one
+         * line of the dialog's font each */
+        MEASUREITEMSTRUCT *mi = (MEASUREITEMSTRUCT *)lParam;
+        HDC dc;
+        HFONT of;
+        TEXTMETRIC tmx;
+        if (mi->CtlID != IDN_LIST)
+            break;
+        dc = GetDC(hwnd);
+        of = (HFONT)SelectObject(dc, (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0));
+        GetTextMetrics(dc, &tmx);
+        SelectObject(dc, of);
+        ReleaseDC(hwnd, dc);
+        mi->itemHeight = tmx.tmHeight;
+        return 1;
+      }
+      case WM_DRAWITEM: {
+        /* KiTTY: a row as the plain list drew it - the dialog's colours
+         * (asked from the dialog itself, so the theme gives them), the time
+         * and the text at the two tab stops - with a notable line (item data
+         * 1) in bold behind an amber bar. The text stays as logged. */
+        DRAWITEMSTRUCT *di = (DRAWITEMSTRUCT *)lParam;
+        static HFONT bold;
+        HFONT base, of;
+        HBRUSH br;
+        RECT tr;
+        int tabpx[2], len;
+        char *text;
+        bool notable_row;
+        if (di->CtlID != IDN_LIST)
+            break;
+        if (di->itemID == (UINT)-1)
+            return 1;
+        len = (int)SendMessage(di->hwndItem, LB_GETTEXTLEN, di->itemID, 0);
+        if (len < 0)
+            return 1;
+        text = snewn(len + 1, char);
+        text[0] = '\0';
+        SendMessage(di->hwndItem, LB_GETTEXT, di->itemID, (LPARAM)text);
+        notable_row = SendMessage(di->hwndItem, LB_GETITEMDATA, di->itemID, 0) == 1;
+        br = (HBRUSH)SendMessage(hwnd, WM_CTLCOLORLISTBOX, (WPARAM)di->hDC,
+                                 (LPARAM)di->hwndItem);
+        if (di->itemState & ODS_SELECTED) {
+            SetBkColor(di->hDC, GetSysColor(COLOR_HIGHLIGHT));
+            SetTextColor(di->hDC, GetSysColor(COLOR_HIGHLIGHTTEXT));
+            br = GetSysColorBrush(COLOR_HIGHLIGHT);
+        }
+        FillRect(di->hDC, &di->rcItem, br ? br : GetSysColorBrush(COLOR_WINDOW));
+        base = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+        if (notable_row && !bold && base) {
+            LOGFONT lf;
+            if (GetObject(base, sizeof(lf), &lf)) {
+                lf.lfWeight = FW_BOLD;
+                bold = CreateFontIndirect(&lf);
+            }
+        }
+        of = (HFONT)SelectObject(di->hDC, notable_row && bold ? bold : base);
+        SetRect(&tr, 78, 0, 108, 0);       /* the list's two tab stops */
+        MapDialogRect(hwnd, &tr);
+        tabpx[0] = tr.left;
+        tabpx[1] = tr.right;
+        if (notable_row) {
+            RECT bar = di->rcItem;
+            HBRUSH amber = CreateSolidBrush(RGB(190, 110, 0));
+            bar.right = bar.left + 3;
+            FillRect(di->hDC, &bar, amber);
+            DeleteObject(amber);
+        }
+        SetBkMode(di->hDC, TRANSPARENT);
+        TabbedTextOut(di->hDC, di->rcItem.left + 6, di->rcItem.top, text, len,
+                      2, tabpx, di->rcItem.left + 6);
+        SelectObject(di->hDC, of);
+        if (di->itemState & ODS_FOCUS)
+            DrawFocusRect(di->hDC, &di->rcItem);
+        sfree(text);
+        return 1;
       }
       case WM_VKEYTOITEM:
         /* KiTTY: the listbox has LBS_WANTKEYBOARDINPUT so Ctrl+A can select
@@ -657,10 +754,12 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
                 for (i = 0; i < ninitial; i++) {
                     sfree(events_initial[i]);
                     events_initial[i] = NULL;
+                    events_initial_notable[i] = false;
                 }
                 for (i = 0; i < LOGEVENT_CIRCULAR_MAX; i++) {
                     sfree(events_circular[i]);
                     events_circular[i] = NULL;
+                    events_circular_notable[i] = false;
                 }
                 ninitial = ncircular = circular_first = 0;
                 SendDlgItemMessage(hwnd, IDN_LIST, LB_RESETCONTENT, 0, 0);
@@ -4568,11 +4667,20 @@ bool do_reconfig(HWND hwnd, Conf *conf, int protcfginfo)
     return ret;
 }
 
+/* KiTTY: is this terminal Event Log line notable? windows/window.c sets it,
+ * from the one table kitty/kitty_evclass.c. It posts the notice too while
+ * the Event Log window is closed (logbox_open). The Event Log window draws a
+ * notable line bold behind an amber bar, its text as logged. NULL
+ * (kageant, KiTTYgen): every line is routine. Not fenced: this file is in
+ * the shared GUI library. */
+bool (*kitty_eventlog_line_hook)(const char *line, bool logbox_open) = NULL;
+
 static void win_gui_eventlog(LogPolicy *lp, const char *string)
 {
     char timebuf[40];
     char **location;
     struct tm tm;
+    bool notable;
 
     tm=ltime();
     strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S\t", &tm);
@@ -4612,10 +4720,15 @@ static void win_gui_eventlog(LogPolicy *lp, const char *string)
     if (*location)
         sfree(*location);
     *location = dupcat(timebuf, string);
+    notable = kitty_eventlog_line_hook &&
+        kitty_eventlog_line_hook(string, logbox != NULL);
+    *event_notable(location) = notable;
     if (logbox) {
-        int count;
-        SendDlgItemMessage(logbox, IDN_LIST, LB_ADDSTRING,
-                           0, (LPARAM) *location);
+        int count, at;
+        at = (int)SendDlgItemMessage(logbox, IDN_LIST, LB_ADDSTRING,
+                                     0, (LPARAM) *location);
+        if (at >= 0)
+            SendDlgItemMessage(logbox, IDN_LIST, LB_SETITEMDATA, at, notable);
         count = SendDlgItemMessage(logbox, IDN_LIST, LB_GETCOUNT, 0, 0);
         SendDlgItemMessage(logbox, IDN_LIST, LB_SETTOPINDEX, count - 1, 0);
 
@@ -4629,6 +4742,7 @@ static void win_gui_eventlog(LogPolicy *lp, const char *string)
         circular_first = (circular_first + 1) % LOGEVENT_CIRCULAR_MAX;
         sfree(events_circular[circular_first]);
         events_circular[circular_first] = dupstr("..");
+        events_circular_notable[circular_first] = false;
     }
 }
 

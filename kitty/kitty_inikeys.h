@@ -41,6 +41,7 @@
 #define KI_CTXBREADCRUMBPLACE               "ctxbreadcrumbplace"
 #define KI_OSC3008CTXNOTICE                 "osc3008ctxnotice"
 #define KI_OSC7501NOTICE                    "osc7501notice"
+#define KI_EVENTLOGNOTICE                   "eventlognotice"
 #define KI_FUNKEYS                          "funkeys"
 #define KI_HYPERLINK                        "hyperlink"
 #define KI_ICONFILE                         "iconfile"

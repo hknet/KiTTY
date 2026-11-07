@@ -993,6 +993,12 @@ extern void (*kitty_hostkey_stored_hook)(Seat *seat);   /* dialog.c */
 /* the session log could not be opened: a notice, not a line in the terminal */
 static bool kitty_logging_error(Seat *seat, const char *event);
 extern bool (*kitty_logging_error_hook)(Seat *seat, const char *event); /* dialog.c */
+/* a terminal Event Log line: notable or not, the notice for a notable one */
+static bool kitty_evlog_line(const char *line, bool logbox_open);
+extern bool (*kitty_eventlog_line_hook)(const char *line, bool logbox_open); /* dialog.c */
+struct WinGuiSeat;
+static void kitty_evlog_show(struct WinGuiSeat *wgs, const char *line);
+static void kitty_evlog_click(int slot);
 extern void kitty_seat_questions_drop(Seat *seat);      /* dialog.c */
 extern void kitty_mpw_session_ended(void);              /* kitty_mpw_gui.c */
 #include "../kitty/kitty_urlsession.h"   /* GetOfferSessionFlag */
@@ -1008,11 +1014,16 @@ extern void kitty_mpw_session_ended(void);              /* kitty_mpw_gui.c */
 #include "../kitty/kitty_ctx3008.h"     /* OSC 3008: the red frame asks ctx_elevated */
 #include "../kitty/kitty_psoverlay.h"   /* the program status overlay follows the window */
 #include "../kitty/kitty_ctxcrumb.h"    /* and the OSC 3008 breadcrumb */
+#include "../kitty/kitty_evclass.h"     /* notable Event Log lines (the notice) */
 #include "../kitty/kitty_switchnotice.h" /* and the one-line switch notices */
 /* KiTTY: whether to look for a new release at startup - an application
  * setting in kitty.ini, not a per-session one (kitty/kitty_win.c). */
 /* Posted by that notice when it is clicked: switch workplace proxy mode off. */
 #define WM_KITTY_WORKPLACE_DISARM (WM_APP + 72)
+/* A notable Event Log line for the Event Log notice (lParam: the line, a
+ * dupstr the receiver frees) - posted, so a line logged on another thread
+ * shows on the window's own. */
+#define WM_KITTY_EVLOG_NOTE (WM_APP + 77)
 #define TIMER_AUTOCOMMAND 8702
 /* Anti-idle: periodically send a keepalive string (CONF_antiidle). */
 #define TIMER_ANTIIDLE 8703
@@ -3040,6 +3051,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             ssh_userauth_set_done_hook(kitty_userauth_done);
             kitty_hostkey_stored_hook = kitty_hostkey_stored;
             kitty_logging_error_hook = kitty_logging_error;
+            kitty_eventlog_line_hook = kitty_evlog_line;
+            kitty_switchnotice_click = kitty_evlog_click;
         }
 #endif
 #ifdef MOD_PERSO
@@ -6861,6 +6874,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             }
             break;
           case IDM_SHOWLOG:
+#ifdef MOD_PERSO
+            /* the Event Log open: its notice goes and stays away */
+            kitty_switchnotice_hide(KSN_EVLOG);
+#endif
             showeventlog(hwnd);
             break;
           case IDM_NEWSESS:
@@ -8938,6 +8955,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         process_clipdata(wgs, (HGLOBAL)lParam, wParam);
         return 0;
 #ifdef MOD_PERSO
+      case WM_KITTY_EVLOG_NOTE:
+        kitty_evlog_show(wgs, (char *)lParam);
+        sfree((char *)lParam);
+        return 0;
       case WM_KITTY_WORKPLACE_DISARM:
         /*
          * The "your workplace proxy did not answer" notice was clicked.
@@ -13690,6 +13711,51 @@ static bool kitty_logging_error(Seat *seat, const char *event)
                       GetNoticeSeconds(), NULL, 0);
     sfree(text);
     return true;
+}
+
+/* dialog.c, kitty_eventlog_line_hook: is this terminal Event Log line
+ * notable (kitty_evclass.c, the one table)? A notable one is posted to the
+ * window for the Event Log notice while the Event Log window is closed. Any
+ * thread: only the table and PostMessage here. */
+static bool kitty_evlog_line(const char *line, bool logbox_open)
+{
+    char *dup;
+    if (!kitty_evclass_is_notable(line))
+        return false;
+    if (!logbox_open && MainHwnd) {
+        dup = dupstr(line);
+        if (!PostMessage(MainHwnd, WM_KITTY_EVLOG_NOTE, 0, (LPARAM)dup))
+            sfree(dup);
+    }
+    return true;
+}
+
+/* The Event Log notice: the latest notable line, with the one before it
+ * while that one still shows - [KiTTY] eventlognotice seconds, 0 = never.
+ * Never while the Event Log window is open. */
+static void kitty_evlog_show(struct WinGuiSeat *wgs, const char *line)
+{
+    static char *prev = NULL;          /* the line the notice shows now */
+    int secs = kitty_switchnotice_seconds(KI_EVENTLOGNOTICE);
+    char *text;
+    if (secs <= 0 || event_log_window())
+        return;
+    if (prev && kitty_switchnotice_showing(KSN_EVLOG, KSN_LOOK_EVLOG))
+        text = dupcat(prev, "\n", line);
+    else
+        text = dupstr(line);
+    sfree(prev);
+    prev = dupstr(line);
+    kitty_switchnotice_show(KSN_EVLOG, KSN_LOOK_EVLOG, 0, text, secs,
+                            wgs ? wgs->font_height : 0);
+    sfree(text);
+}
+
+/* A click on the Event Log notice: the Event Log window opens. */
+static void kitty_evlog_click(int slot)
+{
+    if (slot == KSN_EVLOG && MainHwnd)
+        PostMessage(MainHwnd, WM_SYSCOMMAND, IDM_SHOWLOG, 0);
 }
 
 /* Save as session: Change Settings with the name filled in, as the window

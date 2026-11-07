@@ -889,6 +889,7 @@ static const struct kset_key kset_keys[] = {
      * change applies to the next one */
     { INIT_SECTION, KI_OSC3008CTXNOTICE, KSET_INT, false, NULL, NULL, NULL, 0, 10, 2 },
     { INIT_SECTION, KI_OSC7501NOTICE,    KSET_INT, false, NULL, NULL, NULL, 0, 10, 2 },
+    { INIT_SECTION, KI_EVENTLOGNOTICE,   KSET_INT, false, NULL, NULL, NULL, 0, 10, 2 },
     { INIT_SECTION, KI_BGIMAGE,        KSET_BOOL, false, GetBackgroundImageFlag, SetBackgroundImageFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_SLIDEDELAY,     KSET_INT, false, NULL, NULL, &ImageSlideDelay, 0, 86400, 0 },
     { INIT_SECTION, KI_SHRINKBITMAP,   KSET_BOOL, false, GetShrinkBitmapEnable, SetShrinkBitmapEnable, NULL, 0, 0, 1 },

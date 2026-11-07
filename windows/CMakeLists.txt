@@ -978,6 +978,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_psoverlay.c    # KiTTY: the program status overlay (OSC 7501), top right in the window
   ${KITTY_DIR}/kitty_ctxcrumb.c     # KiTTY: the OSC 3008 breadcrumb, top left in the window
   ${KITTY_DIR}/kitty_switchnotice.c # KiTTY: one line at the top for a moment: OSC 3008 user switch, OSC 7501 job switch
+  ${KITTY_DIR}/kitty_evclass.c      # KiTTY: which terminal Event Log lines are NOTABLE (the Event Log notifier)
   ${KITTY_DIR}/kitty_overlay_draw.c # KiTTY: shapes for the layered overlays (status panel, breadcrumb, switch notices)
   ${KITTY_DIR}/kitty_searchbar.c    # KiTTY: the scrollback search's find bar (Ctrl+Shift+F)
   ${KITTY_DIR}/kitty_modkeys.c      # KiTTY: xterm modifyOtherKeys encoding for window.c, no Win32 (test/test_modkeys.c)

@@ -1060,6 +1060,12 @@ char default_init_file_content[] =
 ; progress to error or paused; 0 = never. 0-10, default 2.\n\
 ;osc7501notice=2\n\
 \n\
+; eventlognotice: how many seconds the Event Log notice shows at the\n\
+; bottom of the terminal when a notable line enters the terminal's Event\n\
+; Log (the latest two). A click opens the Event Log. Never while the\n\
+; Event Log is open. 0 = never. 0-10, default 2.\n\
+;eventlognotice=2\n\
+\n\
 ; userpasssshnosave: what happens to a login you TYPE. By default (no) the\n\
 ;    user name and password typed at a login prompt are copied into the\n\
 ;    running session's settings, as if entered on its Login panel - so a\n\

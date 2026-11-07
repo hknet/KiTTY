@@ -111,8 +111,10 @@ BEGIN
     /* KiTTY: WS_TABSTOP - without it the list is not in the tab order at all
      * (upstream's line lacks it too), so Tab cycled around the three buttons
      * and could never reach the log itself. Last in the template, so the
-     * cycle reads Close, Copy, Clear, log. */
-    LISTBOX IDN_LIST, 3, 3, 454, 196, LBS_HASSTRINGS | LBS_USETABSTOPS | WS_VSCROLL | WS_HSCROLL | LBS_EXTENDEDSEL | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT | WS_TABSTOP
+     * cycle reads Close, Copy, Clear, log. LBS_OWNERDRAWFIXED: LogProc draws
+     * the rows itself, a notable line marked. LBS_HASSTRINGS keeps each
+     * row's text readable as logged. */
+    LISTBOX IDN_LIST, 3, 3, 454, 196, LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_USETABSTOPS | WS_VSCROLL | WS_HSCROLL | LBS_EXTENDEDSEL | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT | WS_TABSTOP
 END
 
 /* No accelerators used */

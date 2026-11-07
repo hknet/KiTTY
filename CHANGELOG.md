@@ -10,6 +10,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- The Event Log notice: a notable line of the Terminal Window's Event Log
+  shows for a moment at the bottom of the terminal, the latest two. A
+  click opens the Event Log, which shows notable lines in bold behind an
+  amber bar. Routine lines never show. Seconds on Application > KiTTY++
+  Settings > Appearance (`[KiTTY] eventlognotice`, default 2, 0 = never).
 - kageant: when startup keys that were not there come back on a drive and
   load, one notice reports that they can sign again. A click opens the key
   list. The agent log records each key that comes back with its

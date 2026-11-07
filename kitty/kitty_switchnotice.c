@@ -10,6 +10,10 @@
  * Both at once: the user switch on top, the job's line below it. Which text
  * and whether at all is decided platform-free (ctx_switch_notice,
  * ps_switch_notice); this file only shows it.
+ *  - The Event Log notice (KSN_EVLOG, windows/window.c): the latest notable
+ *    lines of the terminal's Event Log, up to two, at the bottom centre. It
+ *    is the one slot that takes a click: the click opens the Event Log
+ *    (kitty_switchnotice_click). Never the focus either.
  *
  * The same kind of window as the status panel and the breadcrumb
  * (kitty_psoverlay.c, kitty_ctxcrumb.c; all three draw with
@@ -63,6 +67,7 @@ typedef struct {
 
 static SnLine sn[KSN_SLOTS];
 static int sn_line_px;
+void (*kitty_switchnotice_click)(int slot) = NULL;
 static HFONT sn_font;
 static int sn_font_px;
 
@@ -126,7 +131,8 @@ static void sn_look(int look, COLORREF *bg, COLORREF *fg, COLORREF *edge,
 {
     bool hc = kov_high_contrast();
     *alpha = hc ? 255 : SN_ALPHA;
-    if (look == KSN_LOOK_STATUS || look == KSN_LOOK_PROGRESS) {
+    if (look == KSN_LOOK_STATUS || look == KSN_LOOK_PROGRESS ||
+        look == KSN_LOOK_EVLOG) {
         kitty_psoverlay_look(bg, fg, edge);   /* high contrast there too */
         return;
     }
@@ -150,17 +156,35 @@ static bool sn_render(int i)
     SnLine *n = &sn[i];
     double s = kov_dpi(MainHwnd) / 96.0;
     COLORREF bg, fg, edge;
-    int alpha, line, h, w, maxw, pad, icon = 0, left, tw = 0;
+    int alpha, line, h, w, maxw, pad, icon = 0, left, tw = 0, row, padY;
+    int nrows = 1, k;
+    const wchar_t *rows[2] = { NULL, NULL };
+    int rowlen[2] = { 0, 0 };
     HDC sdc;
     HFONT f, oldf;
     SIZE ts;
     RECT cr, r;
     KovCanvas cv;
 
+    /* the rows of the text: one, or two at a '\n' (KSN_EVLOG) */
+    rows[0] = n->text;
+    rowlen[0] = (int)wcslen(n->text);
+    {
+        const wchar_t *nl = wcschr(n->text, L'\n');
+        if (nl) {
+            rowlen[0] = (int)(nl - n->text);
+            rows[1] = nl + 1;
+            rowlen[1] = (int)wcscspn(nl + 1, L"\n");
+            nrows = 2;
+        }
+    }
+
     sn_look(n->look, &bg, &fg, &edge, &alpha);
     line = sn_line_px > (int)(18 * s + .5) ? sn_line_px : (int)(18 * s + .5);
-    h = line + 2 * (int)(SN_PAD_Y * s + .5);
-    pad = h / 2;                       /* the rounded ends */
+    padY = (int)(SN_PAD_Y * s + .5);
+    row = line + 2 * padY;
+    h = nrows * line + 2 * padY;
+    pad = row / 2;                     /* the rounded ends */
     f = sn_get_font(line * 62 / 100 * 125 / 100);
     if (n->look == KSN_LOOK_STATUS || n->look == KSN_LOOK_PROGRESS) {
         icon = (int)(h * 0.7 + .5);
@@ -170,8 +194,9 @@ static bool sn_render(int i)
     }
     sdc = GetDC(NULL);
     oldf = (HFONT)SelectObject(sdc, f);
-    if (GetTextExtentPoint32W(sdc, n->text, (int)wcslen(n->text), &ts))
-        tw = ts.cx;
+    for (k = 0; k < nrows; k++)
+        if (GetTextExtentPoint32W(sdc, rows[k], rowlen[k], &ts) && ts.cx > tw)
+            tw = ts.cx;
     SelectObject(sdc, oldf);
     ReleaseDC(NULL, sdc);
     w = left + tw + pad;
@@ -189,22 +214,28 @@ static bool sn_render(int i)
     if (icon)
         kitty_psoverlay_icon(&cv, n->state, (h - icon) / 2.0, (h - icon) / 2.0, icon);
     if (edge != bg)
-        kov_rrect_edge(&cv, 0, 0, w, h, h / 2.0, 1 * s, edge);
+        kov_rrect_edge(&cv, 0, 0, w, h, row / 2.0, 1 * s, edge);
     GdiFlush();
     oldf = (HFONT)SelectObject(n->dib.dc, f);
     SetBkMode(n->dib.dc, TRANSPARENT);
     SetTextColor(n->dib.dc, fg);
-    SetRect(&r, left, 0, w - pad, h);
-    DrawTextW(n->dib.dc, n->text, -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE |
-              DT_NOPREFIX | DT_END_ELLIPSIS);
+    for (k = 0; k < nrows; k++) {
+        if (nrows == 1)
+            SetRect(&r, left, 0, w - pad, h);
+        else
+            SetRect(&r, left, padY + k * line, w - pad, padY + (k + 1) * line);
+        DrawTextW(n->dib.dc, rows[k], rowlen[k], &r, DT_LEFT | DT_VCENTER |
+                  DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS);
+    }
     SelectObject(n->dib.dc, oldf);
     GdiFlush();
-    kov_premultiply_rrect(&cv, h / 2.0, alpha);
+    kov_premultiply_rrect(&cv, row / 2.0, alpha);
     n->s = s;
     return true;
 }
 
-/* Top centre of the terminal area; the job's line below the user's. */
+/* Top centre of the terminal area, the job's line below the user's. The
+ * Event Log notice at the bottom centre. */
 static void sn_place(int i, POINT *pt)
 {
     RECT cr;
@@ -213,6 +244,11 @@ static void sn_place(int i, POINT *pt)
     int y;
     GetClientRect(MainHwnd, &cr);
     ClientToScreen(MainHwnd, &tl);
+    if (i == KSN_EVLOG) {
+        pt->x = tl.x + (cr.right - sn[i].dib.w) / 2;
+        pt->y = tl.y + cr.bottom - (int)(SN_MARGIN * s + .5) - sn[i].dib.h;
+        return;
+    }
     y = tl.y + (int)(SN_MARGIN * s + .5);
     if (i == KSN_PS7501 && sn[KSN_CTX3008].live && sn[KSN_CTX3008].dib.h)
         y += sn[KSN_CTX3008].dib.h + (int)(SN_GAP * s + .5);
@@ -305,7 +341,24 @@ static LRESULT CALLBACK sn_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
       case WM_MOUSEACTIVATE:
         return MA_NOACTIVATE;          /* the terminal keeps the keyboard */
       case WM_NCHITTEST:
-        return HTTRANSPARENT;          /* the clicks go to what is below */
+        /* the clicks go to what is below - but the Event Log notice's own */
+        if ((int)GetWindowLongPtr(hwnd, GWLP_USERDATA) == KSN_EVLOG)
+            return HTCLIENT;
+        return HTTRANSPARENT;
+      case WM_SETCURSOR:
+        if ((int)GetWindowLongPtr(hwnd, GWLP_USERDATA) == KSN_EVLOG) {
+            SetCursor(LoadCursor(NULL, IDC_HAND));
+            return TRUE;
+        }
+        break;
+      case WM_LBUTTONUP:
+        if ((int)GetWindowLongPtr(hwnd, GWLP_USERDATA) == KSN_EVLOG) {
+            sn_hide(KSN_EVLOG);
+            if (kitty_switchnotice_click)
+                kitty_switchnotice_click(KSN_EVLOG);
+            return 0;
+        }
+        break;
       case WM_SHOWWINDOW:
         /* Windows hides an owned popup itself when the owner is minimised
          * and shows it again on the restore (SW_PARENTOPENING). A line
@@ -347,9 +400,11 @@ static bool sn_create(int i)
         registered = true;
     }
     /* owned by the terminal window: above it, minimised with it, never in
-     * the taskbar, never the focus, never the mouse */
+     * the taskbar, never the focus, never the mouse - the Event Log notice
+     * takes its click */
     sn[i].hwnd = CreateWindowExA(WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE |
-                                 WS_EX_TRANSPARENT, SN_CLASS, "", WS_POPUP,
+                                 (i == KSN_EVLOG ? 0 : WS_EX_TRANSPARENT),
+                                 SN_CLASS, "", WS_POPUP,
                                  0, 0, 1, 1, MainHwnd, NULL, GetModuleHandle(NULL), NULL);
     if (!sn[i].hwnd)
         return false;
@@ -400,6 +455,12 @@ void kitty_switchnotice_line(int line_px)
             sn_tick(i);                /* placed again at its new size */
     if (sn[KSN_CTX3008].live && sn[KSN_PS7501].live)
         sn_tick(KSN_PS7501);           /* below the 3008 line's new height */
+}
+
+void kitty_switchnotice_hide(int slot)
+{
+    if (slot >= 0 && slot < KSN_SLOTS && sn[slot].live)
+        sn_hide(slot);
 }
 
 bool kitty_switchnotice_showing(int slot, int look)

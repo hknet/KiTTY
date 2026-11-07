@@ -1111,6 +1111,9 @@
  * osc3008ctxnotice, osc7501notice; kitty/kitty_switchnotice.c) */
 #define KT_APPEARANCE_CTXNOTICE                      "OSC 3008 user-context switch notice:"
 #define KT_APPEARANCE_PSNOTICE                       "OSC 7501 / 9;4 program status notice:"
+/* the Event Log notice: a notable terminal Event Log line ([KiTTY]
+ * eventlognotice, windows/window.c kitty_evlog_show) */
+#define KT_APPEARANCE_EVLOGNOTICE                    "Terminal Event Log notice:"
 #define KT_APPEARANCE_NOTICE_NOTE                    "Seconds the notice shows; 0 = never."
 /* Appearance: the opacity of the OSC 3008 breadcrumb ([KiTTY] ctxbreadcrumbopacity) */
 #define KT_APPEARANCE_CRUMB_GROUP                    "Context breadcrumb"

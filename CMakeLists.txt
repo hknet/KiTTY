@@ -297,6 +297,12 @@ target_link_libraries(test_auditchain crypto utils ${platform_libraries})
 add_executable(test_eventids
   test/test_eventids.c)
 
+# KiTTY: unit test for the class of a terminal Event Log line
+# (kitty/kitty_evclass.c): the lines the Event Log notifier shows.
+add_executable(test_evclass
+  test/test_evclass.c
+  kitty/kitty_evclass.c)
+
 # KiTTY: unit test for accept-new (kitty/kitty_hostkey_acceptnew.c, in
 # sshcommon for ssh/common.c): which host keys are stored without a question,
 # the kitty.ini switch, the record and its text.
@@ -566,7 +572,8 @@ foreach(t
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
     test_termenv test_droppath test_sendesc test_secretmask test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
     test_agentbind test_agentrestrict test_certinfo
-    test_auditparse test_auditchain test_eventids test_commentlinks)
+    test_auditparse test_auditchain test_eventids test_evclass
+    test_commentlinks)
   kitty_add_test(${t})
 endforeach()
 kitty_add_test(test_far2l_keys)   # KiTTY: far2l key and mouse events

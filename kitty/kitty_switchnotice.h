@@ -9,13 +9,21 @@
 
 #include <stdbool.h>
 
-/* The two lines, top first: the user switch sits above the job's. */
-enum { KSN_CTX3008, KSN_PS7501, KSN_SLOTS };
+/* The two lines at the top, the user switch above the job's, and the Event
+ * Log notice at the bottom centre (KSN_EVLOG: up to two lines of text,
+ * '\n' between them, the only slot that takes a click). */
+enum { KSN_CTX3008, KSN_PS7501, KSN_EVLOG, KSN_SLOTS };
 
 /* How a line looks: on the root frame's dark red, on a switched user's dark
  * yellow, or in the status panel's colours with its state icon - for OSC
- * 7501 (STATUS) or OSC 9;4 progress (PROGRESS, the same look). */
-enum { KSN_LOOK_ROOT, KSN_LOOK_USER, KSN_LOOK_STATUS, KSN_LOOK_PROGRESS };
+ * 7501 (STATUS) or OSC 9;4 progress (PROGRESS, the same look). EVLOG: the
+ * panel's colours without an icon. */
+enum { KSN_LOOK_ROOT, KSN_LOOK_USER, KSN_LOOK_STATUS, KSN_LOOK_PROGRESS,
+       KSN_LOOK_EVLOG };
+
+/* A click on the KSN_EVLOG notice (windows/window.c sets it): the notice
+ * goes first. NULL: the click does nothing. */
+extern void (*kitty_switchnotice_click)(int slot);
 
 /* [KiTTY] osc3008ctxnotice / osc7501notice (key): seconds, 0-10, 2 when not
  * set; 0 = never. Read at every notice, so a change applies to the next. */
@@ -32,6 +40,9 @@ void kitty_switchnotice_show(int slot, int look, int state, const char *text,
 /* The terminal's line height changed (a font change, Font Up/Down, a new
  * DPI): the lines showing are drawn again at line_px. */
 void kitty_switchnotice_line(int line_px);
+
+/* That slot's line goes at once (the Event Log window opened). */
+void kitty_switchnotice_hide(int slot);
 
 /* That slot shows a line of that look now (inside its time). */
 bool kitty_switchnotice_showing(int slot, int look);
