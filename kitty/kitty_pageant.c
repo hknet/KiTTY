@@ -3404,6 +3404,8 @@ static char *kageant_requester_text(void)
             CloseHandle(h);
         return proc;
     }
+    if (pageant_external_wmcd)
+        return dupstr(KT_KA_BY_WMCD);
     return dupstr("");
 }
 
@@ -3487,60 +3489,25 @@ void kageant_trace_notice(const char *title, const char *text)
 
 /* A request by window messages (WM_COPYDATA, the IPC of PuTTY before
  * 0.75; KiTTY++'s own programs use it only when the named pipe cannot be
- * opened). The programs already noticed this run, by path ("pid N" when
- * the path is not known). */
-static char **g_wmcd_seen = NULL;
-static size_t g_nwmcd_seen = 0, g_wmcd_seensize = 0;
+ * opened). Its sender cannot be identified - the window it passes is its
+ * own choice - so the notice shows no program: one notice per run, served or refused,
+ * and a refusal is recorded without a pid. */
+static bool g_wmcd_noticed = false;
 
-/* One of KiTTY++'s own programs, by file name? */
-static bool kageant_wmcd_own(const char *base)
-{
-    static const char *const own[] = {
-        "kitty.exe", "kitty_portable.exe", "klink.exe", "kscp.exe",
-        "ksftp.exe", "kageant.exe",
-    };
-    for (size_t i = 0; i < lenof(own); i++)
-        if (!stricmp(base, own[i]))
-            return true;
-    return false;
-}
-
-int kageant_wmcopydata_request(unsigned long pid)
+int kageant_wmcopydata_request(void)
 {
     int allow = kageant_allowwmcopydata_get();
-    char *path = pid ? kageant_req_path_dup(pid) : NULL;
-    char *key = path ? dupstr(path) : dupprintf("pid %lu", pid);
-    bool seen = false;
 
     if (!allow)
-        kageant_audit_refused("window-messages", pid, NULL);   /* 103 */
-    for (size_t i = 0; i < g_nwmcd_seen; i++)
-        if (!stricmp(g_wmcd_seen[i], key)) {
-            seen = true;
-            break;
-        }
-    if (!seen) {
-        sgrowarray(g_wmcd_seen, g_wmcd_seensize, g_nwmcd_seen);
-        g_wmcd_seen[g_nwmcd_seen++] = key;
-        key = NULL;
-    }
-    sfree(key);
-    if (!seen && kageant_notify_get() && traywindow) {
-        const char *base = path ? strrchr(path, '\\') : NULL;
-        char *who = path ? dupstr(base ? base + 1 : path)
-                         : dupprintf(KT_KA_WMCD_PROGRAM_PID_FMT, pid);
-        char *text = kageant_wmcd_own(who) ?
-            dupprintf(allow ? KT_KA_WMCD_OWN_FMT : KT_KA_WMCD_OWN_REFUSED_FMT,
-                      who) :
-            dupprintf(allow ? KT_KA_WMCD_FMT : KT_KA_WMCD_REFUSED_FMT, who);
+        kageant_audit_refused("window-messages", 0, NULL);   /* 103 */
+    if (!g_wmcd_noticed && kageant_notify_get() && traywindow) {
+        const char *text = allow ? KT_KA_WMCD_TEXT : KT_KA_WMCD_REFUSED_TEXT;
+        g_wmcd_noticed = true;
         kageant_trace_notice(KT_KA_NOTICE_WMCOPYDATA, text);
         kitty_notice_show(KT_KA_NOTICE_WMCOPYDATA, text, KAGEANT_NOTICE_WARN,
                           kageant_notice_seconds(15), traywindow,
                           KAGEANT_WM_NOTICE_SECURITY);
-        sfree(text);
-        sfree(who);
     }
-    sfree(path);
     return allow;
 }
 
@@ -3901,6 +3868,14 @@ static int kageant_desktop_interactive(void)
     return 1;
 }
 
+bool kageant_requester_is_self(unsigned long pid)
+{
+    char *self = kitty_module_path_dup(NULL);
+    bool same = self && kitty_pid_runs_file(pid, self, NULL);
+    sfree(self);
+    return same;
+}
+
 int kageant_rules_remove_confirm(const char *fp, const char *comment,
                                  const char *rules, unsigned long pid)
 {
@@ -3913,7 +3888,9 @@ int kageant_rules_remove_confirm(const char *fp, const char *comment,
         const char *base = strrchr(path, '\\');
         who = dupprintf("%s (%s)", base ? base + 1 : path, path);
     } else if (pid) {
-        who = dupprintf(KT_KA_WMCD_PROGRAM_PID_FMT, pid);
+        who = dupprintf(KT_KA_PROGRAM_PID_FMT, pid);
+    } else if (pageant_external_wmcd) {
+        who = dupstr(KT_KA_WMCD_PROGRAM);
     } else {
         who = dupstr(KT_KA_RULES_RM_SELF);
     }

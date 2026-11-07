@@ -1485,6 +1485,8 @@ static char *kitty_rsa1_record_fp(RSAKey *key)
 }
 bool pageant_external_request = false;
 unsigned long pageant_external_pid = 0;
+bool pageant_external_wmcd = false;
+bool (*kageant_requester_is_self_hook)(unsigned long pid) = NULL;
 
 /* KiTTY: is this external mutation refused by the access-control settings?
  * Only external requests are gated - the agent's own UI does not set
@@ -3521,6 +3523,19 @@ static PageantAsyncOp *pageant_make_op(
                 if (rp->sort.priv.ssh_version != 2)
                     continue;
                 rfp2 = kar_key_fp(rp->sort.full_pub);
+            /* Only kageant's own command line (kageant -l) asks for this.
+             * A forwarding client that sends no session-bind (PuTTY,
+             * WinSCP, an older KiTTY) looks local, so the forwarding check
+             * above misses its remote peer: the requester's program file
+             * must be kageant's own, by the pid Windows reports for the
+             * pipe. A request by window messages has no such pid. */
+            if (pageant_external_request &&
+                (pageant_external_wmcd || !kageant_requester_is_self_hook ||
+                 !kageant_requester_is_self_hook(pageant_external_pid))) {
+                fail("rules-list: only kageant's own command line may list "
+                     "the rules");
+                goto responded;
+            }
                 if (!kar_store_restricted(rst, rfp2)) {
                     put_stringz(rents, rfp2);
                     put_stringz(rents, rp->comment ? rp->comment : "");

@@ -1525,11 +1525,12 @@ char default_init_file_content[] =
 ; kitty.exe and klink, OpenSSH's ssh from 8.9).\n\
 ;blockforwardedchanges=yes\n\
 ; allowwmcopydata: accept requests by window messages (WM_COPYDATA), the\n\
-; agent connection of programs built on PuTTY before 0.75. KiTTY++'s own\n\
-; programs use it only when the named pipe cannot be opened. Each program\n\
-; using it raises a notice once per run. Default yes. no: they are refused,\n\
-; the agent log records it (reason window-messages).\n\
-;allowwmcopydata=yes\n\
+; agent connection of programs built on PuTTY before 0.75. A legacy option:\n\
+; kageant cannot identify the program that sends one. KiTTY++'s own\n\
+; programs use it only when the named pipe cannot be opened. A notice once\n\
+; per run. Default no: they are refused, the agent log records it (reason\n\
+; window-messages).\n\
+;allowwmcopydata=no\n\
 ; readknownhosts: use OpenSSH's %USERPROFILE%\\.ssh\\known_hosts as a\n\
 ; host-key source (Settings, Agent page). Off by default: kageant then\n\
 ; never opens the file. On: host names of a host key for the agent log's\n\

@@ -146,6 +146,17 @@ char *kitty_temp_path_dup(void);
 char *kitty_module_dir_dup(HMODULE mod);
 char *kitty_long_path_dup(const char *path);
 char *kitty_getenv_dup(const char *name);
+
+/*
+ * The same FILE, by its identity (volume serial number and file index), so
+ * a junction, a subst drive or an 8.3 name of it matches; 0 when either
+ * cannot be opened. kitty_pid_runs_file: process pid runs from that file
+ * (its image read through OpenProcess, so Windows names the process, not
+ * the asker); *image gets the image path when asked (sfree it), NULL else.
+ * Unknown counts as no.
+ */
+int kitty_same_file(const char *a, const char *b);
+int kitty_pid_runs_file(unsigned long pid, const char *path, char **image);
 char *kitty_expand_env_strict_dup(const char *in);
 char *kitty_wide_to_acp_dup(const wchar_t *w);
 wchar_t *kitty_acp_to_wide_dup(const char *s);

@@ -119,6 +119,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
+- kageant: requests by window messages (WM_COPYDATA, programs built on
+  PuTTY before 0.75) are refused by default. kageant cannot identify
+  the program that sends one: the sender passes a window of its choice. "Accept
+  requests by window messages" (`[Agent] allowwmcopydata=yes`) serves them
+  as a legacy option, for an unknown program: never with a key unlocked for
+  another program, and no program shown in the notice or the agent log.
 - kageant: a session-bind signed with SHA-1 is refused (`ssh-rsa` from an
   RSA host key, every `ssh-dss` signature). The login goes on without a
   destination, so a key restricted to destinations is not used on it.
@@ -190,8 +196,8 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   port. Each change of a key's rules is recorded (event 116). Settings >
   Security: "Refuse key changes from a forwarded agent" (default on: add,
   remove, lock refused, reason `forwarded`) and "Accept requests by window
-  messages" (PuTTY before 0.75, default on). A program using window
-  messages gets a notice once.
+  messages" (PuTTY before 0.75, off by default, see Changed). A program
+  using window messages gets a notice once per run.
 
 ### Fixed
 
@@ -216,6 +222,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   the selected groups after Send, so the next commands go to the same
   groups. A window closed in the meantime drops out. Its sessions list is
   a view only: no row can be selected there, Send goes to the groups.
+- kageant: `rules-list-v00` (`kageant -l`) answers only kageant's own
+  program. Behind PuTTY, WinSCP or an older KiTTY, which forward the agent
+  without a session-bind, a program on the server could read the servers
+  listed in the destination rules.
 
 ## 0.85.1.19-beta — 2026-10-28
 

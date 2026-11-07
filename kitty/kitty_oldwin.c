@@ -422,6 +422,54 @@ char *kitty_long_path_dup(const char *path)
     return NULL;
 }
 
+/* The identity of a file: its volume serial number and file index. The
+ * same file reached through a junction, a subst drive or an 8.3 name has
+ * the same identity under another path. */
+static int kitty_file_identity(const char *path, BY_HANDLE_FILE_INFORMATION *fi)
+{
+    HANDLE f = CreateFileA(path, FILE_READ_ATTRIBUTES,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                           NULL, OPEN_EXISTING, 0, NULL);
+    int ok;
+    if (f == INVALID_HANDLE_VALUE)
+        return 0;
+    ok = GetFileInformationByHandle(f, fi) ? 1 : 0;
+    CloseHandle(f);
+    return ok;
+}
+
+int kitty_same_file(const char *a, const char *b)
+{
+    BY_HANDLE_FILE_INFORMATION fa, fb;
+    if (!a || !b || !kitty_file_identity(a, &fa) || !kitty_file_identity(b, &fb))
+        return 0;
+    return fa.dwVolumeSerialNumber == fb.dwVolumeSerialNumber &&
+           fa.nFileIndexHigh == fb.nFileIndexHigh &&
+           fa.nFileIndexLow == fb.nFileIndexLow;
+}
+
+int kitty_pid_runs_file(unsigned long pid, const char *path, char **image)
+{
+    HANDLE h;
+    char *img;
+    int same = 0;
+    if (image)
+        *image = NULL;
+    if (!pid || !path)
+        return 0;
+    if ((h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid)) == NULL)
+        return 0;
+    if ((img = kitty_process_image_path_dup(h)) != NULL) {
+        same = kitty_same_file(img, path);
+        if (image)
+            *image = img;
+        else
+            sfree(img);
+    }
+    CloseHandle(h);
+    return same;
+}
+
 char *kitty_getenv_dup(const char *name)
 {
     DWORD need, n;

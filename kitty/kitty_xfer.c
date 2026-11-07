@@ -2587,46 +2587,17 @@ static char *kx_long_path( const char *path ) {
 	return kitty_full_path_dup( path ) ;
 }
 
-/* The identity of a file: its volume serial number and file index. The
- * same file reached through a junction, a subst drive or an 8.3 name has
- * the same identity under another path. 0 = not read. */
-static int kx_file_id( const char *path, BY_HANDLE_FILE_INFORMATION *fi ) {
-	HANDLE f = CreateFileA( path, FILE_READ_ATTRIBUTES,
-	                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-	                        NULL, OPEN_EXISTING, 0, NULL ) ;
-	int ok ;
-	if( f == INVALID_HANDLE_VALUE ) return 0 ;
-	ok = GetFileInformationByHandle( f, fi ) ;
-	CloseHandle( f ) ;
-	return ok ;
-}
-
 /* Process `pid` runs from program file `exe` (a kx_long_path): the same
- * file, by its identity. Unknown counts as no. */
+ * file, by its identity (kitty_pid_runs_file, kitty_oldwin.c). Unknown
+ * counts as no. */
 static int kx_pid_runs( DWORD pid, const char *exe ) {
-	BY_HANDLE_FILE_INFORMATION a, b ;
-	HANDLE h ;
-	char *img ;
-	int same = 0, ida = 0, idb = 0 ;
+	char *img = NULL ;
+	int same ;
 	if( !exe || !pid ) return 0 ;
-	if( ( h = OpenProcess( PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid ) ) == NULL ) {
-		KX_PIPE_TRACE( "pid=%lu not opened (error %lu)", (unsigned long)pid, (unsigned long)GetLastError() ) ;
-		return 0 ;
-	}
-	if( ( img = kitty_process_image_path_dup( h ) ) != NULL ) {
-		ida = kx_file_id( img, &a ) ;
-		idb = kx_file_id( exe, &b ) ;
-		same = ida && idb
-		       && a.dwVolumeSerialNumber == b.dwVolumeSerialNumber
-		       && a.nFileIndexHigh == b.nFileIndexHigh
-		       && a.nFileIndexLow == b.nFileIndexLow ;
-		KX_PIPE_TRACE( "pid=%lu runs %s (id %s), WinSCPPath %s (id %s): %s", (unsigned long)pid,
-		               img, ida ? "read" : "not read", exe, idb ? "read" : "not read",
-		               same ? "the same file" : "another file" ) ;
-		sfree( img ) ;
-	} else
-		KX_PIPE_TRACE( "pid=%lu program file not read (error %lu)", (unsigned long)pid, (unsigned long)GetLastError() ) ;
-	CloseHandle( h ) ;
+	same = kitty_pid_runs_file( pid, exe, &img ) ;
+	KX_PIPE_TRACE( "pid=%lu runs %s, WinSCPPath %s: %s", (unsigned long)pid,
+	               img ? img : "(not read)", exe, same ? "the same file" : "another file" ) ;
+	sfree( img ) ;
 	return same ;
 }
 

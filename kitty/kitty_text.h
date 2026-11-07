@@ -2886,15 +2886,13 @@
 #define KT_KA_RULES_KEPT_MANY_FMT                    "%d removed keys keep their destination rules: they apply again when the keys are loaded. " \
         "The rule editor (Key details > Restrict...) removes them."
 /* a request by window messages (WM_COPYDATA, kitty_pageant.c) */
-#define KT_KA_WMCD_PROGRAM_PID_FMT                   "A program (pid %lu)"
-#define KT_KA_WMCD_FMT                               "%s reached kageant through window messages, the way programs built on PuTTY before 0.75 do. " \
-        "Update it to a current version. Click here for kageant's security settings."
-#define KT_KA_WMCD_REFUSED_FMT                       "%s was refused: it reached kageant through window messages, the way programs built on PuTTY before 0.75 do. " \
-        "Update the program, or turn on \"Accept requests by window messages\" in kageant's security settings (click here)."
-#define KT_KA_WMCD_OWN_FMT                           "%s reached kageant through window messages: kageant's named pipe could not be opened. " \
-        "Click here for kageant's security settings."
-#define KT_KA_WMCD_OWN_REFUSED_FMT                   "%s was refused: it reached kageant through window messages because kageant's named pipe could not be opened. " \
-        "\"Accept requests by window messages\" in kageant's security settings allows it (click here)."
+#define KT_KA_PROGRAM_PID_FMT                        "A program (pid %lu)"
+#define KT_KA_WMCD_PROGRAM                           "A program using window messages (not identifiable)"
+#define KT_KA_WMCD_TEXT                             "A program reached kageant through window messages, the way programs built on PuTTY before 0.75 do. " \
+        "kageant cannot identify the program that sent it. Update it to a current version. Click here for kageant's security settings."
+#define KT_KA_WMCD_REFUSED_TEXT                      "A request through window messages was refused: programs built on PuTTY before 0.75 connect this way, " \
+        "and kageant cannot identify the program that sent it. Update the program, or turn on \"Accept requests by window messages\" " \
+        "in kageant's security settings (click here)."
 
 /* kageant: tray menu items */
 #define KT_KA_MENU_QUICK_CONNECT                     "&Quick Connect"
@@ -3580,6 +3578,7 @@
 #define KT_KA_STARTUP_MISSING_FMT                    "%d startup key%s could not be found and %s skipped."
 #define KT_KA_BY_PROGRAM_PID_FMT                     " by %s (pid %lu)"
 #define KT_KA_BY_PID_FMT                             " by pid %lu"
+#define KT_KA_BY_WMCD                                " by a program using window messages (not identifiable)"
 #define KT_KA_ALL_KEYS_REMOVED_FMT                   "All keys were removed from the agent%s."
 #define KT_KA_KEY_ADDED_TEXT                         "A key was added to the agent"
 #define KT_KA_KEY_REMOVED_TEXT                       "A key was removed from the agent"

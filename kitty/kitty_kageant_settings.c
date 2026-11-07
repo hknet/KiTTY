@@ -1028,13 +1028,14 @@ int kageant_blockforwarded_set(int on)
     return kageant_policy_set(KI_AGENT_BLOCKFORWARDEDCHANGES,
                               "BlockForwardedChanges", on);
 }
-/* "Accept requests by window messages (PuTTY before 0.75)" - default ON:
- * refusing them would break the programs that still use them. Asked on
- * every WM_COPYDATA request, hence the cache. */
+/* "Accept requests by window messages (PuTTY before 0.75)" - default OFF:
+ * a legacy connection whose sender kageant cannot identify (the window it
+ * passes is its own choice). Asked on every WM_COPYDATA request, hence the
+ * cache. */
 int  kageant_allowwmcopydata_get(void)
 {
     return kageant_policy_get_def(KI_AGENT_ALLOWWMCOPYDATA,
-                                  "AllowWmCopyData", 1);
+                                  "AllowWmCopyData", 0);
 }
 int kageant_allowwmcopydata_set(int on)
 {

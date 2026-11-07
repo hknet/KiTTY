@@ -224,8 +224,16 @@ key the agent holds without rules (`kageant -l`).
                 destination, its origin on an indented line below,
                 CR LF between the lines; empty for a key without rules
 
-Answer on a connection with a binding for forwarding, with data after
-the name, or while the rule file is damaged:
+Only kageant's own command line (`kageant -l`) may ask: the program file
+of the requesting process, by the process id Windows reports for the
+pipe, must be kageant's own (the same file, through a junction or an 8.3
+name too). A request by window messages carries no such process id. A
+forwarding client that sends no `session-bind@openssh.com` (PuTTY,
+WinSCP, an older KiTTY) looks like a local program, so the binding check
+alone would let its remote peer read the user's servers.
+
+Answer to any other program, on a connection with a binding for
+forwarding, with data after the name, or while the rule file is damaged:
 
     byte        SSH_AGENT_EXTENSION_FAILURE (28)
 

@@ -734,7 +734,7 @@ The tray menu's **Lock agent** keeps the keys loaded but neither offers nor uses
 
 **Key changes from a forwarded agent.** A program on a server the agent is forwarded to may list the keys and log in with them, but by default it cannot add a key, remove one, or lock or unlock the agent: **Settings > Security > Refuse key changes from a forwarded agent (add, remove, lock)**, `[Agent] blockforwardedchanges=yes` (the default). A refused request is recorded with reason `forwarded`. kageant knows a forwarded agent by the binding its forwarding client sends (session-bind marked for forwarding: KiTTY++'s kitty.exe and klink, OpenSSH's ssh from 8.9). A client without it is not recognised.
 
-**Programs built on PuTTY before 0.75.** They reach the agent through window messages (WM_COPYDATA) instead of the named pipe. kageant shows a notice once per program and run, with the program's name. A click opens **Settings > Security**, where **Accept requests by window messages (PuTTY before 0.75)** (`[Agent] allowwmcopydata`, default on) refuses them when unticked. KiTTY++'s own programs use window messages only when the named pipe cannot be opened.
+**Programs built on PuTTY before 0.75.** They reach the agent through window messages (WM_COPYDATA) instead of the named pipe. kageant cannot identify the program that sends such a request: the sender passes a window of its choice. **Accept requests by window messages (PuTTY before 0.75)** on **Settings > Security** (`[Agent] allowwmcopydata`) is a legacy option and off by default. A notice appears once per run, and a click opens that page. KiTTY++'s own programs use window messages only when the named pipe cannot be opened.
 
 (no screenshot)
 

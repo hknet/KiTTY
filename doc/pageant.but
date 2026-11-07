@@ -285,7 +285,9 @@ the colour theme.
 \b \q{Security}: the IPC policy (refuse all key adds and removes over
 the pipe, or only adds, or only removes), \q{Allow locking the agent
 over IPC}, \q{Refuse key changes from a forwarded agent (add, remove,
-lock)} (on by default, \k{pageant-forward-changes}), whether confirmations demand
+lock)} (on by default, \k{pageant-forward-changes}), \q{Accept requests
+by window messages (PuTTY before 0.75)} (off by default,
+\k{pageant-wmcopydata}), whether confirmations demand
 a Windows Hello gesture, how long a typed passphrase and a Windows
 Hello unlock are kept for a batch of keys, and \q{Re-encrypt keys
 after idle} - the mode and the time after which an unused key goes
@@ -809,6 +811,32 @@ KiTTY++'s kitty.exe and klink send it, as OpenSSH's \c{ssh} does from
 version 8.9. A forwarding client that sends no binding (an older
 \c{ssh}, PuTTY) looks to kageant like a program on this computer, and
 its changes are not refused.
+
+\S{pageant-wmcopydata} Requests by window messages (legacy)
+
+Programs built on PuTTY before 0.75 reach the agent through window
+messages (\c{WM_COPYDATA}) instead of the named pipe. This is a legacy
+option and off by default: \q{Accept requests by window messages
+(PuTTY before 0.75)} on the Security page of the settings,
+\c{allowwmcopydata} in the \c{[Agent]} section of kitty.ini (default
+\c{no}).
+
+kageant cannot identify the program that sends a request by window
+messages. The sender passes a window of its choice, so any program could
+pose as another. Over the named pipe Windows itself reports the program. A
+request by window messages is therefore served for an unknown program:
+it never uses a key unlocked for another program, and neither the notices
+nor the agent log show a program.
+
+Off, such a request answers \c{SSH_AGENT_FAILURE}, and the agent log
+records the refused request (103) with reason \c{window-messages}.
+Either way a notice appears once per run. KiTTY++'s own programs use
+window messages only when the named pipe cannot be opened.
+
+Requests by window messages are handled one at a time. A request that
+waits for a passphrase or Windows Hello holds every later program that
+uses window messages until it is answered. The named pipe is not
+affected.
 
 \H{pageant-destination} The \i{destination} of a key use
 

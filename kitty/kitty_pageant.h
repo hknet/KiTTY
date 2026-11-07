@@ -311,11 +311,12 @@ int  kageant_fwd_blocked(int op, const char *fp);
 /* requests by window messages (WM_COPYDATA) accepted (default yes) */
 int  kageant_allowwmcopydata_get(void);
 int  kageant_allowwmcopydata_set(int on);
-/* A WM_COPYDATA request from pid: 1 serve it, 0 refuse it (the setting
- * is off: a refused-request record, reason window-messages). A notice once
- * per program per run, under the key-use notice setting; its click opens
- * the settings on the Security page (KAGEANT_WM_NOTICE_SECURITY). */
-int  kageant_wmcopydata_request(unsigned long pid);
+/* A WM_COPYDATA request (its sender cannot be identified): 1 serve it, 0 refuse
+ * it (the setting is off, the default: a refused-request record, reason
+ * window-messages). A notice once per run, under the key-use notice
+ * setting; its click opens the settings on the Security page
+ * (KAGEANT_WM_NOTICE_SECURITY). */
+int  kageant_wmcopydata_request(void);
 #define KAGEANT_WM_NOTICE_SECURITY (WM_APP + 15)
 /* the full path of the program behind a request (pid), NULL when not
  * known; sfree it (kitty_kageant_audit.c, kageant_req_path_hook) */
@@ -354,6 +355,9 @@ void kageant_audit_rules_ex(const char *fp, const char *comment,
 /* kageant_rules_remove_hook (pageant.h): kageant -R's confirmation */
 int kageant_rules_remove_confirm(const char *fp, const char *comment,
                                  const char *rules, unsigned long pid);
+/* kageant_requester_is_self_hook (pageant.h): pid runs from kageant's own
+ * program file (rules-list: kageant -l only) */
+bool kageant_requester_is_self(unsigned long pid);
 /* the agent lock's frontend half (kitty_pageant.c) */
 int  kageant_ipc_lock_allowed(void);
 void kageant_do_lock_event(int op, int result);

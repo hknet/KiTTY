@@ -7823,7 +7823,6 @@ struct WmCopydataTransaction {
     char *length, *body;
     size_t bodysize, bodylen;
     HANDLE ev_msg_ready, ev_reply_ready;
-    DWORD sender_pid;    /* KiTTY: WM_COPYDATA sender, for mutation notices */
 } wmct;
 
 static struct PageantClient wmcpc;
@@ -7836,18 +7835,25 @@ static void wm_copydata_got_msg(void *vctx)
     /* KiTTY: requests by window messages (PuTTY before 0.75): a notice once
      * per program, and refused - SSH_AGENT_FAILURE, a record with reason
      * window-messages - while kageant's setting is off */
-    if (!kageant_wmcopydata_request(wmct.sender_pid)) {
+    if (!kageant_wmcopydata_request()) {
         static const unsigned char refused[] = { SSH_AGENT_FAILURE };
         wm_copydata_got_response(&wmcpc, NULL,
                                  make_ptrlen(refused, lenof(refused)));
         return;
     }
-    /* KiTTY: WM_COPYDATA is an external transport - see the pipe path. */
+    /* KiTTY: WM_COPYDATA is an external transport - see the pipe path. Its
+     * sender cannot be identified: the window handle in wParam is the
+     * sender's own choice, so any program could pass another's window. The
+     * pid stays 0 (unknown): it never matches a key reservation
+     * (hknet/KiTTY#66), and notices and records show "a program using
+     * window messages" (pageant_external_wmcd) instead of a program. */
     pageant_external_request = true;
-    pageant_external_pid = wmct.sender_pid;
+    pageant_external_pid = 0;
+    pageant_external_wmcd = true;
     pageant_handle_msg(&wmcpc, NULL, make_ptrlen(wmct.body, wmct.bodylen));
     pageant_external_request = false;
     pageant_external_pid = 0;
+    pageant_external_wmcd = false;
 }
 
 static void wm_copydata_got_response(
@@ -9070,11 +9076,6 @@ static LRESULT CALLBACK wm_copydata_WndProc(HWND hwnd, UINT message,
         cds = (COPYDATASTRUCT *) lParam;
         if (cds->dwData != AGENT_COPYDATA_ID)
             return 0;              /* not our message, mate */
-        /* KiTTY: wParam is the sending window, by the WM_COPYDATA contract -
-         * best-effort requester identity for the mutation notices. */
-        wmct.sender_pid = 0;
-        if (wParam)
-            GetWindowThreadProcessId((HWND)wParam, &wmct.sender_pid);
         mapname = (char *) cds->lpData;
         if (!mapname || cds->cbData == 0)
             return 0;              /* KiTTY: reject empty/NULL before indexing */
@@ -10024,6 +10025,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kageant_before_remove_all_hook = kageant_rules_kept_held;
         /* kageant -R: a person's word before a key's rules go */
         kageant_rules_remove_hook = kageant_rules_remove_confirm;
+        /* rules-list: kageant -l only, by its program file */
+        kageant_requester_is_self_hook = kageant_requester_is_self;
         kageant_reencrypt_audit_hook = kageant_do_reencrypt_audit;
         kageant_decrypt_audit_hook = kageant_do_decrypt_audit;
         kageant_notify_hook = kageant_do_notify;

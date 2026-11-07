@@ -195,6 +195,12 @@ bool pageant_key_decrypted_by_blob(ptrlen blob);
 bool pageant_key_present_by_blob(ptrlen blob);
 extern bool pageant_external_request;
 extern unsigned long pageant_external_pid;   /* 0 = unknown */
+/* KiTTY: the request came by window messages (WM_COPYDATA): its sender
+ * cannot be identified, pageant_external_pid is 0 */
+extern bool pageant_external_wmcd;
+/* KiTTY: does process pid run from kageant's own program file? (rules-list:
+ * kageant -l only). NULL outside kageant: the request is refused. */
+extern bool (*kageant_requester_is_self_hook)(unsigned long pid);
 /*
  * KiTTY: the verified session-bind@openssh.com bindings of the connection
  * a request came on (OpenSSH's PROTOCOL.agent), in the order they were
