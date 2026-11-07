@@ -109,8 +109,11 @@ int GetPortFwdState( const int port, const DWORD pid ) {
 }
 
 int ShowPortfwd( HWND hwnd, Conf * conf ) {
-	char pf[2100]="" ;
+	/* the whole list, however long (it was a fixed 2100-byte array cut at
+	 * 2000 characters, and the legend added after the cut ran past it) */
+	strbuf *pf = strbuf_new() ;
 	char *key, *val;
+	int ret ;
 	for (val = conf_get_str_strs(conf, CONF_portfwd, NULL, &key) ;
 		val != NULL;
 		val = conf_get_str_strs(conf, CONF_portfwd, key, &key)) {
@@ -135,14 +138,8 @@ int ShowPortfwd( HWND hwnd, Conf * conf ) {
 		} else {
 			p = dupprintf("%s\t%s\n", key, val) ;
 		}
-		if( (strlen(pf)+strlen(p))<2000 ) {
-			strcat( pf, p ) ;
-			sfree(p) ;
-		} else {
-			sfree(p) ;
-			strcat( pf, "...\n" ) ;
-			break ;
-		}
+		put_dataz( pf, p ) ;
+		sfree(p) ;
 	}
 	/*
 	MIB_TCPTABLE_OWNER_PID *pTCPInfo;
@@ -208,9 +205,9 @@ int ShowPortfwd( HWND hwnd, Conf * conf ) {
 	 * closed. */
 	{
 		const char *legend = KT_MAIN_PORTFWD_LEGEND ;
-		char *list = snewn( 2 * strlen( pf ) + 1, char ) ;
+		char *list = snewn( 2 * pf->len + 1, char ) ;
 		char *d = list, *s ;
-		for( s = pf ; *s ; s++ ) {
+		for( s = pf->s ; *s ; s++ ) {
 			if( *s == '\n' ) *d++ = '\r' ;
 			*d++ = *s ;
 		}
@@ -219,6 +216,8 @@ int ShowPortfwd( HWND hwnd, Conf * conf ) {
 		kitty_info_modeless( hwnd, KT_CAP_PORT_FORWARDING, legend, list[0] ? list : NULL, NULL ) ;
 		sfree( list ) ;
 	}
-	strcat( pf, KT_MAIN_PORTFWD_LEGEND ) ;
-	return SetTextToClipboard( pf ) ;
+	put_dataz( pf, KT_MAIN_PORTFWD_LEGEND ) ;
+	ret = SetTextToClipboard( pf->s ) ;
+	strbuf_free( pf ) ;
+	return ret ;
 }

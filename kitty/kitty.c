@@ -654,18 +654,24 @@ void CreateIniFile( const char * filename ) {
 	/* the folder store's new file gets owner-only rights first: the whole
 	 * write below keeps the rights of the file it replaces */
 	if( IniFileFlag == SAVEMODE_DIR ) made = kitty_store_acl_new_file( filename ) ;
-	if( IniFileFlag == SAVEMODE_DIR ) {
-		int p = poss( ";savemode=registry", default_init_file_content );
-		if( p > 0 ) {
-			del( default_init_file_content, p, 18 );
-			insert( default_init_file_content, "savemode=dir", p );
+	/* The text is built in sb, the template itself stays as compiled: a
+	 * folder store's file gets "savemode=dir" where the template has
+	 * ";savemode=registry" (it used to be edited into the global template
+	 * in place). CRLF line ends, as the text-mode file this replaces had. */
+	{
+		static const char regline[] = ";savemode=registry" ;
+		const char *swap = IniFileFlag == SAVEMODE_DIR ?
+			strstr( default_init_file_content, regline ) : NULL ;
+		sb = strbuf_new() ;
+		for( c = default_init_file_content ; *c ; c++ ) {
+			if( c == swap ) {
+				put_dataz( sb, "savemode=dir" ) ;
+				c += strlen( regline ) - 1 ;
+				continue ;
+			}
+			if( *c == '\n' && ( c == default_init_file_content || c[-1] != '\r' ) ) put_byte( sb, '\r' ) ;
+			put_byte( sb, *c ) ;
 		}
-	}
-	/* CRLF line ends, as the text-mode file this replaces had */
-	sb = strbuf_new() ;
-	for( c = default_init_file_content ; *c ; c++ ) {
-		if( *c == '\n' && ( c == default_init_file_content || c[-1] != '\r' ) ) put_byte( sb, '\r' ) ;
-		put_byte( sb, *c ) ;
 	}
 	if( !kitty_write_file_whole( filename, sb->s, sb->len ) && made ) {
 		/* the empty file made for its rights goes: the caller sees no

@@ -246,6 +246,8 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - OSC 5113 refuses every file name Windows reserves for a device:
   `COM0`, `LPT0`, `COM¹`-`COM³`, `LPT¹`-`LPT³`, `CONIN$`, `CONOUT$` and
   names with spaces before the extension were missing.
+- The port forwarding list (session menu) shows every rule. It stopped at
+  2000 characters.
 - `KITTY_PWDEBUG` works in test builds only and writes no characters and
   no checksum of a password.
 

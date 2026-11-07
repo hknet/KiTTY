@@ -277,7 +277,6 @@ kitty/kitty_params.c | LoadParameters() | diag | 512 | configuration-folder diag
 
 kitty/kitty_params.h | (file) | InitialDirectory | 4096 | declaration of the program folder; stored only when shorter than 4096, else empty
 
-kitty/kitty_portfwd.c | ShowPortfwd() | pf | 2100 | port-forward list text: entries added while under 2000, then a 4-byte "...\n" and the 89-byte legend: at most 2093 + NUL
 
 kitty/kitty_progstatus.h | struct PsRecord | msg | PS_MSG_MAX + 1 | OSC 7501 message, PS_MSG_MAX
 
