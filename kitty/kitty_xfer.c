@@ -5296,6 +5296,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	int winscpport ;
 	int raw = 0;
 	int pwfiles = 0 ;                /* passwords handed over as files or pipes (/passwordsfromfiles) */
+	int pw_held = 0 ;               /* passwords that got neither pipe nor file: not handed over */
 	int pipes_why ;                  /* KX_PIPE_*: pipe or file for this start */
 	const char *pf ;
 
@@ -5370,19 +5371,22 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			if( !kitty_pw_empty(conf,CONF_password) ) {
 				/* The URL's password field carries the PATH of a named pipe
 				 * (WinSCP 6.0 and later) or of a private temp file holding the
-				 * password (/passwordsfromfiles, see above); only if neither
-				 * could be made does the value itself go
-				 * (#535: percent-encoded so '@' '/' etc. can't redirect the host).
+				 * password (/passwordsfromfiles, see above). If neither could
+				 * be made, no password goes: never the value itself on the
+				 * command line (readable by every process of the user, and
+				 * taken for a path by /passwordsfromfiles). WinSCP prompts.
+				 * (#535: percent-encoded so '@' '/' etc. can't redirect the host.)
 				 * WinSCP's file format is its own - a plain password - so this
 				 * one is NOT the protected form the kscp file uses. */
 				char pw[KITTY_PW_MAX+1] ;
 				kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
 				pf = kx_winscp_password( pw ) ;
-				bcat( cmd, ":" ) ;
-				pw_at = cmd->len ;
-				if( pf ) { urlcat( cmd, pf ) ; pwfiles++ ; }
-				else urlcat( cmd, pw ) ;
-				pw_len = cmd->len - pw_at ;
+				if( pf ) {
+					bcat( cmd, ":" ) ;
+					pw_at = cmd->len ;
+					urlcat( cmd, pf ) ; pwfiles++ ;
+					pw_len = cmd->len - pw_at ;
+				} else pw_held++ ;
 				smemclr( pw, sizeof(pw) ) ;
 			}
 			bcat( cmd, "@" ) ;
@@ -5412,12 +5416,13 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		if( !kitty_pw_empty(conf,CONF_password) ) {
 			char pw[KITTY_PW_MAX+1] ;
 			kitty_pw_get( conf, CONF_password, pw, sizeof(pw) ) ;
-			bcat( cmd, ":" ) ;
-			pw_at = cmd->len ;
-			pf = kx_winscp_password( pw ) ;   /* a pipe or a file, see above */
-			if( pf ) { urlcat( cmd, pf ) ; pwfiles++ ; }
-			else urlcat( cmd, pw ) ;
-			pw_len = cmd->len - pw_at ;
+			pf = kx_winscp_password( pw ) ;   /* a pipe or a file, see above; else none */
+			if( pf ) {
+				bcat( cmd, ":" ) ;
+				pw_at = cmd->len ;
+				urlcat( cmd, pf ) ; pwfiles++ ;
+				pw_len = cmd->len - pw_at ;
+			} else pw_held++ ;
 			smemclr( pw, sizeof(pw) ) ;
 		}
 		bcat( cmd, "@" ) ;
@@ -5504,12 +5509,13 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 				 * TunnelPasswordPlain is the cleartext one. The span covers
 				 * the quotes rawcat adds, so the Event Log blanks the whole
 				 * value however it was escaped. */
-				bcat( cmd, " TunnelPasswordPlain=" ) ;
-				proxy_pw_at = cmd->len ;
 				pf = kx_winscp_password( px_pass ) ;    /* /passwordsfromfiles covers rawsettings too */
-				if( pf ) { rawcat( cmd, pf ) ; pwfiles++ ; }
-				else rawcat( cmd, px_pass ) ;
-				proxy_pw_len = cmd->len - proxy_pw_at ;
+				if( pf ) {
+					bcat( cmd, " TunnelPasswordPlain=" ) ;
+					proxy_pw_at = cmd->len ;
+					rawcat( cmd, pf ) ; pwfiles++ ;
+					proxy_pw_len = cmd->len - proxy_pw_at ;
+				} else pw_held++ ;              /* never the value itself */
 			}
 		} else if( method > 0 ) {
 			if( raw == 0 ) { bcat( cmd, " /rawsettings" ) ; raw++ ; }
@@ -5518,12 +5524,13 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			put_fmt( cmd, " ProxyPort=%d", px_port ) ;
 			if( px_user && strlen(px_user)>0 ) { bcat( cmd, " ProxyUsername=" ) ; rawcat( cmd, px_user ) ; }
 			if( px_pass[0] ) {
-				bcat( cmd, " ProxyPassword=" ) ;
-				proxy_pw_at = cmd->len ;
-				pf = kx_winscp_password( px_pass ) ;    /* a pipe or a file, see above */
-				if( pf ) { rawcat( cmd, pf ) ; pwfiles++ ; }
-				else rawcat( cmd, px_pass ) ;
-				proxy_pw_len = cmd->len - proxy_pw_at ;
+				pf = kx_winscp_password( px_pass ) ;    /* a pipe or a file, see above; else none */
+				if( pf ) {
+					bcat( cmd, " ProxyPassword=" ) ;
+					proxy_pw_at = cmd->len ;
+					rawcat( cmd, pf ) ; pwfiles++ ;
+					proxy_pw_len = cmd->len - proxy_pw_at ;
+				} else pw_held++ ;
 			}
 			/* One PuTTY field, two WinSCP ones: CONF_proxy_telnet_command holds
 			 * the Telnet negotiation string for PROXY_TELNET and the local
@@ -5568,6 +5575,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	                                                                 : KT_XFER_WINSCP_PW_PIPE ) ;
 	if( kx_pw.n ) debug_logevent( "%s", pipes_why == KX_PIPE_OLD ? KT_XFER_WINSCP_PW_FILE_OLD
 	                                  : KT_XFER_WINSCP_PW_FILE_NOPIPE ) ;
+	if( pw_held ) debug_logevent( "%s", KT_XFER_WINSCP_PW_NOT_HANDED ) ;
 	{
 		/* The process of this start reads the pipes; a WinSCP was running:
 		 * a process of the same program file too. A start without a new

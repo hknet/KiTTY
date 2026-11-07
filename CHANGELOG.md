@@ -237,6 +237,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - Host keys a server offers after login (hostkeys-00) are not stored for
   DSA (its proof is SHA-1 only) or for a type below the warn line of the
   session's host-key list. One Event Log line reports each.
+- WinSCP: a password that gets neither a named pipe nor a temporary file
+  is not handed over. It went on WinSCP's command line before, where
+  `/passwordsfromfiles` took it for a file path.
 - `KITTY_PWDEBUG` works in test builds only and writes no characters and
   no checksum of a password.
 

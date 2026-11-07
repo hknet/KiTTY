@@ -1184,10 +1184,12 @@ and closes after WinSCP has read it, or after a minute. No file is
 written. While a WinSCP is already running, the WinSCP started hands the
 session to it as a tab: the pipe then also opens for a running WinSCP
 of the same program file. A running WinSCP of another program file
-cannot open it, and WinSCP then asks for the password. An older WinSCP
+cannot open it, and WinSCP then prompts for the password. An older WinSCP
 gets a private temporary file that KiTTY++ deletes once WinSCP has read
-it. The Terminal Window's Event
-Log shows which of the two was used. A session that authenticates with
+it. If neither a pipe nor a file can be made, the password is not handed
+over at all, never on the command line: WinSCP prompts for it. The
+Terminal Window's Event Log shows which way was used. A session that
+authenticates with
 a key file or the agent hands over no password at all.
 
 Where WinSCP is \e{installed} is not here: that is a property of the PC

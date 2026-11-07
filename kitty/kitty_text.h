@@ -1201,6 +1201,7 @@
 #define KT_XFER_WINSCP_PW_FILE_OLD                   "WinSCP: password handed over through a temporary file (not WinSCP 6.0 or later by its file version) - WinSCP 6.0 or later takes it in memory through a pipe"
 #define KT_XFER_WINSCP_PW_PIPE_RUNNING               "WinSCP: password handed over through a named pipe (a WinSCP is already running: the started WinSCP or a running WinSCP of the same program file can read it)"
 #define KT_XFER_WINSCP_PW_FILE_NOPIPE                "WinSCP: password handed over through a temporary file (no named pipe available)"
+#define KT_XFER_WINSCP_PW_NOT_HANDED                 "WinSCP: a password was not handed over because neither a named pipe nor a temporary file could be made. WinSCP prompts for it."
 #define KT_XFER_START_FILEZILLA_ANYWAY               "%sStart FileZilla anyway?"
 #define KT_FZ_SITE_NAME                              "KiTTY++ session"
 /* Session > Connection > SSH > KSCP: the same pointer for the file-copy helper */
