@@ -103,7 +103,14 @@ its agent log (event 103, reason `session-bind-host: ...`) when:
 - the connection has no binding,
 - the last binding has a name already (one name per binding),
 - the host is empty or longer than 255 bytes,
-- the host holds a control character (a byte below 0x20, or 0x7f),
+- the host is neither a host name nor an IP address: a host name as RFC
+  1123 defines it (labels of letters, digits and `-` separated by dots,
+  1 to 63 characters each, no `-` at either end of a label, at most 253
+  characters, one trailing dot allowed; an international name only as its
+  A-label `xn--...`), or an IPv6 address in its text form (RFC 4291, in
+  brackets or not, with an optional `%zone`, RFC 6874). An IPv4 address
+  is a host name of digits and dots. Anything else - `_`, a space, a
+  control character, any byte from 0x80 up - is refused,
 - the port is 0 or above 65535,
 - the message is short or has data after the port.
 
@@ -111,7 +118,9 @@ its agent log (event 103, reason `session-bind-host: ...`) when:
 after a successful `session-bind@openssh.com` on the agent connection of
 a login: the host name and port the session connected to (the name its
 host key is stored under). A session with a logical host name for its
-host key sends that name. On a forwarded agent connection kitty.exe and
+host key sends that name. A name that is no host name or IP address (as
+above) is not sent at all: the binding then carries no name. On a
+forwarded agent connection kitty.exe and
 klink send it right after the binding for forwarding, with the name of
 the server whose forwarded connection it is. A failure answer is not
 shown. Its answer on a forwarded connection never reaches the server.
@@ -144,9 +153,10 @@ are then dropped from the expression). Every other check - the
 destination rules, the signature over the session id - stays on the host
 key the binding verified. The name is shown so the reader recognises the
 server. It is
-marked `(client)` so it is not taken for a verified fact. Length and
-control characters are checked because the name reaches the agent log,
-the Windows Event Log and a dialog.
+marked `(client)` so it is not taken for a verified fact. Only host-name
+characters are taken because the name reaches the agent log, the Windows
+Event Log, the confirmation and the Windows Hello prompt: a look-alike or
+right-to-left character could make it read as another, trusted server.
 
 ## key-state-v00@kapper.net
 

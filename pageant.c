@@ -3296,9 +3296,12 @@ static PageantAsyncOp *pageant_make_op(
              * that id - and whether it binds this connection for agent
              * forwarding. The signature is verified and the binding kept
              * with the connection, as OpenSSH's agent does: a session id
-             * once per connection, nothing after a binding for a login,
-             * at most KAGEANT_MAX_BINDINGS. kageant shows and logs the
-             * destination; no request is refused because of it.
+             * once per connection (an identical repeat is a success),
+             * nothing after a binding for a login, at most
+             * KAGEANT_MAX_BINDINGS. kageant shows and logs the
+             * destination, and the destination rules of a restricted key
+             * (kitty_agentrestrict.c) decide by these verified host keys:
+             * such a key is refused on a connection whose bind failed.
              */
             ptrlen hostkey = get_string(msg);
             ptrlen sid = get_string(msg);
@@ -3321,6 +3324,29 @@ static PageantAsyncOp *pageant_make_op(
             if ((why = session_bind_verify(hostkey, sid, sig)) != NULL) {
                 fail("session-bind: %s", why);
                 goto responded;
+            }
+            /* An identical repeat (same session id, host key and forwarding
+             * flag) is answered with success and adds nothing, as
+             * OpenSSH's agent does: a client that binds again after a
+             * reconnect is no attack. Checked before "already bound for a
+             * login", which would refuse it. The same id with another key
+             * or flag stays refused below. */
+            {
+                bool same = false;
+                for (size_t i = 0; i < info->nbindings; i++)
+                    if (ptrlen_eq_ptrlen(
+                            sid, ptrlen_from_strbuf(info->bindings[i].sid)) &&
+                        ptrlen_eq_ptrlen(
+                            hostkey,
+                            ptrlen_from_strbuf(info->bindings[i].hostkey)) &&
+                        info->bindings[i].forwarding == forwarding)
+                        same = true;
+                if (same) {
+                    put_byte(sb, SSH_AGENT_SUCCESS);
+                    pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS "
+                                       "(a repeat of an identical binding)");
+                    break;
+                }
             }
             if (info->nbindings &&
                 !info->bindings[info->nbindings - 1].forwarding) {
@@ -3497,6 +3523,19 @@ static PageantAsyncOp *pageant_make_op(
                      "forwarding");
                 goto responded;
             }
+            /* Only kageant's own command line (kageant -l) asks for this.
+             * A forwarding client that sends no session-bind (PuTTY,
+             * WinSCP, an older KiTTY) looks local, so the forwarding check
+             * above misses its remote peer: the requester's program file
+             * must be kageant's own, by the pid Windows reports for the
+             * pipe. A request by window messages has no such pid. */
+            if (pageant_external_request &&
+                (pageant_external_wmcd || !kageant_requester_is_self_hook ||
+                 !kageant_requester_is_self_hook(pageant_external_pid))) {
+                fail("rules-list: only kageant's own command line may list "
+                     "the rules");
+                goto responded;
+            }
             if (rst->damaged) {
                 fail("rules-list: the rule file is damaged");
                 goto responded;
@@ -3523,19 +3562,6 @@ static PageantAsyncOp *pageant_make_op(
                 if (rp->sort.priv.ssh_version != 2)
                     continue;
                 rfp2 = kar_key_fp(rp->sort.full_pub);
-            /* Only kageant's own command line (kageant -l) asks for this.
-             * A forwarding client that sends no session-bind (PuTTY,
-             * WinSCP, an older KiTTY) looks local, so the forwarding check
-             * above misses its remote peer: the requester's program file
-             * must be kageant's own, by the pid Windows reports for the
-             * pipe. A request by window messages has no such pid. */
-            if (pageant_external_request &&
-                (pageant_external_wmcd || !kageant_requester_is_self_hook ||
-                 !kageant_requester_is_self_hook(pageant_external_pid))) {
-                fail("rules-list: only kageant's own command line may list "
-                     "the rules");
-                goto responded;
-            }
                 if (!kar_store_restricted(rst, rfp2)) {
                     put_stringz(rents, rfp2);
                     put_stringz(rents, rp->comment ? rp->comment : "");

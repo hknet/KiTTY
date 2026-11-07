@@ -352,9 +352,9 @@ char *kar_rule_text(const kar_rule *r);
 char *kar_rules_text(const kar_rules *r);
 
 /* The data of a session-bind-host-v00@kapper.net request after its name:
- * string host, uint32 port, nothing after. The host must be 1 to
- * KAR_MAX_BIND_HOST bytes without a control character, the port 1 to
- * 65535. *out = the name as shown: "host", "host:port" for another port
+ * string host, uint32 port, nothing after. The host must be a host name
+ * or an IP address (kitty_agentbind_host_check: RFC 1123, 4291, 6874), the
+ * port 1 to 65535. *out = the name as shown: "host", "host:port" for another port
  * than 22 (sfree it). False with *why (static text) when it is refused. */
 bool kar_parse_bind_host(BinarySource *src, char **out, const char **why);
 /* The same, *port (may be NULL) set to the port sent. */

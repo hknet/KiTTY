@@ -18,6 +18,7 @@
 #include "ssh.h"
 
 #include "kitty_agentrestrict.h"
+#include "kitty_agentbind.h"    /* kitty_agentbind_host_check: session-bind-host */
 #include "kitty_knownhosts.h"   /* a program's rule compared with known_hosts */
 #include "kitty_text.h"     /* KT_KA_DEST_CLIENT_MARK, KT_KAKEYS_DEST_* */
 
@@ -1210,17 +1211,11 @@ bool kar_parse_bind_host_port(BinarySource *src, char **out, unsigned *pport,
         *why = "trailing data after the request";
         return false;
     }
-    if (!host.len || host.len > KAR_MAX_BIND_HOST) {
-        *why = "the host name is empty or longer than 255 bytes";
+    /* a host name or an IP address and nothing else (RFC 1123, 4291,
+     * 6874): no look-alike or right-to-left character can reach the
+     * confirmation text this way */
+    if ((*why = kitty_agentbind_host_check(host.ptr, host.len)) != NULL)
         return false;
-    }
-    for (size_t i = 0; i < host.len; i++) {
-        unsigned char c = ((const unsigned char *)host.ptr)[i];
-        if (c < 0x20 || c == 0x7f) {
-            *why = "a control character in the host name";
-            return false;
-        }
-    }
     if (port < 1 || port > 65535) {
         *why = "the port is not 1 to 65535";
         return false;

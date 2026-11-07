@@ -55,6 +55,97 @@
 #define KITTY_AGENTBIND_KEYSTATE_EXT "key-state-v00@kapper.net"
 /* the longest host name session-bind-host-v00@kapper.net carries */
 #define KITTY_AGENTBIND_MAX_HOST     255
+
+/*
+ * May this be the host name of session-bind-host-v00@kapper.net? NULL =
+ * yes, else the rule it breaks (static text). One definition for kageant
+ * (which refuses anything else) and for kitty.exe and klink (which send
+ * the extension only for a valid name):
+ *   - a host name as RFC 1123 (2.1) defines it: labels of letters, digits
+ *     and '-' separated by dots, each 1 to 63 characters, no '-' at either
+ *     end of a label, at most 253 characters, one trailing dot allowed. An
+ *     international name only as its A-label (xn--..., RFC 5890). An IPv4
+ *     address is such a name too (digits and dots).
+ *   - an IPv6 address (RFC 4291 text form: hex digits and ':', "::" at
+ *     most once, an IPv4 tail allowed), in brackets or not, with an
+ *     optional zone after '%' (RFC 6874: letters, digits, '.', '_', '-').
+ * Anything else - '_', a space, a byte from 0x80 up - is no host name.
+ */
+static inline const char *kitty_agentbind_host_check(const char *h, size_t n)
+{
+    size_t i, lab = 0;
+    if (!h || n == 0)
+        return "the host name is empty";
+    if (n > KITTY_AGENTBIND_MAX_HOST)
+        return "the host name is longer than 255 bytes";
+    for (i = 0; i < n; i++)
+        if (h[i] == ':')
+            break;
+    if (i < n) {                          /* an IPv6 address */
+        size_t a = 0, b = n, colons = 0, hex = 0;
+        int dbl = 0;
+        if (h[0] == '[') {
+            if (n < 2 || h[n - 1] != ']')
+                return "an IPv6 address with an unclosed bracket";
+            a = 1; b = n - 1;
+        }
+        for (i = a; i < b && h[i] != '%'; i++) {
+            char c = h[i];
+            if (c == ':') {
+                colons++;
+                if (i + 1 < b && h[i + 1] == ':') {
+                    if (dbl)
+                        return "an IPv6 address with \"::\" twice";
+                    dbl = 1;
+                }
+                hex = 0;
+            } else if (c == '.') {
+                hex = 0;                  /* the IPv4 tail: a group per dot */
+            } else if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                       (c >= 'A' && c <= 'F')) {
+                if (++hex > 4)
+                    return "an IPv6 address with a group of more than 4 digits";
+            } else
+                return "a character outside an IPv6 address";
+        }
+        if (colons < 2 || colons > 7)
+            return "an IPv6 address with a wrong number of groups";
+        if (i < b) {                      /* %zone */
+            if (++i == b)
+                return "an IPv6 zone that is empty";
+            for (; i < b; i++) {
+                char c = h[i];
+                if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-'))
+                    return "a character outside an IPv6 zone";
+            }
+        }
+        return NULL;
+    }
+    if (h[n - 1] == '.')
+        n--;                              /* the trailing dot of a full name */
+    if (n == 0)
+        return "the host name is empty";
+    if (n > 253)
+        return "the host name is longer than 253 characters";
+    for (i = 0; i <= n; i++) {
+        char c = i < n ? h[i] : '.';
+        if (c == '.') {
+            if (lab == 0)
+                return "an empty label in the host name";
+            if (lab > 63)
+                return "a label of the host name longer than 63 characters";
+            if (h[i - 1] == '-' || h[i - lab] == '-')
+                return "a label of the host name that starts or ends with '-'";
+            lab = 0;
+        } else if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                   (c >= '0' && c <= '9') || c == '-') {
+            lab++;
+        } else
+            return "a character outside a host name";
+    }
+    return NULL;
+}
 #define KITTY_AGENTBIND_MSG_EXT      27   /* SSH_AGENTC_EXTENSION */
 #define KITTY_AGENTBIND_MSG_SUCCESS  6    /* SSH_AGENT_SUCCESS */
 #define KITTY_AGENTBIND_MSG_FAILURE  5    /* SSH_AGENT_FAILURE */

@@ -58,7 +58,11 @@ strbuf *kitty_agentbind_host_query(PacketProtocolLayer *transport)
     if (!transport)
         return NULL;
     ssh2_transport_kitty_hk00(transport, &type, &keystr, &host, &port, &sid);
+    /* only a host name or an IP address, the same check kageant makes:
+     * a session whose host is no such name (a NetBIOS name with _) sends
+     * no host name at all instead of a request kageant refuses */
     if (!host || !*host || (hl = strlen(host)) > KITTY_AGENTBIND_MAX_HOST ||
+        kitty_agentbind_host_check(host, hl) != NULL ||
         port < 1 || port > 65535)
         return NULL;
     n = kitty_agentbind_host_encode(NULL, 0, host, hl, (uint32_t)port);

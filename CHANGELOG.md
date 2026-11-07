@@ -222,10 +222,18 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   the selected groups after Send, so the next commands go to the same
   groups. A window closed in the meantime drops out. Its sessions list is
   a view only: no row can be selected there, Send goes to the groups.
+- kageant: the host name a client sends with its session-bind
+  (`session-bind-host-v00`) must be a host name (RFC 1123) or an IP
+  address. A look-alike or right-to-left character can no longer make the
+  confirmation or the Windows Hello prompt read as another server.
+  kitty.exe and klink send such a name only when it is one.
 - kageant: `rules-list-v00` (`kageant -l`) answers only kageant's own
   program. Behind PuTTY, WinSCP or an older KiTTY, which forward the agent
   without a session-bind, a program on the server could read the servers
   listed in the destination rules.
+- kageant: a repeat of an identical session-bind is answered with
+  success, as OpenSSH's agent does. It was refused and logged as a failed
+  bind.
 
 ## 0.85.1.19-beta — 2026-10-28
 

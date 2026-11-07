@@ -878,19 +878,54 @@ static void test_ext(strbuf *user, strbuf *web01, strbuf *web02,
            bind_host("web\x1b" "01", 6, 22, false, false, &out, &why), false);
     expect("bind-host: no host on a refusal", out == NULL, true);
     expect_why("bind-host: why for a control character", why,
-               "a control character in the host name");
+               "a character outside a host name");
     expect("bind-host: a newline is refused",
            bind_host("web01\n", 6, 22, false, false, &out, &why), false);
     expect("bind-host: DEL is refused",
            bind_host("web\x7f", 4, 22, false, false, &out, &why), false);
     expect("bind-host: an empty name is refused",
            bind_host("", 0, 22, false, false, &out, &why), false);
+    /* L2: a host name (RFC 1123) or an IP address, nothing else */
+    {
+        static const char *const good[] = {
+            "web01.example.com", "WEB01.example.com.", "xn--bcher-kva.example",
+            "10.0.0.1", "1web", "a-b.c", "::1", "fe80::1%eth0",
+            "[2001:db8::1]", "2001:db8:0:0:0:0:2:1", "::ffff:192.0.2.1", NULL };
+        static const char *const bad[] = {
+            "web_01", "web 01", "-web", "web-", "a..b", ".web", "web..",
+            "b\xc3\xbc" "cher.example",       /* UTF-8: an A-label only */
+            "g\xd0\xbe" "ogle.com",           /* a Cyrillic look-alike o */
+            "web\xe2\x80\xae" "moc",          /* right-to-left override */
+            "1::2::3", "[::1", "fe80::1%", "fe80::12345", ":", NULL };
+        for (int i = 0; good[i]; i++) {
+            char *o = NULL; const char *w = NULL;
+            char label[96];
+            snprintf(label, sizeof(label), "bind-host: %s is taken", good[i]);
+            expect(label, bind_host(good[i], strlen(good[i]), 22, false, false,
+                                    &o, &w), true);
+            sfree(o);
+        }
+        for (int i = 0; bad[i]; i++) {
+            char *o = NULL; const char *w = NULL;
+            char label[96];
+            snprintf(label, sizeof(label), "bind-host: bad name %d is refused", i);
+            expect(label, bind_host(bad[i], strlen(bad[i]), 22, false, false,
+                                    &o, &w), false);
+            sfree(o);
+        }
+    }
+    /* the longest: 253 characters in labels of at most 63 */
     memset(longhost, 'a', 256);
-    expect("bind-host: 255 bytes are taken",
-           bind_host(longhost, 255, 22, false, false, &out, &why) &&
-           strlen(out) == 255, true);
+    longhost[63] = longhost[127] = longhost[191] = '.';
+    expect("bind-host: 253 characters in labels of 63 are taken",
+           bind_host(longhost, 253, 22, false, false, &out, &why) &&
+           strlen(out) == 253, true);
     sfree(out);
     out = NULL;
+    expect("bind-host: a label of 64 is refused",
+           bind_host(longhost + 192, 64, 22, false, false, &out, &why), false);
+    expect("bind-host: 254 characters are refused",
+           bind_host(longhost, 254, 22, false, false, &out, &why), false);
     expect("bind-host: 256 bytes are refused",
            bind_host(longhost, 256, 22, false, false, &out, &why), false);
     sfree(longhost);
