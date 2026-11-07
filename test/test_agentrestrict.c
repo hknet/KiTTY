@@ -1478,6 +1478,22 @@ static void test_ca_ports(strbuf *user, strbuf *ca2, strbuf *named)
         kar_store_free(s);
         kar_store_free(t);
     }
+
+    /* the destination text: ", port ignored ..." only while the CA's
+     * Valid hosts has a port condition for the flag to act on */
+    {
+        char *txt;
+        fake_ca_expr = "*.example.com && port:2222";
+        txt = kar_ca_dest_text("qa-ca", true);
+        expect("CA port: the text shows the flag with a port condition",
+               strstr(txt, "port ignored for clients") != NULL, true);
+        sfree(txt);
+        fake_ca_expr = "*.example.com";
+        txt = kar_ca_dest_text("qa-ca", true);
+        expect("CA port: no port condition - the text has no flag",
+               strstr(txt, "port ignored for clients") == NULL, true);
+        sfree(txt);
+    }
     fake_ca_expr = "*.example.com";
     kar_ca_lookup = NULL;
 }

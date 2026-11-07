@@ -1739,8 +1739,11 @@ char *kar_ca_dest_text(const char *name, bool ignore_port)
 
     if (name && kar_ca_lookup && kar_ca_lookup(name, pub, &expr, &nameless) &&
         expr)
+        /* the suffix only where the flag acts: a Valid hosts with a port
+         * condition */
         out = dupprintf(KT_KAKEYS_DEST_CA_FMT "%s", name, expr,
-                        ignore_port ? KT_KAKEYS_DEST_CA_PORT_IGNORED : "");
+                        ignore_port && cert_expr_has_port(expr) ?
+                        KT_KAKEYS_DEST_CA_PORT_IGNORED : "");
     else
         out = dupprintf(KT_KAKEYS_DEST_CA_MISSING_FMT "%s",
                         name ? name : "",

@@ -3390,6 +3390,15 @@ static void kr_show(HWND hwnd, struct kr_state *st)
     SetDlgItemText(hwnd, IDC_KR_VIA, d ? d->via : "");
     CheckDlgButton(hwnd, IDC_KR_FORWARD,
                    d && d->forward ? BST_CHECKED : BST_UNCHECKED);
+    /* A CA destination opened while its CA's Valid hosts has no port
+     * condition: the port flag goes. The checkbox is hidden without one.
+     * A flag kept unseen would come back with a later port condition.
+     * Destinations not opened keep what is stored. */
+    if (d && d->match == KAR_MATCH_CA_STORE && d->ignore_port) {
+        const struct kageant_ca *cf = kr_ca_find(st, d->host);
+        if (cf && !cert_expr_has_port(cf->expr))
+            d->ignore_port = false;
+    }
     kr_match_ui(hwnd, st, d);
     if (d) {
         SetDlgItemText(hwnd, IDC_KR_HEAD, KT_KARULES_HEAD_DEST);

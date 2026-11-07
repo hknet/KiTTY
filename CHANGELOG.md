@@ -213,6 +213,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   the host key in a store kitty.exe never wrote.
 - Closing a transfer window no longer leaves the terminal behind another
   program: the terminal that started the transfer comes to the front.
+- kageant rule editor: "Ignore the port for clients that send none" is
+  dropped from a CA destination opened while the CA's Valid hosts has no
+  port condition. Key details and the rule editor show "port ignored for
+  clients that send none" only while it applies.
 - docs/KITTY-INI.md listed `askconfirmation=hello`, which kageant never
   read. Windows Hello for every confirmation is `helloconfirm=yes`.
 - An ed25519 public key of the wrong length ended the program that
