@@ -10334,6 +10334,12 @@ static int kitty_kkp_translate(WinGuiSeat *wgs, unsigned flags, unsigned mods,
 }
 #endif
 
+#ifdef MOD_PERSO
+/* KiTTY: while set, TranslateKey takes the modifier state from here
+ * instead of GetKeyboardState (kitty_type_vkey). */
+static const BYTE *kitty_keystate_override = NULL;
+#endif
+
 /*
  * Translate a WM_(SYS)?KEY(UP|DOWN) message into a string of ASCII
  * codes. Returns number of bytes used, zero to drop the message,
@@ -10370,6 +10376,14 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
      ((keystate[VK_NUMLOCK] & 1) ? KKP_NUM : 0))
 #endif
 
+#ifdef MOD_PERSO
+    /* KiTTY: a key typed by kitty_type_vkey brings its own modifier state,
+     * so it needs no key press through Windows' keyboard */
+    if (kitty_keystate_override) {
+        memcpy(keystate, kitty_keystate_override, sizeof(keystate));
+        r = 1;
+    } else
+#endif
     r = GetKeyboardState(keystate);
     if (!r)
         memset(keystate, 0, sizeof(keystate));
@@ -14004,6 +14018,67 @@ void kitty_paste_text(HWND hwnd, const char *text) {
     term_do_paste(wgs->term, w, n - 1);
     sfree(w);
 }
+/* KiTTY: one key, typed into window hwnd's terminal as if pressed with the
+ * modifiers in mods (KITTY_VKEY_*): TranslateKey makes the bytes, with
+ * this modifier state instead of Windows' keyboard state, and they go to
+ * the terminal's input. No key press reaches Windows: the window need not
+ * have the focus, and a key Windows itself acts on (Win, Alt+Tab) cannot
+ * be sent this way. 0 when hwnd is no terminal window. */
+int kitty_type_vkey(HWND hwnd, int vk, int mods)
+{
+    WinGuiSeat *wgs = kitty_wgs_of(hwnd);
+    BYTE ks[256];
+    unsigned char buf[64];
+    UINT scan, msg = WM_KEYDOWN;
+    LPARAM lp;
+    int len;
+
+    if (!wgs || !wgs->term || vk <= 0 || vk > 0xFE)
+        return 0;
+    memset(ks, 0, sizeof(ks));
+    if (mods & KITTY_VKEY_CTRL)
+        ks[VK_CONTROL] = ks[VK_LCONTROL] = 0x80;
+    if (mods & KITTY_VKEY_SHIFT)
+        ks[VK_SHIFT] = ks[VK_LSHIFT] = 0x80;
+    if (mods & KITTY_VKEY_ALT) {
+        ks[VK_MENU] = ks[VK_LMENU] = 0x80;
+        msg = WM_SYSKEYDOWN;
+    }
+    if (mods & KITTY_VKEY_ALTGR)
+        ks[VK_MENU] = ks[VK_RMENU] = ks[VK_CONTROL] = ks[VK_LCONTROL] = 0x80;
+    if (GetKeyState(VK_NUMLOCK) & 1)
+        ks[VK_NUMLOCK] = 1;
+    if (GetKeyState(VK_CAPITAL) & 1)
+        ks[VK_CAPITAL] = 1;
+    ks[vk] |= 0x80;
+    scan = MapVirtualKeyA((UINT)vk, 0 /* MAPVK_VK_TO_VSC */) & 0xFF;
+    lp = 1 | ((LPARAM)scan << 16);
+    switch (vk) {                      /* the grey keys, not the keypad's */
+      case VK_HOME: case VK_END: case VK_PRIOR: case VK_NEXT:
+      case VK_LEFT: case VK_RIGHT: case VK_UP: case VK_DOWN:
+      case VK_INSERT: case VK_DELETE: case VK_DIVIDE: case VK_CANCEL:
+        lp |= (LPARAM)KF_EXTENDED << 16;
+        break;
+    }
+    if (mods & KITTY_VKEY_ALT)
+        lp |= (LPARAM)KF_ALTDOWN << 16;
+    kitty_keystate_override = ks;
+    len = TranslateKey(wgs, msg, (WPARAM)vk, lp, buf);
+    kitty_keystate_override = NULL;
+    if (len > 0)
+        term_keyinput(wgs->term, -1, buf, len);
+    return 1;
+}
+
+/* KiTTY: the break the broadcast's \c sends (Ctrl+Break), straight to the
+ * backend: no key press through Windows */
+void kitty_send_break(HWND hwnd)
+{
+    WinGuiSeat *wgs = kitty_wgs_of(hwnd);
+    if (wgs && wgs->backend)
+        backend_special(wgs->backend, SS_BRK, 0);
+}
+
 void SendStrToTerminal(const char *str, const int len) {
     int i;
     if (len <= 0 || !kitty_active_wgs || !kitty_active_wgs->term) return;

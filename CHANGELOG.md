@@ -237,6 +237,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - Host keys a server offers after login (hostkeys-00) are not stored for
   DSA (its proof is SHA-1 only) or for a type below the warn line of the
   session's host-key list. One Event Log line reports each.
+- The broadcast's `\kXX` keys, `\c` and the login script no longer press
+  keys through Windows: a key with a modifier, Escape, Home and End are
+  translated in the terminal itself, `\c` sends the break to the server.
+  The window need not have the focus, no other window can receive a key,
+  and a modifier left on no longer carries into the next send. The Win key
+  is not sent any more.
 - WinSCP: a password that gets neither a named pipe nor a temporary file
   is not handed over. It went on WinSCP's command line before, where
   `/passwordsfromfiles` took it for a file path.

@@ -783,6 +783,7 @@ windows/window.c | WndProc() | keys | 256 | upstream: GetKeyboardState/ToUnicode
 windows/window.c | kitty_modkeys_translate() | ks | 256 | GetKeyboardState/ToUnicode key-state array, 256 entries defined by the API
 windows/window.c | kitty_kkp_probe() | ks | 256 | GetKeyboardState/ToUnicode key-state array, 256 entries defined by the API
 windows/window.c | TranslateKey() | keystate | 256 | upstream: GetKeyboardState/ToUnicode key-state array, 256 entries defined by the API
+windows/window.c | kitty_type_vkey() | ks | 256 | the key-state array TranslateKey reads instead of GetKeyboardState: 256 entries defined by the API
 windows/window.c | TranslateKey() | oldstate | 256 | upstream: GetKeyboardState/ToUnicode key-state array, 256 entries defined by the API
 windows/window.c | struct kitty_winprop | value | 256 | window property text (session/folder/name, published as a global atom: <= 255 characters)
 windows/window.c | kitty_winprop_set() | text | 256 | atom text "<hwnd>|<value>", _snwprintf(lenof) (atom limit 255)

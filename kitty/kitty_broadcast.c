@@ -103,7 +103,7 @@ void routine_server( void * st ) {
  * or an AutoCommand is typed. The order of everything typed stays the order
  * of the calls, because every caller appends to the same queue.
  */
-enum { KQ_CHAR, KQ_ENTER, KQ_WAIT, KQ_TERM, KQ_VKEY, KQ_BREAK } ;
+enum { KQ_CHAR, KQ_ENTER, KQ_WAIT, KQ_TERM, KQ_VKEY, KQ_BREAK, KQ_RESET } ;
 typedef struct { unsigned char kind ; unsigned int val ; HWND hwnd ; } kq_op ;
 static kq_op *kq = NULL ;
 static size_t kq_head = 0, kq_len = 0, kq_cap = 0 ;
@@ -136,47 +136,32 @@ static void kq_kick( HWND hwnd ) {
 	}
 }
 
-static int keyb_control_flag = 0 ;
-static int keyb_shift_flag = 0 ;
-static int keyb_win_flag = 0 ;
-static int keyb_alt_flag = 0 ;
-static int keyb_altgr_flag = 0 ;
+/* The modifiers \kXX switched on, for the keys after them in one send
+ * (KITTY_VKEY_*). Reset at the end of every send (KQ_RESET): a send that
+ * leaves one on does not carry it into the next, or into a login-script
+ * reply. The Win key is no modifier here: a terminal has no use for it,
+ * and with it \k5B\k52 was Win+R. */
+static int keyb_mods = 0 ;
 
-/* One \kXX: a modifier toggles its flag, any other key is pressed with the
- * modifiers that are on (system-wide keybd_event, after the window is
- * raised; the short wait between the two stays: the raise must land). */
+/* One \kXX: a modifier toggles its bit, any other key is typed into this
+ * window's terminal with the modifiers that are on (kitty_type_vkey,
+ * window.c: TranslateKey with that modifier state). Nothing goes through
+ * Windows' keyboard, so the window need not have the focus and no other
+ * window can receive the key. */
 static void kq_vkey( HWND hwnd, int j ) {
-	char stb[6] ;
-	if( j==VK_CONTROL ) keyb_control_flag = abs( keyb_control_flag - 1 ) ;
-	else if( j==VK_SHIFT ) keyb_shift_flag = abs( keyb_shift_flag - 1 ) ;
-	else if( (j==VK_MENU)||(j==VK_LMENU) ) keyb_alt_flag = abs( keyb_alt_flag - 1 ) ;
-	else if( j==VK_RMENU ) keyb_altgr_flag = abs( keyb_altgr_flag - 1 ) ;
-	else if( (j==VK_RWIN)||(j==VK_LWIN) ) keyb_win_flag = abs( keyb_win_flag - 1 ) ;
+	if( j==VK_CONTROL || j==VK_LCONTROL || j==VK_RCONTROL ) keyb_mods ^= KITTY_VKEY_CTRL ;
+	else if( j==VK_SHIFT || j==VK_LSHIFT || j==VK_RSHIFT ) keyb_mods ^= KITTY_VKEY_SHIFT ;
+	else if( j==VK_MENU || j==VK_LMENU ) keyb_mods ^= KITTY_VKEY_ALT ;
+	else if( j==VK_RMENU ) keyb_mods ^= KITTY_VKEY_ALTGR ;
+	else if( j==VK_LWIN || j==VK_RWIN || j==VK_APPS ) return ;   /* not sent */
+	else if( keyb_mods || j==VK_ESCAPE || j==VK_HOME || j==VK_END )
+		kitty_type_vkey( hwnd, j, keyb_mods ) ;
 	else {
-		if( keyb_control_flag || keyb_shift_flag || keyb_win_flag || keyb_alt_flag || keyb_altgr_flag ) {
-			SetForegroundWindow(hwnd) ; Sleep( internal_delay ) ;
-			if( keyb_control_flag )	keybd_event(VK_CONTROL, 0x1D, 0, 0) ;
-			if( keyb_shift_flag )	keybd_event(VK_SHIFT , 0x1D, 0, 0) ;
-			if( keyb_alt_flag )	keybd_event(VK_LMENU , 0x1D, 0, 0) ;
-			if( keyb_altgr_flag )	keybd_event(VK_RMENU , 0x1D, 0, 0) ;
-			if( keyb_win_flag )	keybd_event(VK_LWIN , 0x1D, 0, 0) ;
-			keybd_event( j, 0x47, 0, 0);
-			keybd_event( j, 0x47, KEYEVENTF_KEYUP, 0) ;
-			if( keyb_win_flag )	keybd_event(VK_LWIN, 0x1D, KEYEVENTF_KEYUP, 0) ;
-			if( keyb_altgr_flag )	keybd_event(VK_RMENU, 0x1D, KEYEVENTF_KEYUP, 0) ;
-			if( keyb_alt_flag )	keybd_event(VK_LMENU, 0x1D, KEYEVENTF_KEYUP, 0) ;
-			if( keyb_shift_flag )	keybd_event(VK_SHIFT, 0x1D, KEYEVENTF_KEYUP, 0) ;
-			if( keyb_control_flag )	keybd_event(VK_CONTROL, 0x1D, KEYEVENTF_KEYUP, 0) ;
-		} else if( j==VK_ESCAPE ) {
-			keybd_event( VK_ESCAPE, 1, 0, 0);
-			keybd_event( VK_ESCAPE, 1, KEYEVENTF_KEYUP, 0) ;
-		} else if( (j==VK_END) || (j==VK_HOME) ) {
-			keybd_event( j ,0, KEYEVENTF_EXTENDEDKEY, 0 ) ;
-			keybd_event( j, 0, KEYEVENTF_EXTENDEDKEY|KEYEVENTF_KEYUP, 0 ) ;
-		} else {
-			snprintf( stb, sizeof(stb), "%c", j ) ;
-			SendStrToTerminal( stb, 1 ) ;
-		}
+		/* no modifier: the key code itself as a character, as \kXX always
+		 * typed it (\k41 is "A") */
+		char stb[2] ;
+		stb[0] = (char)j ; stb[1] = '\0' ;
+		SendStrToTerminal( stb, 1 ) ;
 	}
 }
 
@@ -196,11 +181,11 @@ static void kq_do( const kq_op *op ) {
 	  case KQ_VKEY:
 		kq_vkey( op->hwnd, (int)op->val ) ;
 		break ;
-	  case KQ_BREAK:
-		keybd_event(VK_CONTROL, 0x1D, 0, 0) ;
-		keybd_event(VK_CANCEL, 0x1D, 0, 0) ;
-		keybd_event(VK_CANCEL, 0x1D, KEYEVENTF_KEYUP, 0) ;
-		keybd_event(VK_CONTROL, 0x1D, KEYEVENTF_KEYUP, 0) ;
+	  case KQ_BREAK:                     /* \c: the break, to the backend */
+		kitty_send_break( op->hwnd ) ;
+		break ;
+	  case KQ_RESET:                     /* the end of a send */
+		keyb_mods = 0 ;
 		break ;
 	}
 }
@@ -323,6 +308,7 @@ void SendKeyboardPlus( HWND hwnd, const char * st ) {
 					SendKeyboard( hwnd, "\n" ) ;
 			}
 		}
+		kq_push( hwnd, KQ_RESET, 0 ) ;   /* no modifier carries into the next send */
 		free( buffer ) ;
 		kq_kick( hwnd ) ;
 	}

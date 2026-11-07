@@ -53,6 +53,14 @@ void kitty_pace_set_sizing(bool on);
 /* ---- exported from windows/window.c ---- */
 void ResetWindow(int reinit);
 void SendStrToTerminal(const char *str, const int len);
+/* one key into a terminal window, with these modifiers, no key press
+ * through Windows (the broadcast's \kXX); the break of \c */
+#define KITTY_VKEY_CTRL   1
+#define KITTY_VKEY_SHIFT  2
+#define KITTY_VKEY_ALT    4
+#define KITTY_VKEY_ALTGR  8
+int kitty_type_vkey(HWND hwnd, int vk, int mods);
+void kitty_send_break(HWND hwnd);
 void do_eventlog(const char *st);
 int kitty_eventlog_ready(void);   /* do_eventlog has a window's log to write to */
 int kitty_active_seat_workplace_proxied(void);
