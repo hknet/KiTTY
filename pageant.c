@@ -1452,8 +1452,6 @@ static bool fp_has_hash(const char *fp, ptrlen want)
         return false;
     return n == want.len || fp[n - want.len - 1] == ' ';
 }
-void (*kageant_reencrypt_audit_hook)(int all, const char *fp,
-                                     const char *comment, bool ok) = NULL;
 void (*kageant_decrypt_audit_hook)(const char *fp, const char *comment,
                                    const char *result,
                                    unsigned long pid) = NULL;
@@ -3228,13 +3226,6 @@ static PageantAsyncOp *pageant_make_op(
                                "found with comment: %s", pub->comment);
 
             bool reenc_ok = reencrypt_key(pub);
-            /* KiTTY: the agent's record of it */
-            if (pageant_external_request && kageant_reencrypt_audit_hook) {
-                char *efp = ssh2_fingerprint_blob(pub->sort.full_pub,
-                                                  SSH_FPTYPE_SHA256);
-                kageant_reencrypt_audit_hook(0, efp, pub->comment, reenc_ok);
-                sfree(efp);
-            }
             if (!reenc_ok) {
                 fail("this key couldn't be re-encrypted");
                 goto responded;
@@ -3270,11 +3261,6 @@ static PageantAsyncOp *pageant_make_op(
                 else
                     nfailures++;
             }
-            /* KiTTY: the agent's record of it */
-            if (pageant_external_request && kageant_reencrypt_audit_hook)
-                kageant_reencrypt_audit_hook(
-                    1, NULL, NULL, !(nsuccesses == 0 && nfailures > 0));
-
             if (nsuccesses == 0 && nfailures > 0) {
                 fail("no key could be re-encrypted");
             } else {

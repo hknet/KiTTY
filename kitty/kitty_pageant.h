@@ -200,9 +200,6 @@ char *kageant_record_fp_of_blob(ptrlen blob);
  * reason = gui, cmdline, lifetime, device-removal, idle. */
 void kageant_audit_keyset(const char *ev, ptrlen blob, const char *result,
                           const char *reason);
-/* IPC re-encrypt, installed as kageant_reencrypt_audit_hook. */
-void kageant_do_reencrypt_audit(int all, const char *fp, const char *comment,
-                                bool ok);
 /* Event 152 (kitty_kageant_audit.c); installed as kageant_decrypt_audit_hook
  * with trigger first-use. */
 void kageant_audit_decrypt(const char *fp, const char *comment,

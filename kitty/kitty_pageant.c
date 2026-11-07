@@ -1739,13 +1739,6 @@ void kageant_do_decrypt_audit(const char *fp, const char *comment,
     kageant_audit_decrypt(fp, comment, result, "first-use", pid);
 }
 
-void kageant_do_reencrypt_audit(int all, const char *fp, const char *comment,
-                                bool ok)
-{
-    kageant_audit_use(all ? "reencrypt-all" : "reencrypt", fp, comment,
-                      ok ? "done" : "failed", "ipc", pageant_external_pid);
-}
-
 /* index of the pending entry for this stored path, -1 if none */
 static int kageant_pending_index(const char *path)
 {

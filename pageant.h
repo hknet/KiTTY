@@ -175,11 +175,6 @@ extern int (*kageant_ipc_blocked_hook)(int op, const char *fp);
  * single key or the key is not decoded yet. */
 extern void (*kageant_mutation_notice_hook)(int op, const char *comment,
                                             const char *fp);
-/* KiTTY: an external request re-encrypted one key (all = 0: fp and comment
- * name it) or every key (all = 1); ok = false when nothing could be.
- * NULL outside the GUI agent. */
-extern void (*kageant_reencrypt_audit_hook)(int all, const char *fp,
-                                            const char *comment, bool ok);
 /* KiTTY: a key's comment by its public blob (SSH-2, or the SSH-1
  * exponent-first blob), or NULL. Free it. */
 char *pageant_key_comment_by_blob(ptrlen blob);

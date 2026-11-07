@@ -10040,7 +10040,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kageant_rules_remove_hook = kageant_rules_remove_confirm;
         /* rules-list: kageant -l only, by its program file */
         kageant_requester_is_self_hook = kageant_requester_is_self;
-        kageant_reencrypt_audit_hook = kageant_do_reencrypt_audit;
         kageant_decrypt_audit_hook = kageant_do_decrypt_audit;
         kageant_notify_hook = kageant_do_notify;
         kageant_keyuse_hook = kageant_note_keyuse;
