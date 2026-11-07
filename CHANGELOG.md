@@ -207,6 +207,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- klink, kscp and ksftp use PuTTY's registry hive when kitty.ini has
+  `[KiTTY] KiClassName=PuTTY`, as kitty.exe does. Before, `-load` did not
+  find a session kitty.exe had saved. A transfer kitty.exe starts checked
+  the host key in a store kitty.exe never wrote.
 - Closing a transfer window no longer leaves the terminal behind another
   program: the terminal that started the transfer comes to the front.
 - docs/KITTY-INI.md listed `askconfirmation=hello`, which kageant never

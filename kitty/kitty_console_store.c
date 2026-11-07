@@ -105,6 +105,18 @@ void kitty_console_store_init(void)
             kitty_set_portable_password_protection(ini.portable_password_protection);
     }
 
+    /* The registry hive kitty.exe uses (kitty_startup.c): PuTTY's with
+     * [KiTTY] KiClassName=PuTTY, else KiTTY++'s own. Without this klink,
+     * kscp and ksftp stayed on KiTTY++'s hive: -load missed a session
+     * kitty.exe had saved. A transfer kitty.exe starts checked the host
+     * key in a store kitty.exe never wrote. */
+    {
+        char *cls = kitty_inifile_read_dup(KI_SECTION_KITTY, KI_KICLASSNAME);
+        if (cls && !stricmp(cls, "PuTTY"))
+            kitty_set_registry_root(1);
+        free(cls);
+    }
+
     /* hknet/KiTTY#61: a setting a session leaves out comes from Default
      * Settings when kitty.exe's switch is set - read where kitty.exe keeps
      * it: the registry first in registry mode (WriteParameter), kitty.ini
@@ -113,8 +125,8 @@ void kitty_console_store_init(void)
         char v[16] = "";
         if (ini.registry_authoritative) {
             HKEY k;
-            /* the hive in use, the one WriteParameter writes (in the console
-             * tools the default one: they do not apply KiClassName) */
+            /* the hive in use, the one WriteParameter writes (PuTTY's with
+             * KiClassName=PuTTY, applied above) */
             extern const char *kitty_registry_base(void);
             if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_registry_base(), 0,
                               KEY_QUERY_VALUE, &k) == ERROR_SUCCESS) {
