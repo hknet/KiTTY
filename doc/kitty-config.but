@@ -3562,6 +3562,11 @@ proxy.
 session's own Proxy panel stays exactly as it was and stays editable,
 and switching the mode off returns every session to its own settings.
 
+The mode is held by the launcher that switched it on, for this Windows
+logon only. Other users cannot switch it on or off for you. A program
+running as you can, as it can change \c{kitty.ini} and the sessions
+themselves: Windows draws that line at the user account.
+
 \S{kitty-cfg-migration} The Migration panel
 
 Moves this KiTTY++'s sessions to another computer, opens Manage

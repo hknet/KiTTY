@@ -58,6 +58,7 @@ struct kwp_record {
 /* Held for as long as this process is armed. Closing the handle - or dying -
  * destroys the section, which is exactly how the mode switches itself off. */
 static HANDLE kwp_map = NULL;
+static int kwp_read_record(struct kwp_record *rec);   /* below */
 static struct kwp_record *kwp_view = NULL;
 
 /* Directory of the running EXE, lowercased, without a trailing slash. */
@@ -228,20 +229,11 @@ unsigned int kitty_workplace_minutes_left(void)
     if (kwp_view) {
         expiry = kwp_view->expiry;
     } else {
-        char name[sizeof(kwp_view->proxy)];
-        if (!kitty_workplace_query(name, sizeof(name)))
+        /* the expiry of the same copy the check passed */
+        struct kwp_record rec;
+        if (!kwp_read_record(&rec))
             return 0;
-        /* query() validated the record; read the expiry the same way */
-        HANDLE map = OpenFileMappingA(FILE_MAP_READ, FALSE, kwp_section_name());
-        if (map) {
-            struct kwp_record *v = (struct kwp_record *)
-                MapViewOfFile(map, FILE_MAP_READ, 0, 0, sizeof(struct kwp_record));
-            if (v) {
-                expiry = v->expiry;
-                UnmapViewOfFile(v);
-            }
-            CloseHandle(map);
-        }
+        expiry = rec.expiry;
     }
     if (!expiry)
         return 0;
@@ -392,16 +384,18 @@ void kitty_workplace_show_pending_notice(void)
                       RGB(0, 100, 0), GetNoticeSeconds(), NULL, 0);
 }
 
-int kitty_workplace_query(char *name, int len)
+/* The live arming, copied ONCE out of the section into *rec and checked
+ * there: the section can change between a check and a use, so nothing is
+ * read from it twice. 1 = armed (rec valid), 0 = not. The arming is
+ * protected against other users (the section is in this logon session's
+ * Local\ namespace), not against a process of the same user: such a
+ * process can create or fill the section first, as it can change kitty.ini
+ * and the sessions themselves. */
+static int kwp_read_record(struct kwp_record *rec)
 {
     HANDLE map;
     struct kwp_record *view;
     int armed = 0;
-
-    if (name && len > 0)
-        name[0] = '\0';
-    if (!name || len <= 0)
-        return 0;
 
     map = OpenFileMappingA(FILE_MAP_READ, FALSE, kwp_section_name());
     if (!map)
@@ -409,18 +403,28 @@ int kitty_workplace_query(char *name, int len)
     view = (struct kwp_record *)MapViewOfFile(map, FILE_MAP_READ, 0, 0,
                                               sizeof(struct kwp_record));
     if (view) {
-        if (view->magic == KWP_MAGIC && view->version == KWP_VERSION &&
-            view->proxy[0] &&
-            memchr(view->proxy, '\0', sizeof(view->proxy)) != NULL &&
-            (!view->expiry || view->expiry > kwp_now()) &&
-            kwp_holder_is_ours(view->pid)) {
-            if ((int)strlen(view->proxy) < len) {
-                strcpy(name, view->proxy);
-                armed = 1;
-            }
-        }
+        memcpy(rec, view, sizeof(*rec));
         UnmapViewOfFile(view);
+        rec->proxy[sizeof(rec->proxy) - 1] = '\0';
+        armed = rec->magic == KWP_MAGIC && rec->version == KWP_VERSION &&
+                rec->proxy[0] &&
+                (!rec->expiry || rec->expiry > kwp_now()) &&
+                kwp_holder_is_ours(rec->pid);
     }
     CloseHandle(map);
     return armed;
+}
+
+int kitty_workplace_query(char *name, int len)
+{
+    struct kwp_record rec;
+
+    if (name && len > 0)
+        name[0] = '\0';
+    if (!name || len <= 0)
+        return 0;
+    if (!kwp_read_record(&rec) || (int)strlen(rec.proxy) >= len)
+        return 0;
+    strcpy(name, rec.proxy);
+    return 1;
 }

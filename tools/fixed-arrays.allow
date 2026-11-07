@@ -454,7 +454,6 @@ kitty/kitty_winutil.c | open_dir_name_from() | Buffer | 4096 | BROWSEINFO.pszDis
 kitty/kitty_winutil.c | open_dir_name_from() | Result | MAX_PATH + 1 | SHGetPathFromIDListW output (MAX_PATH by the API), NUL forced, then duplicated
 
 kitty/kitty_workplace.c | struct kwp_record | proxy | 256 | workplace proxy name in the shared-memory record (layout fixed; longer names refused)
-kitty/kitty_workplace.c | kitty_workplace_minutes_left() | name | sizeof(kwp_view->proxy) | workplace proxy name, sizeof(kwp_view->proxy) = 256
 kitty/kitty_workplace.c | kwp_wait_for() | name | 256 | workplace proxy name from kitty_workplace_query (the shared-memory record holds proxy[256]; arming refuses a longer name)
 kitty/kitty_workplace.c | kitty_workplace_notice_owed() | name | 256 | workplace proxy name from kitty_workplace_query (the shared-memory record holds proxy[256]; arming refuses a longer name)
 
