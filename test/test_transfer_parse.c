@@ -229,6 +229,20 @@ int main(void)
     expect_component(".", 0);
     expect_component(".hidden", 1);
     expect_component("a/b", 0);
+    /* every reserved device name, any case, with or without an extension */
+    expect_component("NUL.txt", 0);
+    expect_component("nul .txt", 0);      /* spaces before the extension */
+    expect_component("COM0", 0);
+    expect_component("lpt0.log", 0);
+    expect_component("COM9.x", 0);
+    expect_component("CONIN$", 0);
+    expect_component("conout$.txt", 0);
+    expect_component("COM\xC2\xB9", 0);   /* superscript 1, UTF-8 */
+    expect_component("LPT\xC2\xB3.txt", 0);
+    expect_component("COM\xB2", 0);       /* superscript 2, Windows-1252 */
+    expect_component("COM10", 1);         /* not a device name */
+    expect_component("CONIN", 1);
+    expect_component("NULL.txt", 1);
 
     /* ---- inside a declared directory ---- */
     {

@@ -243,6 +243,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - `-masterpwfile -` reads the whole first line of standard input. A line
   longer than 4096 characters is refused. It was cut at 1023, and the
   rest reached the server as typed text in klink and ksftp.
+- OSC 5113 refuses every file name Windows reserves for a device:
+  `COM0`, `LPT0`, `COM¹`-`COM³`, `LPT¹`-`LPT³`, `CONIN$`, `CONOUT$` and
+  names with spaces before the extension were missing.
 - `KITTY_PWDEBUG` works in test builds only and writes no characters and
   no checksum of a password.
 

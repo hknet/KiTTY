@@ -314,18 +314,29 @@ static inline void kt5113_parse(const char *s, size_t len, kt5113_cmd *c)
 
 /* ---- file names from the far end ---- */
 
-/* Device names Windows reserves whatever the extension. */
+/* Device names Windows reserves whatever the extension (Microsoft's
+ * "Naming Files, Paths, and Namespaces"): CON, PRN, AUX, NUL, COM0-9 and
+ * LPT0-9 with the superscript digits 1-3 too (in UTF-8 and in the single
+ * byte of the ANSI code page), CONIN$ and CONOUT$. Spaces between the name
+ * and its extension ("NUL .txt") do not save it: Windows still opens the
+ * device. */
 static inline int kt5113_reserved_name(const char *c, size_t n)
 {
     static const char *const names[] = {
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "COM\xC2\xB9", "COM\xC2\xB2", "COM\xC2\xB3",      /* superscript 1-3, UTF-8 */
+        "LPT\xC2\xB9", "LPT\xC2\xB2", "LPT\xC2\xB3",
+        "COM\xB9", "COM\xB2", "COM\xB3",                  /* the same, Windows-1252 */
+        "LPT\xB9", "LPT\xB2", "LPT\xB3",
         NULL };
     size_t stem = 0, i;
     int k;
     while (stem < n && c[stem] != '.')
         stem++;
+    while (stem > 0 && c[stem - 1] == ' ')
+        stem--;
     for (k = 0; names[k]; k++) {
         size_t l = strlen(names[k]);
         if (l != stem)
