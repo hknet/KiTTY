@@ -240,6 +240,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - WinSCP: a password that gets neither a named pipe nor a temporary file
   is not handed over. It went on WinSCP's command line before, where
   `/passwordsfromfiles` took it for a file path.
+- `-masterpwfile -` reads the whole first line of standard input. A line
+  longer than 4096 characters is refused. It was cut at 1023, and the
+  rest reached the server as typed text in klink and ksftp.
 - `KITTY_PWDEBUG` works in test builds only and writes no characters and
   no checksum of a password.
 

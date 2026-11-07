@@ -26,7 +26,6 @@ cmdgen.c | (file) | kwev_last_error | 256 | last error text for kittygen-cli Eve
 
 cmdline.c | kitty_cmdline_use_stored_password() | pw | KITTY_PW_MAX + 1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
 cmdline.c | cmdline_process_param() | readbuf | 4096 | upstream: fread chunk of a password/key file, size passed
-cmdline.c | kitty_masterpwfile_apply() | line | 1024 | line of a master-password file (a secret), byte loop bounded by sizeof-1
 cmdline.c | kitty_masterpwfile_apply() | who | 300 | owning account name "DOMAIN\user" from kitty_secret_file_check (account and domain names are bounded by Windows), size passed
 
 config.c | conf_password_editbox_handler() | pw | KITTY_PW_MAX + 1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)

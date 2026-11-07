@@ -1631,20 +1631,38 @@ void kitty_masterpwfile_apply(const char *shown, Filename *fn)
         HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
         DWORD cmode;
         if (in && in != INVALID_HANDLE_VALUE && !GetConsoleMode(in, &cmode)) {
-            char line[1024];
+            /* The whole first line, to its newline: a fixed buffer cut a
+             * long line, used the cut part, and left the rest in stdin for
+             * klink and ksftp to send to the server. Longer than any
+             * password KiTTY++ takes: read to its end all the same (nothing
+             * of it stays behind), then refused. */
+            strbuf *line = strbuf_new_nm();
             size_t n = 0;
+            bool toolong = false;
             DWORD got;
             char c;
-            while (n < sizeof(line) - 1 &&
-                   ReadFile(in, &c, 1, &got, NULL) && got == 1 && c != '\n')
-                line[n++] = c;
-            if (n && line[n - 1] == '\r')
+            while (ReadFile(in, &c, 1, &got, NULL) && got == 1 && c != '\n') {
+                if (n < KITTY_PW_MAX + 1) {
+                    put_byte(line, c);
+                    n++;
+                } else
+                    toolong = true;
+            }
+            if (n > KITTY_PW_MAX)
+                toolong = true;
+            if (n && line->s[n - 1] == '\r')
                 n--;
-            line[n] = '\0';
-            if (!n)
+            if (toolong) {
+                strbuf_free(line);     /* wiped (strbuf_new_nm) */
+                cmdline_error(KT_CLI_MPWFILE_STDIN_TOO_LONG, KITTY_PW_MAX);
+            }
+            if (!n) {
+                strbuf_free(line);
                 cmdline_error(KT_CLI_MPWFILE_STDIN_EMPTY);
-            kitty_set_master_passphrase(line);
-            smemclr(line, sizeof(line));
+            }
+            line->s[n] = '\0';
+            kitty_set_master_passphrase(line->s);
+            strbuf_free(line);
         } else if (!in || in == INVALID_HANDLE_VALUE) {
             cmdline_error(KT_CLI_MPWFILE_STDIN_EMPTY);
         }

@@ -4340,6 +4340,8 @@
 #define KT_CLI_MPWFILE_READ_FAILED                   "unable to read a master password from file '%s'"
 #define KT_CLI_MPWFILE_STDIN_EMPTY                   "-masterpwfile -: no master password on standard input" \
         " (the first line is taken)"
+#define KT_CLI_MPWFILE_STDIN_TOO_LONG                "-masterpwfile -: the first line of standard input is longer than" \
+        " %d characters - no master password is that long. Nothing of it was used."
 /* the file's permissions (kitty_fileperm.c): as Windows OpenSSH checks a key */
 #define KT_CLI_MPWFILE_PERM_READABLE                 "master-password file '%s' is readable by %s - refused." \
         " Make it readable by you alone:\n  icacls \"%s\" /inheritance:r /grant:r \"%%USERNAME%%\":R"
