@@ -90,6 +90,7 @@
 #define IDC_SET_BLOCKFWD 357      /* key changes refused over a forwarded agent */
 #define IDC_SET_ALLOWWMCD 360     /* requests by window messages (WM_COPYDATA) */
 #define IDC_SET_L_LOGCHAINHINT 361  /* the anchors go to the Windows Event Log */
+#define IDC_SET_ARRIVAL 362       /* the notice when startup keys arrive */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100

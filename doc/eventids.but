@@ -149,7 +149,7 @@ The fields, by name:
 
 \b \c{tool} - 400-403: kittygen or kittygen-cli.
 
-\b \c{trigger} - 113: what started the retry; values: button, device-arrival; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).
+\b \c{trigger} - 113: what started the retry; values: button, device-arrival; 117: what brought the key back, the same values; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).
 
 \b \c{ts} - 100-172: the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone.
 
@@ -192,6 +192,8 @@ The event IDs:
 \b \c{115} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{remove-all}, then \c{fp}, \c{comment}, \c{result}, \c{reason}, \c{req}, \c{reqpath}, \c{pid}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
 
 \b \c{116} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{rules}, then \c{fp}, \c{comment}, \c{result}, \c{reason}, \c{req}, \c{reqpath}, \c{pid}, \c{restrict}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
+
+\b \c{117} \c{KiTTY++_agent} (Information): \c{key-arrival}, then \c{fp}, \c{comment}, \c{path}, \c{trigger}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
 
 \b \c{120} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{lock}, then \c{fp}, \c{comment}, \c{result}, \c{reason}, \c{req}, \c{reqpath}, \c{pid}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
 

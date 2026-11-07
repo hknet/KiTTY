@@ -1494,6 +1494,13 @@ char default_init_file_content[] =
 ; prompt, so it does not break scripted ssh-add.\n\
 ;messageonkeyusage=yes\n\
 \n\
+; messageonkeyarrival: a notice when startup keys that were not there come\n\
+;    back on a drive and can sign again. A click opens the key list.\n\
+;    Default yes. no silences only this notice: the agent log records each\n\
+;    key that comes back (event 117) either way. Settings > Agent > \"Notify\n\
+;    when startup keys arrive\".\n\
+;messageonkeyarrival=yes\n\
+\n\
 ; noticetimeout: how long the kageant notices stay on screen, in\n\
 ; seconds (2-120). One knob for all of them (key used, key added/\n\
 ; removed over IPC, startup keys missing). Absent = each notice's own\n\

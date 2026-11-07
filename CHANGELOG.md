@@ -10,6 +10,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- kageant: when startup keys that were not there come back on a drive and
+  load, one notice reports that they can sign again. A click opens the key
+  list. The agent log records each key that comes back with its
+  fingerprint, comment, file and trigger (event ID 117). Settings > Agent >
+  "Notify when startup keys arrive" (on by default,
+  `[Agent] messageonkeyarrival`) silences only the notice.
 - kageant: the agent log is a chain. Every line carries `seq`, `prev`
   (the hash of the line before it) and `sig`, its signature with a key
   kageant holds in its memory only. The anchor records (event ID 171) go to

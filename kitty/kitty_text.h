@@ -2869,6 +2869,7 @@
 #define KT_KA_NOTICE_KEYS_NOT_LOADED                 "kageant: keys not loaded"
 #define KT_KA_NOTICE_RETRY_FINISHED                  "kageant: retry finished"
 #define KT_KA_NOTICE_STARTUP_KEYS                    "kageant: startup keys"
+#define KT_KA_NOTICE_KEYS_ARRIVED                    "kageant: keys available again"
 #define KT_KA_NOTICE_KEY_ADDED                       "kageant - key added"
 #define KT_KA_NOTICE_KEY_REMOVED                     "kageant - key removed"
 #define KT_KA_NOTICE_ALL_KEYS_REMOVED                "kageant - ALL keys removed"
@@ -3543,6 +3544,13 @@
 #define KT_KA_VERIFY_UNVERIFIED_ONE                  "A startup key was NOT loaded: it has no fingerprint on " \
         "record, so its file could not be checked. Click to see " \
         "which - its State in the key list reads \"unverified\"."
+/* kageant_note_key_arrival: startup keys back on a drive. %s is the drive
+ * ("E:\"); the _NODRIVE forms when the keys came from more than one, or
+ * from a share */
+#define KT_KA_ARRIVED_ONE_FMT                        "1 key from %s is loaded and can sign. Click to open the key list."
+#define KT_KA_ARRIVED_ONE_NODRIVE                    "1 key is loaded and can sign. Click to open the key list."
+#define KT_KA_ARRIVED_MANY_FMT                       "%d keys from %s are loaded and can sign. Click to open the key list."
+#define KT_KA_ARRIVED_MANY_NODRIVE_FMT               "%d keys are loaded and can sign. Click to open the key list."
 #define KT_KA_VERIFY_UNVERIFIED_MANY_FMT             "%d startup keys were NOT loaded: they have no fingerprints " \
         "on record, so their files could not be checked. Click to " \
         "see which - their State in the key list reads " \
@@ -5327,6 +5335,7 @@
 #define KT_RC_KEYSETTINGS_RETRY_LABEL                "&Retry startup keys to load, when a drive appears:"
 #define KT_RC_KEYSETTINGS_UNLOAD                     "&Unload a key when its media is removed"
 #define KT_RC_KEYSETTINGS_QUIET                      "Do not &warn about missing startup keys"
+#define KT_RC_KEYSETTINGS_ARRIVAL                    "Notify when startup keys arrive"
 #define KT_RC_KEYSETTINGS_AGENTLOG                   "Wr&ite the agent log"
 #define KT_RC_KEYSETTINGS_LOGPATH_LABEL              "&File (blank = default):"
 #define KT_RC_KEYSETTINGS_LOGKB_LABEL                "Rota&te at (KB):"

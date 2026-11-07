@@ -297,6 +297,9 @@ static const char *const af_load[] = {
     "path", "result", "enc", "seq", "sig", "ts", "prev", NULL
 };
 static const char *const af_forget[] = { "path", "result", "seq", "sig", "ts", "prev", NULL };
+static const char *const af_arrival[] = {
+    "fp", "comment", "path", "trigger", "seq", "sig", "ts", "prev", NULL
+};
 static const char *const af_retry[] = {
     "trigger", "loaded", "refused", "absent", "broken", "seq", "sig", "ts", "prev", NULL
 };
@@ -350,6 +353,7 @@ static const struct audit_kind {
     { "remove",          114, af_use },
     { "remove-all",      115, af_use },
     { "rules",           116, af_rules },
+    { "key-arrival",     117, af_arrival },
     { "lock",            120, af_use },
     { "unlock",          121, af_use },
     { "hello-enrol",     130, af_hello },

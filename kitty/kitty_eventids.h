@@ -140,6 +140,11 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 116, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "rules",
       "fp comment result reason req reqpath pid restrict seq sig ts prev",
       "Information; Warning for a refusal or failure" },
+    /* a startup key back in the agent: its file turned up on a drive
+     * (kageant_retry_pending_pass), one record per key */
+    { 117, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "key-arrival",
+      "fp comment path trigger seq sig ts prev",
+      "Information" },
     { 120, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "lock",
       "fp comment result reason req reqpath pid seq sig ts prev",
       "Information; Warning for a refusal or failure" },
@@ -604,7 +609,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "tool",
       "400-403: kittygen or kittygen-cli" },
     { "trigger",
-      "113: what started the retry; values: button, device-arrival; 152: "
+      "113: what started the retry; values: button, device-arrival; 117: "
+      "what brought the key back, the same values; 152: "
       "what asked for the passphrase; values: first-use (a signature), "
       "gui (the key list's Decrypt)" },
     { "ts",

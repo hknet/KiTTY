@@ -739,25 +739,38 @@ static char *kageant_fp_of_blob(strbuf *blob)
  * Returned as a malloc'd strbuf the caller frees, or NULL if the file cannot be
  * read as a key.
  */
-static strbuf *kageant_pubblob(const char *path)
+/* comment_out, when not NULL: the key's comment, to be freed with sfree.
+ * NULL when there is no blob. */
+static strbuf *kageant_pubblob_comment(const char *path, char **comment_out)
 {
     Filename *fn = filename_from_str(path);
     strbuf *blob = strbuf_new();
     char *alg = NULL, *comment = NULL;
     const char *error = NULL;
     bool ok;
+    if (comment_out)
+        *comment_out = NULL;
     if (key_type(fn) == SSH_KEYTYPE_SSH1)
         ok = rsa1_loadpub_f(fn, BinarySink_UPCAST(blob), &comment, &error) == 1;
     else
         ok = ppk_loadpub_f(fn, &alg, BinarySink_UPCAST(blob), &comment, &error);
     filename_free(fn);
     sfree(alg);
-    sfree(comment);
     if (!ok) {
+        sfree(comment);
         strbuf_free(blob);
         return NULL;
     }
+    if (comment_out)
+        *comment_out = comment;
+    else
+        sfree(comment);
     return blob;
+}
+
+static strbuf *kageant_pubblob(const char *path)
+{
+    return kageant_pubblob_comment(path, NULL);
 }
 
 /*
@@ -1379,6 +1392,10 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
     int unverified_n = 0;
     int mode = kageant_retry_keys();
     char *altbuf = NULL;           /* this pass's new-drive candidate */
+    /* the drive the loaded keys came from ("E:\"), for the arrival notice;
+     * "" with none yet or more than one (arrived_mixed) */
+    char arrived_drive[4] = "";
+    int arrived_mixed = 0;
 
     if (!mode && !manual)
         return;
@@ -1574,6 +1591,32 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
                                               g_pending[i].autoenc);
             loaded_any = 1;
             loaded_n++;
+
+            /* One record per key back in the agent (event 117): the key,
+             * its file and what brought it back. The fingerprint as the
+             * agent shows it, like every other agent record. */
+            {
+                char *cmt = NULL, *afp = NULL;
+                strbuf *pb = kageant_pubblob_comment(loadpath, &cmt);
+                if (pb)
+                    afp = kageant_fp_of_blob(pb);
+                kitty_audit("key-arrival", "fp", afp ? afp : "",
+                            "comment", cmt ? cmt : "", "path", loadpath,
+                            "trigger", manual ? "button" : "device-arrival",
+                            (const char *)NULL);
+                sfree(afp);
+                sfree(cmt);
+                if (pb)
+                    strbuf_free(pb);
+            }
+            if (loadpath[0] && loadpath[1] == ':') {
+                char d[4] = { loadpath[0], ':', '\\', '\0' };
+                if (!arrived_drive[0] && !arrived_mixed)
+                    memcpy(arrived_drive, d, sizeof(d));
+                else if (stricmp(arrived_drive, d))
+                    arrived_mixed = 1;
+            } else
+                arrived_mixed = 1;     /* a share: no drive letter to show */
         }
         /* Dropped from the list whether or not it loaded: if the file is there
          * and will not parse, retrying on every future device event only
@@ -1620,8 +1663,11 @@ static void kageant_retry_pending_pass(int manual, unsigned long arrived_mask)
         /* an entry whose file turned up for this press is news too */
         if (nofp_new)
             kageant_note_verify_problem(0, nofp_new);
-    } else
+    } else {
         kageant_note_verify_problem(mismatch_new, nofp_new);
+        kageant_note_key_arrival(loaded_n,
+                                 arrived_mixed ? NULL : arrived_drive);
+    }
 
     kageant_refresh_tray_tip();    /* the held-back set may have changed */
 }
@@ -2027,6 +2073,36 @@ void kageant_note_verify_problem(int mismatch_new, int nofp_new)
                               KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                               traywindow, KAGEANT_WM_NOTICE_CLICK);
     }
+}
+
+/*
+ * KiTTY: startup keys back on a drive (the automatic pass only - the
+ * button's own reply is kageant_note_retry_result). They can sign again
+ * the moment they are in. One short notice reports it. A click opens the
+ * key list. [Agent] messageonkeyarrival (default on) silences it - not
+ * messageonkeyusage, which is turned off against signature noise. The
+ * records (event 117) are written with either setting.
+ */
+void kageant_note_key_arrival(int loaded, const char *drive)
+{
+    char *text;
+
+    if (loaded <= 0 || !kageant_arrival_notice_get())
+        return;
+    if (drive && drive[0] && loaded == 1)
+        text = dupprintf(KT_KA_ARRIVED_ONE_FMT, drive);
+    else if (drive && drive[0])
+        text = dupprintf(KT_KA_ARRIVED_MANY_FMT, loaded, drive);
+    else if (loaded == 1)
+        text = dupstr(KT_KA_ARRIVED_ONE_NODRIVE);
+    else
+        text = dupprintf(KT_KA_ARRIVED_MANY_NODRIVE_FMT, loaded);
+    kageant_trace_notice(KT_KA_NOTICE_KEYS_ARRIVED, text);
+    if (traywindow)
+        kitty_notice_show(KT_KA_NOTICE_KEYS_ARRIVED, text,
+                          KAGEANT_NOTICE_INFO, kageant_notice_seconds(8),
+                          traywindow, KAGEANT_WM_NOTICE_CLICK);
+    sfree(text);
 }
 
 /*

@@ -32,6 +32,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | `114` | `KiTTY++_agent` | `remove` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
 | `115` | `KiTTY++_agent` | `remove-all` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
 | `116` | `KiTTY++_agent` | `rules` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `restrict`, `seq`, `sig`, `ts`, `prev` |
+| `117` | `KiTTY++_agent` | `key-arrival` | Information | `fp`, `comment`, `path`, `trigger`, `seq`, `sig`, `ts`, `prev` |
 | `120` | `KiTTY++_agent` | `lock` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
 | `121` | `KiTTY++_agent` | `unlock` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
 | `130` | `KiTTY++_agent` | `hello-enrol` | Information; Warning for a refusal or failure | `path`, `result`, `detail`, `seq`, `sig`, `ts`, `prev` |
@@ -152,7 +153,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `session` - the saved session's name, empty when none was loaded.
 - `sig` - 100-172: the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev.
 - `tool` - 400-403: kittygen or kittygen-cli.
-- `trigger` - 113: what started the retry; values: button, device-arrival; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).
+- `trigger` - 113: what started the retry; values: button, device-arrival; 117: what brought the key back, the same values; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).
 - `ts` - 100-172: the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone.
 - `user` - 220, 221, 320, 321, 240, 241, 330, 331: the user name of the login (a proxy's: the name sent to it); 225, 325: the user name sent to the proxy, empty when none.
 - `valid` - 141: the certificate's validity in UTC, YYYY-MM-DD HH:MM:SS to YYYY-MM-DD HH:MM:SS; from ... or until ... for an open end, always for none.

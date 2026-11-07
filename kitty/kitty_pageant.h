@@ -79,17 +79,18 @@ int  kageant_startup_loading(void);                 /* a startup load is running
 #define KAGEANT_AGENTLOG_DAYS_DEFAULT 90
 int  kageant_passphrase_ttl(void);                  /* seconds; 0 = no backstop */
 int  kageant_quiet_missing(void);                   /* [Agent] quietmissingkeys */
+int  kageant_arrival_notice_get(void);              /* [Agent] messageonkeyarrival */
 /* [Agent] retrykeys is THREE-valued: 0 = never retry, 1 = retry from the
  * stored drive+path, 2 = also try the stored path (minus its drive) on a
  * drive that just arrived. Ini spellings: no / yes / ignoredriveletter. */
 #define KAGEANT_RETRY_ANYDRIVE 2
 int  kageant_retry_keys(void);                      /* [Agent] retrykeys */
 int  kageant_unload_on_remove(void);                /* [Agent] unloadonremove */
-/* Setters for the four ini-only [Agent] options above. They write to the
- * suite kitty.ini (their only store); return 0 if no ini is writable
- * (registry-authoritative install), in which case the Settings dialog greys
- * them. */
+/* Setters for the [Agent] options above: to the store in charge
+ * (kageant_setting_write - the registry in registry mode, kitty.ini
+ * otherwise). 0 when the write failed. */
 int  kageant_quiet_missing_set(int on);
+int  kageant_arrival_notice_set(int on);
 /* [Agent] helloconfirm: gate every confirmation behind a Windows Hello
  * presence check (a per-key mode 2 does the same for one key). Boolean. */
 int  kageant_hello_get(void);
@@ -222,6 +223,9 @@ int kageant_locate_pending_key(const char *oldpath, const char *newpath);
  * refused as "unverified" (no fingerprint on record to check the file by).
  * A notice, never a prompt. */
 void kageant_note_verify_problem(int mismatch_new, int nofp_new);
+/* startup keys back on a drive (automatic pass): one notice unless
+ * [Agent] messageonkeyarrival=no. drive "E:\", or NULL for several/a share */
+void kageant_note_key_arrival(int loaded, const char *drive);
 /* answer a "Retry unavailable keys": one notice whatever happened, "nothing" included */
 void kageant_note_retry_result(int loaded, int refused, int absent,
                                int broken, int unverified);

@@ -279,8 +279,10 @@ stored, key list changes included.
 agent, whether it uses OpenSSH's \c{known_hosts} as a host-key source
 (\q{Use OpenSSH's known_hosts as a host-key source}, off by default,
 \k{pageant-knownhosts}), starts at login, reloads the remembered keys at
-startup, and shows a notice when a key is used; the notice display time;
-the colour theme.
+startup, and shows a notice when a key is used; \q{Notify when startup
+keys arrive} (on by default): a notice when startup keys that were not
+there come back on a drive and can sign again, event 117 in the agent
+log with either setting; the notice display time; the colour theme.
 
 \b \q{Security}: the IPC policy (refuse all key adds and removes over
 the pipe, or only adds, or only removes), \q{Allow locking the agent
@@ -320,7 +322,8 @@ Windows' own settings.
 100 sign, 101 confirm, 102 session-bind, 103 refused request, 104
 refused by a key's destination rules or a key list they left empty, 110 add,
 111 load at startup, 112 forget a path, 113 retry, 114 remove, 115
-remove all, 116 rules changed in the rule editor, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
+remove all, 116 rules changed in the rule editor, 117 a startup key
+back on a drive, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
 132 Hello unlock, 140 key file warning, 141 a certificate expiring,
 expired or not yet valid, 150 re-encrypt all, 151
 re-encrypt one key, 152 decrypt a key, 160 agent start/stop, 170 log

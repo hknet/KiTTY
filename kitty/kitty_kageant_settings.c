@@ -577,6 +577,13 @@ int kageant_quiet_missing(void)
     return kageant_bool_get(KI_AGENT_QUIETMISSINGKEYS, "QuietMissingKeys", 0);
 }
 
+/* [Agent] messageonkeyarrival: the notice when startup keys come back on a
+ * drive and can sign again (kageant_note_key_arrival). Default on. */
+int kageant_arrival_notice_get(void)
+{
+    return kageant_bool_get(KI_AGENT_MESSAGEONKEYARRIVAL, "NotifyOnKeyArrival", 1);
+}
+
 /* ---- the AGENT LOG: settings, path resolution and setup ----
  * User-facing name "agent log", deliberately NOT "audit log" - a local
  * file is evidence, never proof, and the name must not claim more than
@@ -713,6 +720,11 @@ int kageant_quiet_missing_set(int on)
 {
     return kageant_setting_write(KI_AGENT_QUIETMISSINGKEYS, on ? "yes" : "no",
                                  "QuietMissingKeys", on ? 1 : 0);
+}
+int kageant_arrival_notice_set(int on)
+{
+    return kageant_setting_write(KI_AGENT_MESSAGEONKEYARRIVAL, on ? "yes" : "no",
+                                 "NotifyOnKeyArrival", on ? 1 : 0);
 }
 int kageant_retry_keys_set(int mode)
 {

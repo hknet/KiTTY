@@ -104,6 +104,12 @@ Language=English
 %1%nfp: %2%ncomment: %3%nresult: %4%nreason: %5%nreq: %6%nreqpath: %7%npid: %8%nrestrict: %9%nseq: %10%nsig: %11%nts: %12%nprev: %13%0
 .
 
+MessageId=117
+SymbolicName=KITTY_AGENT_KEY_ARRIVAL
+Language=English
+%1%nfp: %2%ncomment: %3%npath: %4%ntrigger: %5%nseq: %6%nsig: %7%nts: %8%nprev: %9%0
+.
+
 MessageId=120
 SymbolicName=KITTY_AGENT_LOCK
 Language=English

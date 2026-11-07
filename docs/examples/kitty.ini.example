@@ -1491,6 +1491,13 @@
 ; prompt, so it does not break scripted ssh-add.
 ;messageonkeyusage=yes
 
+; messageonkeyarrival: a notice when startup keys that were not there come
+;    back on a drive and can sign again. A click opens the key list.
+;    Default yes. no silences only this notice: the agent log records each
+;    key that comes back (event 117) either way. Settings > Agent > "Notify
+;    when startup keys arrive".
+;messageonkeyarrival=yes
+
 ; noticetimeout: how long the kageant notices stay on screen, in
 ; seconds (2-120). One knob for all of them (key used, key added/
 ; removed over IPC, startup keys missing). Absent = each notice's own

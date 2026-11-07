@@ -5801,7 +5801,7 @@ static int keysettings_open_page = -1;
 
 static const int keysettings_page_agent[] = {
     IDC_SET_OPENSSH, IDC_SET_KNOWNHOSTS, IDC_SET_STARTUP, IDC_SET_LOADKEYS,
-    IDC_SET_NOTIFY,
+    IDC_SET_NOTIFY, IDC_SET_ARRIVAL,
     IDC_SET_L_NOTICE, IDC_SET_NOTICESECS, IDC_SET_L_NOTICEHINT,
     IDC_SET_L_THEME, IDC_SET_THEME, IDC_SET_L_THEMEHINT,
 };
@@ -6193,6 +6193,8 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_autostart_active() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_NOTIFY,
             kageant_notify_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_ARRIVAL,
+            kageant_arrival_notice_get() ? BST_CHECKED : BST_UNCHECKED);
         {
             /*
              * Retry is THREE-valued (item index == stored value 0/1/2), so it
@@ -6452,6 +6454,8 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
           case IDOK: {
             kageant_notify_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED);
+            kageant_arrival_notice_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_ARRIVAL) == BST_CHECKED);
             /* Every agent setting goes to the store in charge, so these
              * apply in either mode - no kitty.ini gate. */
             {

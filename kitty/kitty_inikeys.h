@@ -270,6 +270,8 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_AGENT_LOCKDOWNMODE               "lockdownmode"
 #define KI_AGENT_LOCKWITHWINDOWS            "lockwithwindows"
 #define KI_AGENT_MESSAGEONKEYUSAGE          "messageonkeyusage"
+/* the notice when startup keys come back on a drive (default yes) */
+#define KI_AGENT_MESSAGEONKEYARRIVAL        "messageonkeyarrival"
 #define KI_AGENT_NOTICETIMEOUT              "noticetimeout"
 #define KI_AGENT_PASSPHRASECACHESECONDS     "passphrasecacheseconds"
 #define KI_AGENT_QUIETMISSINGKEYS           "quietmissingkeys"
