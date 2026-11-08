@@ -10,6 +10,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- Find bar (Ctrl+Shift+F): a **Case sensitive** box right of the counter
+  (Alt+C) makes the case count always. Off, the search stays smart case.
+  The hint line now also shows Enter and Shift+Enter.
 - The Event Log notice: a notable line of the Terminal Window's Event Log
   shows for a moment at the bottom of the terminal, the latest two. A
   click opens the Event Log, which shows notable lines in bold behind an

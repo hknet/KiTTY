@@ -5,8 +5,11 @@
  *
  * A small SOLID bar at the top right of the terminal (below the program
  * status panel when that is there): a grip, a real edit field (so IME, paste
- * and the caret work as anywhere in Windows), Up and Down, the counter and a
- * close button. It is dragged by the grip, the counter or its background,
+ * and the caret work as anywhere in Windows), Up and Down, the counter, the
+ * "Case sensitive" box (Alt+C; off: smart case, on: the case always counts,
+ * kept for the next open while the program runs) and a close button. The
+ * counter takes the box's room while the search is not available. It is
+ * dragged by the grip, the counter or its background,
  * inside the terminal area; its distance from the area's top-right corner is
  * kept in the session (SearchBarPos), like the status panel's. The field
  * turns red while nothing is found. A modeless dialog on the shared themed
@@ -20,7 +23,7 @@
  * Ctrl+Shift+F selects the text; Ctrl+Backspace deletes the word before the
  * caret. Opened again, the bar shows the text it was closed with, selected,
  * and the terminal makes the hit it was closed on current again. While
- * there are hits, a second line - the two Ctrl keys - slides open below the
+ * there are hits, a second line - the Enter and Ctrl keys - slides open below the
  * controls (ksb_hint), and shut again when there are none.
  */
 #include <stdio.h>
@@ -63,9 +66,12 @@ typedef struct ksb {
     bool placed;                  /* dx/dy read or dragged (not the default) */
     int h_shut, h_open, h_now;    /* the bar's height without / with the hint */
     bool hint;                    /* the hint line is (or is going) open */
+    int count_w, count_wide;      /* the counter's width beside the box / without it */
+    bool wide;                    /* the box is hidden, the counter wide */
 } ksb;
 
 static ksb *ksb_list = NULL;
+static bool ksb_case_always = false;   /* the "Case sensitive" box, every bar */
 
 static ksb *ksb_find(HWND owner)
 {
@@ -274,6 +280,19 @@ static void ksb_counter(ksb *b)
       default:
         break;
     }
+    {   /* not available: the long text takes the box's room, the box goes */
+        bool wide = (st == KS_STATE_NOT_AVAILABLE);
+        HWND cnt = GetDlgItem(b->h, IDC_SB_COUNT), box = GetDlgItem(b->h, IDC_SB_CASE);
+        RECT r;
+        if (wide != b->wide && cnt && box && b->count_w > 0 && GetWindowRect(cnt, &r)) {
+            b->wide = wide;
+            if (wide && GetFocus() == box)
+                SetFocus(b->edit);
+            ShowWindow(box, wide ? SW_HIDE : SW_SHOWNA);
+            SetWindowPos(cnt, NULL, 0, 0, wide ? b->count_wide : b->count_w,
+                         r.bottom - r.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
     {
         wchar_t old[160];
         bool bad = (st == KS_STATE_DONE && total == 0);
@@ -382,6 +401,15 @@ static INT_PTR CALLBACK ksb_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             if (setattr)
                 setattr(h, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, &round, sizeof(round));
         }
+        {   /* the box as last set, and the counter's two widths */
+            HWND cnt = GetDlgItem(h, IDC_SB_COUNT), box = GetDlgItem(h, IDC_SB_CASE);
+            RECT cr, br;
+            CheckDlgButton(h, IDC_SB_CASE, ksb_case_always ? BST_CHECKED : BST_UNCHECKED);
+            if (cnt && box && GetWindowRect(cnt, &cr) && GetWindowRect(box, &br)) {
+                b->count_w = cr.right - cr.left;
+                b->count_wide = br.right - cr.left;
+            }
+        }
         {   /* the hint line, below the template's height: the two heights */
             HWND hint = GetDlgItem(h, IDC_SB_HINT);
             RECT wr, hr;
@@ -453,6 +481,16 @@ static INT_PTR CALLBACK ksb_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             ksb_move(b, +1);
             SetFocus(b->edit);
             return TRUE;
+          case IDC_SB_CASE:               /* a click, the space bar or Alt+C */
+            if (HIWORD(wp) == BN_CLICKED) {
+                Terminal *term = kitty_searchbar_term(b->owner);
+                ksb_case_always = IsDlgButtonChecked(h, IDC_SB_CASE) == BST_CHECKED;
+                if (term)
+                    term_search_case(term, ksb_case_always);
+                ksb_counter(b);
+                SetFocus(b->edit);
+            }
+            return TRUE;
           case IDCANCEL:                  /* Esc / the close button */
             b->closing = true;
             DestroyWindow(h);
@@ -502,6 +540,7 @@ void kitty_searchbar_open(HWND owner)
         return;
     }
     term_search_open(term);
+    term_search_case(term, ksb_case_always);
     b = snew(ksb);
     memset(b, 0, sizeof(*b));
     b->owner = owner;

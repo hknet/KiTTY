@@ -534,9 +534,11 @@ END
  * and move what is below. SS_NOPREFIX: paths may contain '&'. */
 /* The find bar of the scrollback search (kitty/kitty_searchbar.c): a small
  * SOLID bar owned by the terminal window, top right in it - a real EDIT
- * field (IME, paste, caret), Up (the default: Enter), Down, the counter and
- * a close button. MODELESS, no caption; the button captions are set at run
- * time (the arrows and the cross are not ANSI). IDC_SB_HINT lies below the
+ * field (IME, paste, caret), Up (the default: Enter), Down, the counter,
+ * the "Case sensitive" box and a close button. MODELESS, no caption; the
+ * button captions are set at run time (the arrows and the cross are not
+ * ANSI). The counter takes the box's room too while the search is not
+ * available (kitty_searchbar.c ksb_counter). IDC_SB_HINT lies below the
  * template's height: the bar slides open to show it while there are hits. */
 IDD_SEARCHBAR DIALOGEX DISCARDABLE 0, 0, 355, 16
 STYLE WS_POPUP | WS_BORDER
@@ -546,7 +548,8 @@ BEGIN
     EDITTEXT        IDC_SB_EDIT, 11, 2, 130, 12, ES_AUTOHSCROLL | WS_TABSTOP
     DEFPUSHBUTTON   "Up", IDOK, 144, 2, 36, 12
     PUSHBUTTON      "Down", IDC_SB_DOWN, 182, 2, 40, 12
-    LTEXT           "", IDC_SB_COUNT, 226, 4, 112, 9, SS_NOPREFIX | SS_ENDELLIPSIS
+    LTEXT           "", IDC_SB_COUNT, 226, 4, 48, 9, SS_NOPREFIX | SS_ENDELLIPSIS
+    AUTOCHECKBOX    KT_SEARCH_CASE, IDC_SB_CASE, 276, 3, 62, 10, WS_TABSTOP
     PUSHBUTTON      "X", IDCANCEL, 340, 2, 12, 12
     LTEXT           "", IDC_SB_HINT, 11, 17, 327, 9, SS_NOPREFIX | SS_ENDELLIPSIS
 END

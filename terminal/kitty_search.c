@@ -9,7 +9,8 @@
  * 0 is `base`, which grows by one each time a line is dropped from the top -
  * so a hit stays on its text while output scrolls. A soft-wrapped line is
  * one logical line (a hit may span the wrap); the matcher is
- * kitty/kitty_search_match.h (smart case, unit-tested).
+ * kitty/kitty_search_match.h (smart case, unit-tested). The bar's "Case
+ * sensitive" box makes the case count always (term_search_case).
  *
  * The search runs 150 ms after the last change of the text: the rows in
  * view first (their hits are shown at once, kept apart in `vis` until the
@@ -49,6 +50,7 @@ struct kitty_search {
     Terminal *term;
     ksm_char *needle;
     int nn, cs;
+    bool always_cs;                /* the bar's "Case sensitive" box */
     ks_hit *hits;
     int nhits;
     size_t hsize;
@@ -444,8 +446,27 @@ void term_search_set(Terminal *term, const wchar_t *text)
     s->needle = needle;
     s->memo = false;
     s->nn = (int)n;
-    s->cs = ksm_case_sensitive(s->needle, s->nn, ks_lower);
+    s->cs = s->always_cs || ksm_case_sensitive(s->needle, s->nn, ks_lower);
     ks_restart(s, KS_DEBOUNCE_MS);
+}
+
+/* The find bar's "Case sensitive" box: on, the case always counts. Off,
+ * smart case: a text with a capital letter counts the case, an all
+ * lowercase text does not. A change searches the text again. */
+void term_search_case(Terminal *term, bool always)
+{
+    struct kitty_search *s = term->search;
+    int cs;
+    if (!s)
+        return;
+    s->always_cs = always;
+    cs = always || ksm_case_sensitive(s->needle, s->nn, ks_lower);
+    if (cs == s->cs)
+        return;
+    s->cs = cs;
+    s->memo = false;
+    if (s->open && s->nn > 0)
+        ks_restart(s, 0);
 }
 
 /* Up (dir < 0, older output) or Down (dir > 0). The first press starts

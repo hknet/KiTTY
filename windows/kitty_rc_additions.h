@@ -803,3 +803,6 @@
 #ifndef IDC_SB_HINT
 #define IDC_SB_HINT 1474
 #endif
+#ifndef IDC_SB_CASE
+#define IDC_SB_CASE 1475
+#endif

@@ -1257,6 +1257,7 @@ void term_set_dragging(Terminal *term, bool on);
 void term_search_open(Terminal *term);
 void term_search_close(Terminal *term);
 void term_search_set(Terminal *term, const wchar_t *text);
+void term_search_case(Terminal *term, bool always);
 int term_search_move(Terminal *term, int dir);
 int term_search_jump(Terminal *term, int dir);
 int term_search_text(Terminal *term, wchar_t *out, int size);
