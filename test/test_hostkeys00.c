@@ -54,6 +54,7 @@ static void offer(struct kitty_hk00_offer *o, const char *type, const char *key,
     o->nstored = nstored;
     o->proof = 0;
     o->action = -1;
+    o->over = 0;
 }
 
 int main(void)
@@ -167,6 +168,31 @@ int main(void)
                KHK00_PLAN_OVERLIMIT);
     expect_int("1: a type twice: its first offer", (int)at, 0);
     expect_int("1: a type twice: how many", over, 2);
+    /* proven first, so the limit's line lists a proven key: the new key is
+     * PROVE with over set, the stored one NOTHING; proven, it is SKIP and
+     * nothing is stored */
+    expect_int("1: a type twice: the new key to be proven", o[1].action, KHK00_PROVE);
+    expect_int("1: a type twice: for the limit only", o[1].over, 1);
+    expect_int("1: a type twice: the stored key", o[0].action, KHK00_NOTHING);
+    o[1].proof = 1;
+    expect("1: a type twice: not complete", kitty_hk00_decide(o, 2, "ssh-ed25519", "E1", 1), false);
+    expect_int("1: a type twice: proven, not stored", o[1].action, KHK00_SKIP);
+    /* its proof failed: FAILED, not the limit */
+    offer(&o[0], "ssh-ed25519", "E1", 0, 1);
+    offer(&o[1], "ssh-ed25519", "E2", 2, 1);
+    kitty_hk00_plan(o, 2, "ssh-ed25519", "E1", 1, NULL, NULL);
+    o[1].proof = -1;
+    kitty_hk00_decide(o, 2, "ssh-ed25519", "E1", 1);
+    expect_int("1: a type twice, proof failed: FAILED", o[1].action, KHK00_FAILED);
+    /* over the limit with stored keys only (the limit lowered): nothing to
+     * prove, the type's first offer SKIP for the limit's line */
+    offer(&o[0], "ssh-ed25519", "E1", 0, 2);
+    offer(&o[1], "ssh-ed25519", "E2", 0, 2);
+    expect_int("1: two stored, limit 1: over the limit",
+               kitty_hk00_plan(o, 2, "ssh-ed25519", "E1", 1, NULL, NULL), KHK00_PLAN_OVERLIMIT);
+    expect_int("1: two stored, limit 1: the first offer SKIP", o[0].action, KHK00_SKIP);
+    expect_int("1: two stored, limit 1: for the limit", o[0].over, 1);
+    expect_int("1: two stored, limit 1: nothing to prove", o[1].action, KHK00_NOTHING);
 
     /* ---- the default, hostkeyspertype=2 ---- */
 
@@ -260,8 +286,11 @@ int main(void)
     offer(&o[1], "ssh-ed25519", "C", 2, 2);
     expect_int("no room: plan",
                kitty_hk00_plan(o, 2, "ssh-ed25519", "A", 2, NULL, NULL), KHK00_PLAN_OK);
-    expect_int("no room: skipped", o[1].action, KHK00_SKIP);
+    expect_int("no room: proven for the limit", o[1].action, KHK00_PROVE);
+    expect_int("no room: for the limit only", o[1].over, 1);
+    o[1].proof = 1;
     expect("no room: not complete", kitty_hk00_decide(o, 2, "ssh-ed25519", "A", 2), false);
+    expect_int("no room: proven, skipped", o[1].action, KHK00_SKIP);
     expect("no room: nothing removed",
            kitty_hk00_removes(o, 2, false, "ssh-ed25519", "B", "ssh-ed25519", "A"), false);
     /* the same list with room for three: C is proven, nothing skipped */
@@ -282,6 +311,10 @@ int main(void)
                kitty_hk00_plan(o, 4, "rsa2", "R", 2, &at, &over), KHK00_PLAN_OVERLIMIT);
     expect_int("over the limit: the type's first offer", (int)at, 1);
     expect_int("over the limit: how many", over, 3);
+    expect_int("over the limit: E1..E3 proven for the limit",
+               (o[1].action == KHK00_PROVE && o[1].over && o[2].action == KHK00_PROVE &&
+                o[2].over && o[3].action == KHK00_PROVE && o[3].over), 1);
+    expect_int("over the limit: the other type not touched", o[0].action, KHK00_NOTHING);
     expect_int("the same list with room: used",
                kitty_hk00_plan(o, 4, "rsa2", "R", 3, NULL, NULL), KHK00_PLAN_OK);
 
@@ -336,9 +369,14 @@ int main(void)
     offer(&o[3], "ecdsa-sha2-nistp256", "P", 1, 0);
     expect_int("partial: plan",
                kitty_hk00_plan(o, 4, "ssh-ed25519", "A", 2, NULL, NULL), KHK00_PLAN_OK);
-    expect_int("partial: no room for C", o[2].action, KHK00_SKIP);
+    expect_int("partial: no room for C, proven for the limit", o[2].action, KHK00_PROVE);
+    expect_int("partial: C for the limit only", o[2].over, 1);
+    /* C's proof failed: its line, and it holds back nothing - it was
+     * proven only for the limit's line */
+    o[2].proof = -1;
     o[3].proof = 1;
     expect("partial: not complete", kitty_hk00_decide(o, 4, "ssh-ed25519", "A", 2), false);
+    expect_int("partial: C's failed proof reported", o[2].action, KHK00_FAILED);
     expect_int("partial: the new type stored", o[3].action, KHK00_STORE);
     expect("partial: nothing removed",
            kitty_hk00_removes(o, 4, false, "dss", "D", "ssh-ed25519", "A"), false);

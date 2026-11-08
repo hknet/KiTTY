@@ -148,15 +148,33 @@ int kitty_hk00_plan(struct kitty_hk00_offer *o, size_t n, const char *conn_type,
             if (same_key(o[i].type, o[i].key, o[j].type, o[j].key))
                 return KHK00_PLAN_UNUSED;   /* a key listed twice (OpenSSH) */
     for (size_t i = 0; i < n; i++) {
+        o[i].proof = 0;
+        o[i].over = 0;
+    }
+    for (size_t i = 0; i < n; i++) {
         int k = offers_of(o, n, o[i].type);
         if (k > pertype) {
+            /* the list is not used. The new keys of that type are proven
+             * all the same, so the limit's line lists only proven keys. */
+            bool any = false;
             if (over_at) *over_at = i;
             if (over_n) *over_n = k;
+            for (size_t j = 0; j < n; j++) {
+                o[j].action = KHK00_NOTHING;
+                if (same_type(o[j].type, o[i].type) && o[j].status != 0) {
+                    o[j].action = KHK00_PROVE;
+                    o[j].over = 1;
+                    any = true;
+                }
+            }
+            if (!any) {                    /* only stored keys: nothing to prove */
+                o[i].action = KHK00_SKIP;
+                o[i].over = 1;
+            }
             return KHK00_PLAN_OVERLIMIT;
         }
     }
     for (size_t i = 0; i < n; i++) {
-        o[i].proof = 0;
         if (o[i].status == 0)
             o[i].action = KHK00_NOTHING;
         else if (pertype == 1)
@@ -165,10 +183,12 @@ int kitty_hk00_plan(struct kitty_hk00_offer *o, size_t n, const char *conn_type,
             o[i].action = same_type(o[i].type, conn_type) ?
                 KHK00_SKIP : KHK00_PROVE;
         else if (offers_of(o, n, o[i].type) +
-                 conn_unlisted(o, n, o[i].type, conn_type, conn_key) > pertype)
-            /* the verifying key stays: with it the type has no room */
-            o[i].action = KHK00_SKIP;
-        else
+                 conn_unlisted(o, n, o[i].type, conn_type, conn_key) > pertype) {
+            /* the verifying key stays: with it the type has no room. Proven
+             * for the limit's line, never stored. */
+            o[i].action = KHK00_PROVE;
+            o[i].over = 1;
+        } else
             o[i].action = KHK00_PROVE;
     }
     return KHK00_PLAN_OK;
@@ -179,6 +199,12 @@ bool kitty_hk00_decide(struct kitty_hk00_offer *o, size_t n, const char *conn_ty
 {
     bool all = n > 0, failed = false, may_remove;
     pertype = clamp_pertype(pertype);
+    /* a key the limit has no room for was proven only for the limit's
+     * line: SKIP when proven, FAILED when not, and its failed proof does
+     * not hold back the other keys */
+    for (size_t i = 0; i < n; i++)
+        if (o[i].action == KHK00_PROVE && o[i].over)
+            o[i].action = o[i].proof > 0 ? KHK00_SKIP : KHK00_FAILED;
     for (size_t i = 0; i < n; i++)
         if (o[i].action == KHK00_PROVE && o[i].proof <= 0)
             failed = true;

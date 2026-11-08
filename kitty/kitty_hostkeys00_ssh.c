@@ -533,6 +533,19 @@ static bool hk00_finish(struct ssh2_connection_state *s, hk00_req *req)
         } else if (hk00_is_new(o->action))
             nnew++;
     }
+    /* "Keys per type and host" has no room: the reason as lines, once per
+     * type, only for a key the server proved (or one already stored) */
+    for (size_t i = 0; i < req->n; i++) {
+        bool first = true;
+        if (req->offers[i].action != KHK00_SKIP || !req->offers[i].over)
+            continue;
+        for (size_t j = 0; j < i; j++)
+            if (req->offers[j].action == KHK00_SKIP && req->offers[j].over &&
+                !strcmp(req->offers[j].type, req->offers[i].type))
+                first = false;
+        if (first)
+            hk00_overlimit(s, req, i);
+    }
     hk00_collect_gone(req);
     if (!nnew && !req->ngone)
         return false;                    /* nothing changes */
@@ -665,28 +678,13 @@ void kitty_hk00_received(struct ssh2_connection_state *s, PktIn *pktin)
     plan = usable ? kitty_hk00_plan(req->offers, req->n, req->conn_type,
                                     req->conn_key, kitty_hk00_pertype(),
                                     &over_at, &over_n) : KHK00_PLAN_UNUSED;
-    if (plan == KHK00_PLAN_OVERLIMIT)
-        /* more keys of one type than hostkeyspertype: the reason as lines */
-        hk00_overlimit(s, req, over_at);
-    if (plan != KHK00_PLAN_OK) {
+    /* OVERLIMIT (more keys of one type than hostkeyspertype) goes on: the
+     * new keys of that type are proven first, the limit's lines come in
+     * hk00_finish and nothing of the list is stored. The same for a key the
+     * verifying key leaves no room for. */
+    if (plan == KHK00_PLAN_UNUSED) {
         hk00_req_free(req);
         return;
-    }
-    /* the key that verified the connection takes the place a new key of its
-     * type needs (hostkeyspertype 2 and more; with 1 the verified type is
-     * never touched): the same report, once per type */
-    if (kitty_hk00_pertype() >= 2) {
-        for (size_t i = 0; i < req->n; i++) {
-            bool first = true;
-            if (req->offers[i].action != KHK00_SKIP)
-                continue;
-            for (size_t j = 0; j < i; j++)
-                if (req->offers[j].action == KHK00_SKIP &&
-                    !strcmp(req->offers[j].type, req->offers[i].type))
-                    first = false;
-            if (first)
-                hk00_overlimit(s, req, i);
-        }
     }
 
     size_t nprove = 0;

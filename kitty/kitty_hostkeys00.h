@@ -135,7 +135,8 @@ enum {
     KHK00_REPLACE,       /* proven, replaces the stored key (hostkeyspertype=1) */
     KHK00_FAILED,        /* the proof failed or is missing */
     KHK00_SKIP,          /* not stored: it would take the place of the key
-                          * that verified the connection */
+                          * that verified the connection, or (over set)
+                          * "Keys per type and host" has no room for it */
     KHK00_ADD            /* proven, stored beside the stored key(s) of its type */
 };
 struct kitty_hk00_offer {
@@ -146,14 +147,20 @@ struct kitty_hk00_offer {
     int nstored;         /* keys of its type stored before the update */
     int proof;           /* 1 proven, -1 failed, 0 not requested */
     int action;
+    int over;            /* 1: hostkeyspertype has no room for it. Proven all
+                          * the same, so the limit's line lists only a key
+                          * the server proved. Never stored. */
 };
 
 /* Before the proof request. conn_type / conn_key: the key that verified the
- * connection (its store id and text). Returns OK, or why the list is not
- * used at all: UNUSED (empty, or a key listed twice), OVERLIMIT (more keys
- * of one type than hostkeyspertype: *over_at is the first offer of that
- * type, *over_n how many of it). With OK each offer is NOTHING, PROVE or
- * SKIP. */
+ * connection (its store id and text). Returns OK, or UNUSED (empty, or a key
+ * listed twice: the list is not used at all), or OVERLIMIT (more keys of one
+ * type than hostkeyspertype: *over_at is the first offer of that type,
+ * *over_n how many of it). Each offer is then NOTHING, PROVE or SKIP. A key
+ * the limit has no room for is PROVE with over set: kitty_hk00_decide makes
+ * it SKIP once proven. With OVERLIMIT only the new keys of that type are
+ * proven (over set), nothing of the list is stored. A type over the limit
+ * with no new key: its first offer SKIP with over set. */
 enum { KHK00_PLAN_OK = 0, KHK00_PLAN_UNUSED, KHK00_PLAN_OVERLIMIT };
 int kitty_hk00_plan(struct kitty_hk00_offer *o, size_t n, const char *conn_type,
                     const char *conn_key, int pertype, size_t *over_at,
@@ -163,8 +170,10 @@ int kitty_hk00_plan(struct kitty_hk00_offer *o, size_t n, const char *conn_type,
  * a failed proof leaves the store unchanged for this connection (as
  * OpenSSH's client). A proven key with no room left under hostkeyspertype
  * (the stored keys of its type stay, because the list is not complete)
- * becomes NOTHING. true: every key of the list is stored or proven now, so
- * stored keys missing from the list may be removed. */
+ * becomes NOTHING. A PROVE with over set becomes SKIP when proven, FAILED
+ * when not - its failed proof does not hold back the other keys, as it was
+ * proven only for the limit's line. true: every key of the list is stored
+ * or proven now, so stored keys missing from the list may be removed. */
 bool kitty_hk00_decide(struct kitty_hk00_offer *o, size_t n, const char *conn_type,
                        const char *conn_key, int pertype);
 /* Remove this stored key? Never the key that verified the connection, never

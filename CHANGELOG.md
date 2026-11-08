@@ -103,7 +103,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   keys of one type are stored per host and port (Application > Security >
   Host Keys > Settings, `hostkeyspertype`, 1 to 32, default 2). The host key
   update stores a proven new key beside the old one. When the server no
-  longer offers the old key, it is removed. "Keys the server proves
+  longer offers the old key, it is removed. A key the limit has no room
+  for is proven all the same, so the Event Log line of the limit lists
+  only keys the server proved. "Keys the server proves
   (hostkeys-00)" has a third choice, "Confirm each change"
   (`updatehostkeys=ask`). kitty.exe shows a notice for each key the update
   stores. Unknown key, changed key and the changes offered share one host

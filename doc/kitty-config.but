@@ -3540,7 +3540,9 @@ switches the update off. \c{updatehostkeys} in \c{[KiTTY]}:
 port, 1 to 32, default 2. With 2 a server can rotate its key. The new
 key is stored beside the old one. With 1 a rotation ends at the
 changed-key warning. A server list with more keys of one type than
-this is not used. \c{hostkeyspertype} in \c{[KiTTY]}.
+this is not used. Its new keys of that type are proven first, so the
+Event Log line lists only keys the server proved. \c{hostkeyspertype}
+in \c{[KiTTY]}.
 
 All three are stored like the other KiTTY++ settings: in the registry or in
 \c{kitty.ini}, by the store in use. kitty.exe, klink, kscp and ksftp
