@@ -2013,9 +2013,11 @@ that draw a character the terminal font lacks on
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{theme} (the colours),
 \c{ctxtint} (the background tint), \c{osc3008ctxnotice} and
-\c{osc7501notice} (the switch notices), \c{eventlognotice} (the notice
-for a notable line of the Terminal Window's Event Log, at the bottom of
-the terminal, a click opens the Event Log), \c{ctxbreadcrumbopacity} and
+\c{osc7501notice} (the switch notices), \c{eventlognotice} (the badge
+at the top right of the terminal for a notable line of the Terminal
+Window's Event Log: a number of seconds (default 5), \c{open} until the
+Event Log is opened, or \c{0} for never. A click opens the Event Log),
+\c{ctxbreadcrumbopacity} and
 \c{ctxbreadcrumbplace} (the breadcrumb's opacity and place) and
 \c{iconfile}.
 

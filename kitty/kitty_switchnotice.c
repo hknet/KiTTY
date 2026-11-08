@@ -10,9 +10,13 @@
  * Both at once: the user switch on top, the job's line below it. Which text
  * and whether at all is decided platform-free (ctx_switch_notice,
  * ps_switch_notice); this file only shows it.
- *  - The Event Log notice (KSN_EVLOG, windows/window.c): the latest notable
- *    lines of the terminal's Event Log, up to two, at the bottom centre. It
- *    is the one slot that takes a click: the click opens the Event Log
+ *  - The Event Log badge (KSN_EVLOG, windows/window.c): a small quiet
+ *    marker at the top right of the terminal area, "Event Log: 2 new",
+ *    below the status panel and the breadcrumb when they show there. It
+ *    stays until the Event Log opens (kitty_switchnotice_badge, secs < 0)
+ *    or for a number of seconds. A minimised or hidden window keeps it for
+ *    the restore. Its tooltip holds the latest notable line. It is the one
+ *    slot that takes a click: the click opens the Event Log
  *    (kitty_switchnotice_click). Never the focus either.
  *
  * The same kind of window as the status panel and the breadcrumb
@@ -34,10 +38,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <commctrl.h>
 
 #include "kitty_switchnotice.h"
 #include "kitty_overlay_draw.h"   /* the canvas, the shape, the DPI, the font */
 #include "kitty_psoverlay.h"      /* the panel's colours and its state icon */
+#include "kitty_ctxcrumb.h"       /* the breadcrumb's rectangle: the badge keeps clear */
+#include "kitty_theme.h"          /* kitty_theme_tooltip */
+#include "kitty_win.h"            /* kitty_theme_app_dark */
 #include "kitty_inikeys.h"
 
 extern HWND MainHwnd;          /* kitty.c: the terminal window */
@@ -53,6 +61,8 @@ int ReadParameterN(const char *key, const char *name, char *value, size_t size);
 #define SN_MARGIN    6         /* from the terminal area's top, 96 dpi */
 #define SN_GAP       4         /* between the two lines, 96 dpi */
 #define SN_TEXT_MAX  512
+#define SN_BADGE_ALPHA 224     /* the badge: about 88 % */
+#define SN_PLACE_MS  1000      /* the badge looks for the panel and the breadcrumb */
 
 typedef struct {
     HWND hwnd;
@@ -63,6 +73,7 @@ typedef struct {
     DWORD start;               /* GetTickCount when it came */
     int total, fin, fout;      /* ms: the whole time and the two fades */
     bool live;                 /* inside its time */
+    bool sticky;               /* the badge until the Event Log opens: no end */
 } SnLine;
 
 static SnLine sn[KSN_SLOTS];
@@ -70,6 +81,8 @@ static int sn_line_px;
 void (*kitty_switchnotice_click)(int slot) = NULL;
 static HFONT sn_font;
 static int sn_font_px;
+static HWND sn_tip;            /* the badge's tooltip (it keeps its own copy of the text) */
+static POINT sn_badge_at;      /* where the badge was placed last */
 
 int kitty_switchnotice_seconds(const char *key)
 {
@@ -182,10 +195,19 @@ static bool sn_render(int i)
     sn_look(n->look, &bg, &fg, &edge, &alpha);
     line = sn_line_px > (int)(18 * s + .5) ? sn_line_px : (int)(18 * s + .5);
     padY = (int)(SN_PAD_Y * s + .5);
+    if (n->look == KSN_LOOK_EVLOG) {
+        /* the badge: quiet - the terminal's own text size, one line, a
+         * little more see-through */
+        line = line * 80 / 100;
+        padY = (int)(2 * s + .5);
+        if (alpha != 255)
+            alpha = SN_BADGE_ALPHA;
+    }
     row = line + 2 * padY;
     h = nrows * line + 2 * padY;
     pad = row / 2;                     /* the rounded ends */
-    f = sn_get_font(line * 62 / 100 * 125 / 100);
+    f = sn_get_font(n->look == KSN_LOOK_EVLOG ? line * 80 / 100
+                                              : line * 62 / 100 * 125 / 100);
     if (n->look == KSN_LOOK_STATUS || n->look == KSN_LOOK_PROGRESS) {
         icon = (int)(h * 0.7 + .5);
         left = (h - icon) / 2 + icon + (int)(6 * s + .5);
@@ -235,7 +257,8 @@ static bool sn_render(int i)
 }
 
 /* Top centre of the terminal area, the job's line below the user's. The
- * Event Log notice at the bottom centre. */
+ * Event Log badge at the top right, below the status panel and the
+ * breadcrumb where they show in the terminal area. */
 static void sn_place(int i, POINT *pt)
 {
     RECT cr;
@@ -245,8 +268,21 @@ static void sn_place(int i, POINT *pt)
     GetClientRect(MainHwnd, &cr);
     ClientToScreen(MainHwnd, &tl);
     if (i == KSN_EVLOG) {
-        pt->x = tl.x + (cr.right - sn[i].dib.w) / 2;
-        pt->y = tl.y + cr.bottom - (int)(SN_MARGIN * s + .5) - sn[i].dib.h;
+        int margin = (int)(SN_MARGIN * s + .5), gap = (int)(SN_GAP * s + .5);
+        int pass;
+        RECT r;
+        pt->x = tl.x + cr.right - margin - sn[i].dib.w;
+        pt->y = tl.y + margin;
+        /* twice: the breadcrumb and the panel stack, either may be first */
+        for (pass = 0; pass < 2; pass++) {
+            if (kitty_ctxcrumb_rect(&r) && r.bottom > pt->y && r.top < pt->y + sn[i].dib.h &&
+                r.left < pt->x + sn[i].dib.w && r.right > pt->x)
+                pt->y = r.bottom + gap;
+            if (kitty_psoverlay_rect(&r) && r.bottom > pt->y && r.top < pt->y + sn[i].dib.h &&
+                r.left < pt->x + sn[i].dib.w && r.right > pt->x)
+                pt->y = r.bottom + gap;
+        }
+        sn_badge_at = *pt;
         return;
     }
     y = tl.y + (int)(SN_MARGIN * s + .5);
@@ -282,8 +318,11 @@ static void sn_hide(int i)
     SnLine *n = &sn[i];
     bool was = n->live;
     n->live = false;
+    n->sticky = false;
     if (n->hwnd) {
         KillTimer(n->hwnd, SN_TIMER);
+        if (i == KSN_EVLOG && sn_tip)
+            SendMessageW(sn_tip, TTM_POP, 0, 0);
         if (IsWindowVisible(n->hwnd))
             ShowWindow(n->hwnd, SW_HIDE);
     }
@@ -291,8 +330,28 @@ static void sn_hide(int i)
         sn_tick(KSN_PS7501);           /* the job's line moves up */
 }
 
+/* The owner went (minimised, the tray): a line ends, the badge that stays
+ * until the Event Log opens only leaves the screen until the restore. */
+static void sn_owner_gone(int i)
+{
+    SnLine *n = &sn[i];
+    if (!n->sticky) {
+        sn_hide(i);
+        return;
+    }
+    if (n->hwnd) {
+        KillTimer(n->hwnd, SN_TIMER);
+        if (sn_tip)
+            SendMessageW(sn_tip, TTM_POP, 0, 0);
+        if (IsWindowVisible(n->hwnd))
+            ShowWindow(n->hwnd, SW_HIDE);
+    }
+}
+
 /* This moment of its time: fading in, holding (no frames: one timer to the
- * end of the hold) or fading out; gone at the end. */
+ * end of the hold) or fading out; gone at the end. The badge that stays
+ * fades in and holds, a slow timer keeps it clear of the status panel and
+ * the breadcrumb when they come or go. */
 static void sn_tick(int i)
 {
     SnLine *n = &sn[i];
@@ -302,6 +361,20 @@ static void sn_tick(int i)
     if (!n->live)
         return;
     e = (int)(GetTickCount() - n->start);
+    if (n->sticky) {
+        if (e < n->fin) {
+            sn_blend(i, (double)e / n->fin);
+        } else {
+            POINT was = sn_badge_at, now;
+            sn_place(i, &now);
+            /* the first hold frame, then only when the place changed */
+            if (now.x != was.x || now.y != was.y || e < n->fin + SN_PLACE_MS)
+                sn_blend(i, 1);
+            next = SN_PLACE_MS;
+        }
+        SetTimer(n->hwnd, SN_TIMER, next, NULL);
+        return;
+    }
     if (e >= n->total) {
         sn_hide(i);
         return;
@@ -409,7 +482,101 @@ static bool sn_create(int i)
     if (!sn[i].hwnd)
         return false;
     SetWindowLongPtr(sn[i].hwnd, GWLP_USERDATA, (LONG_PTR)i);
+    if (i == KSN_EVLOG) {
+        /* the badge's tooltip: the latest notable line and what a click does */
+        sn_tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, NULL,
+                                 WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+                                 CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                                 CW_USEDEFAULT, sn[i].hwnd, NULL, GetModuleHandle(NULL), NULL);
+        if (sn_tip) {
+            TOOLINFOW ti;
+            memset(&ti, 0, sizeof(ti));
+            ti.cbSize = sizeof(ti);
+            ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+            ti.hwnd = sn[i].hwnd;
+            ti.uId = (UINT_PTR)sn[i].hwnd;
+            ti.lpszText = L"";
+            SendMessageW(sn_tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+            SendMessageW(sn_tip, TTM_SETMAXTIPWIDTH, 0, 600);
+        }
+    }
     return true;
+}
+
+/* The badge's tooltip text, in the theme. */
+static void sn_tip_set(const char *tip)
+{
+    TOOLINFOW ti;
+    wchar_t *w;
+    int k;
+    if (!sn_tip || !sn[KSN_EVLOG].hwnd)
+        return;
+    if (!tip)
+        tip = "";
+    k = MultiByteToWideChar(CP_UTF8, 0, tip, -1, NULL, 0);
+    if (k <= 0 || !(w = (wchar_t *)malloc(sizeof(wchar_t) * (size_t)k)))
+        return;
+    MultiByteToWideChar(CP_UTF8, 0, tip, -1, w, k);
+    memset(&ti, 0, sizeof(ti));
+    ti.cbSize = sizeof(ti);
+    ti.uFlags = TTF_IDISHWND;
+    ti.hwnd = sn[KSN_EVLOG].hwnd;
+    ti.uId = (UINT_PTR)sn[KSN_EVLOG].hwnd;
+    ti.lpszText = w;
+    SendMessageW(sn_tip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
+    free(w);
+    kitty_theme_tooltip(sn_tip, kitty_theme_app_dark());
+}
+
+void kitty_switchnotice_badge(const char *text, const char *tip, int secs,
+                              int line_px)
+{
+    SnLine *n = &sn[KSN_EVLOG];
+    bool up;
+    if (secs == 0 || !text || !*text)
+        return;
+    if (line_px > 0)
+        sn_line_px = line_px;
+    if (!sn_create(KSN_EVLOG))
+        return;
+    sn_wide(n->text, SN_TEXT_MAX, text);
+    n->look = KSN_LOOK_EVLOG;
+    n->state = 0;
+    up = n->live && IsWindowVisible(n->hwnd);
+    n->sticky = secs < 0;
+    sn_times(n, secs < 0 ? 10000 : secs * 1000);
+    n->start = GetTickCount() - (up ? (DWORD)n->fin : 0);
+    n->live = true;
+    SetWindowTextW(n->hwnd, n->text);
+    sn_tip_set(tip);
+    if (!sn_owner_shown()) {
+        if (!n->sticky)
+            sn_hide(KSN_EVLOG);        /* a timed one is not kept for later */
+        return;                        /* shown at the restore */
+    }
+    if (!sn_render(KSN_EVLOG)) {
+        sn_hide(KSN_EVLOG);
+        return;
+    }
+    sn_badge_at.x = sn_badge_at.y = -32768;
+    sn_tick(KSN_EVLOG);
+    if (n->live && !IsWindowVisible(n->hwnd))
+        ShowWindow(n->hwnd, SW_SHOWNOACTIVATE);
+}
+
+/* A kept badge back on the screen (the owner restored or shown again). */
+static void sn_badge_back(void)
+{
+    SnLine *n = &sn[KSN_EVLOG];
+    if (!n->live || !n->sticky || !n->hwnd || !sn_owner_shown())
+        return;
+    if (!sn_render(KSN_EVLOG))
+        return;
+    n->start = GetTickCount() - (DWORD)n->fin;
+    sn_badge_at.x = sn_badge_at.y = -32768;
+    sn_tick(KSN_EVLOG);
+    if (!IsWindowVisible(n->hwnd))
+        ShowWindow(n->hwnd, SW_SHOWNOACTIVATE);
 }
 
 void kitty_switchnotice_show(int slot, int look, int state, const char *text,
@@ -476,7 +643,11 @@ void kitty_switchnotice_follow(void)
         if (!sn[i].live)
             continue;
         if (!sn_owner_shown()) {
-            sn_hide(i);
+            sn_owner_gone(i);
+            continue;
+        }
+        if (sn[i].sticky && !IsWindowVisible(sn[i].hwnd)) {
+            sn_badge_back();           /* restored: the kept badge again */
             continue;
         }
         sn_render(i);                  /* another DPI, another width */
@@ -487,11 +658,13 @@ void kitty_switchnotice_follow(void)
 void kitty_switchnotice_owner_shown(bool shown)
 {
     int i;
-    if (shown)
+    if (shown) {
+        sn_badge_back();               /* back from the tray: the kept badge */
         return;
+    }
     for (i = 0; i < KSN_SLOTS; i++)
         if (sn[i].live)
-            sn_hide(i);
+            sn_owner_gone(i);
 }
 
 void kitty_switchnotice_restyle(void)
@@ -501,14 +674,20 @@ void kitty_switchnotice_restyle(void)
         if (sn[i].live) {
             sn_render(i);
             sn_tick(i);
+            if (i == KSN_EVLOG && sn_tip)
+                kitty_theme_tooltip(sn_tip, kitty_theme_app_dark());
         }
 }
 
 void kitty_switchnotice_close(void)
 {
     int i;
+    if (sn_tip)
+        DestroyWindow(sn_tip);
+    sn_tip = NULL;
     for (i = 0; i < KSN_SLOTS; i++) {
         sn[i].live = false;
+        sn[i].sticky = false;
         if (sn[i].hwnd) {
             KillTimer(sn[i].hwnd, SN_TIMER);
             DestroyWindow(sn[i].hwnd);

@@ -13,11 +13,13 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - Find bar (Ctrl+Shift+F): a **Case sensitive** box right of the counter
   (Alt+C) makes the case count always. Off, the search stays smart case.
   The hint line now also shows Enter and Shift+Enter.
-- The Event Log notice: a notable line of the Terminal Window's Event Log
-  shows for a moment at the bottom of the terminal, the latest two. A
-  click opens the Event Log, which shows notable lines in bold behind an
-  amber bar. Routine lines never show. Seconds on Application > KiTTY++
-  Settings > Appearance (`[KiTTY] eventlognotice`, default 2, 0 = never).
+- The Event Log badge: a notable line of the Terminal Window's Event Log
+  shows a small badge at the top right of the terminal, "Event Log: 1 new",
+  with the latest line in its tooltip. A click opens the Event Log, which
+  shows notable lines in bold behind an amber bar. Routine lines never
+  show. Application > KiTTY++ Settings > Appearance sets how long it stays
+  (`[KiTTY] eventlognotice`: never, 5 to 60 seconds, or until the Event Log
+  is opened. Default 5 seconds).
 - kageant: when startup keys that were not there come back on a drive and
   load, one notice reports that they can sign again. A click opens the key
   list. The agent log records each key that comes back with its

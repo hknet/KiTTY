@@ -3603,12 +3603,13 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
                   kitty_kset_handler, KSET(KI_CTXTINT));
     ctrl_text(s, KT_APPEARANCE_CTXTINT_NOTE, HELPCTX(kitty_appearance));
     /* Below it: how long the one-line notice shows when the window turns
-     * red or yellow (OSC 3008), the one for a job's switch (OSC 7501) and
-     * the Event Log notice of a notable line. 0 = never. */
+     * red or yellow (OSC 3008) and the one for a job's switch (OSC 7501),
+     * 0 = never. Below their note: how long the Event Log badge of a
+     * notable line shows, from presets. */
     KSET_NUMBER(s, KT_APPEARANCE_CTXNOTICE, KI_OSC3008CTXNOTICE, kitty_appearance);
     KSET_NUMBER(s, KT_APPEARANCE_PSNOTICE, KI_OSC7501NOTICE, kitty_appearance);
-    KSET_NUMBER(s, KT_APPEARANCE_EVLOGNOTICE, KI_EVENTLOGNOTICE, kitty_appearance);
     ctrl_text(s, KT_APPEARANCE_NOTICE_NOTE, HELPCTX(kitty_appearance));
+    KSET_DROPLIST(s, KT_APPEARANCE_EVLOGNOTICE, KI_EVENTLOGNOTICE, kitty_appearance);
     /* How opaque the OSC 3008 breadcrumb is and where it goes; whether a
      * session shows it is its own setting (Terminal > Notifications). */
     s = ctrl_getset(b, KSET_PATH("Appearance"), "ctxcrumb", KT_APPEARANCE_CRUMB_GROUP);

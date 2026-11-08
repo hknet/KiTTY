@@ -774,6 +774,14 @@ static void kset_set_framepace(int v)
 /* Appearance: how far the OSC 3008 background tint goes ([KiTTY] ctxtint,
  * percent of the way to red or yellow; windows/window.c reads it). The
  * Appearance broadcast makes every open terminal read it again. */
+/* Appearance: how long the Event Log badge shows ([KiTTY] eventlognotice) */
+static const struct kset_choice kset_evlognotice_choices[] = {
+    { KT_APPEARANCE_EVLOG_NEVER, "0",    0 },
+    { KT_APPEARANCE_EVLOG_5S,    "5",    5 },
+    { KT_APPEARANCE_EVLOG_10S,   "10",   10 },
+    { KT_APPEARANCE_EVLOG_30S,   "30",   30 },
+    { KT_APPEARANCE_EVLOG_60S,   "60",   60 },
+    { KT_APPEARANCE_EVLOG_OPEN,  "open", -1 } };
 static const struct kset_choice kset_ctxtint_choices[] = {
     { KT_APPEARANCE_CTXTINT_SUBTLE, "subtle", 10 },
     { KT_APPEARANCE_CTXTINT_MEDIUM, "medium", 20 },
@@ -889,7 +897,10 @@ static const struct kset_key kset_keys[] = {
      * change applies to the next one */
     { INIT_SECTION, KI_OSC3008CTXNOTICE, KSET_INT, false, NULL, NULL, NULL, 0, 10, 2 },
     { INIT_SECTION, KI_OSC7501NOTICE,    KSET_INT, false, NULL, NULL, NULL, 0, 10, 2 },
-    { INIT_SECTION, KI_EVENTLOGNOTICE,   KSET_INT, false, NULL, NULL, NULL, 0, 10, 2 },
+    /* the Event Log badge: never, seconds or until the Event Log opens,
+     * read at every notable line (windows/window.c kitty_evlog_notice_secs) */
+    { INIT_SECTION, KI_EVENTLOGNOTICE,   KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 5,
+      NULL, NULL, kset_evlognotice_choices, lenof(kset_evlognotice_choices) },
     { INIT_SECTION, KI_BGIMAGE,        KSET_BOOL, false, GetBackgroundImageFlag, SetBackgroundImageFlag, NULL, 0, 0, 0 },
     { INIT_SECTION, KI_SLIDEDELAY,     KSET_INT, false, NULL, NULL, &ImageSlideDelay, 0, 86400, 0 },
     { INIT_SECTION, KI_SHRINKBITMAP,   KSET_BOOL, false, GetShrinkBitmapEnable, SetShrinkBitmapEnable, NULL, 0, 0, 1 },
@@ -1209,15 +1220,26 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
           }
           case KSET_CHOICE: {
             int cur = -2, i;
+            char *other = NULL;        /* eventlognotice: seconds none of the choices */
             if (k->get || k->var) {
                 cur = kset_get_int(k);
             } else {
                 /* no running value: match the stored text, else the default */
                 bool matched = false;
                 cur = k->dflt;
+                buf[0] = '\0';
                 if (kset_read(k, buf, sizeof(buf)))
                     for (i = 0; i < k->nchoices; i++)
                         if (!stricmp(buf, k->choices[i].stored)) { cur = k->choices[i].value; matched = true; break; }
+                /* The Event Log badge takes any number of seconds from
+                 * kitty.ini (1-3600): one of those is shown as an extra
+                 * entry, selected, so the box shows what is in force. */
+                if (!matched && !strcmp(k->key, KI_EVENTLOGNOTICE) && buf[0] &&
+                    strspn(buf, "0123456789") == strlen(buf) && atoi(buf) > 0) {
+                    other = dupprintf(KT_APPEARANCE_EVLOG_OTHER_FMT,
+                                      atoi(buf) > 3600 ? "3600" : buf);
+                    cur = -100;
+                }
                 /* The renderer's default is Direct2D, which a Windows below
                  * 8.1 cannot use: with no stored choice show GDI, what the
                  * window really paints with there. */
@@ -1235,6 +1257,11 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
                     !kset_d2d_supported())
                     name = KT_KSET_WD_RENDERER_D2D_OLD;
                 dlg_listbox_addwithid(ctrl, dlg, name, k->choices[i].value);
+            }
+            if (other) {
+                dlg_listbox_addwithid(ctrl, dlg, other, cur);
+                dlg_listbox_select(ctrl, dlg, k->nchoices);
+                sfree(other);
             }
             for (i = 0; i < k->nchoices; i++)
                 if (k->choices[i].value == cur) { dlg_listbox_select(ctrl, dlg, i); break; }

@@ -13019,13 +13019,11 @@ static void wintw_bell(TermWin *tw, int mode)
         if (!success) {
 #ifdef MOD_PERSO
             /* KiTTY: the bell rings in the middle of the output, so the
-             * report goes to the notice window (it never takes the focus):
-             * a modal box stopped the session until it was answered. */
-            char *buf = dupprintf(KT_BELL_WAV_FAILED_FMT,
-                                  bell_wavefile->utf8path);
-            kitty_notice_show(KT_CAP_BELL_SOUND_ERROR, buf, RGB(190, 110, 0),
-                              GetNoticeSeconds(), NULL, 0);
-            sfree(buf);
+             * report is a line in the terminal's Event Log (a notable one:
+             * the Event Log badge shows it). A modal box stopped the
+             * session until it was answered. */
+            logeventf(wgs->logctx, KT_BELL_LOG_WAV_FAILED_FMT,
+                      bell_wavefile->utf8path);
 #else
             char *buf, *otherbuf;
             show_mouseptr(wgs, true);
@@ -13730,28 +13728,46 @@ static bool kitty_evlog_line(const char *line, bool logbox_open)
     return true;
 }
 
-/* The Event Log notice: the latest notable line, with the one before it
- * while that one still shows - [KiTTY] eventlognotice seconds, 0 = never.
- * Never while the Event Log window is open. */
+/* [KiTTY] eventlognotice: "open" = until the Event Log opens (-1), a
+ * number = seconds (0 = never, at most 3600), nothing stored or another
+ * word = 5 seconds, the default. Read at every notable line. */
+static int kitty_evlog_notice_secs(void)
+{
+    char buf[16] = "";
+    char *end;
+    long n;
+    if (!ReadParameterN(KI_SECTION_KITTY, KI_EVENTLOGNOTICE, buf, sizeof(buf)) || !buf[0])
+        return 5;
+    if (!stricmp(buf, "open"))
+        return -1;
+    n = strtol(buf, &end, 10);
+    if (end == buf || *end || n < 0)
+        return 5;
+    return n > 3600 ? 3600 : (int)n;
+}
+
+/* The Event Log badge: "Event Log: N new" at the top right, N the notable
+ * lines since it came up, the latest line in its tooltip. Never while the
+ * Event Log window is open. */
 static void kitty_evlog_show(struct WinGuiSeat *wgs, const char *line)
 {
-    static char *prev = NULL;          /* the line the notice shows now */
-    int secs = kitty_switchnotice_seconds(KI_EVENTLOGNOTICE);
-    char *text;
-    if (secs <= 0 || event_log_window())
+    static int count = 0;              /* the lines the badge counts now */
+    int secs = kitty_evlog_notice_secs();
+    char *text, *tip;
+    if (secs == 0 || event_log_window())
         return;
-    if (prev && kitty_switchnotice_showing(KSN_EVLOG, KSN_LOOK_EVLOG))
-        text = dupcat(prev, "\n", line);
+    if (kitty_switchnotice_showing(KSN_EVLOG, KSN_LOOK_EVLOG))
+        count++;
     else
-        text = dupstr(line);
-    sfree(prev);
-    prev = dupstr(line);
-    kitty_switchnotice_show(KSN_EVLOG, KSN_LOOK_EVLOG, 0, text, secs,
-                            wgs ? wgs->font_height : 0);
+        count = 1;
+    text = dupprintf(KT_EVLOG_BADGE_FMT, count);
+    tip = dupprintf("%s\n%s", line, KT_EVLOG_BADGE_TIP);
+    kitty_switchnotice_badge(text, tip, secs, wgs ? wgs->font_height : 0);
+    sfree(tip);
     sfree(text);
 }
 
-/* A click on the Event Log notice: the Event Log window opens. */
+/* A click on the Event Log badge: the Event Log window opens. */
 static void kitty_evlog_click(int slot)
 {
     if (slot == KSN_EVLOG && MainHwnd)

@@ -526,8 +526,9 @@
 #define KT_OSC8_FILE_COPIED                          "Copied to the clipboard: %s"
 #define KT_OSC8_FILE_COPY_FAILED                     "The path could not be copied to the clipboard: %s"
 /* a folder on the server, neither WinSCP nor FileZilla found: the listing
- * (kscp -ls) follows in the transfer window */
-#define KT_OSC8_FILE_NO_FOLDER_PROGRAM               "No program for folders is installed (WinSCP or FileZilla). The path is on the clipboard."
+ * (kscp -ls) follows in the transfer window. A terminal Event Log line
+ * (kitty/kitty_evclass.c: notable), %s = the folder */
+#define KT_OSC8_FILE_LOG_NO_FOLDER_PROGRAM           "OSC 8 folder link: no program for folders is installed (WinSCP or FileZilla), the path is on the clipboard: %s"
 /* event log: what the click found. %s = the link's host, %s = the signal
  * that matched it (one of KT_OSC8_FILE_BY_*) */
 #define KT_OSC8_FILE_LOG_MATCH                       "OSC 8 file link: %s is the session's server (%s)."
@@ -1111,10 +1112,23 @@
  * osc3008ctxnotice, osc7501notice; kitty/kitty_switchnotice.c) */
 #define KT_APPEARANCE_CTXNOTICE                      "OSC 3008 user-context switch notice:"
 #define KT_APPEARANCE_PSNOTICE                       "OSC 7501 / 9;4 program status notice:"
-/* the Event Log notice: a notable terminal Event Log line ([KiTTY]
- * eventlognotice, windows/window.c kitty_evlog_show) */
-#define KT_APPEARANCE_EVLOGNOTICE                    "Terminal Event Log notice:"
+/* the Event Log badge: a notable terminal Event Log line ([KiTTY]
+ * eventlognotice, windows/window.c kitty_evlog_show), a droplist below the
+ * note of the two above */
+#define KT_APPEARANCE_EVLOGNOTICE                    "Terminal Event Log badge:"
+#define KT_APPEARANCE_EVLOG_NEVER                    "Never"
+#define KT_APPEARANCE_EVLOG_5S                       "5 seconds"
+#define KT_APPEARANCE_EVLOG_10S                      "10 seconds"
+#define KT_APPEARANCE_EVLOG_30S                      "30 seconds"
+#define KT_APPEARANCE_EVLOG_60S                      "1 minute"
+#define KT_APPEARANCE_EVLOG_OPEN                     "Until the Event Log is opened"
+/* a number of seconds set in kitty.ini that is none of the above */
+#define KT_APPEARANCE_EVLOG_OTHER_FMT                "%s seconds (kitty.ini)"
 #define KT_APPEARANCE_NOTICE_NOTE                    "Seconds the notice shows; 0 = never."
+/* the badge itself, top right of the terminal area, and its tooltip below
+ * the latest notable line */
+#define KT_EVLOG_BADGE_FMT                           "Event Log: %d new"
+#define KT_EVLOG_BADGE_TIP                           "Click to open the Event Log."
 /* Appearance: the opacity of the OSC 3008 breadcrumb ([KiTTY] ctxbreadcrumbopacity) */
 #define KT_APPEARANCE_CRUMB_GROUP                    "Context breadcrumb"
 #define KT_APPEARANCE_CRUMB_OPACITY                  "Opacity in percent (40-100):"
@@ -1975,9 +1989,9 @@
 #define KT_CAP_WORKPLACE_INACTIVE                    "Workplace proxy mode is not active"
 #define KT_CAP_URL_HANDLERS                          "KiTTY++ URL handlers"
 #define KT_CAP_ZMODEM                                "KiTTY++ ZModem"
-/* the bell's wave file cannot be played (window.c wintw_bell): a notice */
-#define KT_CAP_BELL_SOUND_ERROR                      "KiTTY++ sound error"
-#define KT_BELL_WAV_FAILED_FMT                       "Unable to play sound file\n%s\nUsing default sound instead"
+/* the bell's wave file cannot be played (window.c wintw_bell): a terminal
+ * Event Log line (kitty/kitty_evclass.c: notable), %s = the file */
+#define KT_BELL_LOG_WAV_FAILED_FMT                   "Bell: the sound file %s does not play, the bell uses the default sound for this session"
 #define KT_CAP_XFER                                  "KiTTY++ transfer"
 #define KT_CAP_XFER_CANCELLED                        "KiTTY++ transfer - cancelled"
 #define KT_CAP_RUN_CLIP_CMD                          "KiTTY++ - run clipboard command"

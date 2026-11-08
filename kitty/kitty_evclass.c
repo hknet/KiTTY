@@ -26,9 +26,6 @@ static const char *const kitty_evclass_notable[] = {
     "Lost connection, trying to reconnect...",
     /* the login script ran out of time: the rutty script starts anyway */
     "Login script (Connection > Login) has not finished; starting *",
-    /* broadcasts refused (old format, feature off, other install, session
-     * does not accept them) */
-    "broadcast refused: *",
     /* a script request refused or failed (rutty) */
     "script not sent: *",
     "script timeout !",
@@ -37,21 +34,25 @@ static const char *const kitty_evclass_notable[] = {
     /* session log: rotation skipped, time stamp pattern empty */
     "Log rotation skipped: *",
     "Log timestamp: that strftime pattern produces nothing*",
-    /* host keys: accept-new did not apply, readonly=yes, the update's proof
-     * failed or was refused, a stored key replaced or removed by the server */
+    /* host keys: accept-new did not apply, the update's proof failed or was
+     * refused, a stored key replaced or removed by the server. What
+     * readonly=yes keeps out of the store is routine: the store was set
+     * read-only. */
     "Host key not stored (accept-new): a key of another type *",
-    "Host key not stored (readonly=yes): *",
     "Host key not stored (the server's proof failed): *",
     "Host keys not updated (the server refused the proof request): *",
+    /* the limit "Keys per type and host" blocks a key the server offers over
+     * the verified connection. Declined by the user: routine. */
+    "Host keys not updated for * port *: the limit \"Keys per type and host\" (*) blocks the change of the * keys.",
+    /* updatehostkeys=ask and the question went without an answer (its
+     * notice ran out or was replaced, a hidden kitty.exe, the server closed):
+     * nothing changed and nobody decided it */
+    "Host key not stored (updatehostkeys=ask, not answered): *",
+    "Host key kept (updatehostkeys=ask, not answered): *",
     "Host key replaced (proven by the server): *",
     "Host key removed (no longer offered by the server): *",
-    /* readonly=yes kept a change out of the store (host key, far2l client
-     * IDs, the clipboard's "always deny") */
-    "Not saved: the settings store is read-only (readonly=yes in *).",
     /* the server refused an environment variable */
     "Server refused to set environment variable * - its sshd_config needs *",
-    /* the key exchange is not post-quantum */
-    "Key exchange '*' is not post-quantum secure*",
     /* the key file does not match its pinned fingerprint */
     "Key file \"*\" REFUSED: fingerprint * is not the recorded *",
     /* a download check blocked, failed, timed out or lost the file */
@@ -64,6 +65,11 @@ static const char *const kitty_evclass_notable[] = {
     "kscp was not found. *",
     "WinSCP was not found. *",
     "FileZilla was not found. *",
+    /* the bell's sound file does not play: the default sound from now on */
+    "Bell: the sound file * does not play, the bell uses the default sound*",
+    /* an OSC 8 folder link without WinSCP or FileZilla: the path on the
+     * clipboard instead */
+    "OSC 8 folder link: no program for folders is installed *",
     /* a hyperlink or a clicked URL refused */
     "OSC 8 link not opened: *",
     "Link not opened: *",
@@ -78,10 +84,8 @@ static const char *const kitty_evclass_notable[] = {
     "Windows could not encrypt the * (DPAPI: *): * was not saved.",
     /* a session name twice in the file store: one copy unused */
     "Session \"*\": opened from *; * stands for the same name and is not used",
-    /* OSC 5113 file transfers: refused, limited, failed */
-    "File transfer *: refused by the user",
-    "File transfer *: read request refused by the user",
-    "File transfer *: no destination folder chosen, refused",
+    /* OSC 5113 file transfers: refused, limited, failed. A refusal by the
+     * user is routine: the user did it. */
     "File transfer *: refused, another transfer is active",
     "File transfer *: dropped (command out of order)",
     "File transfer *: expired after * minutes without activity",
@@ -93,10 +97,12 @@ static const char *const kitty_evclass_notable[] = {
     /* host notifications dropped by the flood rule */
     "Notifications from the host: * dropped (more than one in 2 seconds).",
     /* remote clipboard: payloads dropped, writes and reads refused or
-     * limited, a grant withdrawn, "always deny" not stored */
+     * limited, a grant withdrawn. An empty write is routine: nothing was
+     * there to write. */
     "* was too large and was dropped",
     "* was too large and was dropped; * further payload* also dropped",
-    "Remote clipboard write ignored: *",
+    "Remote clipboard write ignored: more than the *",
+    "Remote clipboard write ignored: the window does not have focus*",
     "Clipboard read refused (*)",
     "Clipboard read refused (*); * further request* also refused",
     "Clipboard approval withdrawn: *",

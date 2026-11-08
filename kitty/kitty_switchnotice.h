@@ -10,8 +10,8 @@
 #include <stdbool.h>
 
 /* The two lines at the top, the user switch above the job's, and the Event
- * Log notice at the bottom centre (KSN_EVLOG: up to two lines of text,
- * '\n' between them, the only slot that takes a click). */
+ * Log badge at the top right (KSN_EVLOG: kitty_switchnotice_badge, the
+ * only slot that takes a click). */
 enum { KSN_CTX3008, KSN_PS7501, KSN_EVLOG, KSN_SLOTS };
 
 /* How a line looks: on the root frame's dark red, on a switched user's dark
@@ -36,6 +36,13 @@ int kitty_switchnotice_seconds(const char *key);
  * the terminal window is hidden or minimised. */
 void kitty_switchnotice_show(int slot, int look, int state, const char *text,
                              int secs, int line_px);
+
+/* The Event Log badge (KSN_EVLOG): text (UTF-8, one line) with tip as its
+ * tooltip, for secs seconds, or until kitty_switchnotice_hide when secs < 0
+ * (kept over a minimise or the tray). 0: nothing. A badge already up takes
+ * the new text without a second fade in. */
+void kitty_switchnotice_badge(const char *text, const char *tip, int secs,
+                              int line_px);
 
 /* The terminal's line height changed (a font change, Font Up/Down, a new
  * DPI): the lines showing are drawn again at line_px. */

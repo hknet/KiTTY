@@ -4644,14 +4644,15 @@ static void kx_fl_folder( HWND hwnd, const char *path ) {
 		return ;
 	}
 	if( kx_clip_put( hwnd, path, &err ) ) {
-		m = dupstr( KT_OSC8_FILE_NO_FOLDER_PROGRAM ) ;
-		kitty_notice_show( KT_OSC8_CONFIRM_CAPTION, m, KX_GF_ACCENT, 0, NULL, 0 ) ;
+		/* the fallback worked: a line in the terminal's Event Log (a
+		 * notable one, so the Event Log badge shows it), no notice */
+		debug_logevent( KT_OSC8_FILE_LOG_NO_FOLDER_PROGRAM, path ) ;
 	} else {
 		m = dupprintf( KT_OSC8_FILE_COPY_FAILED, kitty_win_reason( err ) ) ;
 		kitty_notice_show( KT_OSC8_CONFIRM_CAPTION, m, RGB( 190, 110, 0 ), 0, NULL, 0 ) ;
+		kx_gf_trace_notice( m ) ;
+		sfree( m ) ;
 	}
-	kx_gf_trace_notice( m ) ;
-	sfree( m ) ;
 	kx_fl_list( hwnd, path ) ;
 }
 
