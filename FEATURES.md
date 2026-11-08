@@ -9,8 +9,8 @@ original [KiTTY website](https://github.com/cyd01/KiTTY/) by Cyril Dupont.
 Each entry includes a short description, how to turn it on, and a screenshot where
 one is available.
 
-AI agents that run klink, kscp and ksftp with the keys in kageant:
-[docs/AGENTS-GUIDE.md](docs/AGENTS-GUIDE.md), with a part on a safe workspace for them.
+AI agentic use cases: [docs/AGENTIC-USE.md](docs/AGENTIC-USE.md) is for the human in control: how to hand work to an AI agent and keep the SSH keys in human hands.
+[docs/AGENTS-GUIDE.md](docs/AGENTS-GUIDE.md) is the AI agent's page: klink, kscp and ksftp with the keys in kageant.
 
 **Table of contents**
 

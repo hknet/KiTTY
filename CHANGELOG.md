@@ -122,13 +122,16 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   [user@]host[:port]` gives one jump host. `klink -scan` goes through it
   and reports the keys of the host behind it. A refusal on the jump host
   shows its host and port.
-- docs/AGENTS-GUIDE.md: KiTTY++ for AI agents. One block per task for
-  klink, kscp, ksftp and the keys in kageant: the command, the result, the
-  failure and what an AI agent must never do. A second part covers a safe
-  workspace for an AI agent: Windows Hello protected keys, a separate
-  Windows account, the agent log, the remote account. llms.txt at the top
-  of the source tree points to it. The build checks every switch on the
-  page against the usage text of its tool.
+- docs/AGENTIC-USE.md: KiTTY++ for AI agentic use cases, for the human in
+  control: the text that points any AI agent at its guide, the job with its
+  hosts, host-key layers and stop points. The page keeps the SSH keys in
+  human hands: a key of its own, Windows Hello, a confirmation per use,
+  destination limits, the IPC policy, the records. docs/AGENTS-GUIDE.md is
+  the AI agent's page, with one block per task for klink, kscp, ksftp and
+  the keys in kageant: the command, the result, the failure and what an AI
+  agent must never do. llms.txt at the top of the source tree points to it.
+  The build checks every switch on both pages against the usage text of
+  its tool.
 - Start FileZilla and the launcher's Open in FileZilla hand the session's
   key file to FileZilla, through a temporary site entry deleted after a
   minute. FileZilla asks for the key's passphrase itself.

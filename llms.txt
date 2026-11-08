@@ -2,11 +2,11 @@
 
 > KiTTY++ is an SSH and Telnet client suite for Windows on a PuTTY 0.85 core: kitty.exe (terminal), klink (command-line SSH), kscp and ksftp (file transfer), kageant (SSH agent), kittygen (key generator).
 
-AI agents start with docs/AGENTS-GUIDE.md: one self-contained block per task, with the command, the expected result, the failure signs and what an AI agent must never do. Downloads only from https://github.com/hknet/KiTTY/releases.
+AI agents start with docs/AGENTS-GUIDE.md: a work loop with its stop points, then one self-contained block per task, with the command, the expected result, the failure signs and what an AI agent must never do. Downloads only from https://github.com/hknet/KiTTY/releases.
 
 ## Docs
 
-- [KiTTY++ for AI agents](https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/AGENTS-GUIDE.md): tasks for AI agents plus a safe workspace setup for the human in charge
+- [KiTTY++ tasks for an AI agent](https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/AGENTS-GUIDE.md): the work loop, the host-key layers, one block per task
 - [README](https://github.com/hknet/KiTTY/blob/kitty-0.85/README.md): downloads, installers, signatures, checksums
 - [Features](https://github.com/hknet/KiTTY/blob/kitty-0.85/FEATURES.md): every feature with how to enable it
 - [kitty.ini](https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/KITTY-INI.md): the settings file, its sections and the store rules

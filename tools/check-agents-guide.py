@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Check the switches of docs/AGENTS-GUIDE.md against the tools' usage text.
+"""Check the switches of the AI agent pages against the tools' usage text.
 
-The page is read by AI agents, which run its command lines as written. A
-switch that a tool does not know ends the run with "unknown option", or
-worse, is taken as a host name. So every switch a command line of the page
+docs/AGENTS-GUIDE.md is read by AI agents, which run its command lines as
+written. docs/AGENTIC-USE.md holds the setup the human runs. A switch that
+a tool does not know ends the run with "unknown option", or worse, is
+taken as a host name. So every switch a command line of a page
 passes to klink, kscp, ksftp, kitty.exe or kageant must be in that tool's
 usage text in the source:
 
@@ -33,7 +34,7 @@ What is checked:
   or a value, not a switch, and is skipped.
 - a switch is a token that starts with "-" or "--" and a letter or digit.
 
-The run fails when a usage text cannot be found, when the page has no
+The run fails when a usage text cannot be found, when a page has no
 invocation at all (the parser no longer matches the page) or on any switch
 missing from its tool's usage text.
 
@@ -49,7 +50,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PAGE = ROOT / "docs" / "AGENTS-GUIDE.md"
+PAGES = ("docs/AGENTS-GUIDE.md", "docs/AGENTIC-USE.md")
 TEXT_H = ROOT / "kitty" / "kitty_text.h"
 HELP_H = ROOT / "kitty" / "kitty_help.h"
 USAGE_FILES = {
@@ -185,7 +186,7 @@ def invocations(page):
     return out
 
 
-def check_page(page, allowed, found, where="docs/AGENTS-GUIDE.md"):
+def check_page(page, allowed, found, where):
     """Every switch of every invocation in its tool's usage text. Returns
     the number of invocations."""
     calls = invocations(page)
@@ -272,11 +273,14 @@ def main():
         return 0
     found = []
     allowed = read_usage(found)
-    page = PAGE.read_text(encoding="utf-8")
-    n = check_page(page, allowed, found)
-    if n == 0:
-        found.append("docs/AGENTS-GUIDE.md: no tool invocation found - "
-                     "the page or this parser changed")
+    n = 0
+    for where in PAGES:
+        page = (ROOT / where).read_text(encoding="utf-8")
+        k = check_page(page, allowed, found, where)
+        if k == 0:
+            found.append("%s: no tool invocation found - "
+                         "the page or this parser changed" % where)
+        n += k
     if found:
         for f in found:
             print("check-agents-guide: " + f)

@@ -714,11 +714,11 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking the event messages, the manual's appendix and docs/EVENT-IDS.md against the event ID table, and the sources' Event Log calls")
   add_custom_target(check_kitty_events ALL DEPENDS ${KITTY_EVENTS_CHECK_STAMP})
 
-  # docs/AGENTS-GUIDE.md against the usage text of the tools: AI agents run
-  # the page's command lines as written. A switch a tool does not know
-  # ends the run with "unknown option". Every switch the page passes to
-  # klink, kscp, ksftp, kitty.exe or kageant must be in that tool's usage
-  # text. The script's self-test runs first.
+  # docs/AGENTS-GUIDE.md and docs/AGENTIC-USE.md against the usage text of
+  # the tools: AI agents run the command lines as written. A switch a tool
+  # does not know ends the run with "unknown option". Every switch a page
+  # passes to klink, kscp, ksftp, kitty.exe or kageant must be in that
+  # tool's usage text. The script's self-test runs first.
   set(KITTY_AGENTS_GUIDE_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_agents_guide.stamp)
   add_custom_command(
     OUTPUT ${KITTY_AGENTS_GUIDE_STAMP}
@@ -727,13 +727,14 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_AGENTS_GUIDE_STAMP}
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-agents-guide.py
             ${CMAKE_CURRENT_SOURCE_DIR}/docs/AGENTS-GUIDE.md
+            ${CMAKE_CURRENT_SOURCE_DIR}/docs/AGENTIC-USE.md
             ${CMAKE_CURRENT_SOURCE_DIR}/windows/plink.c
             ${CMAKE_CURRENT_SOURCE_DIR}/pscp.c
             ${CMAKE_CURRENT_SOURCE_DIR}/psftp.c
             ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_text.h
             ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_help.h
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Checking the switches of docs/AGENTS-GUIDE.md against the tools' usage text")
+    COMMENT "Checking the switches of docs/AGENTS-GUIDE.md and docs/AGENTIC-USE.md against the tools' usage text")
   add_custom_target(check_agents_guide ALL DEPENDS ${KITTY_AGENTS_GUIDE_STAMP})
 
   # Conf accessors against their keys' types (conf.h): a conf_get_str on an
