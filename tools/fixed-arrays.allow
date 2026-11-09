@@ -257,12 +257,10 @@ kitty/kitty_oldwin.c | reg_deltree_fallback() | name | 256 | registry key name f
 kitty/kitty_oscnotify.h | struct OnNotice | title | ON_TITLE_MAX + 1 | notification title, ON_TITLE_MAX
 kitty/kitty_oscnotify.h | struct OnNotice | body | ON_BODY_MAX + 1 | notification body, ON_BODY_MAX
 
-kitty/kitty_pageant.c | kageant_note_verify_problem() | text | 512 | kageant notice text, snprintf to sizeof
 kitty/kitty_pageant.c | kageant_note_retry_result() | text | 512 | kageant notice text, appends with snprintf(sizeof - n)
 kitty/kitty_pageant.c | kageant_set_run_entry() | exe | MAX_PATH + 3 | own exe path, quoted, for the HKCU Run value; n >= MAX_PATH refused
 kitty/kitty_pageant.c | kageant_set_autostart() | dir | MAX_PATH | folder of the own exe: a copy of exe (same size), cut at its last backslash
 kitty/kitty_pageant.c | kageant_set_autostart() | exe | MAX_PATH | own exe path for the Startup shortcut; n >= sizeof refused
-kitty/kitty_pageant.c | kageant_notify_startup_missing() | text | 256 | notice text, snprintf to sizeof
 kitty/kitty_pageant.c | kageant_apply_saved_order() | val | 512 | saved key-order entry: a key fingerprint from kitty.ini, size passed
 kitty/kitty_pageant.c | kageant_warn_unprotected_memory() | kwu_text | 512 | warning text, snprintf to sizeof
 kitty/kitty_pageant.c | kageant_do_notify() | text | 512 | notice text, snprintf to sizeof

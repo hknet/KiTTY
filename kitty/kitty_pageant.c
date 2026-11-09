@@ -66,6 +66,9 @@ static int   *g_loaded_encrypted = NULL;   /* per key: added encrypted/deferred 
 static int    g_nloaded = 0;
 static int    g_startup_loading = 0;       /* suppress re-save during startup load */
 static int    g_startup_missing = 0;       /* startup keys not found at last load */
+/* the startup load's refused and unverified keys: reported by
+ * kageant_notify_startup_missing, AFTER the missing-keys notice */
+static int    g_startup_mismatch = 0, g_startup_unverified = 0;
 
 /*
  * Startup keys whose FILE was not there when we tried to load them, kept so
@@ -2041,30 +2044,28 @@ void kageant_retry_pending_keys_now(void) { kageant_retry_pending_pass(1, 0); }
  */
 void kageant_note_verify_problem(int mismatch_new, int nofp_new)
 {
-    char text[512];
+    char *text;
 
-    if (mismatch_new > 0) {
-        snprintf(text, sizeof(text),
-                 mismatch_new == 1 ?
-                 KT_KA_VERIFY_MISMATCH_ONE :
-                 KT_KA_VERIFY_MISMATCH_MANY_FMT,
-                 mismatch_new);
-        if (traywindow)
-            kitty_notice_show(KT_KA_NOTICE_KEY_FILE_CHANGED, text,
-                              KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
-                              traywindow, KAGEANT_WM_NOTICE_CLICK);
-    }
-
+    /* One notice at a time, a newer one replaces the shown one: the
+     * swapped key file, the more serious of the two, comes last. */
     if (nofp_new > 0) {
-        snprintf(text, sizeof(text),
-                 nofp_new == 1 ?
-                 KT_KA_VERIFY_UNVERIFIED_ONE :
-                 KT_KA_VERIFY_UNVERIFIED_MANY_FMT,
-                 nofp_new);
+        text = dupprintf(nofp_new == 1 ? KT_KA_VERIFY_UNVERIFIED_ONE : KT_KA_VERIFY_UNVERIFIED_MANY_FMT,
+                         nofp_new);
         if (traywindow)
             kitty_notice_show(KT_KA_NOTICE_NOT_VERIFIED, text,
                               KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                               traywindow, KAGEANT_WM_NOTICE_CLICK);
+        sfree(text);
+    }
+
+    if (mismatch_new > 0) {
+        text = dupprintf(mismatch_new == 1 ? KT_KA_VERIFY_MISMATCH_ONE : KT_KA_VERIFY_MISMATCH_MANY_FMT,
+                         mismatch_new);
+        if (traywindow)
+            kitty_notice_show(KT_KA_NOTICE_KEY_FILE_CHANGED, text,
+                              KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
+                              traywindow, KAGEANT_WM_NOTICE_CLICK);
+        sfree(text);
     }
 }
 
@@ -3075,8 +3076,10 @@ void kageant_load_startup_keys(void)
             g_fp_adopted = 0;
             kageant_save_startup_keys();   /* now the list is complete */
         }
-        /* Report it once, after the list is complete - not per key. */
-        kageant_note_verify_problem(startup_mismatch, startup_unverified);
+        /* Reported once, after the list is complete - not per key - and
+         * after the missing-keys notice (kageant_notify_startup_missing). */
+        g_startup_mismatch = startup_mismatch;
+        g_startup_unverified = startup_unverified;
         kageant_refresh_tray_tip();
         return;
     }
@@ -3167,7 +3170,8 @@ void kageant_load_startup_keys(void)
                     g_fp_adopted = 0;
                     kageant_save_startup_keys();
                 }
-                kageant_note_verify_problem(startup_mismatch, startup_unverified);
+                g_startup_mismatch = startup_mismatch;
+                g_startup_unverified = startup_unverified;
                 kageant_refresh_tray_tip();
             }
             sfree(buf);
@@ -3176,9 +3180,24 @@ void kageant_load_startup_keys(void)
     }
 }
 
-/* Tray balloon for startup keys that could not be found (called once the
- * tray icon exists). Silent when none were missing. */
+static void kageant_notify_startup_missing_only(void);
+
+/* Called once the tray icon exists, after the startup load. The
+ * missing keys first, then the refused and unverified ones: a newer
+ * notice replaces the shown one, and a swapped key file is the one the
+ * user must see (with a missing key beside it, "key file changed" was
+ * replaced at once by "startup keys" up to 0.85.1.19). */
 void kageant_notify_startup_missing(void)
+{
+    kageant_notify_startup_missing_only();
+    if (g_startup_mismatch > 0 || g_startup_unverified > 0)
+        kageant_note_verify_problem(g_startup_mismatch, g_startup_unverified);
+    g_startup_mismatch = g_startup_unverified = 0;
+}
+
+/* The notice for startup keys that could not be found. Silent when none
+ * were missing. */
+static void kageant_notify_startup_missing_only(void)
 {
     if (g_startup_missing <= 0 || !traywindow)
         return;
@@ -3193,22 +3212,21 @@ void kageant_notify_startup_missing(void)
      * these keys are waiting rather than lost, and they load by themselves when
      * the drive comes back. Read as a plain failure, the old wording sent
      * people looking for something to fix. */
-    char text[256];
+    char *text;
     if (kageant_retry_keys())
-        snprintf(text, sizeof(text),
-                 KT_KA_STARTUP_MISSING_RETRY_FMT,
-                 g_startup_missing, g_startup_missing == 1 ? " is" : "s are");
+        text = dupprintf(KT_KA_STARTUP_MISSING_RETRY_FMT, g_startup_missing,
+                         g_startup_missing == 1 ? " is" : "s are");
     else
-        snprintf(text, sizeof(text),
-                 KT_KA_STARTUP_MISSING_FMT,
-                 g_startup_missing, g_startup_missing == 1 ? "" : "s",
-                 g_startup_missing == 1 ? "was" : "were");
+        text = dupprintf(KT_KA_STARTUP_MISSING_FMT, g_startup_missing,
+                         g_startup_missing == 1 ? "" : "s",
+                         g_startup_missing == 1 ? "was" : "were");
     /* KiTTY: our own notice window instead of a tray balloon. Amber = a
      * warning (a key did not load); 10s - longer than key-use info, since a
      * missing key is something to act on; click opens View Keys. */
     kitty_notice_show(KT_KA_NOTICE_STARTUP_KEYS, text, KAGEANT_NOTICE_WARN,
                       kageant_notice_seconds(10), traywindow,
                       KAGEANT_WM_NOTICE_CLICK);
+    sfree(text);
 }
 
 /* KiTTY: persist the current key offer order (SHA256 fingerprints, REG_MULTI_SZ).

@@ -281,6 +281,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   then crashed while it saved a startup list of its own. It leaves the
   startup list alone now: a key added this way is not remembered for the
   next start.
+- kageant: at startup the notice "kageant: key file changed" (a startup
+  key refused because its file holds another key) stays on screen. With a
+  missing startup key beside it, the notice "kageant: startup keys" came
+  right after and replaced it. The refused key's notice now comes last,
+  after the notices for missing and unverified keys.
 - klink, kscp and ksftp use PuTTY's registry hive when kitty.ini has
   `[KiTTY] KiClassName=PuTTY`, as kitty.exe does. Before, `-load` did not
   find a session kitty.exe had saved. A transfer kitty.exe starts checked
