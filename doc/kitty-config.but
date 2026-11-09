@@ -245,7 +245,7 @@ running}: without a script, none of these fields does anything.
 A script \e{starts} in one of two ways: automatically when the session
 connects, if \q{Run the script on connect} is ticked and \q{Script
 file} gives the file; or on demand in a live session from the system
-menu, \q{Tools > Send recorded script}, which opens a file picker. Only
+menu, \q{Tools > Run script file}, which opens a file picker. Only
 one script runs at a time. Every start, stop and timeout is reported in
 the Terminal Window's Event Log.
 
@@ -258,7 +258,7 @@ The simplest possible script is just the commands, one per line:
 Sent like that, lines go out on a timer alone. The panel's real value
 is making the script \e{wait for the host}:
 
-\b \q{Wait for a prompt before sending} is the master switch for
+\b \q{Wait for a prompt before each line} is the master switch for
 waiting. With it on, the next line is sent only after the host's
 output \e{ends with} the \q{Wait-for text} - your prompt's tail, for
 example \c{$\_} or \c{>\_} (note the trailing space most prompts
@@ -328,8 +328,10 @@ recorder is planned for a future release.
 
 A worked example ships as
 \W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/examples/logon-script.ksh}{docs/examples/logon-script.ksh}.
-The whole engine can be disabled machine-wide with \cw{[KiTTY]
-scriptmode=no} in \c{kitty.ini}; the \e{login script} on
+The whole engine can be disabled for the installation on
+Application > KiTTY++ Settings > Automation (\cw{scriptmode=no},
+in \c{kitty.ini} with a folder store, else in the registry); the
+\e{login script} on
 \e{Connection > Login} is a different, simpler mechanism
 (\k{kitty-cfg-loginscript}) that needs none of this panel.
 
@@ -342,12 +344,20 @@ script over \c{WM_COPYDATA} (the script bridge,
 
 Two switches must both be on: this checkbox, and the installation's
 level on Application > KiTTY++ Settings > Automation > Script bridge
-(\c{scriptbridge} under \c{[KiTTY]} in \c{kitty.ini}, not \c{no}).
+(\c{scriptbridge} not \c{no}: in \c{kitty.ini} with a folder store, else
+in the registry under \c{HKCU\\Software\\kapper.net\\KiTTY}).
 The window menu's \q{Tools > Accept script bridge} flips the window you
 are looking at. It is the same switch as this checkbox, so the
 configuration box shows what the menu did. Switching it off on a running
 window also ends a prompt binding at once. \cw{scriptmode=no} turns the
 bridge off with the engine.
+
+\q{Script bridge key:} the key every message for this session must start
+with. It is the script bridge's own key, not the broadcast key. Empty,
+the box shows the installation's key (\k{kitty-cfg-kset-scriptbridge}).
+Typing makes it this session's own key (\c{ScriptBridgeKey}), so a
+program can be limited to a few sessions. \q{Copy} puts the key in
+effect on the clipboard. \q{Clear} goes back to the installation's key.
 
 \H{kitty-cfg-broadcast} The Broadcast panel
 
@@ -2341,8 +2351,9 @@ file} plays one, with the session's delays, wait-for and halt-on texts
 (\k{kitty-cfg-scriptfile}). This is the successor of RuTTY's AutoHotkey
 interface, rebuilt on the engine's own interface.
 
-\q{Script bridge level:} is \c{scriptbridge} under \c{[KiTTY]} in
-\c{kitty.ini}:
+\q{Script bridge level:} is \c{scriptbridge}, in \c{kitty.ini} with a
+folder store, else in the registry under
+\c{HKCU\\Software\\kapper.net\\KiTTY}:
 
 \b \q{Off} (\c{no}, the default): every message is refused, with a
 line in the Terminal Window's Event Log.
@@ -2364,9 +2375,18 @@ Each session takes part only with its own switch,
 together with the engine.
 
 \e{The messages.} \c{dwData} of \c{WM_COPYDATA} selects the message.
-\c{<key>} is the key a broadcast to the same session carries: the
-session's own broadcast key, else the installation's \c{sendcmdgroup}
-(\k{kitty-cfg-broadcast-key}). It is followed by one NUL byte.
+\c{<key>} is the script bridge key: the session's own
+(\k{kitty-cfg-scriptbridge}), else the installation's. It is followed
+by one NUL byte. It is not the broadcast key.
+
+\q{Script bridge key of this installation:} shows the installation's
+key. Unset, it is derived from the installation's location (\c{sb-} and
+16 hex digits), the same in each of its terminals. Typing sets it,
+an empty box goes back to the derived key. \q{New key} sets a random
+one: programs holding the old key are refused from then on. It is
+\c{scriptbridgekey}, in \c{kitty.ini} with a folder store, else in the
+registry under \c{HKCU\\Software\\kapper.net\\KiTTY}. A change
+reaches the terminals started afterwards.
 
 \b \c{5}, \c{_send}, in: \c{<key>\\0<script>}. The script, lines
 ending in LF or CRLF. The whole message is at most 65536 bytes. A larger
@@ -2403,6 +2423,9 @@ written there.
 send these messages. It could type into the session by other means too.
 Like the broadcast, the two switches stop accidents and keep the
 feature off until it is wanted.
+
+How to write such a program, with an example in PowerShell and one in
+AutoHotkey v2: \W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/SCRIPTING.md}{docs/SCRIPTING.md}.
 
 \S{kitty-cfg-kset-window} The Terminal panel (KiTTY++ Settings)
 

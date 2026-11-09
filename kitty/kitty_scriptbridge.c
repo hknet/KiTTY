@@ -59,6 +59,11 @@
 #include "kitty_text.h"     /* the Event Log wordings */
 #include "kitty_rutty.h"    /* kitty_script_enabled, kitty_script_send_buffer */
 #include "kitty_scriptbridge.h"
+#include "kitty_inikeys.h"     /* KI_SECTION_KITTY, KI_SCRIPTBRIDGEKEY */
+#include "kitty_params.h"      /* ReadParameterDup */
+#include "kitty_oldwin.h"      /* kitty_module_path_dup */
+#include "kitty_storage.h"     /* kitty_registry_base */
+#include "kitty_random.h"      /* kitty_os_random */
 
 #define SB_LINE_MAX     4096            /* the received line kept for matching */
 #define SB_KEY_MAX      128             /* longest key accepted on the wire */
@@ -68,6 +73,77 @@
 static int sb_level = KSB_LEVEL_NO;
 
 int kitty_sbridge_level(void) { return sb_level; }
+
+/* ---- the key ([KiTTY] scriptbridgekey) ---------------------------------
+ * Its own key, not the broadcast's: a program allowed to drive the script
+ * engine is not thereby allowed to type into every broadcast group, and
+ * the reverse. Derived like the broadcast key (the same in every terminal
+ * of an installation, also under readonly=yes), with a salt of its own so
+ * the two never match. "New key" stores a random one. */
+
+static char *sb_install_key = NULL;
+static int sb_key_stored = 0;
+
+void kitty_sbridge_set_install_key(const char *k)
+{
+    char *n = (k == NULL || k[0] == '\0') ? NULL : dupstr(k);
+    sfree(sb_install_key);
+    sb_install_key = n;
+    sb_key_stored = n != NULL;
+}
+
+static void sb_fnv(unsigned long long *h, const char *p)
+{
+    for (; p && *p; p++) {                  /* case-insensitive */
+        *h ^= (unsigned char)((*p >= 'A' && *p <= 'Z') ? *p + 32 : *p);
+        *h *= 1099511628211ULL;
+    }
+}
+
+const char *kitty_sbridge_install_key(void)
+{
+    unsigned long long h = 1469598103934665603ULL;     /* FNV-1a, 64-bit */
+    char *buf, *exe;
+    if (sb_install_key)
+        return sb_install_key;
+    buf = ReadParameterDup(KI_SECTION_KITTY, KI_SCRIPTBRIDGEKEY);
+    if (buf[0]) {
+        sb_install_key = buf;
+        sb_key_stored = 1;
+        return sb_install_key;
+    }
+    sfree(buf);
+    sb_fnv(&h, "script bridge");
+    exe = kitty_module_path_dup(NULL);
+    sb_fnv(&h, exe);
+    sfree(exe);
+    sb_fnv(&h, kitty_registry_base());
+    sb_install_key = dupprintf("sb-%016llx", h);
+    return sb_install_key;
+}
+
+int kitty_sbridge_install_key_stored(void)
+{
+    (void)kitty_sbridge_install_key();
+    return sb_key_stored;
+}
+
+/* NULL when Windows gives no random bytes: the caller reports it rather
+ * than store a key someone could guess. */
+char *kitty_sbridge_new_key_dup(void)
+{
+    unsigned char r[16];
+    char *k;
+    size_t i;
+    if (!kitty_os_random(r, sizeof(r)))
+        return NULL;
+    k = snewn(3 + 2 * sizeof(r) + 1, char);
+    strcpy(k, "sb-");
+    for (i = 0; i < sizeof(r); i++)
+        sprintf(k + 3 + 2 * i, "%02x", r[i]);
+    smemclr(r, sizeof(r));
+    return k;
+}
 
 void kitty_sbridge_set_level(int level)
 {

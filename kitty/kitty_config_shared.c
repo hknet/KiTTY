@@ -52,6 +52,7 @@
 #include "kitty_hostkey_acceptnew.h"   /* autostoresshkey */
 #include "kitty_hostkeys00.h"          /* updatehostkeys */
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
+#include "kitty_scriptbridge.h" /* the Script bridge level and key */
 
 /* Declarations from other KiTTY modules that this file does not reach
  * through a header. The MOD_PERSO fences in this file are always true: it
@@ -643,7 +644,6 @@ extern int  GetFunkeysDefault(void);           extern void SetFunkeysDefault(con
 extern int  GetPasteSize(void);                extern void SetPasteSize(const int);
 extern int  kitty_script_enabled(void);        extern void kitty_script_set_enabled(int);
 extern int  kitty_broadcast_default(void);     extern void kitty_broadcast_set_enabled(int);
-extern int  kitty_sbridge_level(void);         extern void kitty_sbridge_set_level(int);
 extern int  GetTitleBarFlag(void);             extern void SetTitleBarFlag(const int);
 extern int  GetPsOverlayFlag(void);            extern void SetPsOverlayFlag(const int);
 extern int  GetSizeFlag(void);                 extern void SetSizeFlag(const int);
@@ -860,6 +860,10 @@ static const struct kset_key kset_keys[] = {
      * the Broadcast leaf's own handler drives this row, not KSET_TEXTBOX,
      * because the field SHOWS the derived key when nothing is stored. */
     { INIT_SECTION, KI_SENDCMDGROUP,   KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, NULL, kitty_broadcast_set_group },
+    /* The installation's script bridge key, the same shape: empty in the
+     * store = derived (kitty_scriptbridge.c), the Script bridge leaf's own
+     * handler drives the row. */
+    { INIT_SECTION, KI_SCRIPTBRIDGEKEY, KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, NULL, kitty_sbridge_set_install_key },
     /* Window & display */
     { INIT_SECTION, KI_WINTITLE,       KSET_BOOL, false, GetTitleBarFlag, SetTitleBarFlag, NULL, 0, 0, 1 },
     /* how long a notice of kitty.exe stays when nothing else sets its time;

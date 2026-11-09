@@ -997,11 +997,11 @@ void OpenAndSendScriptFile( HWND hwnd ) {
         sfree( filter ) ;
         filter = f ;
     }
-    script_file_pick = kitty_pick_async( hwnd, KITTY_PICK_OPEN, NULL, KT_CAP_OPEN_FILE, filter,
+    script_file_pick = kitty_pick_async( hwnd, KITTY_PICK_OPEN, NULL, KT_TWIN_TYPE_FILE_TITLE, filter,
                                          script_file_picked, (void *)hwnd ) ;
     if( script_file_pick != NULL ) { sfree( filter ) ; return ; }
     /* no thread for the picker: on this one, as before */
-    if( ( filename = kitty_pick_open_dup( hwnd, KT_CAP_OPEN_FILE, filter, NULL ) ) != NULL ) {
+    if( ( filename = kitty_pick_open_dup( hwnd, KT_TWIN_TYPE_FILE_TITLE, filter, NULL ) ) != NULL ) {
         RunScriptFile( hwnd, filename ) ;
         sfree( filename ) ;
     }

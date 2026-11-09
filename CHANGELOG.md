@@ -41,7 +41,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   (RuTTY's AutoHotkey interface, rebuilt). At `[KiTTY] scriptbridge=prompt`
   a window of that program also gets a message each time the prompt pattern
   appears, the pattern only. Off by default and per session (Session >
-  Scripting). Every refusal is in the Terminal Window's Event Log.
+  Scripting). Every refusal is in the Terminal Window's Event Log. How to
+  write such a program, with examples in PowerShell and AutoHotkey v2:
+  [docs/SCRIPTING.md](docs/SCRIPTING.md).
 - Manage Sessions: folders and sessions get a place of their own by drag
   and drop between rows. A pin marks a row with a stored place. Reset Order
   in a folder's menu forgets the places of that level. The configuration
@@ -131,7 +133,8 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   the keys in kageant: the command, the result, the failure and what an AI
   agent must never do. llms.txt at the top of the source tree points to it.
   The build checks every switch on both pages against the usage text of
-  its tool.
+  its tool. This is a first take how to instruct AI agents to use the
+  KiTTY++ suite and its binaries for remote access and/or filetransfers, etc.
 - Start FileZilla and the launcher's Open in FileZilla hand the session's
   key file to FileZilla, through a temporary site entry deleted once
   FileZilla has read it, at the latest after a minute. FileZilla prompts
@@ -154,6 +157,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
+- The terminal window's menu > Tools: **Send recorded script** is now
+  **Run script file...** (the script engine: it waits for the prompt as set
+  on Session > Scripting). **Send script file** is now **Type text
+  file...** (the file typed as it is, with the auto-command's escapes,
+  never waiting for the host). Each file picker has its command's name.
 - kageant: requests by window messages (WM_COPYDATA, programs built on
   PuTTY before 0.75) are refused by default. kageant cannot identify
   the program that sends one: the sender passes a window of its choice. "Accept

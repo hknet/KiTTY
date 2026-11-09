@@ -1630,7 +1630,7 @@
 #define KT_KSET_BC_GROUPKEY_LABEL                    "Group key of this installation:"
 /* The two states of the line under the key field. Same length class: a
  * CTRL_TEXT cannot grow after layout (see kitty_bkey_update_prov). */
-#define KT_KSET_BC_KEY_CUSTOM                        "Custom key for this installation (sendcmdgroup in kitty.ini) - " \
+#define KT_KSET_BC_KEY_CUSTOM                        "Custom key for this installation (sendcmdgroup) - " \
         "Clear restores the derived key."
 #define KT_KSET_BC_KEY_DERIVED                       "Derived key, from the location of this installation. Type a key " \
         "to join or split installations."
@@ -1977,7 +1977,7 @@
 #define KT_CAP_CFGDIR_NOT_FOUND                      "KiTTY++: configdir not found"
 #define KT_CAP_RESTORE_REG_SESSIONS                  "KiTTY++ - restore your registry sessions?"
 #define KT_CAP_REG_SESSIONS_SET_ASIDE                "KiTTY++ - your registry sessions were set aside"
-#define KT_CAP_OPEN_FILE                             "Open file..."
+#define KT_TWIN_TYPE_FILE_TITLE                      "Type text file"
 #define KT_CAP_SAVE_FILE                             "Save file..."
 #define KT_CAP_SEND_FILE                             "Send file..."
 #define KT_CAP_URL_REGEX                             "URL regex"
@@ -2699,7 +2699,8 @@
 #define KT_RUTTY_SENDING                             "sending script to host ..."
 #define KT_RUTTY_HALTED                              "script halted"
 #define KT_RUTTY_FINISHED                            "finished sending script"
-#define KT_RUTTY_REFUSED_OFF                         "script not sent: scriptmode=no in kitty.ini"
+#define KT_RUTTY_REFUSED_OFF                         "script not sent: the script engine is off " \
+        "(KiTTY++ Settings > Automation, scriptmode=no)"
 #define KT_RUTTY_REFUSED_BUSY                        "script not sent: another script is running"
 #define KT_RUTTY_WAIT_OWED                           "script waits for the prompt after the previous script's last line"
 /* kitty_rutty.c: the modeless notices of a failed script (the file, and
@@ -2711,8 +2712,10 @@
 /* kitty_scriptbridge.c: the script bridge (WM_COPYDATA ids 5-8), the Terminal
  * Window's Event Log lines. Never a byte of the script or of the pattern. */
 #define KT_SBRIDGE_LABEL                             "the script bridge"
-#define KT_SBRIDGE_REFUSED_SCRIPTMODE                "script bridge refused: scriptmode=no in kitty.ini"
-#define KT_SBRIDGE_REFUSED_OFF                       "script bridge refused: scriptbridge=no in kitty.ini"
+#define KT_SBRIDGE_REFUSED_SCRIPTMODE                "script bridge refused: the script engine is off " \
+        "(KiTTY++ Settings > Automation, scriptmode=no)"
+#define KT_SBRIDGE_REFUSED_OFF                       "script bridge refused: the script bridge is off " \
+        "(KiTTY++ Settings > Automation > Script bridge, scriptbridge=no)"
 #define KT_SBRIDGE_REFUSED_SIZE                      "script bridge refused: message of %lu bytes, " \
         "the limit is %d"
 #define KT_SBRIDGE_REFUSED_MALFORMED                 "script bridge refused: malformed message (%s)"
@@ -2725,8 +2728,8 @@
 #define KT_SBRIDGE_REFUSED_SESSION                   "script bridge refused: this session does not " \
         "accept it (Session > Scripting, or the Tools > Accept script bridge toggle)"
 #define KT_SBRIDGE_REFUSED_ID                        "script bridge refused: id %lu is not an inbound message"
-#define KT_SBRIDGE_REFUSED_LEVEL                     "script bridge refused: %s needs scriptbridge=prompt " \
-        "in kitty.ini (this install: %s)"
+#define KT_SBRIDGE_REFUSED_LEVEL                     "script bridge refused: %s needs the level " \
+        "\"Inbound + prompt event out\" (scriptbridge=prompt, this install: %s)"
 #define KT_SBRIDGE_REFUSED_NOSESSION                 "script bridge refused: no session is running"
 #define KT_SBRIDGE_ACCEPTED                          "script bridge: script of %d bytes accepted"
 #define KT_SBRIDGE_TARGET_NOWINDOW                   "script bridge refused: _enable without a window " \
@@ -2758,6 +2761,13 @@
 #define KT_SCRIPTING_ACCEPT_SCRIPT_BRIDGE            "Accept script bridge messages for this session"
 #define KT_SCRIPTING_SCRIPT_BRIDGE_NOTE              "Another program can play a script here " \
         "(Application > KiTTY++ Settings > Automation > Script bridge)."
+/* the script bridge key of this session (kitty_config_session.c): its
+ * label and the line under it, one line each (dlg_label_change cannot
+ * change a line's height) */
+#define KT_SCRIPTING_SB_KEY                          "Script bridge key:"
+#define KT_SCRIPTING_SB_KEY_CUSTOM                   "Custom key for this session - Clear uses the installation's."
+#define KT_SCRIPTING_SB_KEY_STORED                   "The installation's key, set in KiTTY++ Settings."
+#define KT_SCRIPTING_SB_KEY_DERIVED                  "The installation's key, derived from its location."
 /* KiTTY++ Settings > Automation > Script bridge */
 #define KT_KSET_SB_TITLE                             "Script bridge: other programs drive the script engine"
 #define KT_KSET_SB_GROUP                             "Script bridge"
@@ -2772,6 +2782,14 @@
 #define KT_KSET_SB_NOTE_PROMPT                       "Prompt event: the window that enabled it gets " \
         "the matched pattern, never the session output."
 #define KT_KSET_SB_NOTE_BOUNDARY                     "Not a security boundary against programs of the same user."
+/* the installation's script bridge key (kitty_config_app.c): label,
+ * button and the line under the box, one line each */
+#define KT_KSET_SB_KEY                               "Script bridge key"
+#define KT_KSET_SB_KEY_LABEL                         "Script bridge key of this installation:"
+#define KT_KSET_SB_NEWKEY                            "New key"
+#define KT_KSET_SB_KEY_SET                           "Set for this installation (scriptbridgekey). An empty field uses the derived key."
+#define KT_KSET_SB_KEY_DERIVED                       "Derived from the location of this installation. New key sets a random one."
+#define KT_KSET_SB_NEWKEY_FAILED                     "No new key: Windows gave no random bytes. The key is unchanged."
 
 /* kitty_osc52.c: the clipboard-read permission dialog */
 #define KT_OSC52_SUMMARY                             "It would send %d character%s on %d line%s, starting \"%s\"..."
@@ -3929,9 +3947,9 @@
         "rest of this session?\n\n" \
         "You can turn it back on under " \
         "Window > Copy & Paste > Remote clipboard, \"Remote clipboard writes\"."
-#define KT_TWIN_SCRIPT_DISABLED                      "RuTTY scripting is disabled" \
-        " ([KiTTY] scriptmode=no in kitty.ini)."
-#define KT_TWIN_SCRIPT_FILE_TITLE                    "Send script file..."
+#define KT_TWIN_SCRIPT_DISABLED                      "The script engine is off: Application > " \
+        "KiTTY++ Settings > Automation (scriptmode=no)."
+#define KT_TWIN_SCRIPT_FILE_TITLE                    "Run script file"
 #define KT_TWIN_SCRIPT_FILE_FILTER                   "Script files (*.ksh,*.sh)|*.ksh;*.sh|All files (*.*)|*.*|"
 #define KT_CAP_PASTE                                 "KiTTY++ paste"
 #define KT_TWIN_PASTE_LIMIT_Q                        "The clipboard holds %lu characters, more than" \
@@ -4021,9 +4039,9 @@
 #define KT_SYSMENU_START_FILEZILLA                   "Start File&Zilla"
 #define KT_SYSMENU_OPEN_MNOTEPAD                     "Open &mNotepad"
 #define KT_SYSMENU_OPEN_MNOTEPAD_CLIP                "Open mNotepad with clip&board"
-#define KT_SYSMENU_SCRIPT_SEND                       "Send &recorded script"
+#define KT_SYSMENU_SCRIPT_SEND                       "&Run script file..."
 #define KT_SYSMENU_SCRIPT_STOP                       "S&top script"
-#define KT_SYSMENU_SCRIPT_FILE                       "Send scr&ipt file"
+#define KT_SYSMENU_SCRIPT_FILE                       "T&ype text file..."
 #define KT_SYSMENU_ZMODEM_RECEIVE                    "&ZModem Receive"
 #define KT_SYSMENU_ZMODEM_UPLOAD                     "ZModem &Upload"
 #define KT_SYSMENU_ZMODEM_ABORT                      "ZModem &Abort"
@@ -4747,7 +4765,7 @@
 #define KT_CFG_SCRIPT_CR                             "CR"
 #define KT_CFG_SCRIPT_REC                            "Rec"
 #define KT_CFG_BROADCAST_KEY_CUSTOM                  "Custom key for this session - Clear restores the default."
-#define KT_CFG_BROADCAST_KEY_INI                     "Default key, set as sendcmdgroup in your kitty.ini file."
+#define KT_CFG_BROADCAST_KEY_INI                     "Default key, set as sendcmdgroup for this installation."
 
 /* kitty_config.c: panel titles built with the application name */
 #define KT_CFG_WINDOW_TITLE_FMT                      "Options controlling %s's window"

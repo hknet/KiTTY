@@ -438,7 +438,7 @@ static int script_prepare(ScriptData *s, Conf *conf, Backend *backend,
 
     /* The two refusals: one Event Log line each, no box. */
     if (!script_enabled) {
-        logevent(logctx, KT_RUTTY_REFUSED_OFF);   /* scriptmode=no in kitty.ini */
+        logevent(logctx, KT_RUTTY_REFUSED_OFF);   /* scriptmode=no */
         return false;
     }
     if (script_inited && s->runs) {

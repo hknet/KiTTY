@@ -58,6 +58,7 @@
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
 #include "kitty_sessorg.h"      /* Organize sessions (hknet/KiTTY#55) */
 #include "kitty_eventids.h"     /* the Event Viewer view: sources and log */
+#include "kitty_scriptbridge.h"  /* the Script bridge leaf: the installation's key */
 
 #define KITTY_WORKPLACE_STATE_ON  "Workplace proxy mode is ON for every connection."
 
@@ -2978,6 +2979,83 @@ static void kbc_key_clear_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, i
     kbc_key_update_prov(dlg);
 }
 
+/* ---- Automation > Script bridge: the installation's key -----------------
+ * The shape of the Broadcast leaf's group key (label line, box + buttons,
+ * one provenance line). The box shows the key in effect, the stored one or
+ * the derived one. Emptied = derived again. New key stores a random one.
+ * The key is read when a window starts: a change reaches the terminals
+ * opened afterwards. */
+static struct {
+    dlgcontrol *keybox, *keyprov;
+    bool setting;
+} ksbk;
+
+static void ksbk_set_box(dlgparam *dlg, const char *text)
+{
+    ksbk.setting = true;
+    dlg_editbox_set(ksbk.keybox, dlg, text);
+    ksbk.setting = false;
+}
+
+static void ksbk_update_prov(dlgparam *dlg)
+{
+    if (!ksbk.keyprov) return;
+    dlg_label_change(ksbk.keyprov, dlg,
+                     kitty_sbridge_install_key_stored() ? KT_KSET_SB_KEY_SET
+                                                        : KT_KSET_SB_KEY_DERIVED);
+}
+
+static void ksbk_box_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    const struct kset_key *k = kset_find(KI_SCRIPTBRIDGEKEY);
+    if (event == EVENT_REFRESH) {
+        ksbk_set_box(dlg, kitty_sbridge_install_key());
+        ksbk_update_prov(dlg);
+    } else if (event == EVENT_VALCHANGE) {
+        char *typed;
+        if (ksbk.setting)
+            return;                /* our own text echoed back */
+        typed = dlg_editbox_get(ctrl, dlg);
+        if (!k) { sfree(typed); return; }
+        if (typed && *typed) {
+            kset_defer_write(k, typed);
+            kitty_sbridge_set_install_key(typed);
+        } else {
+            kset_write(k, "");
+            kitty_sbridge_set_install_key("");
+        }
+        sfree(typed);
+        ksbk_update_prov(dlg);
+    }
+}
+
+static void ksbk_copy_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    if (event != EVENT_ACTION) return;
+    SetTextToClipboard(kitty_sbridge_install_key());
+}
+
+/* New key: a random key, stored. readonly=yes greys the button; without
+ * random bytes from Windows the key stays as it is and a box says so. */
+static void ksbk_new_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    const struct kset_key *k = kset_find(KI_SCRIPTBRIDGEKEY);
+    char *nk;
+    if (kitty_cfg_ro_control(ctrl, dlg, event))
+        return;
+    if (event != EVENT_ACTION || !k) return;
+    nk = kitty_sbridge_new_key_dup();
+    if (!nk) {
+        MessageBox(NULL, KT_KSET_SB_NEWKEY_FAILED, KT_CAP_ERROR, MB_OK | MB_ICONERROR);
+        return;
+    }
+    if (kset_write(k, nk))
+        kitty_sbridge_set_install_key(nk);
+    sfree(nk);
+    ksbk_set_box(dlg, kitty_sbridge_install_key());
+    ksbk_update_prov(dlg);
+}
+
 /* ---- the two views ------------------------------------------------------ */
 
 static void kbc_entries_free(struct kbc_entry *e, int n)
@@ -3658,6 +3736,25 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     ctrl_text(s, KT_KSET_SB_NOTE, HELPCTX(kitty_kset_scriptbridge));
     ctrl_text(s, KT_KSET_SB_NOTE_PROMPT, HELPCTX(kitty_kset_scriptbridge));
     ctrl_text(s, KT_KSET_SB_NOTE_BOUNDARY, HELPCTX(kitty_kset_scriptbridge));
+    s = ctrl_getset(b, KSET_PATH("Automation/Script bridge"), "sbkey", KT_KSET_SB_KEY);
+    ctrl_text(s, KT_KSET_SB_KEY_LABEL, HELPCTX(kitty_kset_scriptbridge));
+    ctrl_columns(s, 3, 60, 20, 20);
+    {
+        dlgcontrol *kc;
+        kc = ctrl_editbox(s, NULL, NO_SHORTCUT, 100, HELPCTX(kitty_kset_scriptbridge),
+                          ksbk_box_handler, P(NULL), ED_STR);
+        kc->column = 0;
+        ksbk.keybox = kc;
+        kc = ctrl_pushbutton(s, KT_LOGGING_COPY, NO_SHORTCUT, HELPCTX(kitty_kset_scriptbridge),
+                             ksbk_copy_handler, P(NULL));
+        kc->column = 1;
+        kc = ctrl_pushbutton(s, KT_KSET_SB_NEWKEY, NO_SHORTCUT, HELPCTX(kitty_kset_scriptbridge),
+                             ksbk_new_handler, P(NULL));
+        kc->column = 2;
+    }
+    ctrl_columns(s, 1, 100);
+    /* built with the longer wording: the line's height is fixed here */
+    ksbk.keyprov = ctrl_text(s, KT_KSET_SB_KEY_SET, HELPCTX(kitty_kset_scriptbridge));
 
     /* ---- Terminal: the title bar and the feature switches of the terminal
      * window, with Font Fallback and Printing as leaves of their own. The

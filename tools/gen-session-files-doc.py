@@ -191,6 +191,34 @@ def options(root):
     return out
 
 
+def panel_at(panels, at):
+    """The panel of the last ctrl_getset before position `at`."""
+    panel = None
+    for pos, p in panels:
+        if pos > at:
+            break
+        panel = p
+    return panel
+
+
+def panel_pos(src, at):
+    """Where to look up the panel of the control at `at`. A control inside
+    a helper that takes a controlset (kitty_broadcast_key_controls,
+    kitty_sbridge_key_controls) belongs to the panel the helper is CALLED
+    from, not to the getset that happens to stand before its definition."""
+    fn = None
+    for d in re.finditer(r'\n(?:static\s+)?void\s+(\w+)\s*\(([^)]*)\)\s*\{', src):
+        if d.start() > at:
+            break
+        fn = d
+    if not fn or 'controlset' not in fn.group(2):
+        return at
+    # a call, name(b, s); - never the definition or a declaration
+    c = re.search(r'\b' + re.escape(fn.group(1)) +
+                  r'\s*\(\s*\w+\s*,\s*\w+\s*\)\s*;', src)
+    return c.start() if c else at
+
+
 # ------------------------------------------------------- the panels
 def text_macros(root):
     """KT_* user-visible strings (kitty/kitty_text.h)."""
@@ -240,11 +268,7 @@ def controls(root, consts, texts):
             hc = re.search(r'HELPCTX\(\s*(\w+)\s*\)', body)
             if not hc:
                 continue
-            panel = None
-            for pos, p in panels:
-                if pos > m.start():
-                    break
-                panel = p
+            panel = panel_at(panels, panel_pos(src, m.start()))
             if not opt:
                 h = re.search(r'\b(\w+_handler)\b', body)
                 if h:

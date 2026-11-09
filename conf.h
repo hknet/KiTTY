@@ -210,6 +210,16 @@ CONF_OPTION(kitty_broadcast_key,
     SAVE_KEYWORD("BroadcastKey"),
 )
 
+/* KiTTY: the key the script bridge (kitty_scriptbridge.c) wants in THIS
+ * session's messages. Empty = the installation's ([KiTTY] scriptbridgekey,
+ * derived when unset). Its own key, not the broadcast key. Set in
+ * Session > Scripting under "Accept script bridge messages". */
+CONF_OPTION(kitty_scriptbridge_key,
+    VALUE_TYPE(STR),
+    DEFAULT_STR(""),
+    SAVE_KEYWORD("ScriptBridgeKey"),
+)
+
 /*
  * KiTTY: bound on chained SSH proxies, and the depth reached so far.
  *

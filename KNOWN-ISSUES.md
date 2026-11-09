@@ -114,6 +114,18 @@ Known limitations of this release:
   missing keys, not Default Settings.
 - **Under `readonly=yes` no host key is stored**: a new host key is
   accepted for one connection, and the question comes back on the next.
+- **The script bridge is not RuTTY's AutoHotkey interface.** Scripts written
+  for RuTTY or classic KiTTY need changes. The messages have other `dwData`
+  values (5 to 8). Each one starts with the script bridge key. A program
+  binds its window by handle, never by title. The terminal sends the matched
+  prompt pattern only: the session's output (RuTTY's `_transmit` and
+  `_received`) is not sent. How to write a program for it:
+  [docs/SCRIPTING.md](docs/SCRIPTING.md).
+- **KiTTY++ cannot record a script yet.** RuTTY and classic KiTTY could
+  record a session into a script file. That recorder is planned for a
+  future release. Scripts recorded with them play back with Session >
+  Scripting > CR/LF translation **Rec**:
+  [docs/SCRIPTING.md](docs/SCRIPTING.md).
 
 ## Windows Event Log
 

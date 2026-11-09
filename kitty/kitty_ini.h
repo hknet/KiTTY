@@ -853,7 +853,7 @@ char default_init_file_content[] =
 \n\
 ; scriptbridge: may other programs drive the script engine of a terminal?\n\
 ;    A program running as you sends WM_COPYDATA to a terminal window with a\n\
-;    script to play, as Tools > \"Send script file\" plays one. At \"prompt\" it can\n\
+;    script to play, as Tools > \"Run script file\" plays one. At \"prompt\" it can\n\
 ;    also bind itself to hear when the host's prompt appears.\n\
 ;      no      - refuse all of it, noted in the Terminal Window's Event Log\n\
 ;                (default)\n\
@@ -863,10 +863,18 @@ char default_init_file_content[] =
 ;                holds the pattern only, never the session output.\n\
 ;    Each session takes part only with Session > Scripting > \"Accept script\n\
 ;    bridge messages for this session\" (or Tools > Accept script bridge).\n\
-;    Messages carry the session's broadcast key (sendcmdgroup). scriptmode=no\n\
-;    turns the bridge off too. NOT a security boundary against programs\n\
-;    running as you.\n\
+;    Messages carry the script bridge key (scriptbridgekey below, or the\n\
+;    session's own). scriptmode=no turns the bridge off too. NOT a security\n\
+;    boundary against programs running as you.\n\
 ;scriptbridge=no\n\
+\n\
+; scriptbridgekey: the key every script bridge message must start with.\n\
+;    Its own key, not the broadcast key (sendcmdgroup). Unset: derived from\n\
+;    the location of this installation (\"sb-\" and 16 hex digits), the same\n\
+;    in each of its terminals. A session's own key (Session > Scripting >\n\
+;    \"Script bridge key\") wins over it. Application > KiTTY++ Settings >\n\
+;    Automation > Script bridge shows it, with Copy and New key.\n\
+;scriptbridgekey=\n\
 \n\
 ; scriptfilefilter: file-dialog filter for local script files.\n\
 ;    Default:\n\

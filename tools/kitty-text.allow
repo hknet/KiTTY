@@ -147,7 +147,6 @@ product | KT_REG_ASSOC_REMOVING | KiTTY | means classic KiTTY
 product | KT_REG_ASSOC_NOTHING | KiTTY | means classic KiTTY
 product | KT_REG_STATE_OTHER_KITTY | KiTTY | means classic KiTTY
 product | KT_TWIN_OLDSESS_TEXT | KiTTY | means classic KiTTY
-product | KT_TWIN_SCRIPT_DISABLED | KiTTY | the kitty.ini section [KiTTY], not the product
 product | KT_TWIN_LOG_BC_REFUSED_DISABLED | KiTTY | the kitty.ini section [KiTTY], not the product
 product | KT_DLG_ABOUT_PORT | KiTTY | the repository URL github.com/hknet/KiTTY, not the product
 product | KT_DLG_ABOUT_KITTY | KiTTY | means classic KiTTY

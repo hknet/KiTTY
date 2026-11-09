@@ -494,7 +494,7 @@ The script is stored with the session and protected at rest, the same way a stor
 
 Based on the RuTTY patch, this lets you automate actions on a session by running a small script as soon as you connect. The script uses simple waitfor/halton commands to watch for text from the server and send responses, so common logon sequences and repetitive steps happen for you automatically. It is a handy way to script logins and routine interactions without typing them each time.
 
-**How to enable:** Configuration > **Session > Scripting**: set a RuTTY script (waitfor/halton style). It plays automatically once connected. You can also run a script on demand in a live session: system menu > **Tools > Send recorded script**. The whole engine can be disabled with `[KiTTY] scriptmode=no` in `kitty.ini`.
+**How to enable:** Configuration > **Session > Scripting**: set a RuTTY script (waitfor/halton style). It plays automatically once connected. You can also run a script on demand in a live session: system menu > **Tools > Run script file**. Application > KiTTY++ Settings > **Automation** turns the whole engine off for the installation (`scriptmode=no`, in `kitty.ini` with a folder store, else in the registry under `HKCU\Software\kapper.net\KiTTY`). How to write script files, the login script and the escapes: [docs/SCRIPTING.md](docs/SCRIPTING.md).
 
 **Script file format** (see [docs/examples/logon-script.ksh](docs/examples/logon-script.ksh)):
 a script is a plain text file sent line by line. With **Wait for a prompt before
@@ -524,14 +524,16 @@ command**.
 
 ### Script bridge
 
-Another program on the same desktop - an AutoHotkey script, a test tool, anything that can send `WM_COPYDATA` - hands a terminal a script to play, as **Tools > Send script file** plays one. The same engine runs it with the session's own settings: delays, wait-for, halt-on, CR/LF. At the level `prompt` the program can also bind itself to the terminal: it then gets one message each time the set pattern ends the host's output. The message holds the matched pattern only, never a byte of the session. This replaces RuTTY's AutoHotkey interface, which classic KiTTY carried and the 0.84 port dropped.
+Another program on the same desktop - an AutoHotkey script, a test tool, anything that can send `WM_COPYDATA` - hands a terminal a script to play, as **Tools > Run script file** plays one. The same engine runs it with the session's own settings: delays, wait-for, halt-on, CR/LF. At the level `prompt` the program can also bind itself to the terminal: it then gets one message each time the set pattern ends the host's output. The message holds the matched pattern only, never a byte of the session. This replaces RuTTY's AutoHotkey interface, which classic KiTTY carried and the 0.84 port dropped.
 
 **How to enable:** two switches, both off by default.
 
-- The installation's level: Application > KiTTY++ Settings > **Automation > Script bridge**, `[KiTTY] scriptbridge=no|inbound|prompt` in `kitty.ini` (`yes` means `inbound`). `scriptmode=no` turns the bridge off too.
+- The installation's level: Application > KiTTY++ Settings > **Automation > Script bridge**, `scriptbridge=no|inbound|prompt` (`yes` means `inbound`), in `kitty.ini` with a folder store, else in the registry under `HKCU\Software\kapper.net\KiTTY`. `scriptmode=no` turns the bridge off too.
 - The session's arm: **Session > Scripting > Accept script bridge messages for this session**, or **Tools > Accept script bridge** on a running window.
 
-**The messages** (`dwData` of `WM_COPYDATA`; `<key>` is the session's broadcast key, as for `-sendcmd`):
+**The key:** every message starts with the script bridge key, its own key and not the broadcast key. The installation's is on Automation > Script bridge > **Script bridge key of this installation:** (`scriptbridgekey`, derived from the installation's location until one is set; **New key** sets a random one). A session can have its own: **Session > Scripting > Script bridge key:** (`ScriptBridgeKey`).
+
+**The messages** (`dwData` of `WM_COPYDATA`; `<key>` is the script bridge key):
 
 | id | name | direction | data |
 |---|---|---|---|
@@ -543,6 +545,8 @@ Another program on the same desktop - an AutoHotkey script, a test tool, anythin
 `_enable` and `_set` need the level `prompt`. The window bound by `_enable` must run as the same user, at an integrity level no lower than the terminal's. It is checked again before every `_prompt` (same window, same process). A window that does not answer within 1000 ms is unbound, the session goes on. Nothing is ever found by window title. Every acceptance and every refusal is a line in the Terminal Window's Event Log, without the script or the pattern.
 
 Not a security boundary: a program running as the same user can type into the session by other means. Like the broadcast, the switches stop accidents and keep the feature off until it is wanted.
+
+How to write such a program, with tested examples in PowerShell and AutoHotkey v2: [docs/SCRIPTING.md](docs/SCRIPTING.md).
 
 ### URL hyperlinks
 

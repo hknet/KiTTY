@@ -14,6 +14,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | Change | Key | Was | Now |
 |---|---|---|---|
 | added | `AcceptScriptBridge` | - | bool |
+| added | `ScriptBridgeKey` | - | text |
 | type changed | `FileZillaPasswordMode` | enum 0/1/2 | enum 0/1 |
 
 ## Keys
@@ -67,7 +68,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | `BoldFontCharSet` | number, Windows character set | - | - | Unix version only: character set of `BoldFont`; not used on Windows. |
 | `BoldFontHeight` | number, points | - | - | Unix version only: size of `BoldFont`; not used on Windows. |
 | `BoldFontIsBold` | `0` / `1` | - | - | Unix version only: bold weight of `BoldFont`; not used on Windows. |
-| `BroadcastKey` | text | *(empty)* | Session/Logging | Decides who a broadcast reaches. |
+| `BroadcastKey` | text | *(empty)* | Session/Broadcast | Decides who a broadcast reaches. |
 | `BugChanReq` | `0` auto; `1` off; `2` on | `0` | Connection/SSH/Bugs | The SSH protocol as published in RFC 4254 has an ambiguity which arises if one side of a connection tries to close a channel, while the other side simultaneously sends a request within the channel and requests a reply. |
 | `BugDeriveKey2` | `0` auto; `1` off; `2` on | `0` | Connection/SSH/Bugs | Versions below 2.0.11 of the SSH server software from `ssh.com` compute the keys for the session encryption incorrectly. |
 | `BugDropStart` | `1` off; `2` on | `1` | Connection/SSH/Bugs | Just occasionally, an SSH connection can be established over some channel that will accidentally discard outgoing data very early in the connection. |
@@ -279,6 +280,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | `rzOptions` | text | `-e -v` | Connection/ZModem | Options handed to `rz` for ZModem receives. |
 | `SaveOnExit` | `0` / `1` | `0` | Window/Behaviour | Writes this session back to the store when its window closes, so a change made through "Change Settings" during the session is kept without saving by hand. |
 | `SCPAutoPwd` | `0` / `1` | `0` | - | Retired: a session with `1` is migrated to `OSC7CwdTracking` = `1`; nothing else reads it. |
+| `ScriptBridgeKey` | text | *(empty)* | Session/Scripting | The key a script bridge message for this session must start with. Empty: the installation's (`[KiTTY] scriptbridgekey`, derived when unset). |
 | `ScriptCharDelay` | number | `0` | Session/Scripting | Delay between the characters typed from the script file, in milliseconds. |
 | `ScriptCondLine` | text | `:` | Session/Scripting | Character that starts a condition or comment line in the script file. |
 | `ScriptCondUse` | number | `0` | Session/Scripting | `1` reads a line starting with `ScriptCondLine` as the wait-for text of the next line; `0` as a comment. |

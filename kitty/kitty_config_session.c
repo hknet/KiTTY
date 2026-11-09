@@ -60,6 +60,7 @@
 #include "kitty_logkeep.h"      /* the Logging panel greys on its time-code test */
 #include "kitty_url_regex.h"    /* kitty_urlregex_error: the custom-regex field's red line */
 #include "kitty_commentview.h"  /* the comment box under the list: links that open */
+#include "kitty_scriptbridge.h" /* the script bridge key: the installation's */
 
 #define KITTY_WORKPLACE_BOX_TITLE "Workplace proxy mode"
 #define DISPLAY_RECONFIGURABLE_PROTOCOL(which_proto) \
@@ -5949,6 +5950,91 @@ static void kitty_bkey_clear_handler(dlgcontrol *ctrl, dlgparam *dp,
 }
 
 
+/* ---- the script bridge key of this session ------------------------------
+ * The same shape as the broadcast key above (label line, box + Copy +
+ * Clear, one provenance line), with its own key: a session's script bridge
+ * key is not its broadcast key. Empty stored = the installation's key. */
+
+static void kitty_sbkey_update_prov(struct kitty_bkey_state *st,
+                                    dlgparam *dp, Conf *conf)
+{
+    const char *own;
+    if (!st || !st->prov || !conf) return;
+    own = conf_get_str(conf, CONF_kitty_scriptbridge_key);
+    if (own && *own)
+        dlg_label_change(st->prov, dp, KT_SCRIPTING_SB_KEY_CUSTOM);
+    else if (kitty_sbridge_install_key_stored())
+        dlg_label_change(st->prov, dp, KT_SCRIPTING_SB_KEY_STORED);
+    else
+        dlg_label_change(st->prov, dp, KT_SCRIPTING_SB_KEY_DERIVED);
+}
+
+static void kitty_sbkey_box_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                    void *data, int event)
+{
+    struct kitty_bkey_state *st = (struct kitty_bkey_state *)ctrl->context.p;
+    Conf *conf = (Conf *)data;
+    if (event == EVENT_REFRESH) {
+        const char *k = conf_get_str(conf, CONF_kitty_scriptbridge_key);
+        /* empty = the installation's key: SHOWN, so it can be copied */
+        kitty_bkey_set_box(st, dp, (k && *k) ? k : kitty_sbridge_install_key());
+        kitty_sbkey_update_prov(st, dp, conf);
+    } else if (event == EVENT_VALCHANGE) {
+        /* anything typed is this session's own key; Clear goes back */
+        char *typed;
+        if (st->setting)
+            return;
+        typed = dlg_editbox_get(ctrl, dp);
+        conf_set_str(conf, CONF_kitty_scriptbridge_key, typed ? typed : "");
+        sfree(typed);
+        kitty_sbkey_update_prov(st, dp, conf);
+    }
+}
+
+static void kitty_sbkey_copy_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                     void *data, int event)
+{
+    Conf *conf = (Conf *)data;
+    const char *k;
+    if (event != EVENT_ACTION) return;
+    k = conf_get_str(conf, CONF_kitty_scriptbridge_key);
+    SetTextToClipboard((k && *k) ? k : kitty_sbridge_install_key());
+}
+
+static void kitty_sbkey_clear_handler(dlgcontrol *ctrl, dlgparam *dp,
+                                      void *data, int event)
+{
+    struct kitty_bkey_state *st = (struct kitty_bkey_state *)ctrl->context.p;
+    Conf *conf = (Conf *)data;
+    if (event != EVENT_ACTION) return;
+    conf_set_str(conf, CONF_kitty_scriptbridge_key, "");
+    kitty_bkey_set_box(st, dp, kitty_sbridge_install_key());
+    kitty_sbkey_update_prov(st, dp, conf);
+}
+
+static void kitty_sbridge_key_controls(struct controlbox *b, struct controlset *s)
+{
+    struct kitty_bkey_state *st = (struct kitty_bkey_state *)
+        ctrl_alloc(b, sizeof(struct kitty_bkey_state));
+    dlgcontrol *c;
+    st->box = NULL; st->prov = NULL; st->setting = false;
+    ctrl_text(s, KT_SCRIPTING_SB_KEY, HELPCTX(kitty_scriptbridge));
+    ctrl_columns(s, 3, 60, 20, 20);
+    c = ctrl_editbox(s, NULL, NO_SHORTCUT, 100, HELPCTX(kitty_scriptbridge),
+                     kitty_sbkey_box_handler, P(st), ED_STR);
+    c->column = 0;
+    st->box = c;
+    c = ctrl_pushbutton(s, KT_LOGGING_COPY, NO_SHORTCUT,
+                        HELPCTX(kitty_scriptbridge), kitty_sbkey_copy_handler, P(st));
+    c->column = 1;
+    c = ctrl_pushbutton(s, KT_LOGGING_CLEAR, NO_SHORTCUT,
+                        HELPCTX(kitty_scriptbridge), kitty_sbkey_clear_handler, P(st));
+    c->column = 2;
+    ctrl_columns(s, 1, 100);
+    /* built with the longest wording: the line's height is fixed here */
+    st->prov = ctrl_text(s, KT_SCRIPTING_SB_KEY_CUSTOM, HELPCTX(kitty_scriptbridge));
+}
+
 void scb_panel_scripting(struct controlbox *b, bool midsession)
 {
     struct controlset *s;
@@ -6016,6 +6102,7 @@ void scb_panel_scripting(struct controlbox *b, bool midsession)
                   HELPCTX(kitty_scriptbridge), conf_checkbox_handler,
                   I(CONF_kitty_accept_scriptbridge));
     ctrl_text(s, KT_SCRIPTING_SCRIPT_BRIDGE_NOTE, HELPCTX(kitty_scriptbridge));
+    kitty_sbridge_key_controls(b, s);
     /* ---- receiving broadcasts: its own leaf under Session -----------
      * Scripting drives THIS session from a file; a broadcast is another
      * window typing into it. Separate concerns, separate panels - and

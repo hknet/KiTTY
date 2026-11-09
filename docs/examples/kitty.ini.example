@@ -850,7 +850,7 @@
 
 ; scriptbridge: may other programs drive the script engine of a terminal?
 ;    A program running as you sends WM_COPYDATA to a terminal window with a
-;    script to play, as Tools > "Send script file" plays one. At "prompt" it can
+;    script to play, as Tools > "Run script file" plays one. At "prompt" it can
 ;    also bind itself to hear when the host's prompt appears.
 ;      no      - refuse all of it, noted in the Terminal Window's Event Log
 ;                (default)
@@ -860,10 +860,18 @@
 ;                holds the pattern only, never the session output.
 ;    Each session takes part only with Session > Scripting > "Accept script
 ;    bridge messages for this session" (or Tools > Accept script bridge).
-;    Messages carry the session's broadcast key (sendcmdgroup). scriptmode=no
-;    turns the bridge off too. NOT a security boundary against programs
-;    running as you.
+;    Messages carry the script bridge key (scriptbridgekey below, or the
+;    session's own). scriptmode=no turns the bridge off too. NOT a security
+;    boundary against programs running as you.
 ;scriptbridge=no
+
+; scriptbridgekey: the key every script bridge message must start with.
+;    Its own key, not the broadcast key (sendcmdgroup). Unset: derived from
+;    the location of this installation ("sb-" and 16 hex digits), the same
+;    in each of its terminals. A session's own key (Session > Scripting >
+;    "Script bridge key") wins over it. Application > KiTTY++ Settings >
+;    Automation > Script bridge shows it, with Copy and New key.
+;scriptbridgekey=
 
 ; scriptfilefilter: file-dialog filter for local script files.
 ;    Default:

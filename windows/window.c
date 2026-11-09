@@ -118,7 +118,7 @@ static int kitty_scriptbridge_armed( WinGuiSeat *wgs )
 #endif /* MOD_PERSO */
 #ifdef MOD_PERSO
 #ifndef IDM_SCRIPTSEND
-#define IDM_SCRIPTSEND  0xB180  /* send recorded script (rutty) */
+#define IDM_SCRIPTSEND  0xB180  /* Run script file (the rutty engine) */
 #endif
 #ifndef IDM_SCRIPTHALT
 #define IDM_SCRIPTHALT  0xB190  /* stop running script */
@@ -5976,7 +5976,7 @@ static WinGuiSeat *kitty_wgs_of(HWND hwnd)
         (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA) : NULL;
 }
 
-/* Send script file (RuTTY, IDM_SCRIPTSEND): the script is sent once a file
+/* Run script file (RuTTY, IDM_SCRIPTSEND): the script is sent once a file
  * has been picked. One picker at a time. */
 static void *kitty_script_pick = NULL;
 
@@ -6496,10 +6496,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         PCOPYDATASTRUCT cds = (PCOPYDATASTRUCT)lParam;
         if (cds && kitty_sbridge_is_id(cds->dwData)) {
             /* The script bridge (kitty_scriptbridge.c): ids 5-10, keyed
-             * with the same key a broadcast to this session carries. */
+             * with the session's script bridge key, else the
+             * installation's - its own key, not the broadcast's. */
             struct kitty_sbridge_msg sm;
-            const char *sbgroup = conf_get_str(wgs->conf, CONF_kitty_broadcast_key);
-            if (!sbgroup || !*sbgroup) sbgroup = kitty_broadcast_group();
+            const char *sbgroup = conf_get_str(wgs->conf, CONF_kitty_scriptbridge_key);
+            if (!sbgroup || !*sbgroup) sbgroup = kitty_sbridge_install_key();
             sm.cds = cds;
             sm.self = hwnd;
             sm.sender = (HWND)wParam;

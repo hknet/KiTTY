@@ -159,6 +159,7 @@ RunCmdNotify	`1` raises a tray notification after the clipboard ran as a command
 rzCommand	Retired: the path of `rz` is `[KiTTY] rzcommand` in kitty.ini; nothing reads this key.
 rzOptions	Options handed to `rz` for ZModem receives.
 SCPAutoPwd	Retired: a session with `1` is migrated to `OSC7CwdTracking` = `1`; nothing else reads it.
+ScriptBridgeKey	The key a script bridge message for this session must start with. Empty: the installation's (`[KiTTY] scriptbridgekey`, derived when unset).
 ScriptCharDelay	Delay between the characters typed from the script file, in milliseconds.
 ScriptCondLine	Character that starts a condition or comment line in the script file.
 ScriptCondUse	`1` reads a line starting with `ScriptCondLine` as the wait-for text of the next line; `0` as a comment.

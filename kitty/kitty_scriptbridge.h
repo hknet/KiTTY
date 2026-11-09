@@ -27,6 +27,15 @@ int  kitty_sbridge_level(void);
 void kitty_sbridge_set_level(int level);
 void kitty_sbridge_set_level_text(const char *value);   /* the kitty.ini word */
 
+/* The installation's script bridge key: [KiTTY] scriptbridgekey, else one
+ * derived from the installation's location ("sb-<hash>", never the
+ * broadcast's "auto-<hash>"). A session's own key (ScriptBridgeKey) wins
+ * over it. The set call follows a change of the store in this process. */
+const char *kitty_sbridge_install_key(void);
+int  kitty_sbridge_install_key_stored(void);   /* 1: from the store */
+void kitty_sbridge_set_install_key(const char *k);
+char *kitty_sbridge_new_key_dup(void);         /* a random key (sfree it), NULL: none */
+
 /* One message of a bridge id, with what the terminal knows about itself. */
 struct kitty_sbridge_msg {
     const COPYDATASTRUCT *cds;
