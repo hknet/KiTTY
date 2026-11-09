@@ -1,4 +1,4 @@
-# KiTTY++ 0.85.1.19 — Known issues & limitations
+# KiTTY++ 0.85.1.20 — Known issues & limitations
 
 Known limitations of this release:
 
@@ -9,6 +9,8 @@ Known limitations of this release:
   installation (a portable and an installed copy each have their own), open
   connections keep the proxy they connected through, and the green frame needs
   Windows 11 - on Windows 10 the title marker `⇄ workplace proxy` shows it.
+  The arming is protected against other users, not against programs
+  running as you.
 - **A named proxy stores a user name and password, but no key or agent
   settings.** An SSH jump host that needs a specific key still needs a saved
   session for it, with the proxy pointing at that session.
@@ -72,9 +74,32 @@ Known limitations of this release:
   downloaded.** They show Open, Copy path and Close. A path outside ASCII
   can only be copied. Web addresses with a numeric or encoded host are not
   opened.
-- **kscp and ksftp do not expand `~` over SFTP.** `host:~/file` fails. Use
-  `host:file` for the home folder instead. Folders that KiTTY++ hands to kscp
-  itself are absolute and not affected.
+- **kscp and ksftp expand `~` over SFTP only with the server's
+  `expand-path@openssh.com`.** Without it, `host:~/x` is `x` in the login
+  folder.
+- **Protocol SCP hands the remote path to the server's shell unquoted.**
+  A download whose path holds a character other than letters, digits and
+  `/ . _ - ~ % * ?` goes over SFTP instead.
+- **Transfer helpers get the password in memory only.** A kscp, ksftp or
+  klink of an earlier release and PuTTY's pscp and psftp get no password.
+  The transfer window shows why. A login by key or through the agent works.
+- **WinSCP before 6.0 gets the passwords in a private temporary file**,
+  deleted once WinSCP has read it. Where neither a named pipe nor a file can
+  be made, WinSCP prompts for the password.
+- **FileZilla starts on a temporary site entry in every mode.** The former
+  command-line password mode is gone. Without the site entry, FileZilla
+  prompts for the password.
+- **Files a kitten transfer brings carry no Mark of the Web**, as files
+  copied with scp do not.
+- **Port knocking:** a UDP knock is not sent through a proxy or an SSH jump
+  host. The session then connects without knocks. A sequence with an entry
+  that is not valid or with more than 64 entries stops the connection. A
+  dash gives no port range: `2001-2005` is refused.
+- **`-J` gives one jump host.**
+- **A `.ktx` file with entries that run a program or write a file**
+  (PreConnectCommand, a local proxy command, ZModem commands, a log path)
+  loads as Windows' zone policy allows for its Mark of the Web. A prompt
+  takes all entries of the file or none.
 - **The mid-session Change Settings list does not navigate folders.**
 - **Inline SSH security prompts are not available during a rekey**: the
   connection is closed instead.
@@ -140,6 +165,28 @@ Known limitations of this release:
 - **kageant lock:** `ssh-add -x` does not survive a restart of kageant.
 - **kageant's key-file check stops a swapped file, not a program running as
   you**: the stored fingerprint is plain text.
+- **A damaged `kageant-rules.dat` refuses every key** until new destination
+  rules are saved.
+- **A session-bind signed with SHA-1 is refused** (`ssh-rsa` from an RSA
+  host key, every `ssh-dss` signature). The login goes on without a
+  destination, so a key restricted to destinations is not used on it.
+- **Hashed `known_hosts` entries never match a destination pattern.**
+  kageant reads `known_hosts` only with "Use OpenSSH's known_hosts as a
+  host-key source" on.
+- **Host keys a server offers after login (hostkeys-00) are not stored for
+  DSA** or for a type below the warn line of the session's host-key list.
+- **kageant refuses requests by window messages by default** (programs
+  built on PuTTY before 0.75). "Accept requests by window messages (PuTTY
+  before 0.75)" serves them as from an unknown program, never with a key
+  unlocked for another program. A session-bind by window messages is
+  always refused.
+- **`kageant -h` restricts keys to destinations**, as `ssh-add -h` does. It
+  is no longer short for `-help`.
+- **Certificate validity is checked after each key change, once a day and
+  after a resume from sleep**, not continuously.
+- **The AI agent pages are experimental**
+  ([docs/AGENTIC-USE.md](docs/AGENTIC-USE.md),
+  [docs/AGENTS-GUIDE.md](docs/AGENTS-GUIDE.md)) and will change.
 - **PPK version 1 key files still log in**, with a notice; a coming release
   refuses them. Convert with kittygen.
 

@@ -4962,7 +4962,7 @@
         "account on this PC only."
 #define KT_STOREMOVE_COPY_FAILED                     "\n\n%d item%s could not be written."
 #define KT_STOREMOVE_COPY_BLOCKED                    "Nothing was written to\n%s\n\n%s"
-#define KT_STOREMOVE_NO_TEMP                         "No temporary folder could be created; nothing " \
+#define KT_STOREMOVE_NO_TEMP                         "No temporary folder could be created. Nothing " \
         "was taken."
 #define KT_STOREMOVE_TAKEN                           "Taken from\n%s\n\n" \
         "%d session%s, %d prox%s, %d host key%s, %d setting%s."

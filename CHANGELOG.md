@@ -133,8 +133,22 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   The build checks every switch on both pages against the usage text of
   its tool.
 - Start FileZilla and the launcher's Open in FileZilla hand the session's
-  key file to FileZilla, through a temporary site entry deleted after a
-  minute. FileZilla asks for the key's passphrase itself.
+  key file to FileZilla, through a temporary site entry deleted once
+  FileZilla has read it, at the latest after a minute. FileZilla prompts
+  for the key's passphrase itself.
+- kageant: a key and its OpenSSH certificates are one row of the key list,
+  with a Certificate column. A certificate expiring within 14 days shows
+  in amber, an expired or not yet valid one in red. Key details lists each
+  certificate with its CA, principals, validity, status and critical
+  options. A fingerprint form that includes the certificate is listed only
+  where it differs from the plain form. The Key details window is shorter.
+  Remove, Move and dragging act on every identity of the private key.
+  kageant checks its certificates after each key change, once a day and
+  after a resume from sleep: one notice per certificate and state, event
+  ID 141.
+- Direct2D renderer: each device writes the graphics adapter's name, vendor
+  ID and device ID to the Terminal Window's Event Log, with "software
+  rendering" for WARP or another software adapter.
 - kittygen and kittygen-cli warn about a certificate without names in
   Certificate info..., `-O cert-info` and Add certificate to key.
 
@@ -149,7 +163,7 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - kageant: a session-bind signed with SHA-1 is refused (`ssh-rsa` from an
   RSA host key, every `ssh-dss` signature). The login goes on without a
   destination, so a key restricted to destinations is not used on it.
-- Session > Scripting: with "Wait for a prompt before sending" a script ends
+- Session > Scripting: with "Wait for a prompt before each line" a script ends
   right after its last line, instead of waiting for one more prompt and
   stopping with the timeout notice when none came. A condition line after
   the last line keeps that wait. Until the prompt after the last line
@@ -219,6 +233,45 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   remove, lock refused, reason `forwarded`) and "Accept requests by window
   messages" (PuTTY before 0.75, off by default, see Changed). A program
   using window messages gets a notice once per run.
+- kageant: the confirm mode in force for a key is the strictest one of all
+  its identities, a certificate included. Before, a certificate of a key
+  set to confirm signed without a confirmation. The destination rules of a
+  certificate are filed under its base key's fingerprint.
+- Port knocking ("Port knocking sequence:") runs from PuTTY's timers, so a
+  pause leaves the window working. klink, kscp and ksftp knock too, with the
+  new option `-knock`. Every address of the host is knocked, IPv4 and IPv6.
+  With a proxy or jump host the TCP knocks go through it. The proxy's
+  answer decides whether a knock counts as sent, failed or unknown. A UDP
+  knock through a proxy is not sent: the connection goes on without
+  knocks. An entry that is not valid or more than 64 entries stop the
+  connection before the first knock. kitty.exe shows the reason in the
+  terminal, the command-line tools exit with code 1. A dash no longer
+  separates entries: "2001-2005" is refused. Each knock and each failure
+  is a line in the Event Log.
+- `kitty.exe -kload` of a .ktx file with entries that run a program or
+  write a file (PreConnectCommand, a local proxy command, ZModem commands,
+  a session log) follows Windows' zone policy for the file's Mark of the
+  Web. An allowed file connects as before. The prompt "Connection file
+  from an untrusted place" lists the entries and takes all of them or
+  none. A refusal points to Unblock or the administrator.
+- kscp, ksftp and klink get the session and proxy passwords in memory only
+  (`-pwhandle`, `-proxypwhandle`), never from a file. A helper without
+  that, such as an older kscp or PuTTY's pscp, gets no password: the
+  transfer window states why. WinSCP before 6.0 reads a temporary file
+  with a random name, deleted once WinSCP has read it. FileZilla starts on
+  a site entry in a private folder with every choice of "How the session
+  password reaches FileZilla:". A session saved with the former choice
+  "Command line (readable by other processes)" gets "Temporary
+  configuration file".
+- Typed keystrokes are paced by a timer: the pauses of `\p`, `\sNN` and the
+  character delay no longer stop the window while a long text is typed.
+  The multiline input box is modeless, one at a time. It reads the
+  clipboard text when it opens and sends its own copy of the text with OK.
+- A failed ZModem transfer writes one line "ZModem helper error:" to the
+  Terminal Window's Event Log, with the exit code and the helper's last
+  line. A cancel writes none.
+- A bell sound file that does not play and an OSC 8 folder link without a
+  program for folders write an Event Log line instead of a notice.
 
 ### Fixed
 
@@ -288,6 +341,57 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   2000 characters.
 - `KITTY_PWDEBUG` works in test builds only and writes no characters and
   no checksum of a password.
+- kageant: a key set to confirm with Windows Hello goes through Windows
+  Hello in every confirmation mode. `askconfirmation=no`, which any
+  program of the same user can write, skipped it.
+- Decrypted passwords and keys are cleared before their memory is freed.
+  A wipe the compiler could drop, three secrets without a wipe and the two
+  plain copies of each saved password a session load left behind are
+  fixed. The build checks the rule.
+- A program start that failed twice put its command line in clear into
+  the notice and the Terminal Window's Event Log. Every session secret is
+  masked there now, in every form a command line carries it.
+- Extra tracing: a `[Shortcuts]` remap and the automatic command log the
+  length of their text only, since both can hold a password. A `%` in the
+  automatic command no longer garbles its line.
+- The `\k` and `\x` escapes of typed text take their operand only with two
+  hex digits. A text ending in `\k`, `\kA`, `\x` or `\xA` read past its
+  end. The backslash is now typed as it is.
+- Login script: the match read past the bytes the server sent and could
+  match early. The next reply, often a password, then went out before the
+  server's prompt.
+- Workplace proxy mode checks and uses one copy of its arming record, so
+  the record cannot change between the check and the use.
+- Broadcast: a window that does not answer within two seconds is skipped
+  and logged with its process id. One hung window stopped the send to it
+  and to every window after it. `-sendcmd` and `-sendcmdfile` exit with
+  code 2 when a window was skipped.
+- `[Shortcuts]` key remaps have no fixed limit. A list longer than 512
+  entries wrote past the table. The AutoText editor lists every remap and
+  keeps all of them when it saves. An `antiidle=` text longer than 127
+  characters is reported once in the Event Log.
+- Settings files are written complete or not at all. A full disk left a
+  named proxy without its password and counted it as saved. A named proxy
+  that cannot be written is listed with the reason among the skipped
+  ones. The start-up `.ses.updt` file is deleted only once its `.reg` is
+  written.
+- A window restored from minimised with Direct2D and transparency allowed
+  (the default) shrank to one row: the rows below the cursor stayed black
+  and the SSH server got the one-row size. (hknet/KiTTY#88)
+- A terminal made shorter than the rows below its cursor keeps those rows
+  while the main screen is in front. Growing back returns them before any
+  blank row. Output, a reset, a cleared scrollback, a width change or the
+  alternate screen drops them.
+- GDI: a redrawn run keeps the ClearType fringe of the next cell's glyph,
+  so the window matches a complete repaint.
+- Start FileZilla without its temporary site entry and a clipboard command
+  Windows does not start write an Event Log line. FileZilla then prompts
+  for the password. "Take a folder store..." reports a missing temporary
+  folder. An encrypted .ktx file reports the temporary folder instead of a
+  missing file. A program folder that cannot be read stops the start with
+  its reason.
+- The mark strip at the right edge of the terminal draws the background
+  image under its ticks. It was a dark bar beside the scroll bar.
 
 ## 0.85.1.19-beta — 2026-10-28
 
