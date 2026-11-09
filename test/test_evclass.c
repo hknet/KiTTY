@@ -27,6 +27,8 @@ int main(void)
         "Reconnect: connection refused (Network error: Connection refused) - stopped",
         "Host key replaced (proven by the server): SHA256:abc, was SHA256:def, web01 port 22",
         "Blocked by Windows policy: the zone does not allow downloads",
+        "Run clipboard command: not started, 33000 characters (Windows starts at most 32767).",
+        "Start FileZilla: no temporary site entry could be written. FileZilla gets the address only and prompts for the password.",
         "File transfer 3: refused \"x.tar\" (Permission denied)",
         "Clipboard read refused (window not focused); 4 further requests also refused",
         "Unable to open connection to\nweb01\nNetwork error: Connection timed out",

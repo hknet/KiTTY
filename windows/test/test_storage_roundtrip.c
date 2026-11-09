@@ -42,6 +42,8 @@
 #include "../kitty/kitty_inifile.h"   /* readonly=yes: the pin and the gate */
 #include "../kitty/kitty_oldwin.h"    /* kitty_temp_path_dup: %TEMP% whole */
 #include "../kitty/kitty_crypt.h"     /* cryptpassword: classic KiTTY's stored form */
+#include "../kitty/kitty_common.h"    /* mungestr, unmungestr and their _dup forms */
+#include "../kitty/kitty_tools.h"     /* MakeDir */
 
 /* KiTTY storage API surface (fork style: declared extern by callers) */
 
@@ -97,12 +99,7 @@ int readINI(const char *f, const char *sec, const char *key, char *p, size_t n)
 void KittyCliReport(const char *title, const char *text, int warn)
 { printf("  [KittyCliReport] %s\n", title ? title : "(no title)"); }
 
-char *str_rtrim(char *s, const char *set)
-{
-    size_t n = s ? strlen(s) : 0;
-    while (n > 0 && strchr(set, s[n - 1])) s[--n] = '\0';
-    return s;
-}
+/* str_rtrim comes from kitty/kitty_tools.c, linked into this test */
 
 static int failures = 0;
 static void check(int cond, const char *what)
@@ -801,6 +798,120 @@ static void test_old_ktx(void)
     }
 
     conf_free(conf);
+    DeleteFileA(path);
+}
+
+/* TMP and TEMP set for one case, and put back after it */
+static char *env_tmp_saved = NULL, *env_temp_saved = NULL;
+static void env_temp_set(const char *v)
+{
+    env_tmp_saved = kitty_getenv_dup("TMP");
+    env_temp_saved = kitty_getenv_dup("TEMP");
+    SetEnvironmentVariableA("TMP", v);
+    SetEnvironmentVariableA("TEMP", v);
+}
+static void env_temp_restore(void)
+{
+    /* NULL removes a variable that was not set before */
+    SetEnvironmentVariableA("TMP", env_tmp_saved);
+    SetEnvironmentVariableA("TEMP", env_temp_saved);
+    sfree(env_tmp_saved);
+    sfree(env_temp_saved);
+    env_tmp_saved = env_temp_saved = NULL;
+}
+
+/* n copies of c (kept until the run ends) */
+static char *st_fill(char c, size_t n)
+{
+    char *s = st_keep(snewn(n + 1, char));
+    memset(s, c, n);
+    s[n] = '\0';
+    return s;
+}
+
+/* A folder of 300 characters below tmp that does not exist, in parts of
+ * at most 99 characters (longer when tmp itself is that long) */
+static char *long_temp_value(const char *tmp)
+{
+    char *v = st_path("%skitty-selftest-longtmp-%lu",
+                      tmp, (unsigned long)GetCurrentProcessId());
+    size_t len;
+    while ((len = strlen(v)) < 300) {
+        size_t left = 300 - len;
+        if (left == 1)
+            v = st_path("%st", v);
+        else
+            v = st_path("%s\\%s", v, st_fill('t', left - 1 > 99 ? 99 : left - 1));
+    }
+    return v;
+}
+
+/* the ktx*.tmp files in dir (dir ends with its backslash) */
+static int ktx_tmp_count(const char *dir)
+{
+    char *pat = dupprintf("%sktx*.tmp", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pat, &fd);
+    int n = 0;
+    sfree(pat);
+    if (h == INVALID_HANDLE_VALUE)
+        return 0;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            n++;
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    return n;
+}
+
+/* An encrypted .ktx under a TMP and TEMP of 300 characters: the scratch
+ * copy of the decoded lines cannot be made there, so ktx_load_items
+ * answers NULL, ktx_load_temp_failed() reports why (the box then reports
+ * the temporary folder, not a missing file) and no ktx*.tmp is left in the
+ * real %TEMP%. Called
+ * directly: load_open_settings_forced would show its box. */
+static void test_ktx_long_tmp(void)
+{
+    char *dir = st_temp(), *path, *lt, *got;
+    FILE *fp;
+    struct ksf_item *items = NULL;
+    int before, ran = 0;
+
+    path = st_path("%szz-kitty-selftest-enc-%lu.ktx",
+                   dir, (unsigned long)GetCurrentProcessId());
+    fp = fopen(path, "wb");
+    if (!fp) {
+        check(0, "ktx, long TMP: a scratch .ktx is written");
+        return;
+    }
+    /* the second line is neither key=value nor key\value\: the encrypted
+     * form, which takes the scratch copy */
+    fprintf(fp, "HostName\\%s\\\n", KSESS_HOST);
+    fprintf(fp, "NotAKeyValueLine\n");
+    fclose(fp);
+    before = ktx_tmp_count(dir);
+    lt = long_temp_value(dir);
+    env_temp_set(lt);
+    got = kitty_temp_path_dup();
+    /* another folder in its place would take the scratch copy: not run */
+    if (!got || !strncmp(got, lt, strlen(lt))) {
+        items = ktx_load_items(path);
+        ran = 1;
+    }
+    env_temp_restore();
+    if (ran) {
+        check(items == NULL, "ktx, long TMP: an encrypted .ktx is not loaded (NULL)");
+        check(ktx_load_temp_failed(),
+              "ktx, long TMP: the failure is the temporary copy, not the file");
+    }
+    else
+        printf("SKIP  ktx, long TMP: GetTempPath answered another folder (%s): not run\n",
+               got);
+    if (items)
+        ksf_list_free(items);
+    sfree(got);
+    check(ktx_tmp_count(dir) <= before,
+          "ktx, long TMP: no ktx*.tmp left in the real %TEMP%");
     DeleteFileA(path);
 }
 
@@ -1873,6 +1984,382 @@ static void test_mpw_locked_refuses(void)
     ro_rmtree(root);
 }
 
+/* Two reports within two seconds whose files differ only after their
+ * first 300 characters are two reports, each with its file in full. The
+ * repeat was judged on a key cut at 267 characters, which made the second
+ * one a repeat of the first. */
+static void test_locked_save_long_where(void)
+{
+    char *common = st_fill('w', 300);
+    char *w1 = st_path("C:\\%s%s", common, st_fill('a', 297));
+    char *w2 = st_path("C:\\%s%s", common, st_fill('b', 297));
+
+    kitty_set_master_pw_locked_save(dp_kept);
+    dp_reports = 0;
+    ksec_report_locked_save(KSEC_KEPT_EXPORT, w1);
+    check(strlen(w1) == 600 && dp_reports == 1 && strstr(dp_text, w1) != NULL,
+          "long file name: the report names its 600-character file in full");
+    ksec_report_locked_save(KSEC_KEPT_EXPORT, w2);
+    check(dp_reports == 2,
+          "long file name: a second file sharing the first 300 characters is reported too");
+    check(strstr(dp_text, w2) != NULL,
+          "long file name: ...naming the second file in full");
+    ksec_report_locked_save(KSEC_KEPT_EXPORT, w2);
+    check(dp_reports == 2,
+          "long file name: the same file again within two seconds is not reported again");
+    kitty_set_master_pw_locked_save(NULL);
+}
+
+/* ---------- values longer than the old fixed buffers ----------
+ *
+ * Each case gives a value past the length the code used to cut at. It
+ * must come back in full or be refused: never a shorter value
+ * that names something else. Folders deeper than the ANSI calls reach are
+ * made with the wide calls and a \\?\ prefix. */
+
+/* "\\?\" and path in wide characters (sfree it), NULL when not converted */
+static wchar_t *lp_wide(const char *path)
+{
+    wchar_t *w = kitty_acp_to_wide_dup(path), *r;
+    size_t n;
+    if (!w)
+        return NULL;
+    n = wcslen(w);
+    r = snewn(n + 5, wchar_t);
+    wcscpy(r, L"\\\\?\\");
+    wcscpy(r + 4, w);
+    sfree(w);
+    return r;
+}
+static int lp_mkdir(const char *path)
+{
+    wchar_t *w = lp_wide(path);
+    int ok = w && CreateDirectoryW(w, NULL);
+    sfree(w);
+    return ok;
+}
+static void lp_rmdir(const char *path)
+{
+    wchar_t *w = lp_wide(path);
+    if (w)
+        RemoveDirectoryW(w);
+    sfree(w);
+}
+/* The short (8.3) or the long form of a \\?\ path, its prefix taken off,
+ * in the ANSI code page (sfree it), NULL when Windows gave none */
+static char *lp_name(const wchar_t *w, int want_long)
+{
+    DWORD need = want_long ? GetLongPathNameW(w, NULL, 0) :
+                             GetShortPathNameW(w, NULL, 0);
+    DWORD n;
+    wchar_t *buf;
+    char *r = NULL;
+    if (!need)
+        return NULL;
+    buf = snewn(need + 1, wchar_t);
+    n = want_long ? GetLongPathNameW(w, buf, need + 1) :
+                    GetShortPathNameW(w, buf, need + 1);
+    if (n && n < need + 1)
+        r = kitty_wide_to_acp_dup(wcsncmp(buf, L"\\\\?\\", 4) ? buf : buf + 4);
+    sfree(buf);
+    return r;
+}
+
+/* The host CA names the folder store lists; *first gets the first one
+ * (sfree it), -1 when no list was opened */
+static int ca_count(char **first)
+{
+    host_ca_enum *e = enum_host_ca_start();
+    int n = 0;
+    *first = NULL;
+    if (!e)
+        return -1;
+    for (;;) {
+        strbuf *sb = strbuf_new();
+        if (!enum_host_ca_next(e, sb)) {
+            strbuf_free(sb);
+            break;
+        }
+        if (!*first)
+            *first = dupstr(sb->s);
+        strbuf_free(sb);
+        n++;
+    }
+    enum_host_ca_finish(e);
+    return n;
+}
+
+/* The host CA list of a folder store whose root has 250 characters:
+ * <root>\SshHostCAs\* is longer than FindFirstFileA takes, so nothing is
+ * listed. Its cut at 259 characters, <root>\SshHostC, is a file put
+ * there, which the old fixed pattern buffer listed as a CA. A short root
+ * with one CA file is the control. */
+static void test_host_ca_long_root(void)
+{
+    char *tmp = st_temp(), *croot, *cdir, *base, *root, *decoy, *d;
+    char *first = NULL;
+    unsigned long pid = (unsigned long)GetCurrentProcessId();
+    size_t pad;
+    int n;
+    FILE *fp;
+
+    croot = st_path("%skitty-selftest-ca-%lu", tmp, pid);
+    cdir = st_path("%s\\SshHostCAs", croot);
+    CreateDirectoryA(croot, NULL);
+    CreateDirectoryA(cdir, NULL);
+    kitty_set_session_dir(st_path("%s\\Sessions", croot));
+    kitty_set_storage_mode(1);
+    check(write_text(cdir, "ca-one", "x"), "host CA, short root: a CA file is there");
+    n = ca_count(&first);
+    check(n == 1 && first && !strcmp(first, "ca-one"),
+          "host CA, short root: the CA file is listed");
+    sfree(first);
+    ro_rmtree(croot);
+
+    base = st_path("%skitty-selftest-cacut-%lu", tmp, pid);
+    if (strlen(base) + 2 > 250) {
+        printf("SKIP  host CA, 250-character root: %%TEMP%% is too long for it (not run)\n");
+    } else {
+        pad = 250 - strlen(base) - 1;
+        root = st_path("%s\\%s", base, st_fill('r', pad));
+        decoy = st_path("%s\\SshHostC", root);
+        CreateDirectoryA(base, NULL);
+        check(strlen(root) == 250 && lp_mkdir(root),
+              "host CA, 250-character root: the root is made");
+        if ((fp = fopen(decoy, "wb")) != NULL) {
+            fputs("decoy\n", fp);
+            fclose(fp);
+        }
+        check(strlen(decoy) == 259 && GetFileAttributesA(decoy) != INVALID_FILE_ATTRIBUTES,
+              "host CA, 250-character root: a file at the 259-character cut <root>\\SshHostC");
+        kitty_set_session_dir(st_path("%s\\Sessions", root));
+        d = portable_subdir_path("SshHostCAs");
+        check(d && !strcmp(d, st_path("%s\\SshHostCAs", root)),
+              "host CA, 250-character root: the CA folder is <root>\\SshHostCAs");
+        sfree(d);
+        n = ca_count(&first);
+        check(n == 0,
+              "host CA, 250-character root: nothing is listed (the file at the cut is no CA)");
+        if (n > 0)
+            printf("      listed first: '%s'\n", first ? first : "");
+        sfree(first);
+        DeleteFileA(decoy);
+        lp_rmdir(root);
+        RemoveDirectoryA(base);
+    }
+    kitty_set_storage_mode(0);
+    kitty_set_session_dir("");
+}
+
+/* The three folder setters of kitty_storage.c hold 1500 characters in
+ * full: each was a 1024-byte array. */
+static void test_folder_setters(void)
+{
+    char *s = st_path("C:\\%s", st_fill('s', 1497));
+    char *c = st_path("C:\\%s", st_fill('c', 1497));
+    char *h = st_path("C:\\%s", st_fill('h', 1497));
+    char *got;
+
+    kitty_set_session_dir(s);
+    check(strlen(s) == 1500 && !strcmp(kitty_session_dir(), s),
+          "folder setters: the session folder reads back in full");
+    kitty_set_storage_mode(1);
+    kitty_set_config_dir(c);
+    got = portable_config_subdir("Launcher");
+    check(got && !strcmp(got, st_path("%s\\Launcher", c)),
+          "folder setters: the configuration folder reads back in full");
+    sfree(got);
+    kitty_set_hostkey_dir(h);
+    check(!strcmp(kitty_hostkey_dir(), h),
+          "folder setters: the host-key folder reads back in full");
+    got = portable_subdir_path("SshHostKeys");
+    check(got && !strcmp(got, h),
+          "folder setters: ...and is the host-key folder the store uses");
+    sfree(got);
+    kitty_set_hostkey_dir("");
+    kitty_set_config_dir("");
+    kitty_set_storage_mode(0);
+    kitty_set_session_dir("");
+}
+
+/* The helpers of kitty_oldwin.c read a value past MAX_PATH in full, or
+ * answer NULL: never a cut one. */
+static void test_full_reads(void)
+{
+    char *tmp = st_temp(), *lt, *got, *want, *big;
+    unsigned long pid = (unsigned long)GetCurrentProcessId();
+
+    /* kitty_temp_path_dup under a TMP and TEMP of 300 characters */
+    lt = long_temp_value(tmp);
+    env_temp_set(lt);
+    got = kitty_temp_path_dup();
+    env_temp_restore();
+    want = st_path("%s\\", lt);
+    /* a cut one is a start of want, shorter than it and longer than the
+     * real %TEMP% it was built on. Windows' own fallback for an unusable
+     * TMP (the profile folder) is shorter than that: another folder, no cut */
+    check(!got || strlen(got) >= strlen(want) || strlen(got) <= strlen(tmp) ||
+          strncmp(got, want, strlen(got)),
+          "kitty_temp_path_dup: a 300-character %TEMP% in full, or NULL, never cut");
+    if (got && strcmp(got, want))
+        printf("NOTE  kitty_temp_path_dup answered another folder: %s\n", got);
+    sfree(got);
+
+    /* kitty_expand_env_strict_dup: 600 characters, and 40000 (past the
+     * 32K ExpandEnvironmentStrings works in) */
+    big = st_fill('v', 600);
+    SetEnvironmentVariableA("KITTY_SELFTEST_LONGVAR", big);
+    got = kitty_expand_env_strict_dup("%KITTY_SELFTEST_LONGVAR%\\x");
+    check(got && !strcmp(got, st_path("%s\\x", big)),
+          "kitty_expand_env_strict_dup: a 600-character variable in full");
+    sfree(got);
+    big = st_fill('V', 20000);
+    SetEnvironmentVariableA("KITTY_SELFTEST_LONGVAR", big);
+    got = kitty_expand_env_strict_dup("%KITTY_SELFTEST_LONGVAR%%KITTY_SELFTEST_LONGVAR%");
+    want = st_path("%s%s", big, big);
+    check(!got || !strcmp(got, want),
+          "kitty_expand_env_strict_dup: 40000 characters in full, or NULL");
+    if (got && strcmp(got, want))
+        printf("      got %u characters\n", (unsigned)strlen(got));
+    sfree(got);
+    SetEnvironmentVariableA("KITTY_SELFTEST_LONGVAR", NULL);
+
+    /* kitty_long_path_dup: the 8.3 form (under 260) of a folder whose
+     * long form is past 260 */
+    {
+        char *root = st_path("%skitty-selftest-lp-%lu", tmp, pid);
+        char *c1 = st_path("%s\\%s", root, st_fill('L', 130));
+        char *c2 = st_path("%s\\%s", c1, st_fill('M', 130));
+        char *lform, *shortp;
+        wchar_t *w2;
+        int made;
+
+        CreateDirectoryA(root, NULL);
+        made = lp_mkdir(c1) && lp_mkdir(c2);
+        w2 = lp_wide(c2);
+        lform = w2 ? lp_name(w2, 1) : NULL;
+        shortp = w2 ? lp_name(w2, 0) : NULL;
+        if (!made || !lform || !shortp) {
+            check(0, "kitty_long_path_dup: the deep folder and its names are made");
+        } else if (!strchr(shortp, '~') || strlen(shortp) >= MAX_PATH) {
+            printf("SKIP  kitty_long_path_dup: no 8.3 name under 260 characters"
+                   " on this volume (not run)\n");
+        } else {
+            got = kitty_long_path_dup(shortp);
+            check(strlen(lform) > 259 && (!got || !strcmp(got, lform)),
+                  "kitty_long_path_dup: the long form past 260 in full, or NULL");
+            if (got && strcmp(got, lform))
+                printf("      got: %s\n", got);
+            else
+                printf("      %s\n", got ? "answered in full" : "answered NULL");
+            sfree(got);
+        }
+        sfree(lform);
+        sfree(shortp);
+        sfree(w2);
+        lp_rmdir(c2);
+        lp_rmdir(c1);
+        RemoveDirectoryA(root);
+    }
+}
+
+/* unmungestr writes at most outlen bytes, the last of them a NUL. The
+ * bytes after them stay as they were. It used to stop at outlen without
+ * a NUL. With outlen 0 it did not stop at all. want NULL: nothing
+ * written. */
+static int um_case(const char *in, int outlen, const char *want)
+{
+    char buf[16];
+    int i, ok = 1;
+    memset(buf, 'G', sizeof(buf));
+    unmungestr(in, buf, outlen);
+    if (want)
+        ok = !memcmp(buf, want, strlen(want) + 1);
+    for (i = outlen; i < (int)sizeof(buf); i++)
+        if (buf[i] != 'G')
+            ok = 0;
+    return ok;
+}
+
+static void test_munge_bounds(void)
+{
+    size_t n = 6000, i, guard = 8;
+    char *in = st_keep(snewn(n + 1, char));
+    char *out = st_keep(snewn(3 * n + 1 + guard, char));
+    char *dup, *back;
+    int ok;
+
+    check(um_case("abc", 0, NULL), "unmungestr: outlen 0 writes nothing");
+    check(um_case("abc", 1, ""), "unmungestr: outlen 1 is an empty string, nothing after it");
+    check(um_case("abcdef", 4, "abc"), "unmungestr: outlen 4 holds three bytes and the NUL");
+    check(um_case("abc", 4, "abc"), "unmungestr: an exact fit");
+    check(um_case("%41%42", 2, "A"), "unmungestr: \"%41%42\" into 2 is \"A\"");
+    check(um_case("%41%42", 3, "AB"), "unmungestr: \"%41%42\" into 3 is \"AB\"");
+
+    /* 6000 bytes that each escape to three characters */
+    for (i = 0; i < n; i++)
+        in[i] = " \\:%"[i % 4];
+    in[n] = '\0';
+    memset(out, 'G', 3 * n + 1 + guard);
+    mungestr(in, out);
+    ok = out[3 * n] == '\0' && strlen(out) == 3 * n;
+    for (i = 3 * n + 1; i < 3 * n + 1 + guard; i++)
+        if (out[i] != 'G')
+            ok = 0;
+    check(ok, "mungestr: 6000 escaped bytes are 18000 characters, nothing written after them");
+    dup = mungestr_dup(in);
+    check(dup && !strcmp(dup, out), "mungestr_dup: the same 18000 characters");
+    back = dup ? unmungestr_dup(dup) : NULL;
+    check(back && !strcmp(back, in), "unmungestr_dup: the 6000 bytes back in full");
+    sfree(dup);
+    sfree(back);
+}
+
+/* nothing in dir but . and .. */
+static int dir_is_empty(const char *dir)
+{
+    char *pat = dupprintf("%s\\*", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pat, &fd);
+    int empty = 1;
+    sfree(pat);
+    if (h == INVALID_HANDLE_VALUE)
+        return 1;
+    do {
+        if (strcmp(fd.cFileName, ".") && strcmp(fd.cFileName, ".."))
+            empty = 0;
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    return empty;
+}
+
+/* MakeDir with a path past its old arrays of 16383 bytes is refused (0)
+ * and makes no folder: the 17000-character one wrote past them. A short
+ * path is made. */
+static void test_makedir_long(void)
+{
+    char *tmp = st_temp();
+    char *base = st_path("%skitty-selftest-mkdir-%lu",
+                         tmp, (unsigned long)GetCurrentProcessId());
+    char *p17000, *p16381, *ctl;
+    DWORD a;
+
+    CreateDirectoryA(base, NULL);
+    p17000 = st_path("%s\\%s", base, st_fill('x', 17000 - strlen(base) - 1));
+    p16381 = st_path("%s\\%s", base, st_fill('y', 16381 - strlen(base) - 1));
+    check(strlen(p17000) == 17000 && MakeDir(p17000) == 0,
+          "MakeDir: a 17000-character path is refused (no crash)");
+    check(strlen(p16381) == 16381 && MakeDir(p16381) == 0,
+          "MakeDir: a 16381-character path is refused");
+    check(dir_is_empty(base), "MakeDir: ...and no folder is made for either");
+    ctl = st_path("%s\\a\\b", base);
+    check(MakeDir(ctl) == 1, "MakeDir: a short path is made");
+    a = GetFileAttributesA(ctl);
+    check(a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY),
+          "MakeDir: ...and is a folder");
+    ro_rmtree(base);
+}
+
 /* ---------- classic KiTTY's stored forms, protected by every save ----------
  *
  * A session classic KiTTY wrote keeps its three at-rest-protected settings in
@@ -2497,6 +2984,7 @@ int main(int argc, char **argv)
     test_classic_forms_registry();
     printf("== old .ktx export is still read (design doc 8.17) ==\n");
     test_old_ktx();
+    test_ktx_long_tmp();
     printf("== login script protected like a password ==\n");
     test_script_protection();
     printf("== login script readable form ==\n");
@@ -2513,8 +3001,15 @@ int main(int argc, char **argv)
     test_dpapi_fail_registry();
     test_dpapi_fail_portable();
     test_mpw_locked_refuses();
+    test_locked_save_long_where();
     printf("== master password setup whose salt cannot be stored ==\n");
     test_mpw_setup_store_failed();
+    printf("== values longer than the old fixed buffers ==\n");
+    test_host_ca_long_root();
+    test_folder_setters();
+    test_full_reads();
+    test_munge_bounds();
+    test_makedir_long();
     DeleteFileA(roini);
     RemoveDirectoryA(rodir);
     st_paths_free();

@@ -129,6 +129,9 @@ settings_r *kitty_open_settings_r_items(struct ksf_item *items);
 /* The items of a .ktx file, decrypted when it is encrypted; NULL when it
  * cannot be read (kitty_settings_load.c). */
 struct ksf_item *ktx_load_items(const char *filename);
+/* 1 when the last ktx_load_items failed on the temporary copy of an
+ * encrypted file */
+int ktx_load_temp_failed(void);
 /* The .ktx reader and writer (kitty_settings_load.c, kitty_settings_forced.c):
  * passwords as stored on read, left out on write, nothing to the store. */
 void kitty_settings_r_raw_secrets(settings_r *handle);

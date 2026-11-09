@@ -323,9 +323,11 @@ int loadPath(void) {
 	 * a script run from another folder, fed it whatever putty.conf sat there:
 	 * its paths were copied into kitty.ini once on a copy not yet migrated,
 	 * and acted on at every start where kitty.ini cannot be written. */
-	if (puttypath != NULL)
-		SetCurrentDirectory(puttypath);
-	else puttypath = kstore_cwd_dup();
+	/* No program folder: the store would land in the working folder,
+	 * wherever that is. Stop with the reason instead. */
+	if (puttypath == NULL)
+		modalfatalbox(KT_STORE_NO_EXE_DIR);
+	SetCurrentDirectory(puttypath);
 
 	/* JK: set default values - if there is a config file, it will be overwitten */
 	base = GetConfigDirectory() != NULL ? GetConfigDirectory() : puttypath ;   // another config directory is set

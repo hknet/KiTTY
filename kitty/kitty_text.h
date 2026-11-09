@@ -1196,6 +1196,12 @@
 #define KT_WINSCP_OPEN_GLOBAL_PANEL                  "Open App Settings"
 
 /* FileZilla - Connection/SSH/FileZilla and Transfers & Tools/FileZilla */
+/* the Event Log: Start FileZilla without its temporary site entry (no
+ * temporary folder, or the file could not be written) */
+#define KT_XFER_FZ_NO_SITE_ENTRY                     "Start FileZilla: no temporary site entry could be written. FileZilla gets the address only and prompts for the password."
+/* the Event Log: the clipboard command of Run clipboard command did not start */
+#define KT_XFER_RUN_CLIP_TOO_LONG                    "Run clipboard command: not started, %lu characters (Windows starts at most 32767)."
+#define KT_XFER_RUN_CLIP_FAILED                      "Run clipboard command: not started (Windows error %lu)."
 #define KT_FZ_INTEGRATION                            "FileZilla integration"
 #define KT_FZ_TARGET_NOTE                            "Target: as set on Connection > File-Transfer-Settings (Target override)."
 #define KT_FZ_ADDITIONAL_OPTIONS                     "FileZilla additional options"
@@ -5005,8 +5011,12 @@
         "in a restricted zone. Opening it would run a program or write a file " \
         "on this computer:\n\n%s\nYour administrator controls which files may do this."
 #define KT_SETTINGS_FILE_NOT_FOUND                   "File %s not found !"
+/* an encrypted .ktx: its decoded copy could not be written to %TEMP% */
+#define KT_SETTINGS_FILE_NO_TEMP                     "The encrypted file %s could not be read: no temporary copy could be written to the temporary folder (%%TEMP%%)."
 
 /* kitty_store.c: the folder store's error boxes */
+/* savemode=dir: the program folder (the folder store's base) cannot be read */
+#define KT_STORE_NO_EXE_DIR                          "The folder of this program cannot be read, so the session folders cannot be found. KiTTY++ stops: move it to a folder with a shorter path."
 #define KT_STORE_ERR_PREFIX                          "Error: "
 #define KT_STORE_ERR_DIRECTORY                       "Directory: "
 #define KT_STORE_ERR_CODE                            "Error code: "

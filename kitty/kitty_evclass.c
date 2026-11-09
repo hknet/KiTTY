@@ -65,6 +65,12 @@ static const char *const kitty_evclass_notable[] = {
     "kscp was not found. *",
     "WinSCP was not found. *",
     "FileZilla was not found. *",
+    /* FileZilla without its temporary site entry: the password not handed
+     * over (KT_XFER_FZ_NO_SITE_ENTRY) */
+    "Start FileZilla: no temporary site entry could be written.*",
+    /* the clipboard command did not start (KT_XFER_RUN_CLIP_TOO_LONG,
+     * _FAILED) */
+    "Run clipboard command: not started*",
     /* the bell's sound file does not play: the default sound from now on */
     "Bell: the sound file * does not play, the bell uses the default sound*",
     /* an OSC 8 folder link without WinSCP or FileZilla: the path on the

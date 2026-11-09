@@ -4,7 +4,9 @@
  * inheritance is switched off keeps exactly its own access list (a
  * ~/.ssh/config tightened by hand), one that inherits still inherits, a
  * hidden one stays hidden, a new one is simply written, and no temporary
- * file is left behind. Works in a folder of its own under %TEMP%; with
+ * file is left behind. A target past MAX_PATH, or in a folder too long for
+ * GetTempFileName, is refused before anything is written, in its folder or
+ * any folder above it. Works in a folder of its own under %TEMP%; with
  * KITTY_TEST_FAT_DIR naming a folder on a FAT volume the writes are checked
  * there too. Exit 0 = all passed.
  */
@@ -133,6 +135,61 @@ static int no_temp_left(const char *dir)
     return 0;
 }
 
+/* n copies of c (free it) */
+static char *fill(char c, size_t n)
+{
+    char *s = malloc(n + 1);
+    if (!s) {
+        printf("FAIL  out of memory\n");
+        exit(1);
+    }
+    memset(s, c, n);
+    s[n] = '\0';
+    return s;
+}
+
+/* "\\?\" and path in wide characters (free it), for folders past the
+ * reach of the ANSI calls, NULL when not converted */
+static wchar_t *wide_long(const char *path)
+{
+    int n = MultiByteToWideChar(CP_ACP, 0, path, -1, NULL, 0);
+    wchar_t *w;
+    if (n <= 0 || (w = malloc(((size_t)n + 4) * sizeof(wchar_t))) == NULL)
+        return NULL;
+    wcscpy(w, L"\\\\?\\");
+    if (MultiByteToWideChar(CP_ACP, 0, path, -1, w + 4, n) != n) {
+        free(w);
+        return NULL;
+    }
+    return w;
+}
+static int mkdir_long(const char *path)
+{
+    wchar_t *w = wide_long(path);
+    int ok = w && CreateDirectoryW(w, NULL);
+    free(w);
+    return ok;
+}
+static void rmdir_long(const char *path)
+{
+    wchar_t *w = wide_long(path);
+    if (w)
+        RemoveDirectoryW(w);
+    free(w);
+}
+static int no_temp_left_long(const char *dir)
+{
+    char *pat = strf("%s\\kft*.tmp", dir);
+    wchar_t *w = wide_long(pat);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = w ? FindFirstFileW(w, &fd) : INVALID_HANDLE_VALUE;
+    free(pat);
+    free(w);
+    if (h == INVALID_HANDLE_VALUE) return 1;
+    FindClose(h);
+    return 0;
+}
+
 int main(void)
 {
     char *tmp, *dir, *f = NULL, sddl[512];
@@ -221,6 +278,79 @@ int main(void)
             free(fd);
         } else {
             printf("NOTE  no KITTY_TEST_FAT_DIR - the FAT case is not run here\n");
+        }
+    }
+
+    /* 6. a target of 300 characters in a folder of 282: too long for
+     * GetTempFileName, so nothing is written anywhere. The first 259
+     * characters of the target end in the folder of 241 above it: the old
+     * fixed copy of the folder name was cut there. The temporary file was
+     * then made in that folder (and removed when the move failed). A change
+     * notice on that folder sees such a file come and go. */
+    {
+        size_t base = strlen(dir);
+        if (base + 2 > 241) {
+            printf("NOTE  %%TEMP%% is too long for the 300-character target case - not run\n");
+        } else {
+            char *pa = fill('a', 241 - base - 1), *pb = fill('b', 40), *pc = fill('c', 17);
+            char *a = strf("%s\\%s", dir, pa);
+            char *b = strf("%s\\%s", a, pb);
+            char *t = strf("%s\\%s", b, pc);
+            HANDLE ch;
+            DWORD e;
+            int r;
+            check(strlen(t) == 300 && CreateDirectoryA(a, NULL) && mkdir_long(b),
+                  "a 282-character folder below one of 241 is made");
+            ch = FindFirstChangeNotificationA(a, FALSE, FILE_NOTIFY_CHANGE_FILE_NAME);
+            SetLastError(0);
+            r = kitty_write_file_whole(t, body, strlen(body));
+            e = GetLastError();
+            check(r == 0 && e != 0, "a 300-character target is refused, with Windows' reason");
+            check(ch != INVALID_HANDLE_VALUE && WaitForSingleObject(ch, 500) == WAIT_TIMEOUT,
+                  "  no file came or went in the 241-character folder (the old cut)");
+            if (ch != INVALID_HANDLE_VALUE)
+                FindCloseChangeNotification(ch);
+            check(no_temp_left_long(b) && no_temp_left(a) && no_temp_left(dir),
+                  "  no temporary file is left in its folder or above it");
+            rmdir_long(b);
+            RemoveDirectoryA(a);
+            free(t); free(b); free(a); free(pc); free(pb); free(pa);
+        }
+    }
+
+    /* 7. a folder of 247 characters, near what GetTempFileName takes: the
+     * file written complete (the temp name still fits MAX_PATH) or refused
+     * with Windows' reason - never a cut name, nothing left over */
+    {
+        size_t base = strlen(dir);
+        if (base + 2 > 247) {
+            printf("NOTE  %%TEMP%% is too long for the 247-character folder case - not run\n");
+        } else {
+            char *pf = fill('f', 247 - base - 1);
+            char *f247 = strf("%s\\%s", dir, pf);
+            char *t = strf("%s\\t.txt", f247);
+            DWORD e;
+            int r;
+            check(strlen(f247) == 247 && CreateDirectoryA(f247, NULL),
+                  "a 247-character folder is made");
+            SetLastError(0);
+            r = kitty_write_file_whole(t, body, strlen(body));
+            e = GetLastError();
+            if (r) {
+                FILE *in = fopen(t, "rb");
+                char got[64];
+                size_t n = in ? fread(got, 1, sizeof(got) - 1, in) : 0;
+                if (in) fclose(in);
+                got[n] = '\0';
+                check(!strcmp(got, body), "a file in it is written complete");
+            } else {
+                check(e != 0, "a file in it is refused, with Windows' reason");
+                check(GetFileAttributesA(t) == INVALID_FILE_ATTRIBUTES, "  the file is not there");
+            }
+            check(no_temp_left(f247), "  and no temporary file is left in the folder");
+            DeleteFileA(t);
+            RemoveDirectoryA(f247);
+            free(t); free(f247); free(pf);
         }
     }
 

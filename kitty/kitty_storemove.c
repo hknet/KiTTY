@@ -1119,7 +1119,14 @@ void kitty_take_folder_store(HWND hwnd)
     /* The folder's master password, prompted for once - the bundle unlock
      * scans the staged copy, which is the shape it knows. */
     stage = ksm_stage_folder_store(dir, NULL, NULL, NULL);
-    if (!stage || !kitty_unlock_import_bundle(hwnd, stage, &pw)) {
+    if (!stage) {
+        /* no temporary folder: reported as -takefolder reports it */
+        MessageBoxA(hwnd, KT_STOREMOVE_NO_TEMP, KT_STOREMOVE_TITLE_IN,
+                    MB_OK | MB_ICONWARNING);
+        sfree(dir);
+        return;
+    }
+    if (!kitty_unlock_import_bundle(hwnd, stage, &pw)) {
         ksm_unstage(stage);
         sfree(dir);
         return;

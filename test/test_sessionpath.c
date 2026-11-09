@@ -1021,7 +1021,7 @@ static void part_store_blockers(void)
  * folder here (the session folder is not called Sessions). */
 static void part_commands_rename(const char *tmp)
 {
-    char *cfg, *cmd, *src, *dst;
+    char *cfg, *cmd, *src, *dst, *launcher_entry;
     head("a rename carries Sessions_Commands in the configuration directory");
     cfg = dupprintf("%s\\kitty_test_sp_cfg", tmp);
     cmd = dupprintf("rmdir /s /q \"%s\" 2>nul", cfg);
@@ -1045,11 +1045,44 @@ static void part_commands_rename(const char *tmp)
     }
     kitty_set_config_dir(cfg);
     make_session("cmdsrc", "cmd.example", NULL);
+    /* A launcher entry line of 5000 characters (a long label) for the
+     * session: the old 4096-byte line buffer found no session in it, so
+     * the entry kept the old name. */
+    {
+        char *ldir = dupprintf("%s\\Launcher", cfg);
+        FILE *fp;
+        int i;
+        launcher_entry = dupprintf("%s\\long-entry", ldir);
+        CreateDirectoryA(ldir, NULL);
+        fp = fopen(launcher_entry, "wb");
+        if (fp) {
+            for (i = 0; i < 5000 - 8; i++)
+                fputc('L', fp);
+            fputs("\\cmdsrc\\\n", fp);
+            fclose(fp);
+        }
+        ok(GetFileAttributesA(launcher_entry) != INVALID_FILE_ATTRIBUTES,
+           "fixture: a launcher entry line of 5000 characters for cmdsrc");
+        sfree(ldir);
+    }
     {
         char *from[] = { "cmdsrc" };
         char *to[] = { "cmddst" };
         char *err = NULL;
         int r = kitty_session_rename_many(from, to, 1, NULL, NULL, &err);
+        {
+            /* the entry rewritten in full: "<new leaf>\<new name>\" */
+            char got[64];
+            size_t n = 0;
+            FILE *fp = fopen(launcher_entry, "rb");
+            if (fp) {
+                n = fread(got, 1, sizeof(got) - 1, fp);
+                fclose(fp);
+            }
+            got[n] = '\0';
+            ok_eq_str(got, "cmddst\\cmddst\\",
+                      "the 5000-character launcher entry names the new session");
+        }
         dst = dupprintf("%s\\Sessions_Commands\\cmddst\\1", cfg);
         ok(r == KITTY_SESSRENAME_OK && GetFileAttributesA(dst) != INVALID_FILE_ATTRIBUTES &&
            GetFileAttributesA(src) == INVALID_FILE_ATTRIBUTES,
@@ -1065,6 +1098,7 @@ static void part_commands_rename(const char *tmp)
         sfree(dst);
     }
     sfree(src);
+    sfree(launcher_entry);
     del_settings("cmddst");
     kitty_set_config_dir("");
     system(cmd);

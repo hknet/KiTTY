@@ -4985,14 +4985,25 @@ static HWND kx_runcmd_box = NULL ;   /* one confirmation at a time */
 static void kx_runcmd_go( HWND hwnd, char *cmd ) {
     STARTUPINFO si ;
     PROCESS_INFORMATION pi ;
+    size_t len = strlen( cmd ) ;
+    /* Windows starts a command line of 32767 characters at most */
+    if( len > 32767 ) {
+        debug_logevent( KT_XFER_RUN_CLIP_TOO_LONG, (unsigned long)len ) ;
+        return ;
+    }
     chdir( InitialDirectory ) ;
     ZeroMemory( &si, sizeof(si) ) ;
     si.cb = sizeof(si) ;
     ZeroMemory( &pi, sizeof(pi) ) ;
     if( CreateProcess( NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi ) ) {
         CloseHandle( pi.hThread ) ; CloseHandle( pi.hProcess ) ;
-    } else
-        ShellExecute( hwnd, "open", cmd, 0, 0, SW_SHOWDEFAULT ) ;
+    } else {
+        DWORD err = GetLastError() ;
+        if( (INT_PTR)ShellExecute( hwnd, "open", cmd, 0, 0, SW_SHOWDEFAULT ) <= 32 ) {
+            debug_logevent( KT_XFER_RUN_CLIP_FAILED, (unsigned long)err ) ;
+            return ;
+        }
+    }
     if( conf_get_bool( conf, CONF_runcmdnotify ) ) {
         char *note = dupprintf( KT_XFER_RAN_CLIP, cmd ) ;
         kitty_tray_balloon_async( KT_CAP_KITTY, note, NULL ) ;
@@ -6003,6 +6014,9 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
 	if( fzdir != NULL ) {
 		bcat( cmd, " --site=\"1/" ) ; bcat( cmd, KT_FZ_SITE_NAME ) ; bcat( cmd, "\"" ) ;
 	} else {
+		/* No site entry (no temporary folder, or it could not be written):
+		 * the URL without the password, FileZilla prompts for it. */
+		debug_logevent( "%s", KT_XFER_FZ_NO_SITE_ENTRY ) ;
 		/* The URL as ONE quoted argument (qcat): FileZilla takes the folder
 		 * as written - a %20 stays "%20" there, WinSCP decodes it - so the
 		 * folder goes as it is, a '"' in it as \". The password is urlcat'ed:
@@ -6035,7 +6049,7 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
 		 * engine tries the agent's keys, and a password is requested only if
 		 * the server still wants one. A bare user@host URL would instead
 		 * stop at an "Enter password" box BEFORE connecting, agent or not. */
-		if( havepw && mode == 0 ) bcat( cmd, " --logontype=ask" ) ;
+		if( havepw ) bcat( cmd, " --logontype=ask" ) ;
 		else if( !havepw ) bcat( cmd, " --logontype=interactive" ) ;
 	}
 	if( strlen( conf_get_str( conf, CONF_filezilla_options ) ) > 0 ) {

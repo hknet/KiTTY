@@ -573,6 +573,9 @@ add_executable(test_storage_roundtrip
   ${CMAKE_SOURCE_DIR}/kitty/kitty_settings_load.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crypt.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_common.c
+  # str_rtrim for the .ktx reader, and MakeDir under a path longer than
+  # its old fixed arrays
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_tools.c
   no-jump-list.c
   ${CMAKE_SOURCE_DIR}/sshrand.c)
 target_include_directories(test_storage_roundtrip PRIVATE

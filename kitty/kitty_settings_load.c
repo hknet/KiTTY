@@ -122,8 +122,15 @@ static int ktx_line_encrypted( const char *l ) {
  * first, which ksf_load then parses like any other; the copy is removed. */
 /* The items of a .ktx file, decrypted when it is encrypted; NULL when it
  * cannot be read. Also kitty_ktx_gate (kitty_zone.c). */
+/* set by ktx_load_items: its NULL came from the temporary copy of an
+ * encrypted file, not from the file itself */
+static int ktx_temp_failed ;
+int ktx_load_temp_failed( void ) { return ktx_temp_failed ; }
+
 struct ksf_item *ktx_load_items( const char *filename ) {
-	FILE *in = fopen( filename, "rb" ) ;
+	FILE *in ;
+	ktx_temp_failed = 0 ;
+	in = fopen( filename, "rb" ) ;
 	char *line, *tmpdir, tmp[MAX_PATH] ;
 	int encrypted = 0 ;
 	FILE *out ;
@@ -143,10 +150,12 @@ struct ksf_item *ktx_load_items( const char *filename ) {
 	tmpdir = kitty_temp_path_dup() ;
 	if( !tmpdir || !GetTempFileNameA( tmpdir, "ktx", 0, tmp ) ) {
 		sfree( tmpdir ) ;
-		fclose( in ) ; return NULL ;
+		fclose( in ) ; ktx_temp_failed = 1 ; return NULL ;
 	}
 	sfree( tmpdir ) ;
-	if( ( out = fopen( tmp, "wb" ) ) == NULL ) { fclose( in ) ; DeleteFileA( tmp ) ; return NULL ; }
+	if( ( out = fopen( tmp, "wb" ) ) == NULL ) {
+		fclose( in ) ; DeleteFileA( tmp ) ; ktx_temp_failed = 1 ; return NULL ;
+	}
 	rewind( in ) ;
 	while( ( line = ktx_read_line( in ) ) != NULL ) {
 		if( ktx_line_encrypted( line ) ) {
@@ -188,7 +197,9 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	struct ksf_item *items = ktx_load_items( filename ) ;
 	settings_r *src ;
 	if( items == NULL ) {
-		char *buffer = dupprintf( KT_SETTINGS_FILE_NOT_FOUND, filename ) ;   /* the file named whole */
+		/* the file named whole */
+		char *buffer = dupprintf( ktx_load_temp_failed() ? KT_SETTINGS_FILE_NO_TEMP :
+		                          KT_SETTINGS_FILE_NOT_FOUND, filename ) ;
 		MessageBox( NULL, buffer, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
 		sfree( buffer ) ;
 		return ;
