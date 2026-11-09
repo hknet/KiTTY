@@ -24,6 +24,7 @@
 #include "misc.h"
 #include "kitty_hello.h"
 #include "kitty_text.h"     /* the owners-list wordings */
+#include "kitty_random.h"   /* kitty_os_random */
 
 /* ====================================================================
  * The wrapped-secret container. Pure crypto on in-tree primitives - no
@@ -61,12 +62,11 @@
 
 /* System CSPRNG for nonces, salts and generated secrets. PuTTY's own pool
  * is not usable here: pageant.c deliberately stubs random_read() with a
- * fatal error, and this file runs inside kageant. RtlGenRandom is the
- * documented-stable export underneath CryptGenRandom. */
-BOOLEAN NTAPI SystemFunction036(PVOID, ULONG);
+ * fatal error, and this file runs inside kageant: kitty_os_random
+ * (kitty_random.h). */
 static bool hello_random(void *buf, size_t len)
 {
-    return SystemFunction036(buf, (ULONG)len);
+    return kitty_os_random(buf, len);
 }
 
 /* One-shot AES-256-GCM. blob = nonce || ct || tag; call order per

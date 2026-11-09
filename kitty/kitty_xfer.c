@@ -32,6 +32,7 @@
 #include "kitty_tools.h"     /* existfile/existdirectory, poss, set_env */
 #include "kitty_winutil.h"   /* the pickers, RunCommand */
 #include "kitty_oldwin.h"    /* paths read in full: kitty_*_path_dup */
+#include "kitty_random.h"    /* kitty_os_random */
 #include "kitty_dlgbox.h"
 #include "kitty_hello_keys.h" /* kageant_hello_has_sidecar */
 #include "ssh.h"             /* the agent protocol, for the "is it loaded?" check */
@@ -2304,7 +2305,6 @@ static const char *kx_pw_handover_line( int mode ) {
 	}
 }
 
-BOOLEAN NTAPI SystemFunction036( PVOID, ULONG ) ;   /* RtlGenRandom, advapi32 */
 
 /* "<prefix><32 hex digits>": 128 random bits, a name no other process can
  * guess and create first (which made the write fail and the password go on
@@ -2313,7 +2313,7 @@ static char *kx_random_name( const char *dir, const char *prefix ) {
 	unsigned char rnd[16] ;
 	char hex[33] ;
 	int i ;
-	if( !SystemFunction036( rnd, sizeof(rnd) ) ) return NULL ;
+	if( !kitty_os_random( rnd, sizeof(rnd) ) ) return NULL ;
 	for( i = 0 ; i < 16 ; i++ ) sprintf( hex + 2 * i, "%02x", rnd[i] ) ;
 	smemclr( rnd, sizeof(rnd) ) ;
 	return dupprintf( "%s%s%s", dir, prefix, hex ) ;
@@ -2489,7 +2489,6 @@ void kitty_xfer_wait_deletes( DWORD max_ms ) {
 #define KX_PIPE_RUNNING  2   /* a WinSCP is running: the pipe accepts it too */
 #define KX_PIPE_NONE     3   /* no check of the reader on this Windows */
 
-BOOLEAN NTAPI SystemFunction036( PVOID, ULONG ) ;   /* RtlGenRandom, advapi32 */
 
 typedef BOOL (WINAPI *kx_pipe_pid_fn)( HANDLE, PULONG ) ;
 typedef BOOL (WINAPI *kx_cancel_ioex_fn)( HANDLE, LPOVERLAPPED ) ;
@@ -2637,7 +2636,7 @@ static const char *kx_password_pipe( const char *secret ) {
 	int i ;
 
 	if( kx_pp.n >= KX_PWFILES_MAX ) return NULL ;
-	if( !SystemFunction036( rnd, sizeof(rnd) ) ) return NULL ;
+	if( !kitty_os_random( rnd, sizeof(rnd) ) ) return NULL ;
 	for( i = 0 ; i < (int)sizeof(rnd) ; i++ ) {
 		hex[2 * i] = hexd[rnd[i] >> 4] ;
 		hex[2 * i + 1] = hexd[rnd[i] & 0xF] ;

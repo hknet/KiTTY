@@ -29,6 +29,7 @@
 #include "kitty_text.h"     /* shared captions and wordings */
 #include "kitty_gui.h"
 #include "kitty_osc52.h"
+#include "kitty_random.h"   /* kitty_os_random */
 #include "kitty_reply.h"    /* kitty_term_send_reply: kitty_osc52_send_raw passes on to it */
 #include "kitty_dlgbox.h"  /* kitty_confirm_modeless: the write confirmation */
 #include "kitty_theme.h"   /* kitty_theme_frame: the resting frame is the theme's */
@@ -121,13 +122,11 @@ wchar_t *kitty_osc52_get_clipboard(int *len)
  * GDI+, loaded on demand: one conversion is not worth an import an old Windows
  * has to satisfy in the loader.
  */
-/* RtlGenRandom, the documented-stable export underneath CryptGenRandom, present
- * since XP. PuTTY's own pool asserts unless something has referenced it, which
- * at paste time nothing need have. */
-BOOLEAN NTAPI SystemFunction036(PVOID, ULONG);
+/* kitty_os_random (kitty_random.h): PuTTY's own pool asserts unless something
+ * has referenced it, which at paste time nothing need have. */
 void kitty_osc52_random(unsigned char *buf, size_t len)
 {
-    if (!SystemFunction036(buf, (ULONG)len)) {
+    if (!kitty_os_random(buf, len)) {
         /* never happens on a working system; fall back to something that is at
          * least not constant rather than sending an all-zero token */
         size_t i;
