@@ -5276,8 +5276,31 @@ static bool client_fits_text(WinGuiSeat *wgs, int w, int h)
 #ifdef MOD_PERSO
 #define KITTY_STRIP_TICKS 4096         /* marks drawn per frame at most */
 
+/* KiTTY: the terminal's default background over r - the background image
+ * when one is loaded (as under text cells of the default background), else
+ * the colour c. */
+static void kitty_paint_default_bg(WinGuiSeat *wgs, const RECT *r,
+                                   COLORREF c)
+{
+#ifdef MOD_BACKGROUNDIMAGE
+    extern HDC backgrounddc;           /* kitty_image.c, NULL until loaded */
+    extern int kitty_bg_origin_x, kitty_bg_origin_y;
+    if (backgrounddc && r->right > r->left && r->bottom > r->top) {
+        POINT o;
+        o.x = r->left;
+        o.y = r->top;
+        ClientToScreen(wgs->term_hwnd, &o);
+        kp_blit_background(wgs->painter, r, backgrounddc,
+                           o.x - kitty_bg_origin_x, o.y - kitty_bg_origin_y);
+        return;
+    }
+#endif
+    kp_fill_rect(wgs->painter, r, c);
+}
+
 /* KiTTY: the mark strip - the right-most strip_width() pixels of the client
- * area, background colour with a red tick per failed command, placed by
+ * area, the default background (the image when one is loaded) with a red
+ * tick per failed command, placed by
  * where its line is in scrollback + screen. Drawn into the current frame;
  * `clip` limits the drawing (WM_PAINT), NULL draws the whole strip. */
 static void kitty_strip_paint(WinGuiSeat *wgs, const RECT *clip)
@@ -5302,8 +5325,8 @@ static void kitty_strip_paint(WinGuiSeat *wgs, const RECT *clip)
     } else {
         draw = strip;
     }
-    kp_fill_rect(wgs->painter, &draw,
-                 wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT]);
+    kitty_paint_default_bg(wgs, &draw,
+                           wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT]);
 
     n = term_failed_marks(wgs->term, marks, KITTY_STRIP_TICKS, &total);
     /* the scrollback search's hits, amber, the current one taller */
