@@ -275,6 +275,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- Session > Scripting > CR/LF translation **Rec** plays a script
+  recorded by RuTTY or classic KiTTY again. Their recorder stored a typed
+  CR as CR LF, an LF as LF LF and CR LF as CR LF LF LF. Rec sent the file
+  as it was. Each line carried the recorder's extra line feed. A typed LF
+  or CR LF added empty lines. KiTTY++ itself does not record yet.
 - kageant: `kageant key.ppk` beside a running kageant no longer ends with
   an access violation (0xC0000005) when "Load remembered keys at startup"
   is on. The key always reached the running agent. The second kageant

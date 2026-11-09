@@ -193,6 +193,30 @@ static int script_findline(ScriptData *s)
     if (s->nextnextline < s->filebuffer_end) {
         s->nextnextline++;
         s->nextline_c++;
+        /* Rec: a script RuTTY or classic KiTTY recorded. The recorder
+         * ended every line with an LF of its own, so a typed CR is
+         * stored as CR LF, a typed LF as LF LF and a typed CR LF as
+         * CR LF LF LF:
+         *     in the file        sent
+         *     data LF            data
+         *     data LF LF         data LF
+         *     data CR LF         data CR
+         *     data CR LF LF LF   data CR LF
+         * The extra LFs are taken into this line and its own LF is
+         * dropped (RuTTY's script.c, which the 0.84 port left out). */
+        if (s->crlf == SCRIPT_REC) {
+            if (s->nextnextline < s->filebuffer_end &&
+                s->nextnextline[0] == '\n') {
+                s->nextnextline++;
+                s->nextline_c++;
+                if (s->nextnextline - s->filebuffer >= 3 &&
+                    s->nextnextline[-3] == '\r' &&
+                    s->nextnextline < s->filebuffer_end &&
+                    s->nextnextline[0] == '\n')
+                    s->nextnextline++;   /* the LF of CR LF LF LF */
+            }
+            s->nextline_c--;             /* the recorder's own LF */
+        }
     }
     return true;
 }

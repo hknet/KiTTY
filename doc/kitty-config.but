@@ -320,7 +320,11 @@ switch adds per-line conditions, it disables nothing.
 \b \q{CR/LF translation} decides the line ending each line is sent
 with - \q{Off} sends the file's own endings, \q{no LF} strips the
 linefeed, \q{CR} sends carriage return only (what most interactive
-hosts expect), \q{Rec} the recorded form.
+hosts expect), \q{Rec} plays a script recorded by RuTTY or classic
+KiTTY: their recorder stored a typed CR as CR LF, an LF as LF LF and
+CR LF as CR LF LF LF. \q{Rec} sends what was typed. Use it for such
+old recorded scripts only. KiTTY++ cannot record a session yet: a
+recorder is planned for a future release.
 
 A worked example ships as
 \W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/examples/logon-script.ksh}{docs/examples/logon-script.ksh}.
