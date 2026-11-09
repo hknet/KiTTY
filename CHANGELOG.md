@@ -12,7 +12,7 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 - Find bar (Ctrl+Shift+F): a **Case sensitive** box right of the counter
   (Alt+C) makes the case count always. Off, the search stays smart case.
-  The hint line now also shows Enter and Shift+Enter.
+  The hint line now also shows Enter and Shift+Enter. (hknet/KiTTY#76)
 - The Event Log badge: a notable line of the Terminal Window's Event Log
   shows a small badge at the top right of the terminal, "Event Log: 1 new",
   with the latest line in its tooltip. A click opens the Event Log, which
@@ -275,6 +275,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- kageant: `kageant key.ppk` beside a running kageant no longer ends with
+  an access violation (0xC0000005) when "Load remembered keys at startup"
+  is on. The key always reached the running agent. The second kageant
+  then crashed while it saved a startup list of its own. It leaves the
+  startup list alone now: a key added this way is not remembered for the
+  next start.
 - klink, kscp and ksftp use PuTTY's registry hive when kitty.ini has
   `[KiTTY] KiClassName=PuTTY`, as kitty.exe does. Before, `-load` did not
   find a session kitty.exe had saved. A transfer kitty.exe starts checked

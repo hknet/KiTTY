@@ -140,6 +140,18 @@ static void kageant_tick_sync(void)
 }
 static HMENU systray_menu, session_menu;
 static bool already_running;
+
+/* KiTTY: a key added is remembered for startup by the agent itself only.
+ * A second instance (kageant key.ppk beside a running kageant) hands
+ * the key over and ends: it never loaded the startup list and never ran
+ * pageant_init, so its save wrote a list of the one key (2026-06) and
+ * then crashed reading the ,confirm flags from its empty key trees
+ * (0xC0000005, 2026-08 to 2026-11). */
+static void kageant_track_if_agent(const char *path, bool encrypted)
+{
+    if (!already_running)
+        kageant_track_keypath(path, encrypted);
+}
 static FingerprintType fptype = SSH_FPTYPE_DEFAULT;
 
 static char *putty_path;          /* KiTTY: kitty.exe beside kageant */
@@ -1913,7 +1925,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
      */
     ret = pageant_add_keyfile(filename, NULL, &err, encrypted);
     if (ret == PAGEANT_ACTION_OK) {
-        kageant_track_keypath(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
+        kageant_track_if_agent(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
         kageant_keyfile_format_report(filename);
         if (hello_add_offer_armed)
             kageant_gui_add_hint(filename);
@@ -1950,7 +1962,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
                 ret = pageant_add_keyfile(filename, pass, &err, false);
                 burnstr(pass);
                 if (ret == PAGEANT_ACTION_OK) {
-                    kageant_track_keypath(hp, encrypted);
+                    kageant_track_if_agent(hp, encrypted);
                     kageant_keyfile_format_report(filename);
                     if (hello_add_offer_armed)
                         kageant_gui_add_hint(filename);
@@ -2022,7 +2034,7 @@ void win_add_keyfile(Filename *filename, bool encrypted)
         sfree(pps.hello_path);
 
         if (ret == PAGEANT_ACTION_OK) {
-            kageant_track_keypath(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
+            kageant_track_if_agent(filename_to_str(filename), encrypted);   /* KiTTY startup-keys */
             kageant_keyfile_format_report(filename);
             if (hello_add_offer_armed)
                 kageant_gui_add_hint(filename);
