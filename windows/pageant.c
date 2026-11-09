@@ -4259,10 +4259,12 @@ static void keydetail_show_certs(HWND hwnd,
                   dupstr(KT_KACERT_VALID_ALWAYS);
         char *s = st == KCERT_VALID ? dupstr(KT_KACERT_STATUS_VALID) :
                   kcert_state_text(ci, st, days, kageant_cert_date, NULL);
-        char *h = disp->ncerts == 1 ? dupstr(KT_KACERT_DETAIL_HEAD) :
+        /* a head row only to tell several certificates apart */
+        char *h = disp->ncerts == 1 ? NULL :
                   dupprintf(KT_KACERT_DETAIL_HEAD_FMT, (unsigned)(i + 1),
                             (unsigned)disp->ncerts);
-        keydetail_cert_row(lv, h, "", 0);
+        if (h)
+            keydetail_cert_row(lv, h, "", 0);
         keydetail_cert_row(lv, KT_KACERT_DETAIL_CA, ci->ca_fp, 0);
         keydetail_cert_row(lv, KT_KACERT_DETAIL_PRINCIPALS,
                            *ci->principals ? ci->principals : KT_KACERT_NONE,
@@ -4321,18 +4323,26 @@ static INT_PTR CALLBACK KeyDetailsProc(HWND hwnd, UINT msg,
                            KT_KAKEYS_DETAIL_LOADED);
 
         {
-            /* All fingerprint forms at once, SHA-256 first; certificate
-             * forms exist only for keys that carry a certificate. */
-            static const struct { FingerprintType t; const char *label; }
-            fporder[] = {
-                {SSH_FPTYPE_SHA256, KT_KAKEYS_FP_SHA256},
-                {SSH_FPTYPE_MD5, KT_KAKEYS_FP_MD5},
-                {SSH_FPTYPE_SHA256_CERT, KT_KAKEYS_FP_SHA256_CERT},
-                {SSH_FPTYPE_MD5_CERT, KT_KAKEYS_FP_MD5_CERT},
+            /* All fingerprint forms at once, SHA-256 first. A certificate
+             * form is shown only when it differs from the plain one, i.e.
+             * the key carries a certificate. */
+            static const struct {
+                FingerprintType t, plain;
+                const char *label;
+            } fporder[] = {
+                {SSH_FPTYPE_SHA256, SSH_FPTYPE_SHA256, KT_KAKEYS_FP_SHA256},
+                {SSH_FPTYPE_MD5, SSH_FPTYPE_MD5, KT_KAKEYS_FP_MD5},
+                {SSH_FPTYPE_SHA256_CERT, SSH_FPTYPE_SHA256,
+                 KT_KAKEYS_FP_SHA256_CERT},
+                {SSH_FPTYPE_MD5_CERT, SSH_FPTYPE_MD5, KT_KAKEYS_FP_MD5_CERT},
             };
             strbuf *sb = strbuf_new();
             for (size_t i = 0; i < lenof(fporder); i++) {
-                if (!disp->fp_full[fporder[i].t])
+                const char *f = disp->fp_full[fporder[i].t];
+                const char *pf = disp->fp_full[fporder[i].plain];
+                if (!f)
+                    continue;
+                if (fporder[i].t != fporder[i].plain && pf && !strcmp(f, pf))
                     continue;
                 if (sb->len)
                     put_dataz(sb, "\r\n");

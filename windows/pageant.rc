@@ -197,7 +197,7 @@ END
  *    use:" both fitted 52 and 62 units in Tahoma 8 and do not in Segoe UI 9,
  *    so the label column moved out and the edit column moved with it.
  */
-IDD_KEYDETAILS DIALOGEX DISCARDABLE 0, 0, 420, 338
+IDD_KEYDETAILS DIALOGEX DISCARDABLE 0, 0, 420, 287
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION KT_CAP_KA_KEY_DETAILS
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -208,71 +208,71 @@ BEGIN
     EDITTEXT IDC_KEYDETAIL_STATE, 72, 26, 338, 11,
         ES_READONLY | ES_AUTOHSCROLL
     LTEXT KT_RC_KEYDETAILS_FINGERPRINTS, -1, 10, 42, 58, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_KEYDETAIL_FPS, 72, 42, 338, 46,
+    EDITTEXT IDC_KEYDETAIL_FPS, 72, 42, 338, 28,
         ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_HSCROLL | WS_VSCROLL
-    LTEXT KT_RC_KEYDETAILS_COMMENT, -1, 10, 92, 58, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_KEYDETAIL_COMMENT, 72, 92, 338, 26,
-        ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL
+    LTEXT KT_RC_KEYDETAILS_COMMENT, -1, 10, 74, 58, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_KEYDETAIL_COMMENT, 72, 74, 338, 11,
+        ES_READONLY | ES_AUTOHSCROLL
     /* KiTTY: the key's OpenSSH certificates, one block each - CA,
      * principals, validity, state, critical options - the state in amber
      * or red as in the key list's Certificate column */
-    LTEXT KT_RC_KEYDETAILS_CERTS, IDC_KEYDETAIL_CERTS_LBL, 10, 122, 58, 11,
+    LTEXT KT_RC_KEYDETAILS_CERTS, IDC_KEYDETAIL_CERTS_LBL, 10, 89, 58, 11,
         SS_CENTERIMAGE
     CONTROL "", IDC_KEYDETAIL_CERTS, "SysListView32",
         LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SINGLESEL | LVS_SHOWSELALWAYS |
         WS_BORDER | WS_TABSTOP,
-        72, 122, 338, 48
-    LTEXT KT_RC_KEYDETAILS_LOADED_FROM, -1, 10, 174, 58, 11, SS_CENTERIMAGE
-    /* three lines high, a scroll bar for more: the window's extra height
+        72, 89, 338, 40
+    LTEXT KT_RC_KEYDETAILS_LOADED_FROM, -1, 10, 133, 58, 11, SS_CENTERIMAGE
+    /* two lines high, a scroll bar for more: the window's extra height
      * goes to Destinations below (keydetail_anchors) */
-    EDITTEXT IDC_KEYDETAIL_PATHS, 72, 174, 278, 32,
+    EDITTEXT IDC_KEYDETAIL_PATHS, 72, 133, 278, 22,
         ES_READONLY | ES_MULTILINE | ES_AUTOHSCROLL | WS_VSCROLL
     /* KiTTY: re-point a not-loaded entry whose file is absent or will not
      * parse. Never shown on a mismatch - Accept below owns that case. */
-    PUSHBUTTON KT_RC_KEYDETAILS_LOCATE, IDC_KEYDETAIL_LOCATE, 356, 174, 54, 14
+    PUSHBUTTON KT_RC_KEYDETAILS_LOCATE, IDC_KEYDETAIL_LOCATE, 356, 133, 54, 14
     /* KiTTY: the key's destination rules (ssh-add -h, the rule editor
      * Restrict... opens): the count on the first line, one line per
      * destination below it, "any" without. Takes the height the window
      * grows by; Restrict... beside it at its top. */
-    LTEXT KT_RC_KEYDETAILS_DEST, IDC_KEYDETAIL_DEST_LBL, 10, 210, 58, 11,
+    LTEXT KT_RC_KEYDETAILS_DEST, IDC_KEYDETAIL_DEST_LBL, 10, 159, 58, 11,
         SS_CENTERIMAGE
-    EDITTEXT IDC_KEYDETAIL_DEST, 72, 210, 278, 36,
+    EDITTEXT IDC_KEYDETAIL_DEST, 72, 159, 278, 36,
         ES_READONLY | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL
     PUSHBUTTON KT_RC_KEYDETAILS_RESTRICT, IDC_KEYDETAIL_RESTRICT,
-        356, 210, 54, 14
-    LTEXT KT_RC_KEYDETAILS_LIFETIME, IDC_KEYDETAIL_LIFETIME_LBL, 10, 250, 58, 11,
+        356, 159, 54, 14
+    LTEXT KT_RC_KEYDETAILS_LIFETIME, IDC_KEYDETAIL_LIFETIME_LBL, 10, 199, 58, 11,
         SS_CENTERIMAGE
-    EDITTEXT IDC_KEYDETAIL_LIFETIME, 72, 250, 338, 11,
+    EDITTEXT IDC_KEYDETAIL_LIFETIME, 72, 199, 338, 11,
         ES_READONLY | ES_AUTOHSCROLL
     AUTOCHECKBOX KT_RC_KEYDETAILS_DEFER,
-        IDC_KEYDETAIL_DEFER, 10, 268, 300, 12
+        IDC_KEYDETAIL_DEFER, 10, 217, 300, 12
     /* KiTTY: three-valued (none / ask / ask with Windows Hello), so a
      * droplist, not a checkbox. The label keeps the COMBO's height, not the
      * edits' - a combo box sizes its closed height from the font and lands
      * on 14 here, ignoring whatever the template says. */
-    LTEXT KT_RC_KEYDETAILS_CONFIRM_LABEL, IDC_KEYDETAIL_CONFIRM_LBL, 10, 284, 68, 14,
+    LTEXT KT_RC_KEYDETAILS_CONFIRM_LABEL, IDC_KEYDETAIL_CONFIRM_LBL, 10, 233, 68, 14,
         SS_CENTERIMAGE
-    COMBOBOX IDC_KEYDETAIL_CONFIRM, 82, 284, 164, 48,
+    COMBOBOX IDC_KEYDETAIL_CONFIRM, 82, 233, 164, 48,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     /* KiTTY: the ONLY place a changed key file can be accepted. Shown only for
      * a fingerprint mismatch; the startup path used to ask this in a modal at
      * login, where one click ratified a swap. */
     /* KiTTY: this key's own idle re-encrypt time; blank = the agent's
      * default; greyed while the agent setting is enforced. */
-    LTEXT KT_RC_KEYDETAILS_AUTOENC_LABEL, IDC_KEYDETAIL_AUTOENC_LBL, 10, 300, 78, 11,
+    LTEXT KT_RC_KEYDETAILS_AUTOENC_LABEL, IDC_KEYDETAIL_AUTOENC_LBL, 10, 249, 78, 11,
         SS_CENTERIMAGE
     /* an editable combo box: the usual values listed, any other typed */
-    COMBOBOX IDC_KEYDETAIL_AUTOENC, 92, 300, 70, 60,
+    COMBOBOX IDC_KEYDETAIL_AUTOENC, 92, 249, 70, 60,
         CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
-    LTEXT "", IDC_KEYDETAIL_AUTOENC_NOTE, 168, 300, 242, 11, SS_CENTERIMAGE
-    PUSHBUTTON KT_RC_KEYDETAILS_ACCEPT, IDC_KEYDETAIL_ACCEPT, 10, 318, 90, 15
+    LTEXT "", IDC_KEYDETAIL_AUTOENC_NOTE, 168, 249, 242, 11, SS_CENTERIMAGE
+    PUSHBUTTON KT_RC_KEYDETAILS_ACCEPT, IDC_KEYDETAIL_ACCEPT, 10, 267, 90, 15
     /* KiTTY: Hello-protected keys. Protect writes a protected COPY of the
      * key (never rewrites the original); Forget drops ONE source path from
      * the startup list (a deleted plaintext original, a retired stick). */
     PUSHBUTTON KT_RC_KEYDETAILS_PROTECT, IDC_KEYDETAIL_PROTECT,
-        104, 318, 120, 15
-    PUSHBUTTON KT_RC_KEYDETAILS_FORGET, IDC_KEYDETAIL_FORGET, 228, 318, 70, 15
-    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 358, 318, 52, 15
+        104, 267, 120, 15
+    PUSHBUTTON KT_RC_KEYDETAILS_FORGET, IDC_KEYDETAIL_FORGET, 228, 267, 70, 15
+    DEFPUSHBUTTON KT_XFER_BTN_CLOSE, IDOK, 358, 267, 52, 15
 END
 
 /* KiTTY: tree view styles for the rule editor, as the ListView ones above:

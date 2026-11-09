@@ -160,16 +160,17 @@ the key file is not reachable, the file does not load, the file holds
 another key than the one recorded, or no fingerprint is on record for
 the path.
 
-\b \q{Fingerprints:} SHA-256 and MD5, for a certified key also both
-forms including the certificate. A key not loaded shows the
-fingerprint recorded at the last save, if there is one.
+\b \q{Fingerprints:} SHA-256 and MD5. The forms including the
+certificate follow only where they differ from these. A key not loaded
+shows the fingerprint recorded at the last save, if there is one.
 
 \b \q{Comment:} the key's comment.
 
 \b \q{Certificates:} each certificate of the key: its CA's fingerprint,
 the principals, the validity in local time, its status (\q{valid}, or
-amber or red as in the key list) and its critical options.
-\q{none} for a key without a certificate.
+amber or red as in the key list) and its critical options. Several
+certificates each start with \q{Certificate N of M}. \q{none} for a
+key without a certificate.
 
 \b \q{Loaded from:} each key file the key was loaded from, with its
 protection: \q{passphrase}, \q{Windows Hello protected} or

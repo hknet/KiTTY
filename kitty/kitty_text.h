@@ -3391,7 +3391,6 @@
 #define KT_KACERT_MORE_FMT                           "%s (+%u)"
 /* Key details' Certificates list: a head line per certificate ("of" with
  * two or more), then its lines. Valid: %s = the date and time. */
-#define KT_KACERT_DETAIL_HEAD                        "Certificate"
 #define KT_KACERT_DETAIL_HEAD_FMT                    "Certificate %u of %u"
 #define KT_KACERT_DETAIL_CA                          "  CA:"
 #define KT_KACERT_DETAIL_PRINCIPALS                  "  Principals:"
