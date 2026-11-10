@@ -465,9 +465,8 @@ void CreateDefaultIniFile( void ) {
 }
 
 /* A setting kitty.ini did not take is reported once per run, with Windows'
- * reason and the file. The save swaps a full copy in (mini.c storeINI,
- * ReplaceFile), which another program holding the file open or mapped
- * refuses; the panel then just kept the old value at the next start, and
+ * reason and the file. A write another program refuses (one holding the
+ * file locked) left the panel with the old value at the next start, and
  * nobody knew why. Where the report goes follows kitty_reach(): a box on the
  * desktop, a modeless one beside a live session, the prompt for a scripted
  * run, nothing where nobody can see it. */

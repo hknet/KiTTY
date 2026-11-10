@@ -468,7 +468,6 @@ kitty/kitty_xfer.c | kx_fl_probe_start() | pw | KITTY_PW_MAX+1 | password/secret
 
 kitty/kitty_zmodem.c | zm_stderr_gotdata() | screen | 512 | helper stderr text shown on the terminal, flushed when full
 
-kitty/mini/mini.c | ini_main() | buf | 256 | mini.c self-test (ini_main), readINI(sizeof)
 
 kitty/url/urlhack.c | urlhack_launch_url() | msg | 2600 | URL-open-failed text with the URL, snprintf to sizeof (display)
 

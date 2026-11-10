@@ -2072,8 +2072,6 @@
 #define KT_MAIN_INFO_LOADING_KEY                     "Loading %s"
 #define KT_MAIN_WRONG_PASSWORD                       "Wrong password"
 #define KT_MAIN_SAV_UNKNOWN_TYPE                     "Unknown value type"
-#define KT_MAIN_KCHAT_LIB_FAILED                     "Unable to load library kchat.dll"
-#define KT_MAIN_KCHAT_FUNC_FAILED                    "Unable to load main chat function from library kchat.dll"
 #define KT_MAIN_PORTFWD_LEGEND                       "\n[C] Listening in the current process\n[X] Listening in another process\n[-] No Listening\n"
 #define KT_MAIN_CFGDIR_DIAG_DRIVE                    "Drive %c: is not available, so this looks like a " \
         "disconnected disk rather than a missing folder."

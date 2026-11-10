@@ -1,11 +1,7 @@
 
 /*
- * Public interface of the small .ini file library (mini.c). An ini file is
- * held in memory as a SINI: a list of SSECTION, each with a list of SKEY
- * name/value pairs. Declared here are the constructors and destructors, the
- * add/delete/lookup calls for sections and keys, loading and storing a whole
- * file, and the one-shot readINI / writeINI / delINI helpers that read or
- * change a single key by file, section and key name.
+ * The kitty.ini helpers (mini.c): readINI / writeINI / delINI read or change
+ * one key by file, section and key name.
  */
 #ifndef __MINI
 #define __MINI
@@ -27,79 +23,10 @@
 #endif
 
 
-typedef struct s_section {
-	int type ;
-	char * name ;
-	struct s_section * next ; 	// next section
-	struct s_key * first ;		// first key
-	} SSECTION ;
-
-typedef struct s_key {
-	int type ;
-	char * name ;
-	void * value ;
-	struct s_key * next ;
-	} SKEY ;
-
-typedef struct s_ini {
-	char * name ;
-	struct s_section * first ;
-	} SINI ;
-	
-SSECTION * newSECTION( const char * name ) ;
-
-SKEY * newKEY( const char * name, const char * value ) ;
-
-SINI * newINI( void ) ;
-
-void freeSECTION( SSECTION ** Section ) ;
-
-void freeKEY( SKEY ** Key ) ;
-
-void freeINI( SINI ** Ini ) ;
-
-int addSECTION( SSECTION * Section, SSECTION * SectionAdd ) ;
-
-int addINI( SINI * Ini, SSECTION * Section ) ;	
-
-int delSECTION( SSECTION * Section, const char * name ) ;
-
-int addKEY( SSECTION * Section, SKEY * Key ) ;
-
-int delKEY( SSECTION * Section, const char * name ) ;
-
-SSECTION * getSECTION( SSECTION * Section, const char * name ) ;
-
-SSECTION * lastSECTION( SSECTION * Section ) ;
-
-SKEY * getKEY( SSECTION * Section, const char * name ) ;
-
-char * getvalueKEY( SKEY * Key ) ;
-
-int setKEY( SKEY * Key, char * value ) ;
-
-void printKEY( SKEY * Key ) ;
-
-void printSECTION( SSECTION * Section ) ;
-
-void printINI( SINI * Ini ) ;
-
-int loadINI( SINI * Ini, const char * fileName ) ;
-
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
-
-int storeKEY( SKEY * Key, FILE * fp ) ;
-
-int storeSECTION( SSECTION * Section, FILE * fp ) ;
-
-int storeINI( SINI * Ini, const char * filename ) ;
 
 int writeINI( const char * filename, const char * section, const char * key, const char * value ) ;
 
-int writeINISec( const char * filename, const char * section, const char * key, const char * value ) ;
-
 int delINI( const char * filename, const char * section, const char * key ) ;
-
-int delINISec( const char * filename, const char * section, const char * key ) ;
 
 #endif

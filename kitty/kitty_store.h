@@ -27,7 +27,6 @@ void fatal_error(const char *p, ...);
 int get_param( const char * val ) ;
 void mungestr(const char *in, char *out);
 void unmungestr( const char *in, char *out, int outlen ) ;
-void packstr(const char *in, char *out) ;
 DWORD errorShow(const char* pcErrText, const char* pcErrParam) ;
 char *itoa(int value, char *string, int radix);
 int createPath(char* dir) ;

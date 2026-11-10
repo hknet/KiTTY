@@ -71,7 +71,6 @@ int stricmp(const char *s1, const char *s2) ;
 #endif
 char * GetValueDataDup(HKEY hkTopKey, const char * lpSubKey, const char * lpValueName) ;   /* in full (sfree it); NULL = not there */
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
-char * SetSessPath( const char * dec ) ;
 
 // Clean folder names: replace "/" with "\" and " \ " with " \"
 void CleanFolderName( char * folder ) ;

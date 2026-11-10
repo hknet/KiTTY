@@ -21,7 +21,6 @@ void kitty_broadcast_set_send_key( const char *k ) ;   // -sendcmdkey override
 const char *kitty_broadcast_send_key_override( void ) ; // the raw override, "" when none
 const char *kitty_broadcast_send_key( void ) ;         // key a broadcast is SENT with
 
-void routine_server( void * st ) ;
 void SendKeyboard( HWND hwnd, const char * buffer ) ;
 void SendKeyboardPlus( HWND hwnd, const char * st );
 void kitty_sendq_tick( HWND hwnd );   /* TIMER_SENDQ: the typing queue (window.c) */

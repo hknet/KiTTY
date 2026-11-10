@@ -62,38 +62,6 @@ static int NbWindows = 0 ;
 static int NbSkipped = 0 ;
 
 
-//extern const int Default_Port ;
-//void server_run_routine( const int port, const int timeout ) ;
-
-//extern int PORT ; int main_m1( void ) ;
-//void routine_server( void * st ) { main_m1() ; }
-
-typedef void (CALLBACK* LPFNDLLFUNC1)( void ) ;
-void routine_server( void * st ) {
-	HMODULE lphDLL ;               // Handle to DLL
-	LPFNDLLFUNC1 lpfnDllFunc1 ;    // Function pointer
-	
-	/* the name in full: a cut one loaded another DLL (kcha.dll, or <dir>.dll
-	 * in the parent folder); one too long for Windows fails to load */
-	char * buffer = dupprintf( "%s\\kchat.dll", InitialDirectory ) ;
-	lphDLL = LoadLibrary( TEXT( buffer ) ) ;
-	sfree( buffer ) ;
-	//lphDLL = LoadLibrary( TEXT("kchat.dll") ) ;
-	if( lphDLL == NULL ) {
-		MessageBox( MainHwnd, KT_MAIN_KCHAT_LIB_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
-		return ;
-		}
-	if( !( lpfnDllFunc1 = (LPFNDLLFUNC1) GetProcAddress( lphDLL, TEXT("main_m1") ) ) ) {
-		MessageBox( NULL, KT_MAIN_KCHAT_FUNC_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR  );
-		FreeLibrary( lphDLL ) ;
-		return ;
-		}
-	(lpfnDllFunc1) () ;
-	FreeLibrary( lphDLL ) ;
-	return ;
-}
-
-
 /*
  * The typing queue. SendKeyboard and SendKeyboardPlus append steps here and
  * the terminal window's TIMER_SENDQ types them in order (kitty_sendq_tick,

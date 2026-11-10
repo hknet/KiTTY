@@ -157,7 +157,6 @@ void GetAndSendLinePassword( HWND hwnd ) ;
 void kitty_type_text_file( HWND hwnd, const char * filename ) ;
 void ReadInitScript( const char * filename ) ;
 void GetSessionFolderName( const char * session_in, char * folder ) ;
-char * SetSessPath( const char * dec ) ;
 void CleanFolderName( char * folder ) ;
 void set_sshver( const char * vers ) ;
 int RunCommand( HWND hwnd, const char * cmd ) ;   /* 1 started, 0 not (the reason was shown) */

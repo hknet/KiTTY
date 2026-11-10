@@ -39,8 +39,8 @@
  * trailing spaces, and a note that is itself wrapped in quotes, are protected
  * by wrapping the stored value in double quotes: the kitty.ini reader trims
  * whitespace around an UNQUOTED value and strips one wrapping quote pair,
- * keeping what is between the quotes exactly as written (kitty/mini/mini.c,
- * mini_clean_value), so the wrap is precisely what survives it. The registry
+ * keeping what is between the quotes exactly as written (readINI, through
+ * GetPrivateProfileString), so the wrap is precisely what survives it. The registry
  * twin holds the same wrapped one-line form, and the decoder takes the wrap
  * off again there.
  *

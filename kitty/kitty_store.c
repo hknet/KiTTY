@@ -100,8 +100,6 @@ static void kstore_pc_keep_dup(char **dst, const char *raw, int bit)
 	kstore_pc_found |= bit;
 }
 
-static const char hex[16] = "0123456789ABCDEF";
-
 void fatal_error(const char *p, ...) { exit(0) ; }
 /*
 void *safemalloc(size_t n, size_t size) {
@@ -183,24 +181,6 @@ DWORD errorShow(const char* pcErrText, const char* pcErrParam) {
 	sfree(pcHlaska);
 	return erChyba;
 };
-
-/* JK: pack string for use as filename - pack < > : " / \ | */
-void packstr(const char *in, char *out) {
-EMERGENCY_INIT
-    while (*in) {
-EMERGENCY_BREAK
-		if (*in == '<' || *in == '>' || *in == ':' || *in == '"' ||
-	    *in == '/' || *in == '|') {
-	    *out++ = '%';
-	    *out++ = hex[((unsigned char) *in) >> 4];
-	    *out++ = hex[((unsigned char) *in) & 15];
-	} else
-	    *out++ = *in;
-	in++;
-    }
-    *out = '\0';
-    return;
-}
 
 /*
  * JK: create directory if specified as dir1\dir2\dir3 and dir1|2 doesn't exists
@@ -446,25 +426,6 @@ EMERGENCY_BREAK
 	sfree(puttypath);
 	return 1;
 }
-char * SetSessPath( const char * dec ) {
-	int i ;
-	char *pst ;
-	if( !sesspath || !initialsesspath ) return "" ;
-	if( !strcmp(dec,"..") ) {
-		if( strcmp(sesspath, initialsesspath) ) {
-			i=strlen(sesspath)-1 ;
-			while( (sesspath[i]!='\\') && (i>0) ) i--;
-			sesspath[i]='\0';
-		}
-	} else {
-		kstore_set( &sesspath, dupcat( sesspath, "\\", dec ) ) ;
-	}
-	CleanFolderName( sesspath ) ;
-	pst = sesspath+strlen(initialsesspath ) ;
-	while( pst[0]=='\\' ) pst++ ;
-	return pst ;
-}
-
 /*
  * KiTTY (hknet/KiTTY#56): the folder store's four path settings move from
  * classic KiTTY's putty.conf into kitty.ini [KiTTY] - sessions, sshhostkeys,

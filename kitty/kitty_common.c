@@ -120,7 +120,6 @@ char * GetConfigDirectory( void ) { return ConfigDirectory ; }
 int stricmp(const char *s1, const char *s2) ;
 #endif
 int readINI( const char * filename, const char * section, const char * key, char * pStr, size_t pStrSize) ;
-char * SetSessPath( const char * dec ) ;
 
 // Clean folder names: replace "/" with "\" and " \ " with " \"
 void CleanFolderName( char * folder ) {
