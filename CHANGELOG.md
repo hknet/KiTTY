@@ -305,6 +305,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- A long value written after other text could lose its end: the
+  "-sshhandler" report cut another program's long command line and ran
+  the next line into it. The text formatter took a cut piece as
+  complete whenever it was shorter than the whole buffer. Upstream PuTTY
+  has the same test. Its appends are short.
 - Copying a registry installation into a folder store puts each
   `[ConfigBox]` and `[Launcher]` setting into its own section of the
   copy's kitty.ini. They landed in `[KiTTY]`, where nothing reads them,

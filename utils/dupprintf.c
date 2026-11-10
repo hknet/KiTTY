@@ -67,7 +67,14 @@ char *dupvprintf_inner(char *buf, size_t oldlen, size_t *sizeptr,
         int len = vsnprintf(buf + oldlen, size - oldlen, fmt, aq);
         va_end(aq);
 
-        if (len >= 0 && len < size) {
+        /* KiTTY: against the space this call was given (size - oldlen),
+         * not the whole buffer. An append (strbuf_catf / put_fmt into a
+         * strbuf holding text) of a piece longer than the space left but
+         * shorter than the buffer was cut and taken as complete: the rest
+         * of the piece was lost and the next one ran on (the URL handler
+         * report, test/test_strbuf_catf.c). Upstream PuTTY has the same
+         * test; its appends are short. */
+        if (len >= 0 && (size_t)len < size - oldlen) {
             /* This is the C99-specified criterion for snprintf to have
              * been completely successful. */
             *sizeptr = size;

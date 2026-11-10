@@ -261,6 +261,13 @@ add_executable(test_droppath
   test/test_droppath.c
   kitty/kitty_droppath.c)
 
+# KiTTY: unit test for an append into a strbuf that holds text
+# (utils/dupprintf.c dupvprintf_inner): a piece longer than the space left
+# but shorter than the buffer was cut and taken as complete.
+add_executable(test_strbuf_catf
+  test/test_strbuf_catf.c)
+target_link_libraries(test_strbuf_catf utils ${platform_libraries})
+
 # KiTTY: unit test for the two hex digits of the \k and \x escapes of
 # SendKeyboardPlus (kitty/kitty_sendesc.c): never read past the text's end.
 add_executable(test_sendesc
@@ -570,7 +577,7 @@ foreach(t
     test_sessionpath test_sessmenu test_menuslots test_sessorder
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
-    test_termenv test_droppath test_sendesc test_secretmask test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
+    test_termenv test_droppath test_sendesc test_strbuf_catf test_secretmask test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
     test_agentbind test_agentrestrict test_certinfo
     test_auditparse test_auditchain test_eventids test_evclass
     test_commentlinks)
