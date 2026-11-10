@@ -154,39 +154,10 @@ int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD v
 	}
 	
 
-// Set a value in every session (oldvalue==NULL) or only where it holds oldvalue
-void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR oldvalue, LPCTSTR value  ) {
-	HKEY hKey ;
-	TCHAR    achClass[MAX_PATH] = TEXT(""), achKey[MAX_KEY_LENGTH]; 
-	DWORD    cchClassName = MAX_PATH, cSubKeys=0, cbMaxSubKey, cbName=MAX_KEY_LENGTH, cchMaxClass, cValues, cchMaxValue, cbMaxValueData, cbSecurityDescriptor ;
-	FILETIME ftLastWriteTime;
-	
-	int i, retCode ;
-	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
-	RegQueryInfoKey( hKey, achClass, &cchClassName, NULL, &cSubKeys, &cbMaxSubKey, &cchMaxClass
-		, &cValues, &cchMaxValue, &cbMaxValueData, &cbSecurityDescriptor, &ftLastWriteTime) ;
-
-	if (cSubKeys) {
-		for (i=0; i<cSubKeys; i++) {
-			retCode = RegEnumKeyEx(hKey, i, achKey, &cbName, NULL, NULL, NULL, &ftLastWriteTime); 
-			if (retCode == ERROR_SUCCESS) {
-				char * buffer = dupprintf( "%s\\%s", lpSubKey, achKey ) ;
-				char * previousvalue = GetValueDataDup( hMainKey, buffer, name ) ;
-				if( (oldvalue==NULL) || ( previousvalue && !strcmp(previousvalue,oldvalue)) )
-					MessageBox(NULL,achKey,KT_CAP_INFO,MB_OK);
-					//RegTestOrCreate( hMainKey, buffer, name, value ) ;
-				sfree( previousvalue ) ;
-				sfree( buffer ) ;
-			}
-			cbName = MAX_KEY_LENGTH ;
-		}
-	}
-}
-	
 // Export a whole registry key
 void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, strbuf * out, char * text  ) { 
 	HKEY hKey ;
-    TCHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
+    TCHAR    achKey[MAX_KEY_LENGTH + 1];   // a key name is at most 255 characters, plus its NUL
     DWORD    cbName;                   // size of name string 
     TCHAR    achClass[MAX_PATH] = TEXT("");  // buffer for class name 
     DWORD    cchClassName = MAX_PATH;  // size of class string 
@@ -223,7 +194,7 @@ void QuerySubKey( HKEY hMainKey, LPCTSTR lpSubKey, strbuf * out, char * text  ) 
 	// Enumerate the subkeys, until RegEnumKeyEx fails.
 	if (cSubKeys) {
 		for (i=0; i<cSubKeys; i++) { 
-			cbName = MAX_KEY_LENGTH;
+			cbName = sizeof(achKey);
 			retCode = RegEnumKeyEx(hKey, i, achKey, &cbName, NULL, NULL, NULL, &ftLastWriteTime); 
 			if (retCode == ERROR_SUCCESS) {
 				buffer = (char*) malloc( strlen( TEXT(lpSubKey) ) + strlen( achKey ) + 100 ) ;

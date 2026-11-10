@@ -318,6 +318,8 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   Login" on Application > KiTTY++ Settings > Launcher): a change Windows
   refused showed the new state while nothing changed. A message box now
   gives the reason. The tick shows what is in force.
+- `KiTTY.ses.updt`: a saved session with a name of 255 characters was
+  left out of `KiTTY.ses.updt.reg`. It gets its section now.
 - `/screenshot` in an installed KiTTY++ wrote into the program folder
   when the Pictures folder was 255 characters long. It goes to
   `Pictures\KiTTY++` at any length now, or the result line gives the

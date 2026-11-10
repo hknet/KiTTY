@@ -298,7 +298,7 @@ kitty/kitty_regbackup.c | sav_hive_of_file() | raw | 8192 | first 8 KB of a .reg
 kitty/kitty_regbackup.c | sav_hive_of_file() | text | 8192 | that file head as narrow text, loop bounded
 
 kitty/kitty_registry.c | RegCountKey() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
-kitty/kitty_registry.c | RegUpdateAllSessions() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
+kitty/kitty_registry.c | QuerySubKey() | achKey | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
 kitty/kitty_registry.c | QuerySubKey() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
 kitty/kitty_registry.c | InitAllSessions() | chunk | 4096 | fread chunk of the .ses.updt file, size passed; appended to a growing strbuf
 kitty/kitty_registry.c | RegDelTree() | szName | MAX_PATH | subkey name from RegEnumKeyEx (size passed, key names at most 255); the child path is built with dupprintf

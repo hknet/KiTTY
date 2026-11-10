@@ -44,7 +44,6 @@ int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR valu
 int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD value ) ;
 
 // Set a value in every session (oldvalue==NULL) or only where it holds oldvalue
-void RegUpdateAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR oldvalue, LPCTSTR value  ) ;
 
 // Export a whole registry key
 struct strbuf ;   /* QuerySubKey writes the .reg into one */

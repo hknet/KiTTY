@@ -19,6 +19,7 @@ AI agentic use cases: [docs/AGENTIC-USE.md](docs/AGENTIC-USE.md) is for the huma
   - [Quick connect (type a host instead of picking a session)](#quick-connect-type-a-host-instead-of-picking-a-session)
   - [Portability](#portability)
   - [Importing old sessions](#importing-old-sessions)
+  - [Set values in every session (registry store)](#set-values-in-every-session-registry-store)
   - [Shortcuts for pre-defined commands](#shortcuts-for-pre-defined-commands)
   - [Session launcher](#session-launcher)
   - [Automatic logon script](#automatic-logon-script)
@@ -417,6 +418,10 @@ Two settings are left behind deliberately:
 `SaveWindowPos` **is** carried over. It is called `SetWindowPos` now, and a session that still has the old name is read through it — on import and on an ordinary load. A pinned position that is off-screen is moved onto the nearest monitor, so an old session cannot put a window out of reach.
 
 (no screenshot)
+
+### Set values in every session (registry store)
+
+A file `KiTTY.ses.updt` beside kitty.exe holds value lines as in a `.reg` file (`"TermWidth"=dword:00000064`). At the next start KiTTY++ writes `KiTTY.ses.updt.reg`, one section per saved session (Default Settings included) with those lines, and deletes the `.ses.updt`. Importing the `.reg` (a double click, or `reg import`) sets the values in every one of them, also where a session has its own value. A line `"TermWidth"=-` deletes the value from every session instead. Sessions saved after that start are not in it. The sessions are read from the registry: with a portable store the `.reg` holds no sections.
 
 ### Shortcuts for pre-defined commands
 
