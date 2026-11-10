@@ -1,6 +1,7 @@
 /*
  * kitty_launcher.c - the KiTTY launcher: a tray-icon process whose menu lists
- * the saved sessions (built from the Launcher key or directory tree), starts
+ * the saved sessions (read from the store into memory, or with [Launcher]
+ * reload=no from the hand-edited Launcher key or folder), starts
  * them, and offers the configuration box, the session editor and the list of
  * open KiTTY windows (hide / unhide / switch).
  * It also owns the launcher-side extras: global per-session hotkeys, the
@@ -55,7 +56,6 @@
 #include "kitty_winutil.h"
 #include "kitty_dlgbox.h"
 #include "kitty_launcher.h"
-#include "kitty_inifile.h"   /* KITTY_RO_REFUSED: readonly=yes */
 #include "winfont_fallback.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
@@ -106,7 +106,8 @@
  * click, so the menu is still on the screen, and the refresh runs behind it. */
 #define KLWM_REFRESHINPLACE	(WM_USER+18)
 /* Posted from WM_CREATE right after the tray icon is added, folder store only:
- * the first copy of the store into Launcher\ (see LauncherStoreCopyPending). */
+ * the first read of the store into the menu entries (see
+ * LauncherStoreCopyPending). */
 #define KLWM_STORECOPY		(WM_USER+19)
 /* "Open in WinSCP" / "Open in FileZilla" was chosen in a saved session's
  * context menu. Posted: it runs after the menu loop (LauncherSessionContextMenu). */
@@ -159,7 +160,6 @@ static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) 
 #include "kitty_startup_shortcut.h"   /* KiTTY: on-request Startup-folder shortcut */
 #include "kitty_workplace.h"          /* KiTTY: workplace proxy mode arming */
 #include "kitty_notice.h"           /* KiTTY: our own arm/disarm notice window */
-#include "kitty_store_acl.h"        /* KiTTY: the Launcher folder: owner-only rights */
 
 static HMENU MenuLauncher = NULL ;
 static HMENU HideMenu ;
@@ -175,13 +175,13 @@ static int LauncherConfReload( void ) {
 	if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_RELOAD, buffer, sizeof(buffer) ) && !stricmp( buffer, "NO" ) ) return 0 ;
 	return 1 ;
 }
-/* Folder store: the start-up copy of the store waits until the tray icon is
+/* Folder store: the start-up read of the store waits until the tray icon is
  * up. It reads every session file the launcher has not judged yet (the
  * content decides what is a session), which on a cold disk takes a second
  * or more at a few hundred sessions; done before the window, that second
  * kept the icon away. It also fills the verdict cache, so every later
- * Refresh reads only changed files. Until it runs, the menu is the one the
- * previous launcher left in Launcher\. */
+ * Refresh reads only changed files. Until it runs, the menu holds no
+ * session. */
 static int LauncherStoreCopyPending = 0 ;
 static POINT LauncherMenuPoint ;
 static int LauncherMenuPointValid = 0 ;
@@ -772,34 +772,36 @@ static int LauncherMenuCap( void ) {
 	return NB_MENU_MAX ;
 }
 
-/* readonly=yes: the Launcher key / folder is the launcher's copy of the
- * session list, deleted and rebuilt at every refresh - which a read-only
- * store refuses. InitLauncherRegistry keeps the entries here instead, by the
- * same rules, and InitLauncherMenu builds the menu from them
- * (ReadLauncherEntries). ilr_ro_built: a rebuild ran under readonly; with
- * the reload switched off ("Keep my hand-edited launcher menu") none runs,
- * and the hand-edited copy is read as before. */
-static struct kitty_launcher_entry * ilr_ro = NULL ;
-static size_t ilr_ro_cap = 0 ;
-static int ilr_ro_n = 0, ilr_ro_built = 0 ;
+/* [Launcher] reload=yes (the default): the menu's session entries, read
+ * from the saved sessions by LauncherCollectSessions and kept in memory.
+ * InitLauncherMenu builds the menu from them (ReadLauncherEntries). Nothing
+ * is written: a Launcher key or folder an older build left behind stays as
+ * it is and is not read. With reload=no ("Keep my hand-edited launcher
+ * menu") the menu is read from that hand-edited copy instead, which the
+ * launcher never writes. launcher_entries_built: a collection ran. */
+static struct kitty_launcher_entry * launcher_entries = NULL ;
+static size_t launcher_entries_cap = 0 ;
+static int launcher_entries_n = 0, launcher_entries_built = 0 ;
 
-static void ilr_ro_clear( void ) {
+static void launcher_entries_clear( void ) {
 	int i ;
-	for( i = 0 ; i < ilr_ro_n ; i++ ) {
-		sfree( ilr_ro[i].folder ) ;
-		sfree( ilr_ro[i].session ) ;
+	for( i = 0 ; i < launcher_entries_n ; i++ ) {
+		sfree( launcher_entries[i].folder ) ;
+		sfree( launcher_entries[i].session ) ;
 		}
-	ilr_ro_n = 0 ;
+	launcher_entries_n = 0 ;
 	}
 
-/* folder "Default" (or none) is the top level, as in the copy */
-static void ilr_ro_add( const char * folder, const char * session ) {
+/* folder "Default" (or none) is the top level */
+static void launcher_entries_add( const char * folder, const char * session ) {
 	if( session == NULL || !session[0] ) return ;
-	sgrowarray( ilr_ro, ilr_ro_cap, (size_t)ilr_ro_n ) ;
-	ilr_ro[ilr_ro_n].folder = dupstr( ( folder == NULL || !strcmp( folder, "Default" ) ) ? "" : folder ) ;
-	ilr_ro[ilr_ro_n].session = dupstr( session ) ;
-	ilr_ro_n++ ;
+	sgrowarray( launcher_entries, launcher_entries_cap, (size_t)launcher_entries_n ) ;
+	launcher_entries[launcher_entries_n].folder = dupstr( ( folder == NULL || !strcmp( folder, "Default" ) ) ? "" : folder ) ;
+	launcher_entries[launcher_entries_n].session = dupstr( session ) ;
+	launcher_entries_n++ ;
 	}
+
+static void LauncherCollectSessions( void ) ;
 
 static HMENU InitLauncherMenu( char * Key ) {
 	HMENU menu ;
@@ -810,10 +812,14 @@ static HMENU InitLauncherMenu( char * Key ) {
 	 * every caller replaces it (or grafts the new ids into it) right after. */
 	kitty_menuslots_reset( LauncherMenuCap() ) ;
 
-	if( ilr_ro_built && GetReadOnlyFlag() ) {
-		/* readonly=yes: from the entries the last rebuild kept */
-		ReadLauncherEntries( menu, ilr_ro, ilr_ro_n, "", &nbitem ) ;
+	if( LauncherConfReload() ) {
+		/* reload=yes: from the entries in memory. None collected yet (reload
+		 * switched on in kitty.ini by hand): collected here, except before
+		 * the folder store's deferred first read. */
+		if( !launcher_entries_built && !LauncherStoreCopyPending ) LauncherCollectSessions() ;
+		ReadLauncherEntries( menu, launcher_entries, launcher_entries_n, "", &nbitem ) ;
 	} else if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
+		/* reload=no: the hand-edited copy */
 		char * KeyName = dupprintf( "%s\\%s", kitty_registry_base(), Key ) ;
 		ReadSpecialMenu( menu, KeyName, &nbitem, 0 ) ;
 		sfree( KeyName ) ;
@@ -940,9 +946,9 @@ static HMENU InitLauncherMenu( char * Key ) {
 
 #ifdef KITTY_TEST_BUILD_LABEL
 /*
- * TEST BUILDS ONLY: how long the two halves of a menu refresh take - the copy
- * of the store into Launcher\ (InitLauncherRegistry) and the menu read from
- * that copy (InitLauncherMenu). Written only when KITTY_LAUNCHER_TIMING is set
+ * TEST BUILDS ONLY: how long the two halves of a menu refresh take - the read
+ * of the store into the menu entries (LauncherCollectSessions) and the menu
+ * built from them (InitLauncherMenu). Written only when KITTY_LAUNCHER_TIMING is set
  * in the environment, one line per call, to launcher_timing.log beside the
  * executable. A release knows neither the variable nor the code.
  */
@@ -1019,45 +1025,15 @@ static const char * kitty_launcher_sessions_root( void ) {
 	return root ;
 	}
 
-/* What InitLauncherRegistry wrote and what it could not, with the first
- * reason: /initlauncher reports them, the launcher's own refreshes do not
- * report. */
-static int ilr_ok, ilr_fail ;
-static DWORD ilr_err ;
-static void ilr_note( int ok ) {
-	if( ok ) ilr_ok++ ;
-	else { if( !ilr_fail ) ilr_err = GetLastError() ; ilr_fail++ ; }
-	}
-/* one menu entry file: "<text>", checked to the close */
-static void ilr_write_file( const char * path, const char * text ) {
-	FILE * fp = fopen( path, "wb" ) ;
-	int ok = fp != NULL ;
-	if( fp != NULL ) {
-		if( fputs( text, fp ) < 0 ) ok = 0 ;
-		if( fclose( fp ) != 0 ) ok = 0 ;
-		}
-	ilr_note( ok ) ;
-	}
-
-// Fill the Launcher registry key with the saved sessions. Returns the
-// entries written; *failed (when wanted) the ones that were not and
-// *err the first one's reason. -1: the Launcher folder (folder store) could
-// not be made, *err its reason - with `failed` NULL (the launcher's own
-// refreshes, no session to stop) that is still a box, with `failed` set
-// (/commands in a live session) only the caller's report.
-int InitLauncherRegistry( int * failed, DWORD * err ) {
+/* [Launcher] reload=yes: the saved sessions into the menu entries in
+ * memory (launcher_entries), by the rules the Launcher copy had. Writes
+ * nothing. */
+static void LauncherCollectSessions( void ) {
 	HKEY hKey ;
 	char * buffer ;
 	int i;
-	/* readonly=yes: the Launcher key / folder is neither deleted nor
-	 * rebuilt; the entries the copy would hold are kept in memory (ilr_ro)
-	 * and the menu is built from them. KITTY_RO_REFUSED, nothing failed. */
-	int ro = GetReadOnlyFlag() ;
-	ilr_ok = ilr_fail = 0 ; ilr_err = 0 ;
-	if( ro ) {
-		ilr_ro_clear() ;
-		ilr_ro_built = 1 ;
-		}
+	launcher_entries_clear() ;
+	launcher_entries_built = 1 ;
 
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
 		TCHAR achClass[MAX_PATH] = TEXT("");
@@ -1066,16 +1042,10 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 		FILETIME ftLastWriteTime;
 		LONG r ;
 
-		buffer = dupprintf( "%s\\Launcher", kitty_registry_base() ) ;
-		if( !ro ) {
-			RegDelTree (HKEY_CURRENT_USER, buffer ) ;
-			RegTestOrCreate( HKEY_CURRENT_USER, buffer, NULL, NULL ) ;
-			}
-		sfree( buffer ) ;
 		buffer = dupprintf( "%s\\Sessions", kitty_registry_base() ) ;
 		r = RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) ;
 		sfree( buffer ) ;
-		if( r != ERROR_SUCCESS ) goto done ;
+		if( r != ERROR_SUCCESS ) return ;
 
 		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) != ERROR_SUCCESS )
 			cSubKeys = 0 ;
@@ -1096,10 +1066,7 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 						if( hr == ERROR_SUCCESS && hide )
 							continue ;
 					}
-					/* Default Settings is the template, not a session to start.
-					 * Skipped HERE, where the copy is written: the menu reader
-					 * dropped it only at the top level, so one saved with a
-					 * Folder value came back inside that folder's submenu. */
+					/* Default Settings is the template, not a session to start. */
 					sess = unmungestr_dup( lpData ) ;
 					if( !strcmp( sess, KITTY_DEFAULT_SESSION ) ) { sfree( sess ) ; continue ; }
 					/* KiTTY (hknet/KiTTY#55): a session stored under a folder
@@ -1113,21 +1080,7 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 						if( folder == NULL ) folder = dupstr( "Default" ) ;
 						}
 					CleanFolderName( folder ) ;
-					if( ro ) {	/* in memory, nothing written */
-						ilr_ro_add( folder, sess ) ;
-						sfree( folder ) ;
-						sfree( sess ) ;
-						continue ;
-						}
-					if( !strcmp( folder, "Default" ) || (strlen(folder)<=0) )
-						buffer = dupprintf( "%s\\Launcher", kitty_registry_base() ) ;
-					else
-						buffer = dupprintf( "%s\\Launcher\\%s", kitty_registry_base(), folder ) ;
-					/* The entry is labelled with the session's own name; the
-					 * data is the full path that -load takes. */
-					if( strlen(sess) > 0 )
-						ilr_note( RegTestOrCreate( HKEY_CURRENT_USER, buffer, (char*)ksp_leaf( sess ), sess ) ) ;
-					sfree( buffer ) ;
+					launcher_entries_add( folder, sess ) ;
 					sfree( folder ) ;
 					sfree( sess ) ;
 				}
@@ -1136,93 +1089,21 @@ int InitLauncherRegistry( int * failed, DWORD * err ) {
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		/* KiTTY (hknet/KiTTY#55): every session of the folder tree, by the
 		 * store's own enumeration (nested folders, dot-files and non-session
-		 * files left out). One file per entry, "label\session\": the label is
-		 * the session's own name - the menu reader splits at the FIRST '\',
-		 * so it must hold none - and the session is the full path. Every
-		 * path is held in full: one too long for Windows fails to be
-		 * written, and is counted as such. */
-		char * ldir = portable_config_subdir( "Launcher" ) ;
+		 * files left out). */
 		int nn = 0, k ;
-		char ** names ;
-		if( !ro ) {
-			/* a new Launcher folder gets the owner-only rights; one that was
-			 * there is made again as before */
-			int lnew = ldir != NULL && GetFileAttributesA( ldir ) == INVALID_FILE_ATTRIBUTES ;
-			if( ldir != NULL ) DelDir( ldir ) ;
-			if( lnew ) kitty_store_acl_mkdir( ldir ) ;
-			if( ldir == NULL || !MakeDir( ldir ) ) {
-				/* MakeDir's own last error is its final existence check; one
-				 * more plain attempt gives Windows' reason (a FILE of that
-				 * name: "already exists"). Nothing below can be written. */
-				if( ldir == NULL || !CreateDirectoryA( ldir, NULL ) ) {
-					ilr_err = ldir == NULL ? ERROR_PATH_NOT_FOUND : GetLastError() ;
-					sfree( ldir ) ;
-					if( failed == NULL ) MessageBox(NULL,KT_MSG_LAUNCHER_DIR_FAILED,KT_CAP_ERROR,MB_OK|MB_ICONERROR);
-					if( failed ) *failed = 0 ;
-					if( err ) *err = ilr_err ;
-					return -1 ;
-					}
-				}
-			}
-		names = kitty_session_names( &nn ) ;
+		char ** names = kitty_session_names( &nn ) ;
 		for( k = 0 ; k < nn ; k++ ) {
-			const char * leaf = ksp_leaf( names[k] ) ;
-			char * fld, * folder, * mleaf, * fullpath ;
+			char * fld, * folder ;
 			if( !strcmp( names[k], KITTY_DEFAULT_SESSION ) ) continue ;   /* the template, whatever folder it gives */
 			fld = kitty_read_session_folder( names[k] ) ;
 			folder = dupstr( fld ? fld : "" ) ;
 			sfree( fld ) ;
 			CleanFolderName( folder ) ;
-			if( ro ) {	/* in memory, nothing written */
-				ilr_ro_add( folder, names[k] ) ;
-				sfree( folder ) ;
-				continue ;
-				}
-			mleaf = mungestr_dup( leaf ) ;
-			if( strlen(folder) > 0 && strcmp(folder,"Default") ) {
-				/* each folder component on its own, as the reader unmunges it */
-				strbuf * mfold = strbuf_new() ;
-				const char * q = folder ;
-				while( *q ) {
-					const char * e = strchr( q, '\\' ) ;
-					size_t n = e ? (size_t)(e - q) : strlen( q ) ;
-					char * comp = dupprintf( "%.*s", (int)n, q ) ;
-					char * mcomp = mungestr_dup( comp ) ;
-					if( mfold->len ) put_byte( mfold, '\\' ) ;
-					put_dataz( mfold, mcomp ) ;
-					sfree( mcomp ) ;
-					sfree( comp ) ;
-					q += n ; if( *q == '\\' ) q++ ;
-					}
-				fullpath = dupprintf( "%s\\%s", ldir, mfold->s ) ;
-				MakeDir( fullpath ) ;
-				sfree( fullpath ) ;
-				fullpath = dupprintf( "%s\\%s\\%s", ldir, mfold->s, mleaf ) ;
-				strbuf_free( mfold ) ;
-				}
-			else
-				fullpath = dupprintf( "%s\\%s", ldir, mleaf ) ;
-			{
-				char * text = dupprintf( "%s\\%s\\", leaf, names[k] ) ;
-				ilr_write_file( fullpath, text ) ;
-				sfree( text ) ;
-			}
-			sfree( fullpath ) ;
-			sfree( mleaf ) ;
+			launcher_entries_add( folder, names[k] ) ;
 			sfree( folder ) ;
 			}
 		kitty_session_names_free( names, nn ) ;
-		sfree( ldir ) ;
 	}
-done:
-	if( ro ) {
-		if( failed ) *failed = 0 ;
-		if( err ) *err = 0 ;
-		return KITTY_RO_REFUSED ;
-		}
-	if( failed ) *failed = ilr_fail ;
-	if( err ) *err = ilr_err ;
-	return ilr_ok ;
 }
 
 /* KiTTY #544: the launcher menu shows "Ctrl+Shift+<letter>" accelerators for the
@@ -1715,7 +1596,7 @@ static void LauncherRefreshInPlace( HWND hwnd ) {
 	LauncherRefreshTick = GetTickCount() ;
 	LauncherRefreshSpin = 0 ;
 	LauncherRefreshSpinPaint( '-' ) ;          /* seen before the work starts */
-	if( LauncherConfReload() ) InitLauncherRegistry( NULL, NULL ) ;
+	if( LauncherConfReload() ) LauncherCollectSessions() ;
 	/* NOT RefreshMenuLauncher(): that destroys the menu that is on the screen. */
 	LauncherPendingMenu = InitLauncherMenu( "Launcher" ) ;
 	/* An explicit request for the current state, so a changed hotkey-conflict
@@ -2561,7 +2442,7 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 static void LauncherRefreshSessionsAndHotkeys( HWND hwnd ) {
 	if( LauncherConfReload() ) {
 		LAUNCHER_TIMING_START ;
-		InitLauncherRegistry( NULL, NULL ) ;
+		LauncherCollectSessions() ;
 		LAUNCHER_TIMING_END( "store" ) ;
 	}
 	RefreshMenuLauncher() ;
@@ -2841,7 +2722,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 	TrayIcone.hWnd = hwnd ;
 	ResShell = Shell_NotifyIcon(NIM_ADD, &TrayIcone);
 	/* Normally queued ahead of any click on the icon, so the first menu
-	 * opened is built from the fresh copy. */
+	 * opened holds the sessions. */
 	if( LauncherStoreCopyPending ) PostMessage( hwnd, KLWM_STORECOPY, 0, 0 ) ;
 	if( ResShell ) {
 		LauncherSetTrayTip() ;
@@ -2876,8 +2757,8 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 		 * existed, so its expiry timer could not be set against it then. */
 		if( kitty_workplace_holding() && kitty_workplace_minutes_left() )
 			SetTimer( hwnd, LAUNCHER_WORKPLACE_TIMER, 30000, NULL ) ;
-		/* startup: conflicts balloon. With the store copy still to come,
-		 * KLWM_STORECOPY registers them from the fresh one instead. */
+		/* startup: conflicts balloon. With the store read still to come,
+		 * KLWM_STORECOPY registers them after it instead. */
 		if( !LauncherStoreCopyPending ) LauncherRegisterHotkeys( hwnd, 1 ) ;
 		if (IsWindowVisible(hwnd)) ShowWindow(hwnd, SW_HIDE);
 		//SendMessage(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
@@ -2891,12 +2772,12 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 			break ;
 
 		case KLWM_STORECOPY :
-			/* A Refresh already running makes the same copy. */
+			/* A Refresh already running makes the same read. */
 			if( LauncherStoreCopyPending && !LauncherRefreshBusy ) {
 				LauncherStoreCopyPending = 0 ;
 				{
 					LAUNCHER_TIMING_START ;
-					InitLauncherRegistry( NULL, NULL ) ;
+					LauncherCollectSessions() ;
 					LAUNCHER_TIMING_END( "store-first" ) ;
 				}
 				RefreshMenuLauncher() ;
@@ -3292,7 +3173,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					  CheckVersionFromWebSite( hwnd, 0 ) ; }
 					break ;
 				case IDM_LAUNCHER+7:
-					if( LauncherConfReload() ) InitLauncherRegistry( NULL, NULL ) ;
+					if( LauncherConfReload() ) LauncherCollectSessions() ;
 					RefreshMenuLauncher() ;
 					/* Manual Refresh is an explicit request for the current
 					 * state, so a changed conflict report balloons here too. */
@@ -3501,7 +3382,7 @@ int WINAPI Launcher_WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int s
 		if( IniFileFlag == SAVEMODE_DIR )
 			LauncherStoreCopyPending = 1 ;   /* posted from WM_CREATE */
 		else
-			InitLauncherRegistry( NULL, NULL ) ;
+			LauncherCollectSessions() ;
 	}
 		
 	MainHwnd = CreateWindowEx(0, className, "KiTTYLauncher",

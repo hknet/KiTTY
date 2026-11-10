@@ -763,18 +763,13 @@ static int cmd_fileassoc( HWND hwnd, char * arg ) {
 }
 
 #ifdef MOD_LAUNCHER
+/* The running launchers rebuild their menus: the refresh broadcast of the
+ * configuration box's Save. Nothing is written. */
 static int cmd_initlauncher( HWND hwnd, char * arg ) {
-	int failed = 0, n ;
-	DWORD err = 0 ;
+	UINT msg = RegisterWindowMessageA( "KiTTYLauncherRefreshSessionsAndHotkeys" ) ;
 	(void)hwnd ; (void)arg ;
-	if( cmd_store_refused() ) return 1 ;   /* the Launcher copy is not rebuilt */
-	n = InitLauncherRegistry( &failed, &err ) ;
-	if( n < 0 )		/* the folder store's Launcher folder could not be made */
-		cmd_say( KT_CMD_RES_LAUNCHER_DIR_FAILED, ConfigDirectory ? ConfigDirectory : "", kitty_win_reason( err ) ) ;
-	else if( failed )
-		cmd_say( KT_CMD_RES_LAUNCHER_PARTLY, n, failed, kitty_win_reason( err ) ) ;
-	else
-		cmd_say( KT_CMD_RES_LAUNCHER_REBUILT, n ) ;
+	if( msg ) PostMessageA( HWND_BROADCAST, msg, 0, 0 ) ;
+	cmd_say( "%s", KT_CMD_RES_LAUNCHER_REFRESH ) ;
 	return 1 ;
 }
 #endif

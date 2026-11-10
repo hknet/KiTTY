@@ -1121,12 +1121,6 @@ void InitWinMain( void ) {
 	// Initiate proxies list
 	InitProxyList() ;
 #endif
-#ifdef MOD_LAUNCHER
-	// Initiate launcher
-	snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_registry_base(), "Launcher" ) ;
-	if( (IniFileFlag == SAVEMODE_REG)||( IniFileFlag == SAVEMODE_FILE) )  
-		if( !RegTestKey( HKEY_CURRENT_USER, buffer ) ) { InitLauncherRegistry( NULL, NULL ) ; }
-#endif
 	NETDBG_TS("after registry/savemode block");
 	// Initiate folders list
 	InitFolderList() ;

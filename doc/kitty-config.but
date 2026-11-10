@@ -2729,8 +2729,9 @@ not recognised - for that session.
 The launcher is a separate program: a running launcher follows a
 change here at once.
 
-\b \q{Keep my hand-edited launcher menu} stops the launcher from
-rebuilding its menu; see below. \q{A second launcher} sets whether a
+\b \q{Keep my hand-edited launcher menu} builds the launcher's menu from
+a definition edited by hand, not from the saved sessions (see below).
+\q{A second launcher} sets whether a
 launcher started while one is running exits, the default, or starts
 anyway. \q{Tray icon double-click opens} chooses what a double click on
 the launcher's tray icon opens: a new \q{Configuration} window, the
@@ -2794,18 +2795,19 @@ The keys in \c{kitty.ini}, under \c{[Launcher]}: \c{reload},
 \S2{kitty-cfg-kset-launcher-menu} Where the launcher's menu comes from
 
 The launcher does not read the saved sessions each time its menu opens.
-It keeps a menu definition of its own and builds the tray menu from
-that. It rebuilds the definition from the saved sessions, deleting
-what was there, when it starts, when you choose \q{Refresh}, and when
-KiTTY++ saves, deletes or imports a session or changes a folder. A
+It reads them into memory when it starts, when you choose \q{Refresh},
+and when KiTTY++ saves, deletes or imports a session or changes a
+folder. The tray menu is built from that list. Nothing is written. A
 session that reaches the store any other way - a \c{.reg} file, a
 session file copied into the \c{Sessions} folder - appears after
 \q{Refresh}.
 
-The definition can be edited by hand, to give the menu an order and
-folders of its own. With \q{Keep my hand-edited launcher menu} ticked
-the launcher never rebuilds it, so the edit stays - and a new session
-appears in the menu only when you add it yourself.
+With \q{Keep my hand-edited launcher menu} ticked the launcher builds
+its menu from a menu definition edited by hand instead, to give the menu
+an order and folders of its own. The launcher never writes it, so a new
+session appears in the menu only when you add it yourself. A definition
+an earlier KiTTY++ wrote stays as it is. Without the tick it is not
+read.
 
 \b With the settings in the registry the definition is the key
 \c{Launcher} beside \c{Sessions}, under

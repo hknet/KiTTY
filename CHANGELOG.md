@@ -174,6 +174,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
+- Launcher: with `[Launcher] reload=yes`, the default, the tray menu is
+  built from the saved sessions in memory. No `Launcher` key or folder is
+  written any more. One an earlier build wrote stays as it is and is not
+  read. `reload=no` reads the hand-edited `Launcher` key or folder as
+  before and never writes it. `/initlauncher` makes the running launchers
+  rebuild their menus.
 - Diagnostic switches read from environment variables (trace files
   such as `KITTY_WINPOS_DEBUG`, test doors) are in test builds only.
   A release build has none of their code.

@@ -347,12 +347,10 @@ the report.
 
 ### /initlauncher
 
-Rebuild the launcher's menu from the saved sessions. The result line shows the
-entries written. When some could not be written, it shows how many and the
-first reason.
+Make the running launchers rebuild their menus, as their Refresh does.
+Nothing is written.
 
-**Persists:** the `Launcher` key in the registry store, the `Launcher` folder
-in a folder store.
+**Persists:** nothing.
 
 ### /debug
 

@@ -1970,7 +1970,6 @@
 /* Message texts shown at more than one place */
 #define KT_MSG_UNKNOWN_ERROR                         "unknown error"
 #define KT_MSG_INIT_REGISTRY                         "Initializing registry."
-#define KT_MSG_LAUNCHER_DIR_FAILED                   "Unable to create the menu launcher directory"
 #define KT_MSG_SSH_ONLY                              "This function is only available with SSH connections."
 
 /* System-menu and tray-menu items */
@@ -2223,7 +2222,7 @@
 #define KT_CMD_HELP_PRINTMAXCHAR                     "printing characters per line"
 #define KT_CMD_HELP_ZMODEM                           "toggle the ZModem file-transfer feature"
 #define KT_CMD_HELP_FILEASSOC                        "register the session file extension (%s) to open in KiTTY++"
-#define KT_CMD_HELP_INITLAUNCHER                     "(re)create the launcher registry key"
+#define KT_CMD_HELP_INITLAUNCHER                     "rebuild the menu of the running launchers"
 #define KT_CMD_HELP_DEBUG                            "toggle debug mode"
 #define KT_CMD_HELP_PASSWD                           "show + copy the session password (debug mode only)"
 #define KT_CMD_HELP_SCREENSHOT                       "save a screenshot of the terminal (Pictures\\KiTTY++)"
@@ -2263,8 +2262,7 @@
 #define KT_CMD_RES_LOADED                            "Loaded: %s"
 #define KT_CMD_RES_NOT_LOADED                        "Not loaded: %s"
 #define KT_CMD_RES_CANCELLED                         "Cancelled: nothing was saved"
-#define KT_CMD_RES_LAUNCHER_REBUILT                  "Launcher menu rebuilt: %d entries"
-#define KT_CMD_RES_LAUNCHER_PARTLY                   "Launcher menu rebuilt: %d entries, %d NOT written: %s"
+#define KT_CMD_RES_LAUNCHER_REFRESH                  "Launcher menu refresh sent to the running launchers"
 #define KT_CMD_RES_NOTHING_DELETED                   "Nothing deleted"
 #define KT_CMD_RES_DELETED                           "Deleted: HKCU\\%s"
 #define KT_CMD_RES_NOT_DELETED                       "Not deleted: HKCU\\%s: %s"
@@ -2294,8 +2292,6 @@
 /* the combination is held by another running launcher (alreadyRunCheck off) */
 #define KT_LAUNCHER_HOTKEY_HELD_LAUNCHER             "%s%s (\"%s\"): held by the running KiTTY++ launcher."
 #define KT_LAUNCHER_HOTKEY_GLOBAL_HELD_LAUNCHER      "%s%s (launcher global hotkey): held by the running KiTTY++ launcher."
-/* /initlauncher: the folder store's Launcher folder could not be made (ConfigDirectory, reason) */
-#define KT_CMD_RES_LAUNCHER_DIR_FAILED               "Launcher menu NOT rebuilt: %s\\Launcher: %s"
 /* /loadreg: an old encrypted .sav, read from a live session (after "Not loaded: <file>: ") */
 #define KT_MAIN_SAV_ENCRYPTED_LIVE                   "old encrypted backup: no password prompt in a running session"
 #define KT_LAUNCHER_WP_ON_LEFT                       "Every connection now uses the proxy \"%.200s\" instead of each " \

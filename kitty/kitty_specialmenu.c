@@ -240,8 +240,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			char * achValue, * lpData ;
 			if( sm_enum_value( hKey, i, &achValue, &lpData ) == ERROR_SUCCESS ) {
 			/* Default Settings never appears in the launcher, at ANY level of
-			 * its copy: the writer skips it now (InitLauncherRegistry), this
-			 * keeps a copy an older build left behind out of the menu too. */
+			 * its hand-edited copy (reload=no). */
 			if( strcmp(achValue,KITTY_DEFAULT_SESSION) || !is_launcher )
 				sm_items_add( &items, &nitems, achValue, lpData ) ;
 			sfree( achValue ) ;
@@ -297,8 +296,8 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 			while( ( de = readdir(dir) ) != NULL ) { // look for keys
 				if( strcmp(de->d_name,".") && strcmp(de->d_name,"..") ) {
 				/* Default Settings must not show up in the launcher - at any
-				 * level of its copy, and by the unmunged name (the writer skips
-				 * it now; this covers a copy an older build left behind). */
+				 * level of its hand-edited copy (reload=no), and by the
+				 * unmunged name. */
 				char * plain = unmungestr_dup( de->d_name ) ;
 				if( strcmp(plain,KITTY_DEFAULT_SESSION) || strncmp(KeyName,"Launcher",8) ) {
 					DWORD attr ;
@@ -341,10 +340,10 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 	return local_nb ;
 	}
 
-/* readonly=yes (the launcher, InitLauncherMenu): the session menu built from
- * the entries InitLauncherRegistry kept in memory, as its Launcher copy
- * cannot be rebuilt - the same levels, order, ceiling and accelerators as
- * ReadSpecialMenu gives that copy: the folders one level below `prefix`
+/* [Launcher] reload=yes (the launcher, InitLauncherMenu): the session menu
+ * built from the entries LauncherCollectSessions keeps in memory - the same
+ * levels, order, ceiling and accelerators as ReadSpecialMenu gives the
+ * hand-edited Launcher copy: the folders one level below `prefix`
  * first, each a submenu, then the sessions of `prefix` itself, both by the
  * name shown. Returns the entries appended at this level. */
 int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int n,

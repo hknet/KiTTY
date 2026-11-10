@@ -222,8 +222,8 @@ kitty/kitty_launcher.c | LauncherBuildWinList() | t | 256 | swap buffer between 
 kitty/kitty_launcher.c | InitLauncherMenu() | item | 400 | launcher menu item, snprintf to sizeof
 kitty/kitty_launcher.c | InitLauncherMenu() | remembered | 256 | remembered workplace proxy name, size passed
 kitty/kitty_launcher.c | InitLauncherMenu() | item | 320 | menu item with a proxy name ("%.250s"), snprintf to sizeof
-kitty/kitty_launcher.c | InitLauncherRegistry() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
-kitty/kitty_launcher.c | InitLauncherRegistry() | lpData | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
+kitty/kitty_launcher.c | LauncherCollectSessions() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
+kitty/kitty_launcher.c | LauncherCollectSessions() | lpData | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
 kitty/kitty_launcher.c | LauncherWinProp() | buf | 256 | GlobalGetAtomNameW(256)
 kitty/kitty_launcher.c | RefreshWinListProc() | buffer | 256 | window class name from GetClassName (class names are at most 256 characters)
 kitty/kitty_launcher.c | ShowLauncherUpdateBalloon() | umsg | 256 | update balloon text, snprintf to sizeof

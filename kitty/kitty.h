@@ -170,9 +170,9 @@ void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) ;
 void InitSpecialMenuTab( void ) ;
 #include "kitty_menuslots.h"   /* NB_MENU_MAX + the User-Command / launcher entry payloads */
 int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) ;
-/* readonly=yes: the launcher's session entries kept in memory instead of its
- * Launcher copy (kitty_launcher.c), and the menu built from them
- * (kitty_specialmenu.c). folder "" is the top level. */
+/* [Launcher] reload=yes: the launcher's session entries kept in memory
+ * (kitty_launcher.c), and the menu built from them (kitty_specialmenu.c).
+ * folder "" is the top level. */
 struct kitty_launcher_entry { char * folder ; char * session ; } ;
 int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int n,
                          const char * prefix, int * nbitem ) ;
@@ -461,10 +461,6 @@ void create_settings( const char * name ) ;
 char * GetHelpMessage(void) ;
 void CreateIniFile( const char * filename ) ;
 void ManageShortcutsFlag( HWND hwnd ) ;
-
-#ifdef MOD_LAUNCHER
-int InitLauncherRegistry( int * failed, DWORD * err ) ;
-#endif
 
 // Section name of the configuration file
 #ifdef MOD_PERSO
