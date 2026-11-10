@@ -320,6 +320,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   gives the reason. The tick shows what is in force.
 - `KiTTY.ses.updt`: a saved session with a name of 255 characters was
   left out of `KiTTY.ses.updt.reg`. It gets its section now.
+- kscp, WinSCP (and its `/privatekey`), the editor for a dropped
+  `kitty.ini` and every start from the launcher use the program's full
+  path in quotes instead of its 8.3 short name. Windows can switch short
+  names off for a drive.
 - `/screenshot` in an installed KiTTY++ wrote into the program folder
   when the Pictures folder was 255 characters long. It goes to
   `Pictures\KiTTY++` at any length now, or the result line gives the

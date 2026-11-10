@@ -687,27 +687,16 @@ static int launcher_shortcut_points_here( int common, const char *exe ) {
 	return 0 ;
 }
 
-/* This program's path in its short (8.3) form, in full (sfree it); NULL with
- * Windows' reason in GetLastError() when it cannot be read. It begins every
- * command line the launcher starts. */
-static char * launcher_short_exe_dup( void ) {
-	char * exe = kitty_module_path_dup( NULL ), * sp ;
-	DWORD n, got ;
+/* This program's real path in quotes, in full (sfree it); NULL with Windows'
+ * reason in GetLastError() when it cannot be read. It begins every command
+ * line the launcher starts. Not the 8.3 form: short names can be switched off
+ * on a volume, and a terminal started by it reads its own path in that form. */
+static char * launcher_exe_quoted_dup( void ) {
+	char * exe = kitty_module_path_dup( NULL ), * q ;
 	if( exe == NULL ) return NULL ;
-	n = GetShortPathNameA( exe, NULL, 0 ) ;
-	for( ;; ) {
-		if( n == 0 ) {
-			DWORD e = GetLastError() ;
-			sfree( exe ) ;
-			SetLastError( e ) ;
-			return NULL ;
-		}
-		sp = snewn( n + 1, char ) ;
-		got = GetShortPathNameA( exe, sp, n + 1 ) ;
-		if( got != 0 && got <= n ) { sfree( exe ) ; return sp ; }
-		sfree( sp ) ;
-		n = got ;   /* 0: failed; else the size it needs now */
-	}
+	q = dupprintf( "\"%s\"", exe ) ;
+	sfree( exe ) ;
+	return q ;
 }
 
 /* The text of a menu item (by position) in full (sfree it); "" when it has
@@ -3534,7 +3523,7 @@ void RunConfig( Conf * conf ) {
 static void launcher_run_session_cmd( HWND hwnd, char * cmd, HANDLE inheritmap ) ;
 
 void RunKiTTYpp( HWND hwnd, char * param ) {
-	char * shortname = launcher_short_exe_dup(), * buffer ;
+	char * shortname = launcher_exe_quoted_dup(), * buffer ;
 	if( shortname != NULL ) {
 			if( !strcmp( param, "-ed" ) ) {
 				/* The built-in editor: a prefix-dispatched mode, where an
@@ -3593,7 +3582,7 @@ void RunKiTTYpp( HWND hwnd, char * param ) {
  * controls are. Quote the path if it contains spaces (window.c's -cfgpanel
  * scan understands quotes). */
 static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) {
-	char * shortname = launcher_short_exe_dup(), * buffer ;
+	char * shortname = launcher_exe_quoted_dup(), * buffer ;
 	if( shortname != NULL ) {
 			HANDLE mpwmap = NULL ; char mpwtok[80] = "" ;
 			const char * aclprefix = restricted_acl() ? " -restrict-acl" : "" ;
@@ -3687,7 +3676,7 @@ static int launcher_run_session( HWND hwnd, const char * session_in, const char 
 
 	/* every part of the command line held in full: a line Windows cannot
 	 * take makes the start fail, and RunCommand reports it */
-	if( ( shortname = launcher_short_exe_dup() ) == NULL ) return 0 ;
+	if( ( shortname = launcher_exe_quoted_dup() ) == NULL ) return 0 ;
 
 	/* KiTTY: unlock the portable master password once for this launcher run and
 	 * hand it to the spawned session (inherited handle + "-mpwkey" argument,

@@ -2998,21 +2998,6 @@ typedef struct {
 	int shared ;               /* -share went on the line */
 } kx_kscp_line_t ;
 
-/* GetShortPathName in full (sfree it); NULL when Windows cannot give it. */
-static char *kx_short_path_dup( const char *path ) {
-	DWORD n = GetShortPathNameA( path, NULL, 0 ), got ;
-	int tries ;
-	for( tries = 0 ; n > 0 && tries < 4 ; tries++ ) {
-		char *s = snewn( n, char ) ;
-		got = GetShortPathNameA( path, s, n ) ;
-		if( got > 0 && got < n ) return s ;
-		sfree( s ) ;
-		if( got == 0 ) return NULL ;
-		n = got ;                  /* it grew meanwhile: the size it needs now */
-	}
-	return NULL ;
-}
-
 /* SearchPath for a program on the PATH, in full (sfree it); NULL = none. */
 static char *kx_search_path_dup( const char *name ) {
 	DWORD n = SearchPathA( NULL, name, NULL, 0, NULL, NULL ), got ;
@@ -3051,7 +3036,7 @@ static int kx_path_needs_sftp( const char *f ) {
  * kx_path_needs_sftp); one SCP cannot carry runs kscp in SFTP mode whatever
  * the Protocol setting. */
 static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k, const char *rpath ) {
-	char *pscppath, *pscpport ;
+	char *pscpport ;
 	int p ;
 
 	memset( k, 0, sizeof(*k) ) ;
@@ -3064,11 +3049,9 @@ static int kx_kscp_line( strbuf *buffer, kx_kscp_line_t *k, const char *rpath ) 
 		if( IniFileFlag == SAVEMODE_REG ) return 0 ;
 		else if( !SearchPSCP() ) return 0 ;
 	}
-	if( ( pscppath = kx_short_path_dup( PSCPPath ) ) == NULL ) return 0 ;
-
+	/* the real path, quoted: 8.3 names can be switched off on a volume */
 	strbuf_clear( buffer ) ;
-	bcat( buffer, pscppath ) ; bcat( buffer, " " ) ;   /* exe: 8.3 path, no spaces/quotes */
-	sfree( pscppath ) ;
+	put_fmt( buffer, "\"%s\" ", PSCPPath ) ;
 
 	if( strlen(conf_get_str(conf, CONF_pscpoptions))>0 ) {     /* raw user options - intentionally unquoted */
 		bcat( buffer, conf_get_str(conf, CONF_pscpoptions) ) ; bcat( buffer, " " ) ;
@@ -5304,7 +5287,6 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	/* The line in a strbuf: a fixed buffer cut it, and what came after the
 	 * cut - the proxy's /rawsettings, /passwordsfromfiles - was lost. */
 	strbuf *cmd ;
-	char *shortpath ;
 	const char *proto ;
 	int winscpport ;
 	int raw = 0;
@@ -5341,7 +5323,6 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 	  if( !kx_anyway( hwnd, KT_XFER_START_WINSCP_ANYWAY, kx_anyway_winscp_done, g ) ) return ;
 	}
 
-	if( ( shortpath = kx_short_path_dup( WinSCPPath ) ) == NULL ) return ;
 
 	switch( conf_get_int(conf, CONF_winscpprot) ) {
 		case 0: proto = "scp" ; break ;
@@ -5370,7 +5351,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 
 	cmd = strbuf_new_nm() ;                /* cleared when it goes: it may hold a password */
 	if( conf_get_int(conf,CONF_protocol) == PROT_SSH ) {
-		put_fmt( cmd, "\"%s\" %s://", shortpath, proto ) ;
+		put_fmt( cmd, "\"%s\" %s://", WinSCPPath, proto ) ;
 
 		if( strlen( conf_get_str(conf, CONF_sftpconnect) ) > 0 ) {
 			bcat( cmd, conf_get_str(conf, CONF_sftpconnect) ) ;
@@ -5414,17 +5395,13 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		}
 		{ const char *kf = kx_helper_keyfile(conf) ;
 		  if( kf != NULL ) {
-			char *kshort = kx_short_path_dup( kf ) ;
-			if( kshort != NULL ) {
-				bcat( cmd, " \"/privatekey=" ) ;
-				bcat( cmd, kshort ) ;
-				bcat( cmd, "\"" ) ;
-				sfree( kshort ) ;
-			}
+			bcat( cmd, " \"/privatekey=" ) ;
+			bcat( cmd, kf ) ;
+			bcat( cmd, "\"" ) ;
 		  }
 		}
 	} else {
-		put_fmt( cmd, "\"%s\" %s://", shortpath, proto ) ;
+		put_fmt( cmd, "\"%s\" %s://", WinSCPPath, proto ) ;
 		urlcat( cmd, conf_get_str_ambi(conf,CONF_username,NULL) ) ; /* #535: percent-encode userinfo */
 		if( !kitty_pw_empty(conf,CONF_password) ) {
 			char pw[KITTY_PW_MAX+1] ;
@@ -5447,7 +5424,6 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 			if( directory[strlen(directory)-1]!='/' ) bcat( cmd, "/" ) ;
 		}
 	}
-	sfree( shortpath ) ;
 
 	if( strlen(conf_get_str(conf, CONF_winscpoptions))>0 ) {
 		bcat( cmd, " " ) ; bcat( cmd, conf_get_str(conf, CONF_winscpoptions) ) ;
@@ -6250,13 +6226,13 @@ void recupNomFichierDragDrop(HWND hwnd, HDROP* leDrop, int typepath ) {
 		if( !fic ) continue ;
                 { UINT _g = DragQueryFile( hDropInfo, i, fic, taille+1 ) ; fic[_g] = '\0' ; }  /* force-terminate: DragQueryFile doesn't always NUL-terminate -> a stray byte was reaching kscp ("...pdf\0") */
 		if( strlen(fic) >= 10 && !strcmp( fic+strlen(fic)-10,"\\kitty.ini" ) ) { // load the config file in the internal editor
-			char *self = kitty_module_path_dup( NULL ), *shortname = self ? kx_short_path_dup( self ) : NULL ;
-			if( shortname != NULL ) {
-				char *line = dupprintf( "\"%s\" -ed %s", shortname, fic ) ;
+			char *self = kitty_module_path_dup( NULL ) ;   /* the real path: see RunPuttyEd */
+			if( self != NULL ) {
+				char *line = dupprintf( "\"%s\" -ed %s", self, fic ) ;
 				RunCommand( hwnd, line ) ;
 				sfree( line ) ;
 			}
-			sfree( self ) ; sfree( shortname ) ;
+			sfree( self ) ;
 		} else if( upload ) {
 			/* NULL target dir either way: the RemotePath store the auto-pwd
 			 * branch used to pass was never written on the 0.84 core (the
