@@ -127,4 +127,5 @@ def main() -> int:
     return 0
 
 
-sys.exit(main())
+if __name__ == "__main__":     # tools/check-menu-shortcuts.py imports RANGES
+    sys.exit(main())

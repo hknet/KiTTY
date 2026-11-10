@@ -60,7 +60,6 @@
 #define IDM_FULLSCREEN  0x0180
 #define IDM_COPY      0x0190
 #define IDM_PASTE     0x01A0
-#define IDM_CHECKUPDATE 0x01B0  /* check GitHub releases for a newer KiTTY */
 #ifdef MOD_PERSO
 #include "../kitty/kitty_modkeys.h"   /* KiTTY: xterm modifyOtherKeys */
 #include "../kitty/kitty_kittykeys.h" /* KiTTY: kitty keyboard protocol */
@@ -92,7 +91,6 @@
 #include "../kitty/kitty_workplace.h"
 #include "../kitty/kitty_config.h"
 #endif
-#define IDM_BROADCASTTOGGLE 0x01C0           /* Tools > Accept broadcast */
 /*
  * ONE state, two editors. The arming lives in the session's own conf
  * (CONF_kitty_accept_broadcast), so Session > Broadcast and this window's Tools
@@ -110,30 +108,14 @@ static int kitty_broadcast_armed( WinGuiSeat *wgs )
 }
 /* The script bridge's arm (kitty_scriptbridge.c), the same shape: one conf
  * value, edited on Session > Scripting and by Tools > Accept script bridge. */
-#define IDM_SCRIPTBRIDGETOGGLE 0x01D0        /* Tools > Accept script bridge */
 static int kitty_scriptbridge_armed( WinGuiSeat *wgs )
 {
     return wgs && wgs->conf && conf_get_bool( wgs->conf, CONF_kitty_accept_scriptbridge );
 }
 #endif /* MOD_PERSO */
 #ifdef MOD_PERSO
-#ifndef IDM_SCRIPTSEND
-#define IDM_SCRIPTSEND  0xB180  /* Run script file (the rutty engine) */
-#endif
-#ifndef IDM_SCRIPTHALT
-#define IDM_SCRIPTHALT  0xB190  /* stop running script */
-#endif
-#ifndef IDM_SCRIPTFILE2
-#define IDM_SCRIPTFILE2 0xB1A0  /* send a script file (file picker) */
-#endif
 #ifndef IDM_NEWDUPSESS
 #define IDM_NEWDUPSESS  0xB1B0  /* new duplicated session (new window) */
-#endif
-#ifndef IDM_MNOTEPAD
-#define IDM_MNOTEPAD    0xB1C0  /* open KiTTY's embedded mNotepad editor */
-#endif
-#ifndef IDM_MNOTEPAD_CLIP
-#define IDM_MNOTEPAD_CLIP 0xB1D0  /* open mNotepad with clipboard contents */
 #endif
 #endif
 #ifdef MOD_RECONNECT
@@ -3497,11 +3479,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             {
                 int sa = kitty_script_active();
                 AppendMenu(toolmenu, sa ? MF_GRAYED : MF_ENABLED,
-                           IDM_SCRIPTSEND, KT_SYSMENU_SCRIPT_SEND);
+                           IDM_RUNSCRIPTFILE, KT_SYSMENU_RUN_SCRIPT_FILE);
                 AppendMenu(toolmenu, sa ? MF_ENABLED : MF_GRAYED,
-                           IDM_SCRIPTHALT, KT_SYSMENU_SCRIPT_STOP);
+                           IDM_STOPSCRIPT, KT_SYSMENU_STOP_SCRIPT);
                 AppendMenu(toolmenu, MF_ENABLED,
-                           IDM_SCRIPTFILE2, KT_SYSMENU_SCRIPT_FILE);
+                           IDM_TYPETEXTFILE, KT_SYSMENU_TYPE_TEXT_FILE);
             }
 #ifdef MOD_ZMODEM
             /*
@@ -5976,7 +5958,7 @@ static WinGuiSeat *kitty_wgs_of(HWND hwnd)
         (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA) : NULL;
 }
 
-/* Run script file (RuTTY, IDM_SCRIPTSEND): the script is sent once a file
+/* Run script file (RuTTY, IDM_RUNSCRIPTFILE): the script is sent once a file
  * has been picked. One picker at a time. */
 static void *kitty_script_pick = NULL;
 
@@ -7470,7 +7452,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_WINROL:
             kitty_rollup(wgs->term_hwnd, conf_get_int(wgs->conf, CONF_resize_action));
             break;
-          case IDM_SCRIPTSEND: {
+          case IDM_RUNSCRIPTFILE: {
             char *fn;
             if (!kitty_script_enabled()) {
                 /* a report: modeless, the session goes on */
@@ -7505,12 +7487,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             sfree(fn);
             break;
           }
-          case IDM_SCRIPTHALT:
+          case IDM_STOPSCRIPT:
             kitty_script_stop();
             lp_eventlog(&wgs->logpolicy, KT_TWIN_LOG_SCRIPT_STOPPED);
             break;
-          case IDM_SCRIPTFILE2:
-            OpenAndSendScriptFile(wgs->term_hwnd);
+          case IDM_TYPETEXTFILE:
+            kitty_type_text_file_pick(wgs->term_hwnd);
             break;
           case IDM_NEWDUPSESS: {
             /* A new window that starts at the configuration box carrying this
@@ -8792,6 +8774,17 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     return 0;
             }
         } else {
+            /* The keys off: only the key of "Shortcuts on/off" is checked.
+             * It switches them on again. */
+            if ((message == WM_KEYDOWN || message == WM_SYSKEYDOWN) &&
+                ShortcutsOffKey(
+                    hwnd, (int)wParam,
+                    GetKeyState(VK_SHIFT)   & 0x8000,
+                    GetKeyState(VK_CONTROL) & 0x8000,
+                    (GetKeyState(VK_MENU) & 0x8000) || (GetKeyState(VK_LMENU) & 0x8000),
+                    GetKeyState(VK_RMENU)   & 0x8000,
+                    (GetKeyState(VK_RWIN) & 0x8000) || (GetKeyState(VK_LWIN) & 0x8000)))
+                return 0;
             if (GetProtectFlag() == 1)
                 return 0;
         }

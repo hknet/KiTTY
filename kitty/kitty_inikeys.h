@@ -229,9 +229,10 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_SC_PROTECT                       "protect"
 #define KI_SC_RESETTERMINAL                 "resetterminal"
 #define KI_SC_ROLLUP                        "rollup"
-#define KI_SC_SCRIPT                        "script"
+#define KI_SC_RUNSCRIPTFILE                 "runscriptfile"
 #define KI_SC_SENDFILE                      "sendfile"
 #define KI_SC_SHOWPORTFORWARD               "showportforward"
+#define KI_SC_STOPSCRIPT                    "stopscript"
 #define KI_SC_SWITCHLOGMODE                 "switchlogmode"
 #define KI_SC_TRANSPARENCYDOWN              "transparencydown"
 #define KI_SC_PROMPTPREV                    "promptprev"
@@ -242,9 +243,26 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_SC_SELECTOUTPUT                  "selectoutput"
 #define KI_SC_TRANSPARENCYUP                "transparencyup"
 #define KI_SC_TRAY                          "tray"
+/* typetextfile: script until 0.85.1.19-beta, renamed at startup (the oldkey
+ * column of sc_actions[], kitty_shortcuts.c) */
+#define KI_SC_TYPETEXTFILE                  "typetextfile"
 #define KI_SC_VIEWER                        "viewer"
 #define KI_SC_VISIBLE                       "visible"
 #define KI_SC_WINSCP                        "winscp"
+/* the window menu's other commands (no default key) */
+#define KI_SC_PASTE                         "paste"
+#define KI_SC_RECONNECT                     "reconnect"
+#define KI_SC_SAVENEWSESSION                "savenewsession"
+#define KI_SC_UPDATECHECK                   "updatecheck"
+#define KI_SC_WINNAME                       "winname"
+#define KI_SC_EXPORTSETTINGS                "exportsettings"
+#define KI_SC_SHORTCUTSTOGGLE               "shortcutstoggle"
+#define KI_SC_HYPERLINKTOGGLE               "hyperlinktoggle"
+#define KI_SC_BROADCASTTOGGLE               "broadcasttoggle"
+#define KI_SC_SCRIPTBRIDGETOGGLE            "scriptbridgetoggle"
+#define KI_SC_ZMODEMRECEIVE                 "zmodemreceive"
+#define KI_SC_ZMODEMUPLOAD                  "zmodemupload"
+#define KI_SC_ZMODEMABORT                   "zmodemabort"
 
 /* [Agent] */
 #define KI_AGENT_AGENTLOG                   "agentlog"

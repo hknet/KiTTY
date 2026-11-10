@@ -876,16 +876,16 @@ char default_init_file_content[] =
 ;    Automation > Script bridge shows it, with Copy and New key.\n\
 ;scriptbridgekey=\n\
 \n\
-; scriptfilefilter: file-dialog filter for local script files.\n\
+; scriptfilefilter: file-dialog filter of Tools > Type text file.\n\
 ;    Default:\n\
 ;    (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|\n\
 ;    The example line below narrows it to all files only:\n\
 ;scriptfilefilter=All files (*.*)|*.*|\n\
 \n\
-; scriptmode: master switch for the RuTTY script engine (send a script file\n\
+; scriptmode: master switch for the RuTTY script engine (a script file sent\n\
 ;    line by line, with wait-for-prompt/halt-on patterns). no = disable the\n\
 ;    engine entirely: the session auto-script does not run and the\n\
-;    \"Send a script file\" menu entry refuses with a notice.\n\
+;    \"Run script file\" menu entry refuses with a notice.\n\
 ;scriptmode=yes\n\
 \n\
 ; sendcmdmode: may OTHER programs type into this terminal?\n\
@@ -1211,6 +1211,11 @@ char default_init_file_content[] =
 ; (re)send automatic command (default is SHIFT+F12)\n\
 ;autocommand=\n\
 \n\
+; Accept broadcast on/off - the same as Tools > Accept broadcast: this\n\
+;    window takes the text sent to all windows, or not.\n\
+;    No default key - it does nothing until you set one here.\n\
+;broadcasttoggle=\n\
+\n\
 ; Change settings ...\n\
 ;    No default key - it does nothing until you set one here.\n\
 ;changesettings=\n\
@@ -1268,6 +1273,10 @@ char default_init_file_content[] =
 ;    Example:  eventlog={CONTROL}{SHIFT}E\n\
 ;eventlog=\n\
 \n\
+; Export current settings - the same as Tools > Export current settings.\n\
+;    No default key - it does nothing until you set one here.\n\
+;exportsettings=\n\
+\n\
 ; The shell's prompt marks (OSC 133, sent by the shell integration on the\n\
 ; host): jump to the previous / next failed command, the prompt at the top\n\
 ; (default is ALT+SHIFT+PRIOR / ALT+SHIFT+NEXT). In a window without marks, or\n\
@@ -1307,6 +1316,10 @@ char default_init_file_content[] =
 ; (default is CONTROL+F4)\n\
 ;getfile=\n\
 \n\
+; Hyperlinks on/off - the same as Tools > Hyperlinks.\n\
+;    No default key - it does nothing until you set one here.\n\
+;hyperlinktoggle=\n\
+\n\
 ; change the background image (default is CONTROL+F11)\n\
 ;imagechange=\n\
 \n\
@@ -1331,6 +1344,11 @@ char default_init_file_content[] =
 ;    No default key - it does nothing until you set one here.\n\
 ;opennewcurrent=\n\
 \n\
+; Paste - the same as Paste in the window menu: the clipboard into the\n\
+;    session.\n\
+;    No default key - it does nothing until you set one here.\n\
+;paste=\n\
+\n\
 ; Print current clipboard content (default is SHIFT+F7)\n\
 ;print=\n\
 \n\
@@ -1346,6 +1364,12 @@ char default_init_file_content[] =
 ; Protect the window, disable keyboard and mouse input (default is CONTROL+F9)\n\
 ;protect=\n\
 \n\
+; Restart session - the same as Restart Session in the window menu: a\n\
+;    closed connection opened again. Does nothing while it is open\n\
+;    (closerestart closes and reopens one).\n\
+;    No default key - it does nothing until you set one here.\n\
+;reconnect=\n\
+\n\
 ; Reset terminal\n\
 ;    No default key - it does nothing until you set one here.\n\
 ;resetterminal=\n\
@@ -1353,8 +1377,19 @@ char default_init_file_content[] =
 ; Roll-up the window into the title bar (default is CONTROL+F12)\n\
 ;rollup=\n\
 \n\
-; Load a local script and run it remotely (default is CONTROL+F2)\n\
-;script=\n\
+; Run script file - the same as Tools > Run script file...: the script\n\
+;    engine sends a local file line by line (Session > Scripting).\n\
+;    No default key - it does nothing until you set one here.\n\
+;runscriptfile=\n\
+\n\
+; Save as new session - the same as Save as New Session... in the window\n\
+;    menu.\n\
+;    No default key - it does nothing until you set one here.\n\
+;savenewsession=\n\
+\n\
+; Accept script bridge on/off - the same as Tools > Accept script bridge.\n\
+;    No default key - it does nothing until you set one here.\n\
+;scriptbridgetoggle=\n\
 \n\
 ; The shell's prompt marks (OSC 133): select, and so copy, a command line - the\n\
 ; command you typed, without the prompt - of the command at the top of the\n\
@@ -1371,8 +1406,18 @@ char default_init_file_content[] =
 ; Transfers (default is CONTROL+F3)\n\
 ;sendfile=\n\
 \n\
+; Shortcuts on/off - the same as Tools > Shortcuts: the keys of this\n\
+;    section off, and on again. Its own key also works while the keys are\n\
+;    off: it switches them on.\n\
+;    No default key - it does nothing until you set one here.\n\
+;shortcutstoggle=\n\
+\n\
 ; Show current port forwarding definition (default is SHIFT+F6)\n\
 ;showportforward=\n\
+\n\
+; Stop script - the same as Tools > Stop script: the running script stops.\n\
+;    No default key - it does nothing until you set one here.\n\
+;stopscript=\n\
 \n\
 ; Enable or disable logging (default is SHIFT+F5)\n\
 ;switchlogmode=\n\
@@ -1386,14 +1431,38 @@ char default_init_file_content[] =
 ; Send the window to the system tray (default is CONTROL+F6)\n\
 ;tray=\n\
 \n\
+; Type text file - the same as Tools > Type text file...: a local file\n\
+;    typed into the session as it is (default is CONTROL+F2). Until\n\
+;    0.85.1.19-beta the key was script, renamed at the first start.\n\
+;typetextfile=\n\
+\n\
+; Check for updates - the same as Check for updates... in the window menu\n\
+;    (the [KiTTY] setting checkupdate is the check at startup).\n\
+;    No default key - it does nothing until you set one here.\n\
+;updatecheck=\n\
+\n\
 ; Switch to embedded image viewer (default SHIFT+F11)\n\
 ;viewer=\n\
 \n\
 ; Switch to always visible (default is CONTROL+F7)\n\
 ;visible=\n\
 \n\
+; Terminal name - the same as Window > Terminal Name... in the window\n\
+;    menu.\n\
+;    No default key - it does nothing until you set one here.\n\
+;winname=\n\
+\n\
 ; Start WinSCP (default is SHIFT+F3)\n\
 ;winscp=\n\
+\n\
+; ZModem abort, receive and upload - the same as Tools > ZModem Abort,\n\
+;    ZModem Receive and ZModem Upload. Each key works only while the menu\n\
+;    offers its entry: receive needs rzcommand, upload szcommand, abort a\n\
+;    transfer under way.\n\
+;    No default key - it does nothing until you set one here.\n\
+;zmodemabort=\n\
+;zmodemreceive=\n\
+;zmodemupload=\n\
 \n\
 \n\
 \n\

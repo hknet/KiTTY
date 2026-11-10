@@ -154,7 +154,7 @@ void GetAndSendMultiLine( HWND hwnd ) ;
 void routine_inputbox( void * phwnd ) ;
 void routine_inputbox_multiline( void * phwnd ) ;
 void GetAndSendLinePassword( HWND hwnd ) ;
-void RunScriptFile( HWND hwnd, const char * filename ) ;
+void kitty_type_text_file( HWND hwnd, const char * filename ) ;
 void ReadInitScript( const char * filename ) ;
 void GetSessionFolderName( const char * session_in, char * folder ) ;
 char * SetSessPath( const char * dec ) ;
@@ -190,7 +190,22 @@ struct TShortcuts {
 	int print ;
 	int printall ;
 	int protect ;
-	int script ;
+	int typetextfile ;
+	int runscriptfile ;
+	int stopscript ;
+	int paste ;
+	int reconnect ;
+	int savenewsession ;
+	int updatecheck ;
+	int winname ;
+	int exportsettings ;
+	int shortcutstoggle ;
+	int hyperlinktoggle ;
+	int broadcasttoggle ;
+	int scriptbridgetoggle ;
+	int zmodemreceive ;
+	int zmodemupload ;
+	int zmodemabort ;
 	int sendfile ;
 	int rollup ;
 	int tray ;
@@ -235,8 +250,14 @@ extern int NbShortCuts ;
 int DefineShortcuts( char * buf ) ;
 void TranslateShortcuts( char * st ) ;
 void InitShortcuts( void ) ;
+/* kitty.ini [Shortcuts]: an action key under an older name gets its new
+ * name, once at startup (not under readonly=yes) */
+void ShortcutsRenameOldKeys( void ) ;
 /* [Shortcuts] list or AutoText text of kitty.ini (sfree it), "" when absent */
 char * ShortcutsIniDup( const char * key ) ;
+/* The keys switched off: 1 when the key is the one of "Shortcuts on/off",
+ * which then switches them on (the only key checked then) */
+int ShortcutsOffKey( HWND hwnd, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
 /* Shortcut code -> "Ctrl+F3" (the inverse of DefineShortcuts); the key bound
  * to a menu command id; "<menu text>\t<key text>" for a menu item. */
@@ -286,7 +307,7 @@ void ManagePrint( HWND hwnd ) ;
 void ManageVisible( HWND hwnd, TermWin *tw ) ;
 void ManageWinrol( HWND hwnd, int resize_action ) ;
 void resize( int height, int width ) ;
-void OpenAndSendScriptFile( HWND hwnd ) ;
+void kitty_type_text_file_pick( HWND hwnd ) ;
 int SaveCurrentSetting( HWND hwnd, char ** out ) ;   /* 1 saved, 0 cancelled, -1 not (*out: file + reason, sfree it) */
 char * SaveCurrentSettingFilterDup( void ) ;        /* the Save-As filter for a .ktx (sfree it) */
 int SaveCurrentSettingTo( const char * filename, char ** out ) ;   /* 1 saved, -1 not (*out sfree it) */
@@ -550,9 +571,6 @@ void xyz_updateMenuItems(Terminal *term) ;
 #ifndef IDM_GOPREVIOUS
 #define IDM_GOPREVIOUS	0xB000
 #endif
-#ifndef IDM_SCRIPTFILE
-#define IDM_SCRIPTFILE 0xB010
-#endif
 
 
 #ifndef IDM_PORTKNOCK
@@ -643,6 +661,9 @@ void xyz_updateMenuItems(Terminal *term) ;
 #endif
 #ifndef IDM_RESTART
 #define IDM_RESTART   0x0040
+#endif
+#ifndef IDM_PASTE
+#define IDM_PASTE     0x01A0
 #endif
 #ifndef IDM_NEWSESS
 #define IDM_NEWSESS   0x0020

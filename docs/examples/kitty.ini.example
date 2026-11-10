@@ -873,16 +873,16 @@
 ;    Automation > Script bridge shows it, with Copy and New key.
 ;scriptbridgekey=
 
-; scriptfilefilter: file-dialog filter for local script files.
+; scriptfilefilter: file-dialog filter of Tools > Type text file.
 ;    Default:
 ;    (*.ksh,*.sh)|*.ksh;*.sh|SQL files (*.sql)|*.sql|All files (*.*)|*.*|
 ;    The example line below narrows it to all files only:
 ;scriptfilefilter=All files (*.*)|*.*|
 
-; scriptmode: master switch for the RuTTY script engine (send a script file
+; scriptmode: master switch for the RuTTY script engine (a script file sent
 ;    line by line, with wait-for-prompt/halt-on patterns). no = disable the
 ;    engine entirely: the session auto-script does not run and the
-;    "Send a script file" menu entry refuses with a notice.
+;    "Run script file" menu entry refuses with a notice.
 ;scriptmode=yes
 
 ; sendcmdmode: may OTHER programs type into this terminal?
@@ -1208,6 +1208,11 @@
 ; (re)send automatic command (default is SHIFT+F12)
 ;autocommand=
 
+; Accept broadcast on/off - the same as Tools > Accept broadcast: this
+;    window takes the text sent to all windows, or not.
+;    No default key - it does nothing until you set one here.
+;broadcasttoggle=
+
 ; Change settings ...
 ;    No default key - it does nothing until you set one here.
 ;changesettings=
@@ -1265,6 +1270,10 @@
 ;    Example:  eventlog={CONTROL}{SHIFT}E
 ;eventlog=
 
+; Export current settings - the same as Tools > Export current settings.
+;    No default key - it does nothing until you set one here.
+;exportsettings=
+
 ; The shell's prompt marks (OSC 133, sent by the shell integration on the
 ; host): jump to the previous / next failed command, the prompt at the top
 ; (default is ALT+SHIFT+PRIOR / ALT+SHIFT+NEXT). In a window without marks, or
@@ -1304,6 +1313,10 @@
 ; (default is CONTROL+F4)
 ;getfile=
 
+; Hyperlinks on/off - the same as Tools > Hyperlinks.
+;    No default key - it does nothing until you set one here.
+;hyperlinktoggle=
+
 ; change the background image (default is CONTROL+F11)
 ;imagechange=
 
@@ -1328,6 +1341,11 @@
 ;    No default key - it does nothing until you set one here.
 ;opennewcurrent=
 
+; Paste - the same as Paste in the window menu: the clipboard into the
+;    session.
+;    No default key - it does nothing until you set one here.
+;paste=
+
 ; Print current clipboard content (default is SHIFT+F7)
 ;print=
 
@@ -1343,6 +1361,12 @@
 ; Protect the window, disable keyboard and mouse input (default is CONTROL+F9)
 ;protect=
 
+; Restart session - the same as Restart Session in the window menu: a
+;    closed connection opened again. Does nothing while it is open
+;    (closerestart closes and reopens one).
+;    No default key - it does nothing until you set one here.
+;reconnect=
+
 ; Reset terminal
 ;    No default key - it does nothing until you set one here.
 ;resetterminal=
@@ -1350,8 +1374,19 @@
 ; Roll-up the window into the title bar (default is CONTROL+F12)
 ;rollup=
 
-; Load a local script and run it remotely (default is CONTROL+F2)
-;script=
+; Run script file - the same as Tools > Run script file...: the script
+;    engine sends a local file line by line (Session > Scripting).
+;    No default key - it does nothing until you set one here.
+;runscriptfile=
+
+; Save as new session - the same as Save as New Session... in the window
+;    menu.
+;    No default key - it does nothing until you set one here.
+;savenewsession=
+
+; Accept script bridge on/off - the same as Tools > Accept script bridge.
+;    No default key - it does nothing until you set one here.
+;scriptbridgetoggle=
 
 ; The shell's prompt marks (OSC 133): select, and so copy, a command line - the
 ; command you typed, without the prompt - of the command at the top of the
@@ -1368,8 +1403,18 @@
 ; Transfers (default is CONTROL+F3)
 ;sendfile=
 
+; Shortcuts on/off - the same as Tools > Shortcuts: the keys of this
+;    section off, and on again. Its own key also works while the keys are
+;    off: it switches them on.
+;    No default key - it does nothing until you set one here.
+;shortcutstoggle=
+
 ; Show current port forwarding definition (default is SHIFT+F6)
 ;showportforward=
+
+; Stop script - the same as Tools > Stop script: the running script stops.
+;    No default key - it does nothing until you set one here.
+;stopscript=
 
 ; Enable or disable logging (default is SHIFT+F5)
 ;switchlogmode=
@@ -1383,14 +1428,38 @@
 ; Send the window to the system tray (default is CONTROL+F6)
 ;tray=
 
+; Type text file - the same as Tools > Type text file...: a local file
+;    typed into the session as it is (default is CONTROL+F2). Until
+;    0.85.1.19-beta the key was script, renamed at the first start.
+;typetextfile=
+
+; Check for updates - the same as Check for updates... in the window menu
+;    (the [KiTTY] setting checkupdate is the check at startup).
+;    No default key - it does nothing until you set one here.
+;updatecheck=
+
 ; Switch to embedded image viewer (default SHIFT+F11)
 ;viewer=
 
 ; Switch to always visible (default is CONTROL+F7)
 ;visible=
 
+; Terminal name - the same as Window > Terminal Name... in the window
+;    menu.
+;    No default key - it does nothing until you set one here.
+;winname=
+
 ; Start WinSCP (default is SHIFT+F3)
 ;winscp=
+
+; ZModem abort, receive and upload - the same as Tools > ZModem Abort,
+;    ZModem Receive and ZModem Upload. Each key works only while the menu
+;    offers its entry: receive needs rzcommand, upload szcommand, abort a
+;    transfer under way.
+;    No default key - it does nothing until you set one here.
+;zmodemabort=
+;zmodemreceive=
+;zmodemupload=
 
 
 

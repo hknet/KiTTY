@@ -805,6 +805,8 @@ void InitWinMain( void ) {
 	AutoTextFromRegistry() ;
 	// [Launcher] dblclick, noticeseconds: their new names, once
 	LauncherKeysRename() ;
+	// [Shortcuts] script: its new name typetextfile, once
+	ShortcutsRenameOldKeys() ;
 	// Initialise the shortcuts
 	InitShortcuts() ;
 	NETDBG_TS("after InitShortcuts");

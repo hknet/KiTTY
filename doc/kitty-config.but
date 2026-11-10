@@ -2101,12 +2101,21 @@ switch; the combinations themselves are the \c{[Shortcuts]} section.
 The actions, by the name the list shows them under, and the key each
 has out of the box (none where no key is given):
 
+\b \q{Accept broadcast on/off} - the same as \q{Tools} > \q{Accept
+broadcast}.
+
+\b \q{Accept script bridge on/off} - the same as \q{Tools} >
+\q{Accept script bridge}.
+
 \b \q{Always on top} - keep the window above every other; Ctrl+F7.
 
 \b \q{Change Settings} - open the configuration box for this session.
 
 \b \q{Change the background image} - the next image of the background
 folder; Ctrl+F11.
+
+\b \q{Check for updates} - the same as \q{Check for updates...} in
+the window menu.
 
 \b \q{Clear scrollback} - discard the lines scrolled off the top.
 
@@ -2120,6 +2129,9 @@ again.
 
 \b \q{Duplicate the session} - a second window with these settings;
 Ctrl+Alt+T.
+
+\b \q{Export current settings} - the same as \q{Tools} > \q{Export
+current settings}.
 
 \b \q{Font: black and white} - the terminal in black on white.
 
@@ -2137,6 +2149,8 @@ Ctrl+Num 0.
 \b \q{Get File (kscp)...} - fetch a remote file into the download
 folder; a path on the clipboard is checked and filled in; Ctrl+F4.
 
+\b \q{Hyperlinks on/off} - the same as \q{Tools} > \q{Hyperlinks}.
+
 \b \q{Image viewer} - switch the background-image viewer on and off;
 Shift+F11.
 
@@ -2153,6 +2167,9 @@ clipboard; Ctrl+Shift+F2.
 \b \q{Open the Logfile} - open this session's log file with whatever
 opens .log files.
 
+\b \q{Paste} - the clipboard into the session, as \q{Paste} in the
+window menu.
+
 \b \q{Print all} - print the whole buffer; F7.
 
 \b \q{Print the screen} - print what the clipboard holds; Shift+F7.
@@ -2164,9 +2181,19 @@ pressed again; Ctrl+F9.
 
 \b \q{Reset the terminal} - the terminal state back to its start.
 
+\b \q{Restart session} - a closed connection opened again, as
+\q{Restart Session} in the window menu. Does nothing while the
+connection is open.
+
 \b \q{Roll the window up} - into its title bar, and back; Ctrl+F12.
 
 \b \q{Run a command} - run a local command typed in a box; Ctrl+F5.
+
+\b \q{Run script file} - the script engine sends a local file line by
+line, as set on Session > Scripting.
+
+\b \q{Save as new session} - the same as \q{Save as New Session...}
+in the window menu.
 
 \b \q{Search the scrollback} - the find bar at the top right of the
 window: type, and the hits turn amber in the text and beside the
@@ -2179,9 +2206,6 @@ when nothing is found; Esc closes it and selects nothing. Opened again,
 it shows the last text and the hit it was closed on. Drag it by its grip to move it; a stored
 session keeps the place. Not available while a full-screen program runs.
 Ctrl+Shift+F, or \q{Find...} in the window menu.
-
-\b \q{Send a script file} - type a local file's lines into the session;
-Ctrl+F2.
 
 \b \q{Send File (kscp)} - upload a local file with kscp; Ctrl+F3.
 
@@ -2197,6 +2221,10 @@ Shift+F8, and Ctrl+Shift+F8 always.
 \b \q{Send to the tray} - hide the window in the notification area;
 Ctrl+F6.
 
+\b \q{Shortcuts on/off} - the same as \q{Tools} > \q{Shortcuts}.
+Its key also works while the shortcuts are off: it switches them on
+again.
+
 \b \q{Show port forwardings} - list the forwardings of this session;
 Shift+F6.
 
@@ -2208,13 +2236,26 @@ offers it; Shift+F4.
 
 \b \q{Start WinSCP} - WinSCP on this host; Shift+F3.
 
+\b \q{Stop script} - the running script stops.
+
 \b \q{Switch the log mode} - session logging on or off; Shift+F5.
+
+\b \q{Terminal name} - the same as \q{Window} > \q{Terminal
+Name...}.
 
 \b \q{Transparency: less} - the window more opaque; Ctrl+Down. Does
 nothing while transparency is off for the session.
 
 \b \q{Transparency: more} - the window more see-through; Ctrl+Up. The
 same condition.
+
+\b \q{Type text file} - type a local file's lines into the session;
+Ctrl+F2. Until 0.85.1.19-beta the key was \c{script} in \c{kitty.ini},
+renamed at the first start.
+
+\b \q{ZModem abort}, \q{ZModem receive}, \q{ZModem upload} - the
+same as the ZModem entries of \q{Tools}. A key works only while the
+menu offers its entry.
 
 \S{kitty-cfg-kset-autotext} The AutoText leaf
 
@@ -2259,14 +2300,14 @@ keys} does the same per line and per synthesised Ctrl, Shift or Alt.
 \q{Pause between auto-command lines} is the gap between the lines of
 the automatic command, in seconds.
 
-\b \q{Script engine} is what \q{Send a script file} runs on: nothing is
+\b \q{Script engine} is what \q{Run script file} runs on: nothing is
 transferred and nothing is executed as a file on the far end. The file
 is read on your PC and its lines are typed into the open terminal, one
 after another, as if you had typed them; the engine can wait for a
 prompt pattern before the next line and stop when a halt pattern shows
 in the output. Off, the menu entry refuses and the session auto-script
 does not run.
-\q{File types offered by "Send a script file"} is the filter the file
+\q{File types offered by "Type text file"} is the filter the file
 dialog of that command opens with, in the Windows form
 \c{Description|*.ext;*.ext|Next description|*.ext|}, for example
 \c{Shell scripts|*.sh;*.ksh|All files|*.*|}. Blank means the built-in

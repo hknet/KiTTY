@@ -930,8 +930,9 @@ void SetConnBreakIcon( HWND hwnd ) {
 //SetNewIcon( hwnd, filename_to_str(conf_get_filename(conf,CONF_iconefile)), 0, SI_INIT ) ;
 }
 
-// Send a local script file
-void RunScriptFile( HWND hwnd, const char * filename ) {
+/* Tools > Type text file: the file's text typed into the session, with the
+ * auto-command's escapes, never waiting for the host */
+void kitty_type_text_file( HWND hwnd, const char * filename ) {
 	long len = 0 ; size_t lread ;
 	char * oldcmd = NULL ;
 	FILE * fp ;
@@ -980,10 +981,10 @@ static void * script_file_pick = NULL ;
 static void script_file_picked( void * ctx, const char * path ) {
     HWND hwnd = (HWND)ctx ;
     script_file_pick = NULL ;
-    if( path != NULL && IsWindow( hwnd ) ) RunScriptFile( hwnd, path ) ;
+    if( path != NULL && IsWindow( hwnd ) ) kitty_type_text_file( hwnd, path ) ;
 }
 
-void OpenAndSendScriptFile( HWND hwnd ) {
+void kitty_type_text_file_pick( HWND hwnd ) {
     char *filter, *filename ;
     if( script_file_pick != NULL ) return ;   /* its picker is open already */
     /* the filter and the file whole */
@@ -1002,7 +1003,7 @@ void OpenAndSendScriptFile( HWND hwnd ) {
     if( script_file_pick != NULL ) { sfree( filter ) ; return ; }
     /* no thread for the picker: on this one, as before */
     if( ( filename = kitty_pick_open_dup( hwnd, KT_TWIN_TYPE_FILE_TITLE, filter, NULL ) ) != NULL ) {
-        RunScriptFile( hwnd, filename ) ;
+        kitty_type_text_file( hwnd, filename ) ;
         sfree( filename ) ;
     }
     sfree( filter ) ;

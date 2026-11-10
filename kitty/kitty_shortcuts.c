@@ -25,9 +25,13 @@
 #include "kitty_tools.h"
 #include "kitty_text.h"     /* KT_KEYTEXT_*: the key names shown in menus */
 #include "kitty_inikeys.h"  /* KI_SC_*: the [Shortcuts] key names */
+#include "mini/mini.h"      /* writeINI, delINI: ShortcutsRenameOldKeys */
 #include "kitty_bridge.h"
 #include "kitty_win.h"
 #include "kitty_winutil.h"
+#ifdef MOD_ZMODEM
+#include "kitty_zmodem.h"   /* sc_menu_offered: what the ZModem entries need */
+#endif
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 extern HWND MainHwnd ;                  /* kitty.c: the terminal window */
@@ -177,67 +181,92 @@ void TranslateShortcuts( char * st ) {
 }
 
 /* One row per [Shortcuts] action: its ini key, where its code lives in
- * shortcuts_tab, the built-in default (0 = no key) and the name the
- * Shortcuts panel and the help show it under. InitShortcuts reads the
- * table; the panel lists it, sorted by name, so the order here is free. */
-struct sc_action { const char * key ; size_t offset ; int dflt ; const char * name ; } ;
-#define SC_ACT( field, key, dflt, name ) { key, offsetof(struct TShortcuts, field), dflt, name }
+ * shortcuts_tab, the built-in default (0 = no key), the name the
+ * Shortcuts panel and the help show it under, the menu command it runs
+ * (its menu item shows the key after a tab, 0 = no menu command), how
+ * ManageShortcuts runs it (SC_MENU: WM_COMMAND with the menu command,
+ * from the table; SC_CODE: code of its own there) and the ini key it
+ * had before a rename (NULL = none, see ShortcutsRenameOldKeys).
+ * InitShortcuts reads the table. The panel lists it, sorted by name, so
+ * the order here is free. tools/check-menu-shortcuts.py checks the menu
+ * column against the commands of the terminal window's menus, both ways. */
+enum { SC_CODE, SC_MENU } ;
+struct sc_action { const char * key ; size_t offset ; int dflt ; const char * name ; int idm ; int run ; const char * oldkey ; } ;
+#define SC_ACT( field, key, dflt, name, idm, run, oldkey ) { key, offsetof(struct TShortcuts, field), dflt, name, idm, run, oldkey }
 static const struct sc_action sc_actions[] = {
-	SC_ACT( editor,            KI_SC_EDITOR,            SHIFTKEY+VK_F2,            KT_SC_ACT_EDITOR ),
-	SC_ACT( editorclipboard,   KI_SC_EDITORCLIPBOARD,   CONTROLKEY+SHIFTKEY+VK_F2, KT_SC_ACT_EDITORCLIPBOARD ),
-	SC_ACT( winscp,            KI_SC_WINSCP,            SHIFTKEY+VK_F3,            KT_SC_ACT_WINSCP ),
-	SC_ACT( filezilla,         KI_SC_FILEZILLA,         SHIFTKEY+VK_F4,            KT_SC_ACT_FILEZILLA ),
-	SC_ACT( switchlogmode,     KI_SC_SWITCHLOGMODE,     SHIFTKEY+VK_F5,            KT_SC_ACT_SWITCHLOGMODE ),
-	SC_ACT( showportforward,   KI_SC_SHOWPORTFORWARD,   SHIFTKEY+VK_F6,            KT_SC_ACT_SHOWPORTFORWARD ),
-	SC_ACT( print,             KI_SC_PRINT,             SHIFTKEY+VK_F7,            KT_SC_ACT_PRINT ),
-	SC_ACT( printall,          KI_SC_PRINTALL,          VK_F7,                     KT_SC_ACT_PRINTALL ),
-	SC_ACT( inputm,            KI_SC_INPUTM,            SHIFTKEY+VK_F8,            KT_SC_ACT_INPUTM ),
+	SC_ACT( editor,            KI_SC_EDITOR,            SHIFTKEY+VK_F2,            KT_SC_ACT_EDITOR,             IDM_MNOTEPAD,           SC_CODE, NULL ),
+	SC_ACT( editorclipboard,   KI_SC_EDITORCLIPBOARD,   CONTROLKEY+SHIFTKEY+VK_F2, KT_SC_ACT_EDITORCLIPBOARD,    IDM_MNOTEPAD_CLIP,      SC_CODE, NULL ),
+	SC_ACT( winscp,            KI_SC_WINSCP,            SHIFTKEY+VK_F3,            KT_SC_ACT_WINSCP,             IDM_WINSCP,             SC_CODE, NULL ),
+	SC_ACT( filezilla,         KI_SC_FILEZILLA,         SHIFTKEY+VK_F4,            KT_SC_ACT_FILEZILLA,          IDM_FILEZILLA,          SC_CODE, NULL ),
+	SC_ACT( switchlogmode,     KI_SC_SWITCHLOGMODE,     SHIFTKEY+VK_F5,            KT_SC_ACT_SWITCHLOGMODE,      0,                      SC_CODE, NULL ),
+	SC_ACT( showportforward,   KI_SC_SHOWPORTFORWARD,   SHIFTKEY+VK_F6,            KT_SC_ACT_SHOWPORTFORWARD,    IDM_SHOWPORTFWD,        SC_CODE, NULL ),
+	SC_ACT( print,             KI_SC_PRINT,             SHIFTKEY+VK_F7,            KT_SC_ACT_PRINT,              IDM_PRINT,              SC_CODE, NULL ),
+	SC_ACT( printall,          KI_SC_PRINTALL,          VK_F7,                     KT_SC_ACT_PRINTALL,           0,                      SC_CODE, NULL ),
+	SC_ACT( inputm,            KI_SC_INPUTM,            SHIFTKEY+VK_F8,            KT_SC_ACT_INPUTM,             0,                      SC_CODE, NULL ),
 #ifdef MOD_BACKGROUNDIMAGE
-	SC_ACT( viewer,            KI_SC_VIEWER,            SHIFTKEY+VK_F11,           KT_SC_ACT_VIEWER ),
+	SC_ACT( viewer,            KI_SC_VIEWER,            SHIFTKEY+VK_F11,           KT_SC_ACT_VIEWER,             0,                      SC_CODE, NULL ),
 #endif
-	SC_ACT( autocommand,       KI_SC_AUTOCOMMAND,       SHIFTKEY+VK_F12,           KT_SC_ACT_AUTOCOMMAND ),
-	SC_ACT( script,            KI_SC_SCRIPT,            CONTROLKEY+VK_F2,          KT_SC_ACT_SCRIPT ),
-	SC_ACT( sendfile,          KI_SC_SENDFILE,          CONTROLKEY+VK_F3,          KT_SC_ACT_SENDFILE ),
-	SC_ACT( getfile,           KI_SC_GETFILE,           CONTROLKEY+VK_F4,          KT_SC_ACT_GETFILE ),
-	SC_ACT( command,           KI_SC_COMMAND,           CONTROLKEY+VK_F5,          KT_SC_ACT_COMMAND ),
-	SC_ACT( tray,              KI_SC_TRAY,              CONTROLKEY+VK_F6,          KT_SC_ACT_TRAY ),
-	SC_ACT( visible,           KI_SC_VISIBLE,           CONTROLKEY+VK_F7,          KT_SC_ACT_VISIBLE ),
-	SC_ACT( input,             KI_SC_INPUT,             CONTROLKEY+VK_F8,          KT_SC_ACT_INPUT ),
-	SC_ACT( protect,           KI_SC_PROTECT,           CONTROLKEY+VK_F9,          KT_SC_ACT_PROTECT ),
+	SC_ACT( autocommand,       KI_SC_AUTOCOMMAND,       SHIFTKEY+VK_F12,           KT_SC_ACT_AUTOCOMMAND,        0,                      SC_CODE, NULL ),
+	SC_ACT( typetextfile,      KI_SC_TYPETEXTFILE,      CONTROLKEY+VK_F2,          KT_SC_ACT_TYPETEXTFILE,       IDM_TYPETEXTFILE,       SC_MENU, "script" ),
+	SC_ACT( runscriptfile,     KI_SC_RUNSCRIPTFILE,     0,                         KT_SC_ACT_RUNSCRIPTFILE,      IDM_RUNSCRIPTFILE,      SC_MENU, NULL ),
+	SC_ACT( stopscript,        KI_SC_STOPSCRIPT,        0,                         KT_SC_ACT_STOPSCRIPT,         IDM_STOPSCRIPT,         SC_MENU, NULL ),
+	SC_ACT( sendfile,          KI_SC_SENDFILE,          CONTROLKEY+VK_F3,          KT_SC_ACT_SENDFILE,           IDM_PSCP,               SC_CODE, NULL ),
+	SC_ACT( getfile,           KI_SC_GETFILE,           CONTROLKEY+VK_F4,          KT_SC_ACT_GETFILE,            IDM_GETFILE,            SC_CODE, NULL ),
+	SC_ACT( command,           KI_SC_COMMAND,           CONTROLKEY+VK_F5,          KT_SC_ACT_COMMAND,            0,                      SC_CODE, NULL ),
+	SC_ACT( tray,              KI_SC_TRAY,              CONTROLKEY+VK_F6,          KT_SC_ACT_TRAY,               IDM_TOTRAY,             SC_CODE, NULL ),
+	SC_ACT( visible,           KI_SC_VISIBLE,           CONTROLKEY+VK_F7,          KT_SC_ACT_VISIBLE,            IDM_VISIBLE,            SC_CODE, NULL ),
+	SC_ACT( input,             KI_SC_INPUT,             CONTROLKEY+VK_F8,          KT_SC_ACT_INPUT,              0,                      SC_CODE, NULL ),
+	SC_ACT( protect,           KI_SC_PROTECT,           CONTROLKEY+VK_F9,          KT_SC_ACT_PROTECT,            IDM_PROTECT,            SC_CODE, NULL ),
 #ifdef MOD_BACKGROUNDIMAGE
-	SC_ACT( imagechange,       KI_SC_IMAGECHANGE,       CONTROLKEY+VK_F11,         KT_SC_ACT_IMAGECHANGE ),
+	SC_ACT( imagechange,       KI_SC_IMAGECHANGE,       CONTROLKEY+VK_F11,         KT_SC_ACT_IMAGECHANGE,        0,                      SC_CODE, NULL ),
 #endif
-	SC_ACT( rollup,            KI_SC_ROLLUP,            CONTROLKEY+VK_F12,         KT_SC_ACT_ROLLUP ),
-	SC_ACT( resetterminal,     KI_SC_RESETTERMINAL,     0,                         KT_SC_ACT_RESETTERMINAL ),
-	SC_ACT( duplicate,         KI_SC_DUPLICATE,         CONTROLKEY+ALTKEY+'T',     KT_SC_ACT_DUPLICATE ),
-	SC_ACT( opennew,           KI_SC_OPENNEW,           0,                         KT_SC_ACT_OPENNEW ),
-	SC_ACT( opennewcurrent,    KI_SC_OPENNEWCURRENT,    0,                         KT_SC_ACT_OPENNEWCURRENT ),
-	SC_ACT( changesettings,    KI_SC_CHANGESETTINGS,    0,                         KT_SC_ACT_CHANGESETTINGS ),
-	SC_ACT( clearscrollback,   KI_SC_CLEARSCROLLBACK,   0,                         KT_SC_ACT_CLEARSCROLLBACK ),
-	SC_ACT( clearlogfile,      KI_SC_CLEARLOGFILE,      0,                         KT_SC_ACT_CLEARLOGFILE ),
-	SC_ACT( openlogfile,       KI_SC_OPENLOGFILE,       0,                         KT_SC_ACT_OPENLOGFILE ),
-	SC_ACT( search,            KI_SC_SEARCH,            CONTROLKEY+SHIFTKEY+'F',   KT_SC_ACT_SEARCH ),
-	SC_ACT( closerestart,      KI_SC_CLOSERESTART,      0,                         KT_SC_ACT_CLOSERESTART ),
-	SC_ACT( eventlog,          KI_SC_EVENTLOG,          0,                         KT_SC_ACT_EVENTLOG ),
-	SC_ACT( fullscreen,        KI_SC_FULLSCREEN,        0,                         KT_SC_ACT_FULLSCREEN ),
-	SC_ACT( fontup,            KI_SC_FONTUP,            CONTROLKEY+VK_ADD,         KT_SC_ACT_FONTUP ),
-	SC_ACT( fontdown,          KI_SC_FONTDOWN,          CONTROLKEY+VK_SUBTRACT,    KT_SC_ACT_FONTDOWN ),
-	SC_ACT( fontreset,         KI_SC_FONTRESET,         CONTROLKEY+VK_NUMPAD0,     KT_SC_ACT_FONTRESET ),
-	SC_ACT( copyall,           KI_SC_COPYALL,           0,                         KT_SC_ACT_COPYALL ),
-	SC_ACT( fontnegative,      KI_SC_FONTNEGATIVE,      0,                         KT_SC_ACT_FONTNEGATIVE ),
-	SC_ACT( fontblackandwhite, KI_SC_FONTBLACKANDWHITE, 0,                         KT_SC_ACT_FONTBLACKANDWHITE ),
-	SC_ACT( keyexchange,       KI_SC_KEYEXCHANGE,       0,                         KT_SC_ACT_KEYEXCHANGE ),
-	SC_ACT( transparencyup,    KI_SC_TRANSPARENCYUP,    CONTROLKEY+VK_UP,          KT_SC_ACT_TRANSPARENCYUP ),
-	SC_ACT( transparencydown,  KI_SC_TRANSPARENCYDOWN,  CONTROLKEY+VK_DOWN,        KT_SC_ACT_TRANSPARENCYDOWN ),
+	SC_ACT( rollup,            KI_SC_ROLLUP,            CONTROLKEY+VK_F12,         KT_SC_ACT_ROLLUP,             IDM_WINROL,             SC_CODE, NULL ),
+	SC_ACT( resetterminal,     KI_SC_RESETTERMINAL,     0,                         KT_SC_ACT_RESETTERMINAL,      IDM_RESET,              SC_CODE, NULL ),
+	SC_ACT( duplicate,         KI_SC_DUPLICATE,         CONTROLKEY+ALTKEY+'T',     KT_SC_ACT_DUPLICATE,          IDM_DUPSESS,            SC_CODE, NULL ),
+	SC_ACT( opennew,           KI_SC_OPENNEW,           0,                         KT_SC_ACT_OPENNEW,            IDM_NEWSESS,            SC_CODE, NULL ),
+	SC_ACT( opennewcurrent,    KI_SC_OPENNEWCURRENT,    0,                         KT_SC_ACT_OPENNEWCURRENT,     IDM_NEWDUPSESS,         SC_CODE, NULL ),
+	SC_ACT( changesettings,    KI_SC_CHANGESETTINGS,    0,                         KT_SC_ACT_CHANGESETTINGS,     IDM_RECONF,             SC_CODE, NULL ),
+	SC_ACT( clearscrollback,   KI_SC_CLEARSCROLLBACK,   0,                         KT_SC_ACT_CLEARSCROLLBACK,    IDM_CLRSB,              SC_CODE, NULL ),
+	SC_ACT( clearlogfile,      KI_SC_CLEARLOGFILE,      0,                         KT_SC_ACT_CLEARLOGFILE,       IDM_CLEARLOGFILE,       SC_CODE, NULL ),
+	SC_ACT( openlogfile,       KI_SC_OPENLOGFILE,       0,                         KT_SC_ACT_OPENLOGFILE,        IDM_OPENLOGFILE,        SC_CODE, NULL ),
+	SC_ACT( search,            KI_SC_SEARCH,            CONTROLKEY+SHIFTKEY+'F',   KT_SC_ACT_SEARCH,             IDM_SEARCH,             SC_CODE, NULL ),
+	SC_ACT( closerestart,      KI_SC_CLOSERESTART,      0,                         KT_SC_ACT_CLOSERESTART,       IDM_RESTARTSESSION,     SC_CODE, NULL ),
+	SC_ACT( eventlog,          KI_SC_EVENTLOG,          0,                         KT_SC_ACT_EVENTLOG,           IDM_SHOWLOG,            SC_CODE, NULL ),
+	SC_ACT( fullscreen,        KI_SC_FULLSCREEN,        0,                         KT_SC_ACT_FULLSCREEN,         IDM_FULLSCREEN,         SC_CODE, NULL ),
+	SC_ACT( fontup,            KI_SC_FONTUP,            CONTROLKEY+VK_ADD,         KT_SC_ACT_FONTUP,             IDM_FONTUP,             SC_CODE, NULL ),
+	SC_ACT( fontdown,          KI_SC_FONTDOWN,          CONTROLKEY+VK_SUBTRACT,    KT_SC_ACT_FONTDOWN,           IDM_FONTDOWN,           SC_CODE, NULL ),
+	SC_ACT( fontreset,         KI_SC_FONTRESET,         CONTROLKEY+VK_NUMPAD0,     KT_SC_ACT_FONTRESET,          0,                      SC_CODE, NULL ),
+	SC_ACT( copyall,           KI_SC_COPYALL,           0,                         KT_SC_ACT_COPYALL,            IDM_COPYALL,            SC_CODE, NULL ),
+	SC_ACT( fontnegative,      KI_SC_FONTNEGATIVE,      0,                         KT_SC_ACT_FONTNEGATIVE,       IDM_FONTNEGATIVE,       SC_CODE, NULL ),
+	SC_ACT( fontblackandwhite, KI_SC_FONTBLACKANDWHITE, 0,                         KT_SC_ACT_FONTBLACKANDWHITE,  IDM_FONTBLACKANDWHITE,  SC_CODE, NULL ),
+	SC_ACT( keyexchange,       KI_SC_KEYEXCHANGE,       0,                         KT_SC_ACT_KEYEXCHANGE,        IDM_REKEY,              SC_CODE, NULL ),
+	SC_ACT( transparencyup,    KI_SC_TRANSPARENCYUP,    CONTROLKEY+VK_UP,          KT_SC_ACT_TRANSPARENCYUP,     IDM_TRANSPARUP,         SC_CODE, NULL ),
+	SC_ACT( transparencydown,  KI_SC_TRANSPARENCYDOWN,  CONTROLKEY+VK_DOWN,        KT_SC_ACT_TRANSPARENCYDOWN,   IDM_TRANSPARDOWN,       SC_CODE, NULL ),
 	/* The shell's prompt marks (OSC 133): next to the scroll keys
 	 * (Shift/Ctrl/Ctrl+Shift with PgUp/PgDn). In a window without marks,
 	 * or under a full-screen program, they go to the host. */
-	SC_ACT( promptprev,        KI_SC_PROMPTPREV,        ALTKEY+VK_PRIOR,           KT_SC_ACT_PROMPTPREV ),
-	SC_ACT( promptnext,        KI_SC_PROMPTNEXT,        ALTKEY+VK_NEXT,            KT_SC_ACT_PROMPTNEXT ),
-	SC_ACT( failedprev,        KI_SC_FAILEDPREV,        ALTKEY+SHIFTKEY+VK_PRIOR,  KT_SC_ACT_FAILEDPREV ),
-	SC_ACT( failednext,        KI_SC_FAILEDNEXT,        ALTKEY+SHIFTKEY+VK_NEXT,   KT_SC_ACT_FAILEDNEXT ),
-	SC_ACT( selectoutput,      KI_SC_SELECTOUTPUT,      ALTKEY+VK_END,             KT_SC_ACT_SELECTOUTPUT ),
-	SC_ACT( selectcommand,     KI_SC_SELECTCOMMAND,     ALTKEY+VK_HOME,            KT_SC_ACT_SELECTCOMMAND ),
+	SC_ACT( promptprev,        KI_SC_PROMPTPREV,        ALTKEY+VK_PRIOR,           KT_SC_ACT_PROMPTPREV,         0,                      SC_CODE, NULL ),
+	SC_ACT( promptnext,        KI_SC_PROMPTNEXT,        ALTKEY+VK_NEXT,            KT_SC_ACT_PROMPTNEXT,         0,                      SC_CODE, NULL ),
+	SC_ACT( failedprev,        KI_SC_FAILEDPREV,        ALTKEY+SHIFTKEY+VK_PRIOR,  KT_SC_ACT_FAILEDPREV,         0,                      SC_CODE, NULL ),
+	SC_ACT( failednext,        KI_SC_FAILEDNEXT,        ALTKEY+SHIFTKEY+VK_NEXT,   KT_SC_ACT_FAILEDNEXT,         0,                      SC_CODE, NULL ),
+	SC_ACT( selectoutput,      KI_SC_SELECTOUTPUT,      ALTKEY+VK_END,             KT_SC_ACT_SELECTOUTPUT,       0,                      SC_CODE, NULL ),
+	SC_ACT( selectcommand,     KI_SC_SELECTCOMMAND,     ALTKEY+VK_HOME,            KT_SC_ACT_SELECTCOMMAND,      0,                      SC_CODE, NULL ),
+	/* The window menu's other commands, no default key. */
+	SC_ACT( paste,             KI_SC_PASTE,             0,                         KT_SC_ACT_PASTE,              IDM_PASTE,              SC_MENU, NULL ),
+	SC_ACT( reconnect,         KI_SC_RECONNECT,         0,                         KT_SC_ACT_RECONNECT,          IDM_RESTART,            SC_MENU, NULL ),
+	SC_ACT( savenewsession,    KI_SC_SAVENEWSESSION,    0,                         KT_SC_ACT_SAVENEWSESSION,     IDM_SAVENEWSESS,        SC_MENU, NULL ),
+	SC_ACT( updatecheck,       KI_SC_UPDATECHECK,       0,                         KT_SC_ACT_UPDATECHECK,        IDM_CHECKUPDATE,        SC_MENU, NULL ),
+	SC_ACT( winname,           KI_SC_WINNAME,           0,                         KT_SC_ACT_WINNAME,            IDM_WINNAME,            SC_MENU, NULL ),
+	SC_ACT( exportsettings,    KI_SC_EXPORTSETTINGS,    0,                         KT_SC_ACT_EXPORTSETTINGS,     IDM_EXPORTSETTINGS,     SC_MENU, NULL ),
+	SC_ACT( shortcutstoggle,   KI_SC_SHORTCUTSTOGGLE,   0,                         KT_SC_ACT_SHORTCUTSTOGGLE,    IDM_SHORTCUTSTOGGLE,    SC_MENU, NULL ),
+	SC_ACT( hyperlinktoggle,   KI_SC_HYPERLINKTOGGLE,   0,                         KT_SC_ACT_HYPERLINKTOGGLE,    IDM_HYPERLINKTOGGLE,    SC_MENU, NULL ),
+	SC_ACT( broadcasttoggle,   KI_SC_BROADCASTTOGGLE,   0,                         KT_SC_ACT_BROADCASTTOGGLE,    IDM_BROADCASTTOGGLE,    SC_MENU, NULL ),
+	SC_ACT( scriptbridgetoggle, KI_SC_SCRIPTBRIDGETOGGLE, 0,                         KT_SC_ACT_SCRIPTBRIDGETOGGLE, IDM_SCRIPTBRIDGETOGGLE, SC_MENU, NULL ),
+#ifdef MOD_ZMODEM
+	SC_ACT( zmodemreceive,     KI_SC_ZMODEMRECEIVE,     0,                         KT_SC_ACT_ZMODEMRECEIVE,      IDM_XYZSTART,           SC_MENU, NULL ),
+	SC_ACT( zmodemupload,      KI_SC_ZMODEMUPLOAD,      0,                         KT_SC_ACT_ZMODEMUPLOAD,       IDM_XYZUPLOAD,          SC_MENU, NULL ),
+	SC_ACT( zmodemabort,       KI_SC_ZMODEMABORT,       0,                         KT_SC_ACT_ZMODEMABORT,        IDM_XYZABORT,           SC_MENU, NULL ),
+#endif
 } ;
 #undef SC_ACT
 #define SC_SLOT( i ) ( (int *) ( (char *) &shortcuts_tab + sc_actions[i].offset ) )
@@ -253,6 +282,32 @@ int ShortcutActionDefault( int i ) { return ( i >= 0 && i < ShortcutActionCount(
 char * ShortcutsIniDup( const char * key ) {
 	char * v = kitty_read_ini_dup( KittyIniFile, KI_SECTION_SHORTCUTS, key ) ;
 	return v ? v : dupstr( "" ) ;
+}
+
+/* An action renamed in kitty.ini (the oldkey column): the old key's value
+ * goes to the new key unless the new key is there, then the old key is
+ * removed. A key that is there counts, not a value: an empty old key (the
+ * action switched off) becomes an empty new key. Once at startup, before
+ * InitShortcuts first reads the keys (kitty_startup.c). Nothing under
+ * readonly=yes. [Shortcuts] is kitty.ini only (see InitShortcuts). */
+void ShortcutsRenameOldKeys( void ) {
+	int i ;
+	if( GetReadOnlyFlag() ) return ;
+	if( KittyIniFile == NULL || !KittyIniFile[0] || !existfile( KittyIniFile ) ) return ;
+	for( i=0 ; i<ShortcutActionCount() ; i++ ) {
+		char * old, * cur ;
+		if( sc_actions[i].oldkey == NULL ) continue ;
+		/* store-pairs: read file Shortcuts script - the one-time rename: the old name of typetextfile */
+		if( ( old = kitty_read_ini_dup( KittyIniFile, KI_SECTION_SHORTCUTS, sc_actions[i].oldkey ) ) == NULL ) continue ;
+		/* store-pairs: read file Shortcuts KI_SC_TYPETEXTFILE - the one-time rename: is the new name there */
+		cur = kitty_read_ini_dup( KittyIniFile, KI_SECTION_SHORTCUTS, sc_actions[i].key ) ;
+		/* store-pairs: write file Shortcuts KI_SC_TYPETEXTFILE - the one-time rename: the value under its new name */
+		if( cur != NULL || writeINI( KittyIniFile, KI_SECTION_SHORTCUTS, sc_actions[i].key, old ) == 1 )
+			/* store-pairs: write file Shortcuts script - the one-time rename: the old name removed */
+			delINI( KittyIniFile, KI_SECTION_SHORTCUTS, sc_actions[i].oldkey ) ;
+		sfree( cur ) ;
+		sfree( old ) ;
+	}
 }
 
 // Init shortcuts map at startup
@@ -392,41 +447,15 @@ int ShortcutKeyText( int key, char * buf, size_t size ) {
 }
 
 /* The [Shortcuts] key of a window-menu command: 1 and *key (0 = unset) for
- * a command that has one, 0 for any other. window.c does not see
- * shortcuts_tab. */
+ * a command an action of the table runs, 0 for any other. window.c does not
+ * see shortcuts_tab. */
 static int MenuShortcut( int idm, int * key ) {
-	switch( idm ) {
-		case IDM_WINSCP:        *key = shortcuts_tab.winscp ; return 1 ;
-		case IDM_PSCP:          *key = shortcuts_tab.sendfile ; return 1 ;
-		case IDM_GETFILE:       *key = shortcuts_tab.getfile ; return 1 ;
-		case IDM_FILEZILLA:     *key = shortcuts_tab.filezilla ; return 1 ;
-		case IDM_SHOWLOG:       *key = shortcuts_tab.eventlog ; return 1 ;
-		case IDM_DUPSESS:       *key = shortcuts_tab.duplicate ; return 1 ;
-		case IDM_NEWDUPSESS:    *key = shortcuts_tab.opennewcurrent ; return 1 ;
-		case IDM_RESTARTSESSION:*key = shortcuts_tab.closerestart ; return 1 ;
-		case IDM_RECONF:        *key = shortcuts_tab.changesettings ; return 1 ;
-		case IDM_COPYALL:       *key = shortcuts_tab.copyall ; return 1 ;
-		case IDM_CLRSB:         *key = shortcuts_tab.clearscrollback ; return 1 ;
-		case IDM_RESET:         *key = shortcuts_tab.resetterminal ; return 1 ;
-		case IDM_FULLSCREEN:    *key = shortcuts_tab.fullscreen ; return 1 ;
-		case IDM_TRANSPARUP:    *key = shortcuts_tab.transparencyup ; return 1 ;
-		case IDM_TRANSPARDOWN:  *key = shortcuts_tab.transparencydown ; return 1 ;
-		case IDM_FONTUP:        *key = shortcuts_tab.fontup ; return 1 ;
-		case IDM_FONTDOWN:      *key = shortcuts_tab.fontdown ; return 1 ;
-		case IDM_FONTNEGATIVE:  *key = shortcuts_tab.fontnegative ; return 1 ;
-		case IDM_FONTBLACKANDWHITE: *key = shortcuts_tab.fontblackandwhite ; return 1 ;
-		case IDM_VISIBLE:       *key = shortcuts_tab.visible ; return 1 ;
-		case IDM_WINROL:        *key = shortcuts_tab.rollup ; return 1 ;
-		case IDM_TOTRAY:        *key = shortcuts_tab.tray ; return 1 ;
-		case IDM_PROTECT:       *key = shortcuts_tab.protect ; return 1 ;
-		case IDM_SHOWPORTFWD:   *key = shortcuts_tab.showportforward ; return 1 ;
-		case IDM_OPENLOGFILE:   *key = shortcuts_tab.openlogfile ; return 1 ;
-		case IDM_SEARCH:        *key = shortcuts_tab.search ; return 1 ;
-		case IDM_CLEARLOGFILE:  *key = shortcuts_tab.clearlogfile ; return 1 ;
-		case IDM_REKEY:         *key = shortcuts_tab.keyexchange ; return 1 ;
-		case IDM_PRINT:         *key = shortcuts_tab.print ; return 1 ;
-		default:                *key = 0 ; return 0 ;
-	}
+	int i ;
+	*key = 0 ;
+	if( idm == 0 ) return 0 ;
+	for( i=0 ; i<ShortcutActionCount() ; i++ )
+		if( sc_actions[i].idm == idm ) { *key = *SC_SLOT(i) ; return 1 ; }
+	return 0 ;
 }
 
 /* The shortcut bound to a menu command, 0 for none. */
@@ -587,6 +616,34 @@ int ShortcutKeyReserved( int key ) {
 	return 0 ;
 }
 
+/* Whether the window menu offers a command now, for the entries it adds or
+ * enables only at times (window.c, WM_INITMENUPOPUP): ZModem Receive needs
+ * rz, Upload needs sz, both no transfer under way, Abort a transfer under
+ * way. 1 for any other command. */
+static int sc_menu_offered( int idm ) {
+#ifdef MOD_ZMODEM
+	switch( idm ) {
+		case IDM_XYZSTART:  return GetZModemFlag() && *kitty_zmodem_command( 0 ) && !kitty_zmodem_active() ;
+		case IDM_XYZUPLOAD: return GetZModemFlag() && *kitty_zmodem_command( 1 ) && !kitty_zmodem_active() ;
+		case IDM_XYZABORT:  return GetZModemFlag() && kitty_zmodem_active() ;
+		default: break ;
+	}
+#else
+	(void) idm ;
+#endif
+	return 1 ;
+}
+
+/* The keys switched off (window.c calls ManageShortcuts only while they are
+ * on): the key of "Shortcuts on/off" alone is checked. It switches them on
+ * again. 1 = it was that key. */
+int ShortcutsOffKey( HWND hwnd, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) {
+	int key = ShortcutKeyCode( key_num, shift_flag, control_flag, alt_flag, altgr_flag, win_flag ) ;
+	if( ( key <= 0 ) || ( key != shortcuts_tab.shortcutstoggle ) ) return 0 ;
+	SendMessage( hwnd, WM_COMMAND, IDM_SHORTCUTSTOGGLE, 0 ) ;
+	return 1 ;
+}
+
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) {
 	int key, i ;
 	/* No key: an unassigned action holds 0, so a virtual key 0 (synthetic
@@ -686,9 +743,14 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	if( GetBackgroundImageFlag() && (key == shortcuts_tab.viewer) ) 	// Toggle the image viewer mode
 		{ SetImageViewerFlag( abs(ImageViewerFlag-1) ) ; return 1 ; }
 #endif
-	if( key == shortcuts_tab.script ) 			// Load a script file
-		{ OpenAndSendScriptFile( hwnd ) ; return 1 ; }
-	else if( ( key == shortcuts_tab.sendfile ) && kitty_xfer_tool_shown( conf, 0 ) ) 	// Send a file by SCP
+	/* The SC_MENU actions run their menu command: WM_COMMAND, so the
+	 * window's own checks apply (the script engine off, a script running).
+	 * A command the menu does not offer now is no shortcut: the key
+	 * reaches the terminal. */
+	for( i=0 ; i<ShortcutActionCount() ; i++ )
+		if( ( sc_actions[i].run == SC_MENU ) && ( key == *SC_SLOT(i) ) && sc_menu_offered( sc_actions[i].idm ) )
+			{ SendMessage( hwnd, WM_COMMAND, (WPARAM)sc_actions[i].idm, 0 ) ; return 1 ; }
+	if( ( key == shortcuts_tab.sendfile ) && kitty_xfer_tool_shown( conf, 0 ) ) 	// Send a file by SCP
 		{ SendMessage( hwnd, WM_COMMAND, IDM_PSCP, 0 ) ; return 1 ; }
 	else if( ( key == shortcuts_tab.getfile ) && kitty_xfer_tool_shown( conf, 3 ) ) 	// Receive a file by SCP
 		{ GetFile( hwnd ) ; return 1 ; }

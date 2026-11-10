@@ -859,6 +859,32 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking that each global setting is read from the store it is written to")
   add_custom_target(check_store_pairs ALL DEPENDS ${KITTY_STOREPAIRS_CHECK_STAMP})
 
+  # A command of the terminal window's menus without a shortcut action (no
+  # key can reach it), or an action whose menu command is on no menu. The
+  # menus: windows/window.c and the kitty menu builders it calls. The
+  # actions: sc_actions[] of kitty/kitty_shortcuts.c. A kept exception is
+  # listed in tools/menu-shortcuts.allow. A stale line fails. The reserved
+  # id ranges come from tools/check-menu-ids.py. The self-test runs first,
+  # on planted sources.
+  set(KITTY_MENUSC_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_menushortcuts_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_MENUSC_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-menu-shortcuts.py --self-test
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-menu-shortcuts.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_MENUSC_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-menu-shortcuts.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-menu-ids.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/menu-shortcuts.allow
+            ${CMAKE_CURRENT_SOURCE_DIR}/windows/window.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_specialmenu.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_win.c
+            ${CMAKE_CURRENT_SOURCE_DIR}/kitty/kitty_shortcuts.c
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking the terminal window's menu commands against the shortcut actions")
+  add_custom_target(check_menu_shortcuts ALL DEPENDS ${KITTY_MENUSC_CHECK_STAMP})
+
   # A buffer wiped and then freed: memset(p, ...) directly before free(p) or
   # sfree(p) is a dead store the compiler may drop, so the secret stays in
   # freed memory; smemclr cannot be dropped. Any fill value counts, and so
@@ -913,7 +939,7 @@ if(KITTY_INI_CHECK_PYTHON)
   add_dependencies(utils
     check_kitty_ini check_features_toc check_menu_ids check_kitty_events
     check_conf_types check_dialog_accelerators check_fixed_arrays
-    check_kitty_text check_secure_wipe)
+    check_kitty_text check_secure_wipe check_store_pairs check_menu_shortcuts)
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)

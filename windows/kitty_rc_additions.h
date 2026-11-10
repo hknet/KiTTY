@@ -366,8 +366,19 @@
 #ifndef IDM_XYZABORT
 #define IDM_XYZABORT  0xB170
 #endif
-/* Bulk session export/import (multiples of 0x10 - WM_SYSCOMMAND masks wParam;
- * 0xB180..0xB1D0 are taken by window.c-local script/mNotepad items). */
+/* Check for updates and the Tools menu's two session toggles (multiples
+ * of 0x10 - WM_SYSCOMMAND masks wParam) */
+#define IDM_CHECKUPDATE        0x01B0  /* Check for updates... */
+#define IDM_BROADCASTTOGGLE    0x01C0  /* Tools > Accept broadcast */
+#define IDM_SCRIPTBRIDGETOGGLE 0x01D0  /* Tools > Accept script bridge */
+/* Tools menu: the script commands and the editor (multiples of 0x10 -
+ * WM_SYSCOMMAND masks wParam). 0xB1B0 is IDM_NEWDUPSESS (kitty/kitty.h). */
+#define IDM_RUNSCRIPTFILE 0xB180     /* Run script file (the script engine) */
+#define IDM_STOPSCRIPT    0xB190     /* Stop script */
+#define IDM_TYPETEXTFILE  0xB1A0     /* Type text file (kitty_type_text_file_pick) */
+#define IDM_MNOTEPAD      0xB1C0     /* Open mNotepad */
+#define IDM_MNOTEPAD_CLIP 0xB1D0     /* Open mNotepad with clipboard */
+/* Bulk session export/import (multiples of 0x10 - WM_SYSCOMMAND masks wParam). */
 #ifndef IDM_EXPORTALLSETTINGS
 #define IDM_EXPORTALLSETTINGS 0xB1E0
 #endif

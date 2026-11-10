@@ -154,9 +154,29 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   rendering" for WARP or another software adapter.
 - kittygen and kittygen-cli warn about a certificate without names in
   Certificate info..., `-O cert-info` and Add certificate to key.
+- The shortcut editor has an action for every command of the terminal
+  window's menus except About, Help and Exit. New, no key by default:
+  "Run script file" (`[Shortcuts] runscriptfile`), "Stop script"
+  (`stopscript`), "Paste" (`paste`), "Restart session" (`reconnect`),
+  "Save as new session" (`savenewsession`), "Check for updates"
+  (`updatecheck`), "Terminal name" (`winname`), "Export current
+  settings" (`exportsettings`), "Shortcuts on/off" (`shortcutstoggle`),
+  "Hyperlinks on/off" (`hyperlinktoggle`), "Accept broadcast on/off"
+  (`broadcasttoggle`), "Accept script bridge on/off"
+  (`scriptbridgetoggle`), "ZModem receive", "ZModem upload" and "ZModem
+  abort" (`zmodemreceive`, `zmodemupload`, `zmodemabort`). The key of
+  Shortcuts on/off also works while the shortcuts are off. A ZModem key
+  works only while the menu offers its entry. The menus show the key of
+  each after a tab, also of Type text file, Open mNotepad and Open
+  mNotepad with clipboard.
 
 ### Changed
 
+- The shortcut editor's action "Send a script file" is now "Type text
+  file" (it runs Tools > Type text file), with the kitty.ini key
+  `[Shortcuts] typetextfile`. The first start renames `script` to
+  `typetextfile`. An empty `script=` stays an action without a key.
+  Nothing is renamed under `readonly=yes`.
 - The terminal window's menu > Tools: **Send recorded script** is now
   **Run script file...** (the script engine: it waits for the prompt as set
   on Session > Scripting). **Send script file** is now **Type text

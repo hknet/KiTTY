@@ -1,0 +1,14 @@
+# Commands of the terminal window's menus without a shortcut action, and
+# actions whose menu command is on no menu. One line each:
+#     IDM_NAME | reason
+# Read by tools/check-menu-shortcuts.py. A line whose command has an action
+# and a menu item, or neither, is stale and fails the build.
+
+# the menu without an action
+IDM_ABOUT | About: no key needed
+IDM_HELP | Help: no key needed
+IDM_QUIT | Exit: no key needed (Alt+F4 closes the window)
+
+# actions without a menu item
+IDM_NEWSESS | New Session: its menu line is hidden on purpose (window.c). The handler stays for the opennew key.
+IDM_REKEY | Repeat key exchange: the menu offers it in Special Command, under an id set at run time.

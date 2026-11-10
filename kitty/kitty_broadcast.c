@@ -332,7 +332,7 @@ void SendAutoCommand( HWND hwnd, const char * cmd ) {
 		else
 			debug_logevent( "%s", "Send automatic command" ) ;
 		if( existfile( cmd ) ) { 
-			RunScriptFile( hwnd, cmd ) ; 
+			kitty_type_text_file( hwnd, cmd ) ; 
 		} else if( (toupper(cmd[0])=='C')&&(toupper(cmd[1])==':')&&(toupper(cmd[2])=='\\') ) { 
 			//MessageBox( NULL, cmd,"Info", MB_OK );
 			return ;

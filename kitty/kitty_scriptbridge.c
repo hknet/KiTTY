@@ -8,7 +8,7 @@
  *
  *   [KiTTY] scriptbridge=no       off (the default)
  *   [KiTTY] scriptbridge=inbound  _send only: a script in, played like
- *                                 "Send a script file" (yes = inbound)
+ *                                 "Run script file" (yes = inbound)
  *   [KiTTY] scriptbridge=prompt   inbound, plus _enable / _set: one _prompt
  *                                 message to the bound window each time the
  *                                 set pattern ends the host's output
