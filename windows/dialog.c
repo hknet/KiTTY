@@ -2435,7 +2435,8 @@ static void kitty_cfg_panel_cache_reset(void)
  * NOT guarded by MOD_PERSO: dialog.c compiles into the shared guiterminal lib,
  * which is built WITHOUT MOD_PERSO (kitty_registry_base is still linked in). */
 extern const char *kitty_registry_base(void);   /* windows/storage.c */
-/* Off by default; set KITTY_WINPOS_DEBUG=1 to trace config-box positioning to
+#ifdef KITTY_TEST_BUILD_LABEL
+/* A test build with KITTY_WINPOS_DEBUG=1 traces config-box positioning to
  * %TEMP%\kitty_winpos.log (shared with the main-window winpos trace). */
 static int kitty_cfgpos_dbg_enabled(void)
 {
@@ -2444,10 +2445,12 @@ static int kitty_cfgpos_dbg_enabled(void)
         cached = GetEnvironmentVariableA("KITTY_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
     return cached;
 }
-#ifdef KITTY_CFGBOX_ACTIVATION_TRACE
+#endif
+#if defined(KITTY_CFGBOX_ACTIVATION_TRACE) && defined(KITTY_TEST_BUILD_LABEL)
 /*
- * NOT COMPILED INTO A RELEASE BUILD. Configure with
- * -DKITTY_CFGBOX_ACTIVATION_TRACE=ON to include it, then set
+ * NOT COMPILED INTO A RELEASE BUILD. Configure a test build (a
+ * KITTY_TEST_BUILD_LABEL) with -DKITTY_CFGBOX_ACTIVATION_TRACE=ON to
+ * include it, then set
  * KITTY_CFGBOX_ACTIVATION_DEBUG=1 at run time to trace the config box's
  * ACTIVATION to %TEMP%\kitty_cfgbox_activation.log. Two switches on
  * purpose: the code stays in the tree for the next time a window loses its
@@ -2536,8 +2539,9 @@ static void kitty_cfgact_dbg(HWND hwnd, WPARAM wParam, LPARAM lParam)
 }
 #else
 #define kitty_cfgact_dbg(hwnd, wp, lp) ((void)0)
-#endif /* KITTY_CFGBOX_ACTIVATION_TRACE */
+#endif /* KITTY_CFGBOX_ACTIVATION_TRACE && KITTY_TEST_BUILD_LABEL */
 
+#ifdef KITTY_TEST_BUILD_LABEL
 static void kitty_cfgpos_dbg(const char *fmt, ...)
 {
     if (!kitty_cfgpos_dbg_enabled()) return;
@@ -2554,6 +2558,14 @@ static void kitty_cfgpos_dbg(const char *fmt, ...)
     fputc('\n', fp);
     fclose(fp);
 }
+#else
+/* A release build: no trace. The arguments stay in a dead branch, so a
+ * value computed only for the trace is still used and the compiler drops
+ * the call with its texts. */
+static inline void kitty_cfgpos_dbg_off(const char *fmt, ...) { (void)fmt; }
+#define kitty_cfgpos_dbg(...) \
+    do { if (0) kitty_cfgpos_dbg_off(__VA_ARGS__); } while (0)
+#endif
 /* KiTTY: the box's place, per monitor layout, through the suite's shared
  * window memory (kitty_auxpos.c: the registry, or kitty_windowpos.ini beside
  * a portable exe). Its SIZE is not taken from there: that is [ConfigBox]

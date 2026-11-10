@@ -1,0 +1,18 @@
+# tools/check-test-doors.py: environment variables a release build reads.
+# Each is set by Windows, by an admin or by a user on purpose. A trace or a
+# test door goes under #ifdef KITTY_TEST_BUILD_LABEL instead.
+#   name | NAME | reason
+#   nonliteral | file | function | reason   (a read of a non-literal name)
+name | APPDATA | the roaming profile folder: kitty.ini, the kageant rules store
+name | LOCALAPPDATA | the local profile folder: per-user install, tool search, kageant log, registry backup
+name | USERPROFILE | the profile folder: .ssh, downloads, received files, the Event Log copy
+name | ProgramFiles | the program folder: install type, WinSCP, FileZilla and PSCP search
+name | ProgramW6432 | the 64-bit program folder of a 32-bit process: install type, tool search
+name | ProgramFiles(x86) | the 32-bit program folder: install type, tool search
+name | PATHEXT | the extensions Windows runs as programs: received files that run
+name | USERDOMAIN | the account's domain in the Windows Hello owner tag
+name | HOMEDRIVE | upstream PuTTY: the random seed file in the home folder
+name | HOMEPATH | upstream PuTTY: the random seed file in the home folder
+name | DISPLAY | upstream PuTTY: the X display for X11 forwarding
+name | PLINK_PROTOCOL | upstream PuTTY: klink's default protocol (doc/plink.but)
+name | KITTY_INI_FILE | the kitty.ini to use (docs/KITTY-INI.md)

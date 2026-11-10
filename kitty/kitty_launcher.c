@@ -216,7 +216,17 @@ static POINT LauncherClickPoint ;           /* where the tray click was */
 static DWORD LauncherTrayClickTick = 0 ;    /* when it was handled */
 static int LauncherTrayClickArmed = 0 ;     /* the next press in the menu may be the second click */
 static int LauncherTrayMenuUp = 0 ;         /* the menu of a tray left click is showing */
-static void LauncherTrayTrace( const char * what ) ;   /* test builds: launcher_tray.log */
+#ifdef KITTY_TEST_BUILD_LABEL
+static void LauncherTrayTracef( const char * fmt, ... ) ;   /* test builds: launcher_tray.log */
+#define LAUNCHER_TRACEF(...) LauncherTrayTracef( __VA_ARGS__ )
+#else
+/* A release build: no trace. The arguments stay in a dead branch, so a
+ * value computed only for the trace is still used and the compiler drops
+ * the call with its texts. */
+static inline void LauncherTrayTraceOff( const char * fmt, ... ) { (void)fmt ; }
+#define LAUNCHER_TRACEF(...) \
+	do { if( 0 ) LauncherTrayTraceOff( __VA_ARGS__ ) ; } while( 0 )
+#endif
 static int LauncherTrayDblPending = 0 ;     /* double click seen: run it once the menu is gone */
 static int LauncherTrayDblSwallowUp = 0 ;   /* the button-up of that second click is still due */
 /* The icon's own rectangle on the screen, read when its menu opens: a click
@@ -1334,7 +1344,7 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 		      m->message == WM_NCLBUTTONDOWN || m->message == WM_NCLBUTTONDBLCLK ) ) {
 			LauncherTrayClickArmed = 0 ;
 			if( LauncherTraySecondClick( m->pt, m->time ) ) {
-				LauncherTrayTrace( "menu hook: second click of a double click" ) ;
+				LAUNCHER_TRACEF( "menu hook: second click of a double click" ) ;
 				LauncherTrayDblPending = 1 ;
 				LauncherTrayDblSwallowUp = 1 ;
 				/* The menu may be gone before the button comes up; the
@@ -1886,12 +1896,10 @@ static void LauncherRefreshSpinStep( HWND hwnd ) {
  * keeps off the icon itself (TPMPARAMS.rcExclude); an icon inside the work
  * area (the overflow flyout, a taskbar that hides itself) counts as a bottom
  * one. Without an icon rectangle on a monitor it opens at the pointer. */
-static void LauncherTrayTrace( const char * what ) ;
 static void LauncherMenuAnchor( const RECT * icon ) {
 	HMONITOR mon = NULL ;
 	MONITORINFO mi ;
 	const char * edge ;
-	char line[128] ;
 	GetCursorPos( &LauncherMenuPoint ) ;
 	LauncherMenuPointValid = 1 ;
 	LauncherMenuAlign = TPM_LEFTALIGN ;
@@ -1899,9 +1907,8 @@ static void LauncherMenuAnchor( const RECT * icon ) {
 	mi.cbSize = sizeof(mi) ;
 	if( icon ) mon = MonitorFromRect( icon, MONITOR_DEFAULTTONULL ) ;
 	if( mon == NULL || !GetMonitorInfo( mon, &mi ) ) {
-		snprintf( line, sizeof(line), "tray menu at pointer %ld,%ld (no icon rectangle on a monitor)",
-		          LauncherMenuPoint.x, LauncherMenuPoint.y ) ;
-		LauncherTrayTrace( line ) ;
+		LAUNCHER_TRACEF( "tray menu at pointer %ld,%ld (no icon rectangle on a monitor)",
+		                 LauncherMenuPoint.x, LauncherMenuPoint.y ) ;
 		return ;
 	}
 	LauncherMenuExclude = *icon ;
@@ -1923,9 +1930,8 @@ static void LauncherMenuAnchor( const RECT * icon ) {
 		LauncherMenuPoint.x = icon->left ; LauncherMenuPoint.y = icon->top ;
 		LauncherMenuAlign = TPM_LEFTALIGN | TPM_BOTTOMALIGN | TPM_VERTICAL ;
 	}
-	snprintf( line, sizeof(line), "tray menu at icon %ld,%ld,%ld,%ld edge=%s",
-	          icon->left, icon->top, icon->right, icon->bottom, edge ) ;
-	LauncherTrayTrace( line ) ;
+	LAUNCHER_TRACEF( "tray menu at icon %ld,%ld,%ld,%ld edge=%s",
+	                 icon->left, icon->top, icon->right, icon->bottom, edge ) ;
 }
 
 static void DisplayContextMenuAt( HWND hwnd, HMENU menu, POINT pt ) {
@@ -1999,31 +2005,32 @@ static void DisplayContextMenu( HWND hwnd, HMENU menu ) {
  * traced path by path. Without the variable a test build writes no log file:
  * a trace is for a debug run, asked for, never a side effect of testing. */
 static DWORD LauncherDblActionTick = 0 ;
-static void LauncherTrayTrace( const char * what ) {
 #ifdef KITTY_TEST_BUILD_LABEL
-	char * dir, * path ;
+static void LauncherTrayTracef( const char * fmt, ... ) {
+	char * what, * dir, * path ;
 	FILE * f ;
+	va_list ap ;
 	if( getenv( "KITTY_LAUNCHER_TRACE" ) == NULL ) return ;
 	if( ( dir = kitty_module_dir_dup( NULL ) ) == NULL ) return ;
 	path = dupprintf( "%s\\launcher_tray.log", dir ) ;
 	sfree( dir ) ;
+	va_start( ap, fmt ) ;
+	what = dupvprintf( fmt, ap ) ;
+	va_end( ap ) ;
 	if( ( f = fopen( path, "a" ) ) != NULL ) {
 		fprintf( f, "%lu %s\n", (unsigned long)GetTickCount(), what ) ;
 		fclose( f ) ;
 	}
+	sfree( what ) ;
 	sfree( path ) ;
-#else
-	(void)what ;
-#endif
 }
+#endif
 static void LauncherTrayDoubleRun( HWND hwnd, const char * from ) ;
 static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
 	DWORD now = GetTickCount() ;
-	char line[96] ;
 	if( LauncherDblActionTick && now - LauncherDblActionTick <= 2 * GetDoubleClickTime() ) {
-		snprintf( line, sizeof(line), "double click via %s: DROPPED (%lu ms after the last)",
-		          from, (unsigned long)( now - LauncherDblActionTick ) ) ;
-		LauncherTrayTrace( line ) ;
+		LAUNCHER_TRACEF( "double click via %s: DROPPED (%lu ms after the last)",
+		                 from, (unsigned long)( now - LauncherDblActionTick ) ) ;
 		return ;
 	}
 	LauncherDblActionTick = now ;
@@ -2033,7 +2040,6 @@ static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
  * above: a hotkey press is one request through one path (MOD_NOREPEAT -
  * holding the keys repeats nothing), so there is nothing to merge. */
 static void LauncherTrayDoubleRun( HWND hwnd, const char * from ) {
-	char line[96] ;
 	{
 		/* [Launcher] traydblclick=manage: Manage Sessions, =quickconnect: Quick
 		 * Connect, else a configuration box (read at each double click, so
@@ -2042,9 +2048,8 @@ static void LauncherTrayDoubleRun( HWND hwnd, const char * from ) {
 		int got = ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_DBLCLICK, what, sizeof(what) ) ;
 		int manage = got && !stricmp( what, "manage" ) ;
 		int quick = got && !stricmp( what, "quickconnect" ) ;
-		snprintf( line, sizeof(line), "double click via %s: %s", from,
-		          manage ? "Manage Sessions" : quick ? "Quick Connect" : "new configuration box" ) ;
-		LauncherTrayTrace( line ) ;
+		LAUNCHER_TRACEF( "double click via %s: %s", from,
+		                 manage ? "Manage Sessions" : quick ? "Quick Connect" : "new configuration box" ) ;
 		RunKiTTYpp( hwnd, manage ? manage_arg : quick ? quick_arg : none ) ;
 	}
 }
@@ -2061,7 +2066,7 @@ static void LauncherTrayLeftClick( HWND hwnd ) {
 	RefreshMenuLauncher() ;
 	LauncherMenuAnchor( LauncherTrayIconRcValid ? &LauncherTrayIconRc : NULL ) ;
 	DisplayContextMenuAt( hwnd, MenuLauncher, LauncherMenuPoint ) ;
-	LauncherTrayTrace( "tray menu closed" ) ;
+	LAUNCHER_TRACEF( "tray menu closed" ) ;
 	dbl = LauncherTrayDblPending ;
 	LauncherTrayClickArmed = 0 ;
 	LauncherTrayMenuUp = 0 ;
@@ -2216,10 +2221,8 @@ static void UniqueHistoryDrop( HWND h ) {
 static void ManageShowOnly( HWND target ) {
 	int i ;
 	DWORD_PTR res ;
-	char tr[80] ;
 	if( !IsWindow( target ) ) return ;
-	snprintf( tr, sizeof(tr), "show only %p, menu up %d", (void *)target, LauncherTrayMenuUp ) ;
-	LauncherTrayTrace( tr ) ;
+	LAUNCHER_TRACEF( "show only %p, menu up %d", (void *)target, LauncherTrayMenuUp ) ;
 	/* the one shown until now goes on the history, the target comes off it */
 	UniqueHistoryDrop( target ) ;
 	if( UniqueShown && UniqueShown != target && IsWindow( UniqueShown ) ) {
@@ -2254,12 +2257,10 @@ static void ManageShowOnly( HWND target ) {
  * allowed this process the foreground before it posted (kitty_bridge.c). */
 static void LauncherWindowGone( HWND gone, int visible ) {
 	int i, h, n, pick = -1, shown = ( gone == UniqueShown ) ;
-	char tr[160] ;
 	UniqueHistoryDrop( gone ) ;
 	if( shown ) UniqueShown = NULL ;
-	snprintf( tr, sizeof(tr), "window gone %p: visible %d, the one shown %d, one at a time %d, next on close %d, menu up %d",
-	          (void *)gone, visible, shown, IsUnique, ShowNextOnClose, LauncherTrayMenuUp ) ;
-	LauncherTrayTrace( tr ) ;
+	LAUNCHER_TRACEF( "window gone %p: visible %d, the one shown %d, one at a time %d, next on close %d, menu up %d",
+	                 (void *)gone, visible, shown, IsUnique, ShowNextOnClose, LauncherTrayMenuUp ) ;
 	if( !visible && !shown ) return ;
 	/* A window that goes while the tray menu is up is dropped, not deferred
 	 * until the menu closes: keeping the menu open while a terminal closes
@@ -2269,7 +2270,7 @@ static void LauncherWindowGone( HWND gone, int visible ) {
 	n = RefreshWinList( MainHwnd ) ;
 	for( i = 0 ; i < n ; i++ )
 		if( TabWin[i].hwnd != gone && TabWin[i].visible ) {
-			LauncherTrayTrace( "window gone: another terminal is visible, nothing shown" ) ;
+			LAUNCHER_TRACEF( "window gone: another terminal is visible, nothing shown" ) ;
 			return ;
 		}
 	for( h = UniqueHistoryN - 1 ; h >= 0 && pick < 0 ; h-- )
@@ -2289,10 +2290,9 @@ static void LauncherWindowGone( HWND gone, int visible ) {
 			pick = LauncherWinEntries[0].idx ;
 		}
 	}
-	snprintf( tr, sizeof(tr), "window gone: %d terminals, showing %p (from the history: %s)",
-	          n, pick >= 0 ? (void *)TabWin[pick].hwnd : NULL,
-	          pick >= 0 && UniqueHistoryN && TabWin[pick].hwnd == UniqueHistory[UniqueHistoryN - 1] ? "yes" : "no" ) ;
-	LauncherTrayTrace( tr ) ;
+	LAUNCHER_TRACEF( "window gone: %d terminals, showing %p (from the history: %s)",
+	                 n, pick >= 0 ? (void *)TabWin[pick].hwnd : NULL,
+	                 pick >= 0 && UniqueHistoryN && TabWin[pick].hwnd == UniqueHistory[UniqueHistoryN - 1] ? "yes" : "no" ) ;
 	if( pick >= 0 ) ManageShowOnly( TabWin[pick].hwnd ) ;
 }
 
@@ -2444,14 +2444,13 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 	 * against any session's. Read again at every registration: a change on
 	 * the Launcher panel broadcasts the refresh that brings it here. */
 	{
-		char gspec[256], tr[300] ;
+		char gspec[256] ;
 		if( kitty_launcher_global_hotkey( &mods, &vk, gspec, sizeof(gspec) ) ) {
 			if( RegisterHotKey( hwnd, LAUNCHER_HOTKEY_GLOBAL_ID, mods | MOD_NOREPEAT, vk ) ) {
 				LauncherGlobalHotkeyOn = 1 ;
 				LauncherGlobalHotkeyMods = mods | MOD_NOREPEAT ;
 				LauncherGlobalHotkeyVk = vk ;
-				snprintf( tr, sizeof(tr), "global hotkey registered: %s", gspec ) ;
-				LauncherTrayTrace( tr ) ;
+				LAUNCHER_TRACEF( "global hotkey registered: %s", gspec ) ;
 			} else {
 				char line[240] ;
 				snprintf( line, sizeof(line),
@@ -2532,11 +2531,8 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 	}
 	/* Test builds with KITTY_LAUNCHER_TRACE: the report, which otherwise
 	 * reaches only the tray balloon (a test reads it here). */
-	if( report[0] ) {
-		char tr[1100] ;
-		snprintf( tr, sizeof(tr), "hotkey report: %s", report ) ;
-		LauncherTrayTrace( tr ) ;
-	}
+	if( report[0] )
+		LAUNCHER_TRACEF( "hotkey report: %s", report ) ;
 	held_new = LauncherHeldIsNew( held ) ;
 	strncpy( LauncherHotkeyHeldLast, held, sizeof(LauncherHotkeyHeldLast)-1 ) ;
 	LauncherHotkeyHeldLast[sizeof(LauncherHotkeyHeldLast)-1] = '\0' ;
@@ -2547,12 +2543,9 @@ static void LauncherRegisterHotkeys( HWND hwnd, int notify ) {
 			strncpy( LauncherHotkeyWinner, winner, sizeof(LauncherHotkeyWinner)-1 ) ;
 			LauncherHotkeyWinner[sizeof(LauncherHotkeyWinner)-1] = '\0' ;
 			LauncherHotkeyWinnerGlobal = winner_global ;
-			{	/* test builds: the balloon is Explorer's, this line is what
-				 * a test can read */
-				char tr[1100] ;
-				snprintf( tr, sizeof(tr), "hotkey balloon: %s", report ) ;
-				LauncherTrayTrace( tr ) ;
-			}
+			/* test builds: the balloon is Explorer's, this line is what
+			 * a test can read */
+			LAUNCHER_TRACEF( "hotkey balloon: %s", report ) ;
 			PostMessage( hwnd, KLWM_HOTKEYBALLOON, 0, 0 ) ;
 		}
 	} else {
@@ -3004,7 +2997,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					 * that same press, passed on by the shell once the menu
 					 * was gone, and its release is the one to ignore. */
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
-						LauncherTrayTrace( "tray WM_LBUTTONDOWN" ) ;
+						LAUNCHER_TRACEF( "tray WM_LBUTTONDOWN" ) ;
 						if( LauncherIgnoreUpFromMenu &&
 						    GetTickCount() - LauncherIgnoreUpTick <= GetDoubleClickTime() )
 							LauncherIgnoreUpFromMenu = 0 ;
@@ -3024,7 +3017,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					 * once. Without a tray left-click menu up it runs here. The
 					 * button-up that follows must not open the menu again. */
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
-						LauncherTrayTrace( LauncherTrayMenuUp ?
+						LAUNCHER_TRACEF( "%s", LauncherTrayMenuUp ?
 							"tray WM_LBUTTONDBLCLK (menu up)" : "tray WM_LBUTTONDBLCLK (no menu)" ) ;
 						LauncherIgnoreUp = 1 ;
 						LauncherIgnoreUpFromMenu = 0 ;
@@ -3058,9 +3051,9 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					 * inside that menu's loop, and a second TrackPopupMenu
 					 * there would replace the menu filter of the first. */
 					if ( (wParam == IDI_PUTTY_LAUNCH) || (wParam == IDI_BLACKBALL) ) {
-						LauncherTrayTrace( LauncherIgnoreUp ? "tray WM_LBUTTONUP (ignored)" :
-						                   g_launcher_menu_hook ? "tray WM_LBUTTONUP (menu already up)" :
-						                   "tray WM_LBUTTONUP: open the menu" ) ;
+						LAUNCHER_TRACEF( "%s", LauncherIgnoreUp ? "tray WM_LBUTTONUP (ignored)" :
+						                 g_launcher_menu_hook ? "tray WM_LBUTTONUP (menu already up)" :
+						                 "tray WM_LBUTTONUP: open the menu" ) ;
 						if( LauncherIgnoreUp &&
 						    GetTickCount() - LauncherIgnoreUpTick <= LAUNCHER_IGNOREUP_MS ) {
 							LauncherIgnoreUp = 0 ;
@@ -3246,7 +3239,7 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					Shell_NotifyIcon(NIM_MODIFY, &TrayIcone);
 					break ;
 				case IDM_LAUNCHER+1:
-					LauncherTrayTrace( "menu entry: new configuration box" ) ;
+					LAUNCHER_TRACEF( "menu entry: new configuration box" ) ;
 					RunKiTTYpp( hwnd, "" ) ;
 					break ;
 				case IDM_LAUNCHER+2:

@@ -174,6 +174,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
+- Diagnostic switches read from environment variables (trace files
+  such as `KITTY_WINPOS_DEBUG`, test doors) are in test builds only.
+  A release build has none of their code.
 - The shortcut editor's action "Send a script file" is now "Type text
   file" (it runs Tools > Type text file), with the kitty.ini key
   `[Shortcuts] typetextfile`. The first start renames `script` to

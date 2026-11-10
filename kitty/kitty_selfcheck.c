@@ -27,6 +27,7 @@
 #include "kitty_oldwin.h"        /* kitty_module_path_dup */
 #include "kitty_renameguard.h"   /* kitty_guard_interactive, kitty_guard_report */
 #include "kitty_text.h"
+#include "kitty_buildlabel.h"    /* KITTY_TEST_BUILD_LABEL: the fault switch */
 
 #ifdef KITTY_SELFCHECK
 
@@ -65,6 +66,10 @@ extern const unsigned char kt_stamp_block[KT_STAMP_SIZE];
  */
 static const char kt_fault_marker[] __attribute__((used)) =
     KT_SELFCHECK_FAULT_MARKER;
+#endif
+
+/* The switch reads the environment, so it needs a test build label too. */
+#if defined(KITTY_SELFCHECK_FAULT) && defined(KITTY_TEST_BUILD_LABEL)
 static int kt_fault_armed(void)
 {
     char v[8];

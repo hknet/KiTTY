@@ -866,6 +866,29 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking that each global setting is read from the store it is written to")
   add_custom_target(check_store_pairs ALL DEPENDS ${KITTY_STOREPAIRS_CHECK_STAMP})
 
+  # A trace switch or a test door read from the environment outside
+  # #ifdef KITTY_TEST_BUILD_LABEL: a release build would carry it. The
+  # readers: getenv, GetEnvironmentVariable*, ExpandEnvironmentStrings* of
+  # a literal. Also every function that hands a parameter to one of them as
+  # the variable. A variable a release reads on purpose (Windows' own, an
+  # admin's, KITTY_INI_FILE) is listed with a reason in
+  # tools/test-doors.allow. A stale line fails. The self-test runs first,
+  # on planted sources.
+  set(KITTY_TESTDOORS_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_testdoors_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_TESTDOORS_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-test-doors.py --self-test
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-test-doors.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_TESTDOORS_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-test-doors.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/test-doors.allow
+            ${KITTY_CONF_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking environment reads against tools/test-doors.allow")
+  add_custom_target(check_test_doors ALL DEPENDS ${KITTY_TESTDOORS_CHECK_STAMP})
+
   # A command of the terminal window's menus without a shortcut action (no
   # key can reach it), or an action whose menu command is on no menu. The
   # menus: windows/window.c and the kitty menu builders it calls. The
@@ -946,7 +969,8 @@ if(KITTY_INI_CHECK_PYTHON)
   add_dependencies(utils
     check_kitty_ini check_features_toc check_menu_ids check_kitty_events
     check_conf_types check_dialog_accelerators check_fixed_arrays
-    check_kitty_text check_secure_wipe check_store_pairs check_menu_shortcuts)
+    check_kitty_text check_secure_wipe check_store_pairs check_menu_shortcuts
+    check_test_doors)
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)

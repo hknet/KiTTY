@@ -14278,14 +14278,16 @@ static void kitty_winpos_key(char *buf, int n)
 }
 
 /* ---- window-position diagnostics ---------------------------------------------
- * Inert unless the environment variable KITTY_WINPOS_DEBUG is set; then it
- * appends a trace (monitor topology, topology key, save/restore rects, results)
- * to %TEMP%\kitty_winpos.log. Used to diagnose "remember window position" on
- * multi-monitor / mixed-DPI layouts. */
+ * Test builds only. Inert unless the environment variable
+ * KITTY_WINPOS_DEBUG is set. Then it appends a trace (monitor topology,
+ * topology key, save/restore rects, results) to %TEMP%\kitty_winpos.log.
+ * Used to diagnose "remember window position" on multi-monitor / mixed-DPI
+ * layouts. */
+#ifdef KITTY_TEST_BUILD_LABEL
 static int kitty_winpos_dbg_enabled(void)
 {
-    /* Off by default; set KITTY_WINPOS_DEBUG=1 to trace to
-     * %TEMP%\kitty_winpos.log (works in any build, no separate debug exe). */
+    /* Off by default. KITTY_WINPOS_DEBUG=1 traces to
+     * %TEMP%\kitty_winpos.log. */
     static int cached = -1;
     if (cached < 0)
         cached = GetEnvironmentVariableA("KITTY_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
@@ -14323,6 +14325,15 @@ static void kitty_winpos_dump_topo(const char *when)
     kitty_winpos_dbg("%s: monitor topology:", when);
     EnumDisplayMonitors(NULL, NULL, kitty_topo_logenum, 0);
 }
+#else
+/* A release build: no trace. The arguments stay in a dead branch, so a
+ * value computed only for the trace is still used and the compiler drops
+ * the call with its texts. */
+static inline void kitty_winpos_dbg_off(const char *fmt, ...) { (void)fmt; }
+#define kitty_winpos_dbg(...) \
+    do { if (0) kitty_winpos_dbg_off(__VA_ARGS__); } while (0)
+#define kitty_winpos_dump_topo(when) ((void)(when))
+#endif
 
 /* KiTTY: everything a closing window has to persist, in ONE place - there are
  * five exit routes (four PostQuitMessage paths that never see WM_DESTROY, plus

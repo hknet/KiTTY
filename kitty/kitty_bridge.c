@@ -858,8 +858,10 @@ int kitty_apply_background(HWND hwnd, Conf *conf) {
     MainHwnd = hwnd;
     load_bg_bmp();
     int ok = (backgroundbm != NULL);
+#ifdef KITTY_TEST_BUILD_LABEL
     /* Env-gated self-test: write the load result so a harness can verify the
-     * image actually loaded without needing to observe the (unwired) render. */
+     * image actually loaded without needing to observe the (unwired) render.
+     * Test builds only. */
     {
         const char *st = getenv("KITTY_BG_SELFTEST");
         if (st && st[0]) {
@@ -875,6 +877,7 @@ int kitty_apply_background(HWND hwnd, Conf *conf) {
             }
         }
     }
+#endif
     return ok;
 }
 #endif

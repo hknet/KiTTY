@@ -233,10 +233,7 @@ kitty/kitty_launcher.c | LauncherRegisterHotkeys() | report | 1024 | hotkey repo
 kitty/kitty_launcher.c | LauncherRegisterHotkeys() | winner | 256 | session name, strncpy sizeof-1
 kitty/kitty_launcher.c | LauncherRegisterHotkeys() | held | 256 | held-hotkey lines; a line is added only when it fits in sizeof, else left out (display text)
 kitty/kitty_launcher.c | LauncherRegisterHotkeys() | gspec | 256 | global hotkey spec, size passed
-kitty/kitty_launcher.c | LauncherRegisterHotkeys() | tr | 300 | trace line, snprintf to sizeof
 kitty/kitty_launcher.c | LauncherRegisterHotkeys() | spec | 256 | hotkey spec of a session, size passed
-kitty/kitty_launcher.c | LauncherRegisterHotkeys() | tr | 1100 | trace line, snprintf to sizeof
-kitty/kitty_launcher.c | LauncherRegisterHotkeys() | tr | 1100 | trace line, snprintf to sizeof
 kitty/kitty_launcher.c | LauncherWorkplaceBalloon() | msg | 512 | workplace balloon text, snprintf to sizeof
 kitty/kitty_launcher.c | Launcher_WndProc() | proxy | 256 | remembered workplace proxy name, size passed
 kitty/kitty_launcher.c | Launcher_WndProc() | wab | 512 | About text (wide), MultiByteToWideChar(512)
