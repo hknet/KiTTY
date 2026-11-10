@@ -5958,6 +5958,14 @@ static WinGuiSeat *kitty_wgs_of(HWND hwnd)
         (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA) : NULL;
 }
 
+/* 1 while the terminal window's connection is open (kitty_shortcuts.c: the
+ * Restart Session key then goes on to the server) */
+int kitty_window_session_live(HWND hwnd)
+{
+    WinGuiSeat *wgs = kitty_wgs_of(hwnd);
+    return wgs && wgs->backend != NULL;
+}
+
 /* Run script file (RuTTY, IDM_RUNSCRIPTFILE): the script is sent once a file
  * has been picked. One picker at a time. */
 static void *kitty_script_pick = NULL;

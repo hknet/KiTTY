@@ -258,6 +258,7 @@ char * ShortcutsIniDup( const char * key ) ;
 /* The keys switched off: 1 when the key is the one of "Shortcuts on/off",
  * which then switches them on (the only key checked then) */
 int ShortcutsOffKey( HWND hwnd, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
+int kitty_window_session_live( HWND hwnd ) ;   /* windows/window.c: 1 = the connection is open */
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
 /* Shortcut code -> "Ctrl+F3" (the inverse of DefineShortcuts); the key bound
  * to a menu command id; "<menu text>\t<key text>" for a menu item. */

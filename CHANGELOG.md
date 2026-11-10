@@ -165,7 +165,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   (`broadcasttoggle`), "Accept script bridge on/off"
   (`scriptbridgetoggle`), "ZModem receive", "ZModem upload" and "ZModem
   abort" (`zmodemreceive`, `zmodemupload`, `zmodemabort`). The key of
-  Shortcuts on/off also works while the shortcuts are off. A ZModem key
+  Shortcuts on/off also works while the shortcuts are off. The menu
+  shows it then. The Restart session key restarts a closed connection.
+  On a live one it goes on to the server. A ZModem key
   works only while the menu offers its entry. The menus show the key of
   each after a tab, also of Type text file, Open mNotepad and Open
   mNotepad with clipboard.

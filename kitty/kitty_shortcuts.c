@@ -467,14 +467,15 @@ int GetShortcutKey( int idm ) {
 
 /* Each time a window menu opens: every item whose command has a [Shortcuts]
  * key shows it after a tab, and loses it again while the Shortcuts switch is
- * off (ShortcutMenuText) - both can change while the window is open. Full
+ * off (ShortcutMenuText) - both can change while the window is open. The
+ * key of Tools > Shortcuts stays shown while they are off: it works then. Full
  * Screen without a key of its own shows Alt+Enter while the session lets that
  * key toggle it (altenter). Items of other commands are left as they are. */
 void kitty_menu_show_shortcuts( HMENU m, int altenter ) {
 	int i, n = GetMenuItemCount( m ) ;
 	for( i = 0 ; i < n ; i++ ) {
 		MENUITEMINFOA mi ;
-		char old[256], base[256], label[320], * tab ;
+		char old[256], base[256], label[320], keytext[64], * tab ;
 		int key ;
 		memset( &mi, 0, sizeof(mi) ) ;
 		mi.cbSize = sizeof(mi) ;
@@ -488,6 +489,10 @@ void kitty_menu_show_shortcuts( HMENU m, int altenter ) {
 		if( ( tab = strchr( base, '\t' ) ) != NULL ) *tab = '\0' ;
 		if( mi.wID == IDM_FULLSCREEN && altenter && !( GetShortcutsFlag() && key ) )
 			snprintf( label, sizeof(label), "%s\t%s", base, KT_KEYTEXT_ALTENTER ) ;
+		else if( mi.wID == IDM_SHORTCUTSTOGGLE && !GetShortcutsFlag()
+		         && ShortcutKeyText( key, keytext, sizeof(keytext) ) )
+			/* its key works while the keys are off (ShortcutsOffKey) */
+			snprintf( label, sizeof(label), "%s\t%s", base, keytext ) ;
 		else
 			ShortcutMenuText( base, key, label, sizeof(label) ) ;
 		if( strcmp( label, old ) ) {
@@ -620,7 +625,10 @@ int ShortcutKeyReserved( int key ) {
  * enables only at times (window.c, WM_INITMENUPOPUP): ZModem Receive needs
  * rz, Upload needs sz, both no transfer under way, Abort a transfer under
  * way. 1 for any other command. */
-static int sc_menu_offered( int idm ) {
+static int sc_menu_offered( HWND hwnd, int idm ) {
+	/* Restart Session acts only on a closed connection (window.c
+	 * IDM_RESTART): on a live one its key goes on to the server */
+	if( idm == IDM_RESTART ) return !kitty_window_session_live( hwnd ) ;
 #ifdef MOD_ZMODEM
 	switch( idm ) {
 		case IDM_XYZSTART:  return GetZModemFlag() && *kitty_zmodem_command( 0 ) && !kitty_zmodem_active() ;
@@ -748,7 +756,7 @@ int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_sys
 	 * A command the menu does not offer now is no shortcut: the key
 	 * reaches the terminal. */
 	for( i=0 ; i<ShortcutActionCount() ; i++ )
-		if( ( sc_actions[i].run == SC_MENU ) && ( key == *SC_SLOT(i) ) && sc_menu_offered( sc_actions[i].idm ) )
+		if( ( sc_actions[i].run == SC_MENU ) && ( key == *SC_SLOT(i) ) && sc_menu_offered( hwnd, sc_actions[i].idm ) )
 			{ SendMessage( hwnd, WM_COMMAND, (WPARAM)sc_actions[i].idm, 0 ) ; return 1 ; }
 	if( ( key == shortcuts_tab.sendfile ) && kitty_xfer_tool_shown( conf, 0 ) ) 	// Send a file by SCP
 		{ SendMessage( hwnd, WM_COMMAND, IDM_PSCP, 0 ) ; return 1 ; }
