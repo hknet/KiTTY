@@ -31,7 +31,6 @@
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include <psapi.h>
 #include <iphlpapi.h>
-#include <shlobj.h>         /* SHGetFolderPathA: Pictures, for /screenshot */
 
 // KiTTY includes
 #include "kitty.h"
@@ -819,12 +818,15 @@ static int cmd_screenshot( HWND hwnd, char * arg ) {
 	if( IniFileFlag == SAVEMODE_DIR ) {
 		dir = dupstr( InitialDirectory ) ;
 	} else {
-		char pics[MAX_PATH] ;   /* SHGetFolderPath's own size */
-		if( SHGetFolderPathA( NULL, CSIDL_MYPICTURES | CSIDL_FLAG_CREATE, NULL,
-		                      SHGFP_TYPE_CURRENT, pics ) == S_OK )
-			dir = dupprintf( "%s\\KiTTY++", pics ) ;
-		else
-			dir = dupprintf( "%s\\KiTTY++", InitialDirectory ) ;
+		/* the Pictures folder in full, never the program folder: an
+		 * installed KiTTY++ cannot write there */
+		char * pics = kitty_pictures_dir_dup() ;
+		if( pics == NULL ) {
+			cmd_say( "%s", KT_CMD_RES_SHOT_NO_PICTURES ) ;
+			return 1 ;
+		}
+		dir = dupprintf( "%s\\KiTTY++", pics ) ;
+		sfree( pics ) ;
 		if( !CreateDirectoryA( dir, NULL ) && GetLastError() != ERROR_ALREADY_EXISTS ) {
 			cmd_say( KT_CMD_RES_SHOT_NO_DIR, dir ) ;
 			sfree( dir ) ;

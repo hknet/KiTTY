@@ -121,6 +121,10 @@ char *kitty_process_image_path_dup(HANDLE proc);
 char *kitty_module_path_dup(HMODULE mod);
 char *kitty_full_path_dup(const char *path);
 char *kitty_temp_path_dup(void);
+/* The account's Pictures folder in full (sfree it), created when missing;
+ * NULL when there is none. SHGetKnownFolderPath where Windows has it (no
+ * length limit), SHGetFolderPathW on Windows XP. */
+char *kitty_pictures_dir_dup(void);
 
 /*
  * More reads held whole, same rules (sfree the result; NULL = failed, with

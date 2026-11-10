@@ -98,7 +98,6 @@ kitty/kitty_broadcast.c | WindowsCount() | buffer | 256 | window class name from
 kitty/kitty_commands.c | cmd_delreg() | question | 1024 | confirmation text, snprintf to sizeof
 kitty/kitty_commands.c | cmd_passwd() | buffer | KITTY_PW_MAX+256 | /passwd message text holding the password (at most 4096) and fixed text, snprintf to sizeof
 kitty/kitty_commands.c | cmd_passwd() | bufpass | KITTY_PW_MAX+1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
-kitty/kitty_commands.c | cmd_screenshot() | pics | MAX_PATH | SHGetFolderPathA(CSIDL_MYPICTURES) output, MAX_PATH by the API; the folder and file names are built with dupprintf
 kitty/kitty_commands.c | cmd_screenshot() | why | 256 | FormatMessageA text of a file error, size passed; snprintf to sizeof as fallback
 
 kitty/kitty_common.c | IsPasswordInConf() | bufpass | KITTY_PW_MAX+1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
@@ -250,6 +249,7 @@ kitty/kitty_notes.c | kitty_notes_seen_hold() | text | NOTES_TEXT_MAX | notes te
 kitty/kitty_notes.c | kitty_notes_show_pending() | text | NOTES_TEXT_MAX | notes text, NOTES_TEXT_MAX
 
 kitty/kitty_oldwin.c | reg_deltree_fallback() | name | 256 | registry key name from RegEnumKeyExA (<= 255)
+kitty/kitty_oldwin.c | kitty_pictures_dir_dup() | w | MAX_PATH | Windows XP only: SHGetFolderPathW output, MAX_PATH by the API (no XP path is longer); Vista and later take SHGetKnownFolderPath, allocated
 
 kitty/kitty_oscnotify.h | struct OnNotice | title | ON_TITLE_MAX + 1 | notification title, ON_TITLE_MAX
 kitty/kitty_oscnotify.h | struct OnNotice | body | ON_BODY_MAX + 1 | notification body, ON_BODY_MAX

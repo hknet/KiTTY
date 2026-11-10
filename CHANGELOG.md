@@ -314,6 +314,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- `/screenshot` in an installed KiTTY++ wrote into the program folder
+  when the Pictures folder was 255 characters long. It goes to
+  `Pictures\KiTTY++` at any length now, or the result line gives the
+  folder in full and why. Without a Pictures folder no file is written.
 - Session import (`-importdir` and the import button): a .ktx that
   cannot be read is skipped and counted as failed. It ended the import
   with an access violation, the rest of the folder not imported. A

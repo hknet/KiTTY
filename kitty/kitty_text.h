@@ -2254,6 +2254,7 @@
 #define KT_CMD_RES_SHOT_SAVED                        "Saved: %s"
 #define KT_CMD_RES_SHOT_FAILED                       "Not saved: %s (%s)"
 #define KT_CMD_RES_SHOT_NO_DIR                       "Not saved: the folder %s could not be made"
+#define KT_CMD_RES_SHOT_NO_PICTURES                  "Not saved: there is no Pictures folder"
 #define KT_CMD_RES_SHOT_NO_PICTURE                   "the picture could not be taken"
 #define KT_CMD_RES_SAVED                             "Saved: %s"
 #define KT_CMD_RES_NOT_SAVED                         "Not saved: %s"
@@ -2869,6 +2870,7 @@
 #define KT_WINFEAT_PASSWORD_FILE                     "protecting the password handed to the transfer tools"
 #define KT_WINFEAT_WINSCP_PIPE                       "handing WinSCP the password through a named pipe"
 #define KT_WINFEAT_TASKBAR_PROGRESS                  "progress on the taskbar button"
+#define KT_WINFEAT_PICTURES                          "reading a Pictures folder of any length"
 
 /* ---- kageant (agent) and kittygen (key generator), Windows Hello ---- */
 

@@ -383,6 +383,67 @@ char *kitty_temp_path_dup(void)
     return NULL;
 }
 
+/* Both resolved at run time: SHGetKnownFolderPath is Vista and later, and
+ * shell32 is no import of every binary this file is linked into. */
+typedef HRESULT (WINAPI *shgetknownfolderpath_t)(const GUID *, DWORD, HANDLE,
+                                                 wchar_t **);
+typedef void (WINAPI *cotaskmemfree_t)(void *);
+typedef HRESULT (WINAPI *shgetfolderpathw_t)(HWND, int, HANDLE, DWORD,
+                                             wchar_t *);
+char *kitty_pictures_dir_dup(void)
+{
+    /* FOLDERID_Pictures {33E28130-4E1E-4676-835A-98395C3BC3BB} */
+    static const GUID folderid_pictures = { 0x33E28130, 0x4E1E, 0x4676,
+        { 0x83, 0x5A, 0x98, 0x39, 0x5C, 0x3B, 0xC3, 0xBB } };
+    static shgetknownfolderpath_t p_known;
+    static cotaskmemfree_t p_free;
+    static shgetfolderpathw_t p_old;
+    static int resolved;
+
+    if (!resolved) {
+        p_known = (shgetknownfolderpath_t)
+            kitty_api("shell32.dll", "SHGetKnownFolderPath",
+                      KITTY_API_OPTIONAL, KT_WINFEAT_PICTURES);
+        p_free = (cotaskmemfree_t)
+            kitty_api("ole32.dll", "CoTaskMemFree", KITTY_API_OPTIONAL,
+                      KT_WINFEAT_PICTURES);
+        if (!p_known || !p_free)
+            p_old = (shgetfolderpathw_t)
+                kitty_api("shell32.dll", "SHGetFolderPathW",
+                          KITTY_API_OPTIONAL, KT_WINFEAT_PICTURES);
+        resolved = 1;
+    }
+    if (p_known && p_free) {
+        wchar_t *w = NULL;
+        char *r = NULL;
+        /* KF_FLAG_CREATE: made when it is missing, as CSIDL_FLAG_CREATE did */
+        HRESULT hr = p_known(&folderid_pictures, 0x00008000, NULL, &w);
+        if (!SUCCEEDED(hr)) {
+            /* The check refuses a folder Windows cannot open by its plain
+             * path (255 characters set by another program): the path as
+             * configured, KF_FLAG_DONT_VERIFY, so the caller reports that
+             * folder and Windows' reason instead of "no Pictures folder". */
+            if (w)
+                p_free(w);
+            w = NULL;
+            hr = p_known(&folderid_pictures, 0x00004000, NULL, &w);
+        }
+        if (SUCCEEDED(hr) && w && w[0])
+            r = kitty_wide_to_acp_dup(w);
+        if (w)
+            p_free(w);
+        return r;
+    }
+    if (p_old) {
+        /* Windows XP: the API's own size, no path there is longer */
+        wchar_t w[MAX_PATH];
+        if (p_old(NULL, 0x0027 /* CSIDL_MYPICTURES */ | 0x8000 /* CSIDL_FLAG_CREATE */,
+                  NULL, 0 /* SHGFP_TYPE_CURRENT */, w) == S_OK)
+            return kitty_wide_to_acp_dup(w);
+    }
+    return NULL;
+}
+
 char *kitty_module_dir_dup(HMODULE mod)
 {
     char *p = kitty_module_path_dup(mod), *bs;

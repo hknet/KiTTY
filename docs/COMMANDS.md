@@ -372,6 +372,7 @@ Save a screenshot of the terminal window as
 `screenshot-<YYYYMMDD>-<HHMMSS>.png`: an installed KiTTY++ writes to the
 user's `Pictures\KiTTY++` (made when missing), a portable one next to its exe.
 The result line shows the file with its full path, or why it was not written.
+Without a Pictures folder an installed KiTTY++ writes no file.
 Written with Windows' imaging component: on XP only with the Microsoft .NET
 Framework 3.0 installed.
 
