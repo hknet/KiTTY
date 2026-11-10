@@ -789,7 +789,10 @@ static const IniParam ini_params[] = {
 	 * Application > Config Window offers it as a checkbox now. */
 	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_NOEXIT,		1, 0, IGN,	&ConfigBoxNoExitFlag, NULL ),
 	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_FIXEDSIZEWINDOW,	1, 0, IGN,	&ConfigBoxFixedSizeFlag, NULL ),
-	INIP_KW( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_APPLICATIONSETTINGS,	1, 0, IGN,	&ConfigBoxApplicationSettingsFlag, NULL ),
+	/* applicationsettings: kitty.ini only. It is an administrator's lock
+	 * (KITTY-INI.md): read from the registry, one HKCU value of the user's
+	 * own brought the Application tab back. */
+	INIP_KW( KI_SECTION_CONFIGBOX, 1, KI_CONFIGBOX_APPLICATIONSETTINGS,	1, 0, IGN,	&ConfigBoxApplicationSettingsFlag, NULL ),
 	/*
 	 * The Session-panel group on Application > Config Window edits these
 	 * four, which forces two things on them.

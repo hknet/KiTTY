@@ -850,11 +850,53 @@ def read_allow(path):
     return entries, errors
 
 
+SECTION_TABLE_FILE = "kitty/kitty_storemove.c"
+SECTION_TABLE_NAME = "ksm_section_keys"
+SECTION_TABLE_SECTIONS = ("configbox", "launcher")
+
+
+def section_table_errors(tree, keys):
+    """ksm_section_keys[] of kitty_storemove.c holds exactly the param keys
+    of [ConfigBox] and [Launcher]: a registry-to-folder copy puts a flat hive
+    value into its section by that list."""
+    src = tree.keep.get(SECTION_TABLE_FILE)
+    if src is None:
+        return []
+    m = re.search(SECTION_TABLE_NAME + r"\[\]\s*=\s*\{(.*?)\n\};", src, re.S)
+    if not m:
+        return ["%s: the table %s[] is missing" % (SECTION_TABLE_FILE,
+                                                   SECTION_TABLE_NAME)]
+    have = set()
+    errs = []
+    for sec, key in re.findall(r"\{\s*(\w+)\s*,\s*(\w+)\s*\}", m.group(1)):
+        s = tree.value(sec, SECTION_TABLE_FILE)
+        k = tree.value(key, SECTION_TABLE_FILE)
+        if s is None or k is None:
+            errs.append("%s: %s[] row { %s, %s } is not a known name"
+                        % (SECTION_TABLE_FILE, SECTION_TABLE_NAME, sec, key))
+            continue
+        have.add((s.lower(), k.lower()))
+    want = set()
+    for (s, k), e in keys.items():
+        if s in SECTION_TABLE_SECTIONS and k != "*" and (
+                PARAM in e[R] or PARAM in e[W]):
+            want.add((s, k))
+    for s, k in sorted(want - have):
+        errs.append("%s: %s[] lacks [%s] %s (a registry setting: a copy into "
+                    "a folder store would put it in [KiTTY])"
+                    % (SECTION_TABLE_FILE, SECTION_TABLE_NAME, s, k))
+    for s, k in sorted(have - want):
+        errs.append("%s: %s[] lists [%s] %s, which is no registry setting"
+                    % (SECTION_TABLE_FILE, SECTION_TABLE_NAME, s, k))
+    return errs
+
+
 def check(root, allow_path, funcs=FUNCS, wrappers=WRAPPERS, generic=GENERIC):
     files = source_files(root)
     tree = Tree(root, files)
     recs, errors, unmarked, used = scan(tree, funcs, wrappers, generic)
     keys = collect(recs)
+    errors.extend(section_table_errors(tree, keys))
     found = findings_of(keys)
     entries, aerr = read_allow(allow_path)
     errors.extend(aerr)

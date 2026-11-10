@@ -13,6 +13,9 @@ void kitty_inifile_pin(const char *path);          /* kitty.exe only */
 void kitty_inifile_pin_authority(int registry);    /* kitty.exe only */
 int kitty_inifile_portable(void);   /* portable storage layout beside the exe? */
 int kitty_inifile_registry_authoritative(void);
+/* the registry key the settings live under: PuTTY's with [KiTTY]
+ * KiClassName=PuTTY, KiTTY++'s own otherwise */
+const char *kitty_inifile_registry_base(void);
 char *kitty_inifile_state_file_dup(void);  /* <store root>\KiTTYState; NULL = none; free() it */
 int kitty_inifile_read(const char *section, const char *key,
                         char *value, int len);

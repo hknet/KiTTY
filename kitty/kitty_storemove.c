@@ -421,6 +421,48 @@ static void ksm_copy_pair(const char *key, const char *val, void *vctx)
     else (*c->fail)++;
 }
 
+/* Every registry setting of [ConfigBox] and [Launcher]. The hive is flat
+ * (WriteParameter drops the section): a copy into a kitty.ini looks up a hive
+ * value's section here, [KiTTY] when it is not listed.
+ * tools/check-store-pairs.py fails the build when this list and the
+ * [ConfigBox] / [Launcher] keys the code keeps in the registry differ. */
+static const struct { const char *section, *key; } ksm_section_keys[] = {
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_APPLICATIONPANEL },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_CATEGORYEXPAND },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_COLLAPSED },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_CONFIRMDELETE },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DBLCLICK },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DEFAULTSETTINGS },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_FILTER },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_FIXEDSIZEWINDOW },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_FOLDERNAVIGATION },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_HEIGHT },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_LOADLASTSESSION },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_NOEXIT },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_PROXYSELECTION },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_RLOGIN },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_SUPDUP },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_SWITCHPAINT },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_WINDOWHEIGHT },
+    { KI_SECTION_CONFIGBOX, KI_CONFIGBOX_WINDOWWIDTH },
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_ALREADYRUNCHECK },
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_CLASSNAME },
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_DBLCLICK },
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_EXITWITHWORKPLACE },
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_GLOBALHOTKEY },
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_NOTICESECONDS },
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_RELOAD },
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_UNHIDEAFTER },
+};
+static const char *ksm_section_of(const char *name)
+{
+    size_t i;
+    for (i = 0; i < lenof(ksm_section_keys); i++)
+        if (!_stricmp(ksm_section_keys[i].key, name))
+            return ksm_section_keys[i].section;
+    return INIT_SECTION;
+}
+
 /* Registry hive in use + kitty.ini in use -> <dst ini>. The registry wins
  * where both hold a key, as it does for the running copy (ReadParameterN).
  * In folder mode the store in use IS a kitty.ini, so its [KiTTY] section is
@@ -475,7 +517,8 @@ static int ksm_globals_to_ini(const char *dst, int *fail)
                 val[vlen] = '\0';
                 val[vlen + 1] = '\0';
                 if (ksm_layout_key(name)) continue;
-                if (WritePrivateProfileStringA(INIT_SECTION, name, (char *)val, dst)) n++;
+                if (WritePrivateProfileStringA(ksm_section_of(name), name,
+                                               (char *)val, dst)) n++;
                 else (*fail)++;
             }
             sfree(val);
@@ -485,16 +528,17 @@ static int ksm_globals_to_ini(const char *dst, int *fail)
         c.only_missing = 1;
     }
     if (cur && cur[0] && ksm_file_exists(cur)) {
+        int reg = c.only_missing;
         ksm_walk_section(cur, INIT_SECTION, ksm_copy_pair, &c);
-        c.only_missing = 0;
         c.skip_layout = 0;
-        /* [ConfigBox] and [Launcher] as the file has them. A hive value of
-         * theirs carries no section (the hive is flat): it is copied with
-         * [KiTTY] above. */
+        /* [ConfigBox] and [Launcher] as the file has them, where the hive
+         * held none (the hive's went to their section above, ksm_section_of) */
         for (i = 0; ksm_param_sections[i]; i++) {
             c.section = ksm_param_sections[i];
+            c.only_missing = reg;
             ksm_walk_section(cur, c.section, ksm_copy_pair, &c);
         }
+        c.only_missing = 0;
         for (i = 0; ksm_file_sections[i]; i++) {
             c.section = ksm_file_sections[i];
             ksm_walk_section(cur, c.section, ksm_copy_pair, &c);
@@ -514,6 +558,10 @@ static void ksm_param_pair(const char *key, const char *val, void *vctx)
      * or older: their names now (kitty_startup.c LauncherKeysRename). Under
      * the old names they were one hive value with [ConfigBox] dblclick and
      * [KiTTY] noticeseconds. */
+    /* kitty.ini only (an administrator's lock, KITTY-INI.md): a take does
+     * not carry it into the registry */
+    if (!stricmp(c->section, KI_SECTION_CONFIGBOX) &&
+        !stricmp(key, KI_CONFIGBOX_APPLICATIONSETTINGS)) return;
     if (!stricmp(c->section, KI_SECTION_LAUNCHER)) {
         if (!stricmp(key, "dblclick")) key = KI_LAUNCHER_DBLCLICK;
         else if (!stricmp(key, "noticeseconds")) key = KI_LAUNCHER_NOTICESECONDS;
@@ -528,7 +576,7 @@ static void ksm_param_pair(const char *key, const char *val, void *vctx)
      *   - a store move into the store in use: every [KiTTY] key of the source
      *   but the layout keys (ksm_layout_key) and the file-only keys
      *   (ksm_file_only_key) */
-    /* store-pairs: write param ConfigBox * - a store move into the store in use (ksm_param_sections) */
+    /* store-pairs: write param ConfigBox * !KI_CONFIGBOX_APPLICATIONSETTINGS - a store move into the store in use (ksm_param_sections). applicationsettings is kitty.ini only */
     /* store-pairs: write param Launcher * !dblclick !noticeseconds - a store move into the store in use (ksm_param_sections). The old names are written under the new ones */
     if (WriteParameter(c->section, key, v)) (*c->n)++;
     else (*c->fail)++;
@@ -545,6 +593,18 @@ static int ksm_globals_from_ini(const char *src, int *fail)
     struct ksm_param_copy pc = { INIT_SECTION, &n, fail };
     struct ksm_ini_copy fc = { cur, NULL, &n, fail, 0, 0 };
     ksm_walk_section(src, INIT_SECTION, ksm_param_pair, &pc);
+    /* restrictacl is kitty.ini only (read before the store is open): a set
+     * one goes into the kitty.ini in use, never over a value there */
+    if (cur && cur[0]) {
+        char *ra = kitty_read_ini_dup(src, INIT_SECTION, KI_RESTRICTACL);
+        char *have = kitty_read_ini_dup(cur, INIT_SECTION, KI_RESTRICTACL);
+        if (ra && ra[0] && !have) {
+            if (WritePrivateProfileStringA(INIT_SECTION, KI_RESTRICTACL, ra, cur)) n++;
+            else (*fail)++;
+        }
+        sfree(ra);
+        sfree(have);
+    }
     for (i = 0; ksm_param_sections[i]; i++) {
         pc.section = ksm_param_sections[i];
         ksm_walk_section(src, pc.section, ksm_param_pair, &pc);

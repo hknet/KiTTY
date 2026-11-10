@@ -19,7 +19,8 @@
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 
 /* The consolidated KiTTY hive, and the same value name kitty.exe writes. */
-#define KITTY_THEME_REG_BASE  "Software\\kapper.net\\KiTTY"
+/* the key kitty.exe keeps its settings under (KiClassName=PuTTY: PuTTY's) */
+#define KITTY_THEME_REG_BASE  kitty_inifile_registry_base()
 #define KITTY_THEME_REG_VALUE "theme"
 
 /* readonly=yes: the choice theme_reg_write did not store, held for this

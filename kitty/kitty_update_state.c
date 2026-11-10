@@ -19,7 +19,8 @@
 #include "kitty_inikeys.h"      /* KI_*: the kitty.ini key names */
 #include "kitty_oldwin_reg.h"   /* XP: RegGetValue via oldwin */
 
-#define KUS_REG_BASE "Software\\kapper.net\\KiTTY"
+/* the key kitty.exe keeps its settings under (KiClassName=PuTTY: PuTTY's) */
+#define KUS_REG_BASE kitty_inifile_registry_base()
 
 int kitty_file_version(const char *path, unsigned long *ms, unsigned long *ls);   /* kitty_authenticode.c */
 

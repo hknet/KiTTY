@@ -303,6 +303,18 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- Copying a registry installation into a folder store puts each
+  `[ConfigBox]` and `[Launcher]` setting into its own section of the
+  copy's kitty.ini. They landed in `[KiTTY]`, where nothing reads them,
+  and the copy started with their defaults.
+- "Take a folder store..." carries `[KiTTY] restrictacl` into the
+  kitty.ini in use. It never overwrites a value there.
+- With `[KiTTY] KiClassName=PuTTY`, kageant and kittygen read the theme
+  and kageant reads `checkupdate` and the stored update answer from
+  PuTTY's registry key, where kitty.exe writes them.
+- `[ConfigBox] applicationsettings=no` is read from kitty.ini only. In
+  registry mode a user's own registry value brought the Application tab
+  back past a locked kitty.ini.
 - `[Launcher] dblclick` is now `traydblclick` and `[Launcher] noticeseconds`
   is now `proxynoticeseconds`. In registry mode the old names were one
   registry value with `[ConfigBox] dblclick` and `[KiTTY] noticeseconds`.

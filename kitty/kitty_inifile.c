@@ -390,6 +390,18 @@ int kitty_inifile_registry_authoritative(void)
 
 /* Read [section] key. Returns 1 with the value copied when the key is
  * present and non-empty, 0 otherwise (an empty value counts as absent). */
+/* The registry key the settings live under, picked as kitty.exe picks it
+ * (kitty_startup.c, kitty_set_registry_root): PuTTY's with [KiTTY]
+ * KiClassName=PuTTY in kitty.ini, KiTTY++'s own otherwise. For kageant,
+ * kittygen and the reads kitty.exe makes before InitWinMain. */
+const char *kitty_inifile_registry_base(void)
+{
+    char *cls = kitty_inifile_read_dup(KI_SECTION_KITTY, KI_KICLASSNAME);
+    int putty = cls && !_stricmp(cls, "PuTTY");
+    free(cls);
+    return putty ? "Software\\SimonTatham\\PuTTY" : "Software\\kapper.net\\KiTTY";
+}
+
 int kitty_inifile_read(const char *section, const char *key,
                         char *value, int len)
 {

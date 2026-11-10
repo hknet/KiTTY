@@ -17,6 +17,6 @@
 Shortcuts list | the one-time copy of an older build's AutoText out of the hive (kitty_startup.c AutoTextFromRegistry): the hive list is read once and deleted after the copy
 KiTTY KiClassName | set by hand only (kitty_registry.c deletes a copy from PuTTY's hive). kitty.exe reads it with ReadParameterN, the satellites read kitty.ini through the resolver (kitty_inifile_read): it picks the hive itself
 KiTTY showforeignsessions | the pinned answer is the hive's ShowForeignSessions DWORD (kitty_storage.c). This text key is the fallback: ReadParameterN in kitty.exe, kitty_inifile_read in klink, kscp and ksftp (kitty_showforeign_ini.c), where ReadParameterN is a stub
-KiTTY checkupdate | kageant's own reader (kitty_update_state.c, built without kitty_params): kitty.ini, the hive first when the registry is in charge. Its hive path KUS_REG_BASE is fixed to kapper.net\KiTTY, so with KiClassName=PuTTY it misses the value kitty.exe writes to PuTTY's hive
+KiTTY checkupdate | kageant's own reader (kitty_update_state.c, built without kitty_params): kitty.ini, the hive first when the registry is in charge. Its hive is the one kitty.exe uses (kitty_inifile_registry_base)
 
 # open defects: one registry value for two settings (registry mode)

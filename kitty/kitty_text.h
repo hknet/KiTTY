@@ -4679,12 +4679,12 @@
         "configuration file"
 #define KT_CFG_DEFAULT_HIDE_Q                        "\"%s\" cannot be deleted - it is the template every new session " \
         "starts from.\n\n" \
-        "It can be hidden from this list instead. The template itself " \
-        "keeps working; it simply stops taking up a row.\n\n" \
-        "Note it is also the way into quick connect - loading it once " \
-        "puts the caret in Host Name so you can type an address instead " \
-        "of picking a session. With the row hidden you would reach that " \
-        "by setting [ConfigBox] loadlastsession=no instead.\n\n" \
+        "It can be hidden from this list instead. The template keeps " \
+        "working. It only stops taking up a row.\n\n" \
+        "It is also the way into quick connect: selecting it puts the " \
+        "cursor in Host Name to type an address. With the row hidden, " \
+        "quick connect is the box \"Open on the last used session\" " \
+        "switched off, in Application > Config Window > Session Panel.\n\n" \
         "Hide it?\n\n" \
         "To show it again: Application > Config Window > Session Panel, " \
         "Show \"Default Settings\": always."
