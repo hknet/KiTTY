@@ -40,6 +40,7 @@
 #include "kitty_broadcast.h"   /* the other KiTTY windows: count, broadcast, resize */
 #include "kitty_portfwd.h"     /* the port-forward display */
 #include "kitty_regbackup.h"   /* the .sav export/import and the backup rotation */
+#include "kitty_winerr.h"     /* kitty_win_reason: Windows' reason for a message */
 #include "kitty_int.h"         /* what the split-off files share with this one */
 #include "kitty_startup.h"    /* InitWinMain */
 #include "kitty_defs.h"     /* KITTY_DEFAULT_SESSION */
@@ -738,8 +739,14 @@ int kitty_launcher_autostart_toggle( HWND owner ) {
 		if( launcher_shortcut_points_here( 0, exe ) ) {
 			/* whichever name points here - never another KiTTY++'s */
 			for( i = 0 ; i < lenof(launcher_shortcut_names) ; i++ )
-				if( kitty_startup_shortcut_points_to( launcher_shortcut_names[i], 0, exe ) )
-					kitty_startup_shortcut_set( launcher_shortcut_names[i], NULL, NULL, NULL, NULL, 0 ) ;
+				if( kitty_startup_shortcut_points_to( launcher_shortcut_names[i], 0, exe )
+				    && !kitty_startup_shortcut_set( launcher_shortcut_names[i], NULL, NULL, NULL, NULL, 0 ) ) {
+					char * msg = dupprintf( KT_LAUNCHER_STARTUP_OFF_FAILED_FMT,
+					                        kitty_win_reason( GetLastError() ) ) ;
+					MessageBox( owner, msg, KT_CAP_LAUNCHER, MB_ICONERROR | MB_OK ) ;
+					sfree( msg ) ;
+					break ;
+				}
 		} else if( launcher_shortcut_points_here( 1, exe ) ) {
 			MessageBox( owner, KT_LAUNCHER_STARTUP_ALLUSERS,
 			            KT_CAP_LAUNCHER, MB_ICONINFORMATION | MB_OK ) ;
@@ -750,7 +757,12 @@ int kitty_launcher_autostart_toggle( HWND owner ) {
 		} else {
 			dir = dupstr( exe ) ;
 			slash = strrchr( dir, '\\' ) ; if( slash ) *slash = '\0' ;
-			kitty_startup_shortcut_set( LAUNCHER_SHORTCUT_NEW, exe, "-launcher", dir, exe, 1 ) ;
+			if( !kitty_startup_shortcut_set( LAUNCHER_SHORTCUT_NEW, exe, "-launcher", dir, exe, 1 ) ) {
+				char * msg = dupprintf( KT_LAUNCHER_STARTUP_ON_FAILED_FMT,
+				                        kitty_win_reason( GetLastError() ) ) ;
+				MessageBox( owner, msg, KT_CAP_LAUNCHER, MB_ICONERROR | MB_OK ) ;
+				sfree( msg ) ;
+			}
 			sfree( dir ) ;
 		}
 		sfree( exe ) ;

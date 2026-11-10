@@ -2313,6 +2313,10 @@
         "Part of the KiTTY++ suite \xe2\x80\x94 a fork of PuTTY 0.85.\r\n\r\n" \
         "\xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH\r\n" \
         "Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham."
+#define KT_LAUNCHER_STARTUP_ON_FAILED_FMT            "The launcher could not be set to start at login: %s.\n\n" \
+        "Nothing was changed."
+#define KT_LAUNCHER_STARTUP_OFF_FAILED_FMT           "The launcher's start at login could not be removed: %s.\n\n" \
+        "It probably still starts at login."
 #define KT_LAUNCHER_STARTUP_ALLUSERS                 "This KiTTY++ already starts at login for all users " \
         "(an all-users Startup shortcut, usually placed by " \
         "the installer). To stop it, disable it in Settings " \

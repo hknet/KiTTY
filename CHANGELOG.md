@@ -314,6 +314,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- Start at login (the launcher's tray menu, and "Start Launcher at
+  Login" on Application > KiTTY++ Settings > Launcher): a change Windows
+  refused showed the new state while nothing changed. A message box now
+  gives the reason. The tick shows what is in force.
 - `/screenshot` in an installed KiTTY++ wrote into the program folder
   when the Pictures folder was 255 characters long. It goes to
   `Pictures\KiTTY++` at any length now, or the result line gives the

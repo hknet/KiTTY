@@ -176,6 +176,11 @@ int kitty_shortcut_write(const char *lnkpath, const char *target,
     }
     if (couninit)
         CoUninitialize();
+    /* the reason for the caller's message: the failed step's HRESULT, as
+     * its Windows error where it wraps one (0x80070005 is error 5) */
+    if (!ok)
+        SetLastError(!FAILED(hr) ? ERROR_GEN_FAILURE :
+                     HRESULT_FACILITY(hr) == FACILITY_WIN32 ? (DWORD)HRESULT_CODE(hr) : (DWORD)hr);
     return ok;
 }
 
@@ -189,9 +194,11 @@ int kitty_startup_shortcut_set(const char *name, const char *target,
         return 0;
 
     if (!on) {
-        DeleteFileA(lnk);           /* absent is fine */
+        /* absent is fine; any other failure leaves it in place */
+        ok = DeleteFileA(lnk) || GetLastError() == ERROR_FILE_NOT_FOUND
+             || GetLastError() == ERROR_PATH_NOT_FOUND;
         sfree(lnk);
-        return 1;
+        return ok;
     }
     ok = kitty_shortcut_write(lnk, target, args, workdir, icon, 0);
     sfree(lnk);
