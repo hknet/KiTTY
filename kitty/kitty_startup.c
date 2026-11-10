@@ -655,6 +655,64 @@ static void AutoTextFromRegistry( void ) {
 	sfree( list ) ;
 	}
 
+/*
+ * [Launcher] dblclick and noticeseconds are traydblclick and
+ * proxynoticeseconds now. The registry is flat (WriteParameter drops the
+ * section): in registry mode they were one hive value with [ConfigBox]
+ * dblclick and [KiTTY] noticeseconds, written so by 0.85.1.14-beta to
+ * 0.85.1.19-beta. Renamed once at startup, nothing under readonly=yes.
+ *
+ * kitty.ini [Launcher]: the old key's value goes to the new key unless the
+ * new key is there, then the old key is removed.
+ * The hive (registry mode): a dblclick holding a launcher value (config,
+ * manage, quickconnect) moves to traydblclick and is deleted; open and start
+ * are the configuration box's and stay. A noticeseconds value cannot be told
+ * apart: it is copied to proxynoticeseconds when that is absent, so both
+ * notices keep the time in effect.
+ */
+static void LauncherKeysRename( void ) {
+	static const char * const old_keys[] = { "dblclick", "noticeseconds" } ;
+	static const char * const new_keys[] = { KI_LAUNCHER_DBLCLICK, KI_LAUNCHER_NOTICESECONDS } ;
+	size_t i ;
+	if( GetReadOnlyFlag() ) return ;
+	if( KittyIniFile != NULL && KittyIniFile[0] && existfile( KittyIniFile ) ) {
+		for( i = 0 ; i < lenof( old_keys ) ; i++ ) {
+			/* store-pairs: read file Launcher dblclick,noticeseconds - the one-time rename: the old [Launcher] names */
+			char * old = kitty_read_ini_dup( KittyIniFile, KI_SECTION_LAUNCHER, old_keys[i] ) ;
+			char * cur ;
+			if( old == NULL ) continue ;
+			/* store-pairs: read param Launcher KI_LAUNCHER_DBLCLICK,KI_LAUNCHER_NOTICESECONDS - the one-time rename: is the new name there */
+			cur = kitty_read_ini_dup( KittyIniFile, KI_SECTION_LAUNCHER, new_keys[i] ) ;
+			/* store-pairs: write param Launcher KI_LAUNCHER_DBLCLICK,KI_LAUNCHER_NOTICESECONDS - the one-time rename: the kitty.ini value under its new name */
+			if( cur != NULL || writeINI( KittyIniFile, KI_SECTION_LAUNCHER, new_keys[i], old ) )
+				/* store-pairs: write file Launcher dblclick,noticeseconds - the one-time rename: the old name removed */
+				delINI( KittyIniFile, KI_SECTION_LAUNCHER, old_keys[i] ) ;
+			sfree( cur ) ;
+			sfree( old ) ;
+		}
+	}
+	if( IniFileFlag != SAVEMODE_DIR ) {
+		const char * base = kitty_registry_base() ;
+		char * v = GetValueDataDup( HKEY_CURRENT_USER, base, "dblclick" ) ;
+		char * have ;
+		if( v != NULL ) {
+			if( !stricmp( v, "config" ) || !stricmp( v, "manage" ) || !stricmp( v, "quickconnect" ) ) {
+				have = GetValueDataDup( HKEY_CURRENT_USER, base, KI_LAUNCHER_DBLCLICK ) ;
+				if( have != NULL || RegTestOrCreate( HKEY_CURRENT_USER, base, KI_LAUNCHER_DBLCLICK, v ) )
+					RegDelValue( HKEY_CURRENT_USER, base, "dblclick" ) ;
+				sfree( have ) ;
+			}
+			sfree( v ) ;
+		}
+		if( ( v = GetValueDataDup( HKEY_CURRENT_USER, base, "noticeseconds" ) ) != NULL ) {
+			if( ( have = GetValueDataDup( HKEY_CURRENT_USER, base, KI_LAUNCHER_NOTICESECONDS ) ) == NULL )
+				RegTestOrCreate( HKEY_CURRENT_USER, base, KI_LAUNCHER_NOTICESECONDS, v ) ;
+			sfree( have ) ;
+			sfree( v ) ;
+		}
+	}
+}
+
 void InitWinMain( void ) {
 	char buffer[4096];
 	int i ;
@@ -745,6 +803,8 @@ void InitWinMain( void ) {
 
 	// AutoText an older build kept in the hive: into kitty.ini, once
 	AutoTextFromRegistry() ;
+	// [Launcher] dblclick, noticeseconds: their new names, once
+	LauncherKeysRename() ;
 	// Initialise the shortcuts
 	InitShortcuts() ;
 	NETDBG_TS("after InitShortcuts");

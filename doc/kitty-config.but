@@ -2745,8 +2745,8 @@ give one of them a different name in its \c{kitty.ini}. Everything else
 leaves it alone.
 
 The keys in \c{kitty.ini}, under \c{[Launcher]}: \c{reload},
-\c{alreadyRunCheck}, \c{dblclick}, \c{globalhotkey}, \c{unhideafter},
-\c{exitwithworkplace}, \c{noticeseconds} and the
+\c{alreadyRunCheck}, \c{traydblclick}, \c{globalhotkey}, \c{unhideafter},
+\c{exitwithworkplace}, \c{proxynoticeseconds} and the
 \c{classname} above. \q{Keep my hand-edited launcher menu} is
 \c{reload=no}; the default is \c{reload=yes}.
 

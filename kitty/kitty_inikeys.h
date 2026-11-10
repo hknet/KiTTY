@@ -292,12 +292,16 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_LAUNCHER_ALREADYRUNCHECK         "alreadyRunCheck"
 #define KI_LAUNCHER_CLASSNAME               "classname"
 #define KI_LAUNCHER_EXITWITHWORKPLACE       "exitwithworkplace"
-#define KI_LAUNCHER_NOTICESECONDS           "noticeseconds"
+/* proxynoticeseconds, traydblclick: dblclick and noticeseconds until
+ * 0.85.1.19-beta, renamed at startup (kitty_startup.c LauncherKeysRename) - the
+ * flat registry made them one value with [ConfigBox] dblclick and
+ * [KiTTY] noticeseconds */
+#define KI_LAUNCHER_NOTICESECONDS           "proxynoticeseconds"
 #define KI_LAUNCHER_RELOAD                  "reload"
 #define KI_LAUNCHER_UNHIDEAFTER             "unhideafter"
 /* what a double click on the tray icon opens: config (default) | manage */
-#define KI_LAUNCHER_DBLCLICK                "dblclick"
-/* the launcher's global hotkey ("Ctrl+Alt+K"): does what dblclick opens;
+#define KI_LAUNCHER_DBLCLICK                "traydblclick"
+/* the launcher's global hotkey ("Ctrl+Alt+K"): does what traydblclick opens;
  * empty or absent = none */
 #define KI_LAUNCHER_GLOBALHOTKEY            "globalhotkey"
 

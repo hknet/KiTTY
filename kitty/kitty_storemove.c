@@ -510,6 +510,14 @@ static void ksm_param_pair(const char *key, const char *val, void *vctx)
     char *v;
     if (!strcmp(c->section, INIT_SECTION) &&
         (ksm_layout_key(key) || ksm_file_only_key(key))) return;
+    /* [Launcher] dblclick and noticeseconds of a store from 0.85.1.19-beta
+     * or older: their names now (kitty_startup.c LauncherKeysRename). Under
+     * the old names they were one hive value with [ConfigBox] dblclick and
+     * [KiTTY] noticeseconds. */
+    if (!stricmp(c->section, KI_SECTION_LAUNCHER)) {
+        if (!stricmp(key, "dblclick")) key = KI_LAUNCHER_DBLCLICK;
+        else if (!stricmp(key, "noticeseconds")) key = KI_LAUNCHER_NOTICESECONDS;
+    }
     v = dupstr(val);                    /* whole: it was cut at 8 KB */
     /* store-pairs: write param KiTTY *
      *   !KI_SAVEMODE !KI_CONFIGDIR !KI_BROWSEDIRECTORY !KI_KICLASSNAME !KI_SAV
@@ -521,7 +529,7 @@ static void ksm_param_pair(const char *key, const char *val, void *vctx)
      *   but the layout keys (ksm_layout_key) and the file-only keys
      *   (ksm_file_only_key) */
     /* store-pairs: write param ConfigBox * - a store move into the store in use (ksm_param_sections) */
-    /* store-pairs: write param Launcher * - a store move into the store in use (ksm_param_sections) */
+    /* store-pairs: write param Launcher * !dblclick !noticeseconds - a store move into the store in use (ksm_param_sections). The old names are written under the new ones */
     if (WriteParameter(c->section, key, v)) (*c->n)++;
     else (*c->fail)++;
     sfree(v);

@@ -2035,7 +2035,7 @@ static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
 static void LauncherTrayDoubleRun( HWND hwnd, const char * from ) {
 	char line[96] ;
 	{
-		/* [Launcher] dblclick=manage: Manage Sessions, =quickconnect: Quick
+		/* [Launcher] traydblclick=manage: Manage Sessions, =quickconnect: Quick
 		 * Connect, else a configuration box (read at each double click, so
 		 * the panel's choice applies to a running launcher without a restart) */
 		char what[32] = "", manage_arg[] = "-manage", quick_arg[] = "-quickconnect", none[] = "" ;
@@ -2638,7 +2638,8 @@ static int LauncherRememberedWorkplaceProxy( char *out, int len ) {
 	return ok ;
 }
 
-/* How long the workplace notice stays up: [Launcher] noticeseconds, default 15.
+/* How long the workplace notice stays up: [Launcher] proxynoticeseconds,
+ * default 15.
  * Ours to choose, which is half the reason the notice is our own window - the
  * shell has ignored the requested balloon duration since Vista. */
 static int LauncherNoticeSeconds( void ) {

@@ -283,6 +283,13 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- `[Launcher] dblclick` is now `traydblclick` and `[Launcher] noticeseconds`
+  is now `proxynoticeseconds`. In registry mode the old names were one
+  registry value with `[ConfigBox] dblclick` and `[KiTTY] noticeseconds`.
+  The tray double click and the session list double click reset each
+  other. The first start renames both keys in kitty.ini and in the
+  registry. A registry `noticeseconds` is copied: both notices keep their
+  time. "Take a folder store..." takes the old names under the new ones.
 - Hiding "Default Settings" (Delete on its row, then Yes) lasts in
   registry mode. The choice went to kitty.ini, which the registry value
   overrides. The row came back at the next start. The question now points

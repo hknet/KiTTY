@@ -1430,13 +1430,15 @@ char default_init_file_content[] =
 ;    arming refuses a second holder, and that one exits like any duplicate.\n\
 ;alreadyRunCheck=yes\n\
 \n\
-; dblclick: what a double click on the launcher's tray icon opens - config\n\
+; traydblclick: what a double click on the launcher's tray icon opens -\n\
+;    config\n\
 ;    (a new configuration window, the default), manage (Manage Sessions\n\
 ;    alone, as \"kitty.exe -manage\" opens it) or quickconnect (Quick Connect,\n\
 ;    as \"kitty.exe -quickconnect\" opens it). Read at each double click, so a\n\
 ;    running launcher follows a change at once.\n\
-;    Set in Application > KiTTY++ Settings > Launcher.\n\
-;dblclick=config\n\
+;    Set in Application > KiTTY++ Settings > Launcher. Until 0.85.1.19-beta\n\
+;    named dblclick, renamed at the first start.\n\
+;traydblclick=config\n\
 \n\
 ; globalhotkey: a key combination, from any program, that does what the\n\
 ;    double click above does (e.g. Ctrl+Alt+K: one or more of Ctrl, Alt,\n\
@@ -1466,11 +1468,13 @@ char default_init_file_content[] =
 ; and your hotkeys. Set no to keep the started one too.\n\
 ;exitwithworkplace=yes\n\
 \n\
-; noticeseconds: how long the workplace proxy mode notice stays on screen\n\
+; proxynoticeseconds: how long the workplace proxy mode notice stays on\n\
+; screen\n\
 ; (default 15). It is a window of our own rather than a tray balloon precisely\n\
 ; so that this is ours to set: Windows has ignored the requested balloon\n\
-; duration since Vista, and a balloon cannot carry the mode's colour.\n\
-;noticeseconds=15\n\
+; duration since Vista, and a balloon cannot carry the mode's colour. Until\n\
+; 0.85.1.19-beta named noticeseconds, renamed at the first start.\n\
+;proxynoticeseconds=15\n\
 \n\
 ; unhideafter: a window hidden from the launcher's menu has no taskbar button\n\
 ;    and no tray icon. When that launcher ends - killed, crashed - the window\n\

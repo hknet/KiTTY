@@ -84,7 +84,7 @@ row KiTTY zmodem
 row Launcher alreadyRunCheck
 row Launcher classname
 row Launcher exitwithworkplace
-row Launcher noticeseconds
+row Launcher proxynoticeseconds
 row Print height
 row Print maxchar
 row Print maxline

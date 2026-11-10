@@ -1427,13 +1427,15 @@
 ;    arming refuses a second holder, and that one exits like any duplicate.
 ;alreadyRunCheck=yes
 
-; dblclick: what a double click on the launcher's tray icon opens - config
+; traydblclick: what a double click on the launcher's tray icon opens -
+;    config
 ;    (a new configuration window, the default), manage (Manage Sessions
 ;    alone, as "kitty.exe -manage" opens it) or quickconnect (Quick Connect,
 ;    as "kitty.exe -quickconnect" opens it). Read at each double click, so a
 ;    running launcher follows a change at once.
-;    Set in Application > KiTTY++ Settings > Launcher.
-;dblclick=config
+;    Set in Application > KiTTY++ Settings > Launcher. Until 0.85.1.19-beta
+;    named dblclick, renamed at the first start.
+;traydblclick=config
 
 ; globalhotkey: a key combination, from any program, that does what the
 ;    double click above does (e.g. Ctrl+Alt+K: one or more of Ctrl, Alt,
@@ -1463,11 +1465,13 @@
 ; and your hotkeys. Set no to keep the started one too.
 ;exitwithworkplace=yes
 
-; noticeseconds: how long the workplace proxy mode notice stays on screen
+; proxynoticeseconds: how long the workplace proxy mode notice stays on
+; screen
 ; (default 15). It is a window of our own rather than a tray balloon precisely
 ; so that this is ours to set: Windows has ignored the requested balloon
-; duration since Vista, and a balloon cannot carry the mode's colour.
-;noticeseconds=15
+; duration since Vista, and a balloon cannot carry the mode's colour. Until
+; 0.85.1.19-beta named noticeseconds, renamed at the first start.
+;proxynoticeseconds=15
 
 ; unhideafter: a window hidden from the launcher's menu has no taskbar button
 ;    and no tray icon. When that launcher ends - killed, crashed - the window

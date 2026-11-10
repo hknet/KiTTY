@@ -20,5 +20,3 @@ KiTTY showforeignsessions | the pinned answer is the hive's ShowForeignSessions 
 KiTTY checkupdate | kageant's own reader (kitty_update_state.c, built without kitty_params): kitty.ini, the hive first when the registry is in charge. Its hive path KUS_REG_BASE is fixed to kapper.net\KiTTY, so with KiClassName=PuTTY it misses the value kitty.exe writes to PuTTY's hive
 
 # open defects: one registry value for two settings (registry mode)
-FLAT dblclick | OPEN: [ConfigBox] dblclick (open|start, the config box list) and [Launcher] dblclick (config|manage|quickconnect, the tray icon) are one hive value in registry mode. Needs a registry name of its own for one of them
-FLAT noticeseconds | OPEN: [KiTTY] noticeseconds (kitty.exe's notices) and [Launcher] noticeseconds (the launcher's notices) are one hive value in registry mode. Needs a registry name of its own for one of them

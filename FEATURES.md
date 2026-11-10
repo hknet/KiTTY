@@ -916,7 +916,7 @@ Workplace proxy mode is that switch. Pick one of your named proxies and the time
 
 **When the proxy stops answering** — usually because you have left the place it belongs to — the failed connection offers to take you to *Application → Workplace Proxy*, where you can switch the mode off or point it somewhere else. It does not switch anything off for you.
 
-**How to enable:** define at least one named proxy (above), then *Application → Workplace Proxy* → **Switch on**, or the launcher's tray menu. The duration notice can be lengthened with `[Launcher] noticeseconds=` in kitty.ini.
+**How to enable:** define at least one named proxy (above), then *Application → Workplace Proxy* → **Switch on**, or the launcher's tray menu. The duration notice can be lengthened with `[Launcher] proxynoticeseconds=` in kitty.ini.
 
 <img src="docs/features/img/config_workplace.jpg" width="585" height="497" alt="Workplace proxy mode">
 
