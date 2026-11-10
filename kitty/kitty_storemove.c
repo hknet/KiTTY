@@ -1109,6 +1109,10 @@ int kitty_take_folder_core(const char *dir, const char *pw, int overwrite,
     }
     r->sessions = kitty_import_dir(stage, &r->fail, &r->proxies,
                                    &r->skipped, overwrite);
+    if (r->sessions < 0) {                 /* the staged copy unreadable */
+        r->sessions = 0;
+        r->fail++;
+    }
     kitty_clear_bundle_context();
     ksm_unstage(stage);
     /* the manual order of that store, merged: a place already stored here

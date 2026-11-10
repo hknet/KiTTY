@@ -161,7 +161,8 @@ char * SetSessPath( const char * dec ) ;
 void CleanFolderName( char * folder ) ;
 void set_sshver( const char * vers ) ;
 int RunCommand( HWND hwnd, const char * cmd ) ;   /* 1 started, 0 not (the reason was shown) */
-void load_open_settings_forced(char *filename, Conf *conf) ;
+int load_open_settings_forced(char *filename, Conf *conf) ;   /* 1 = loaded; 0 = not read, a box said so */
+int kitty_ktx_load_quiet(char *filename, Conf *conf) ;        /* the same without the box (an import) */
 int kitty_ktx_gate( const char *filename ) ;   /* 1 = connect, 0 = refused or cancelled (kitty_zone.c) */
 int save_open_settings_forced(char *filename, Conf *conf) ;   /* 1 written, 0 not (GetLastError) */
 int SwitchCryptFlag( void ) ;

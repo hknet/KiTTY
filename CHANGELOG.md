@@ -305,6 +305,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- Session import (`-importdir` and the import button): a .ktx that
+  cannot be read is skipped and counted as failed. It ended the import
+  with an access violation, the rest of the folder not imported. A
+  folder that cannot be read is reported with Windows' reason (exit 1).
+  It counted as "0 imported" and ended with exit 0.
 - A long value written after other text could lose its end: the
   "-sshhandler" report cut another program's long command line and ran
   the next line into it. The text formatter took a cut piece as

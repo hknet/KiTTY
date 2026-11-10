@@ -4174,6 +4174,7 @@
         "import password with:\n\n" \
         "  -bundlepwfile <file>   (the password on the first line)\n\n" \
         "Nothing was imported."
+#define KT_IMPORT_FOLDER_UNREADABLE_FMT              "Nothing was imported. The folder cannot be read:\n%s\n\n%s"
 #define KT_CLI_IMPORT_DONE                           "Imported %d session(s), %d prox(ies), %d failed, from:\n%s"
 /* appended to KT_CLI_IMPORT_DONE; the run then exits 1 */
 #define KT_CLI_IMPORT_KEPT_FMT                       "\n%d password(s) not saved: the master password is locked."

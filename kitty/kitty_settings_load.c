@@ -193,16 +193,23 @@ static void ktx_decode_password( Conf *conf, int key, int try_legacy ) {
 	if( pt ) { smemclr( pt, strlen( pt ) ) ; free( pt ) ; }
 }
 
-void load_open_settings_forced(char *filename, Conf *conf) {
+/* 1 = loaded; 0 = the file could not be read, conf untouched. report: the
+ * box naming the file (-loadfile); an import counts the file as failed in
+ * its own summary instead - a box per file would hold an unattended
+ * -importdir up, and the empty Conf it saved asserted (conf_new without
+ * defaults). */
+static int ktx_load_into( char *filename, Conf *conf, int report ) {
 	struct ksf_item *items = ktx_load_items( filename ) ;
 	settings_r *src ;
 	if( items == NULL ) {
-		/* the file named whole */
-		char *buffer = dupprintf( ktx_load_temp_failed() ? KT_SETTINGS_FILE_NO_TEMP :
-		                          KT_SETTINGS_FILE_NOT_FOUND, filename ) ;
-		MessageBox( NULL, buffer, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
-		sfree( buffer ) ;
-		return ;
+		if( report ) {
+			/* the file named whole */
+			char *buffer = dupprintf( ktx_load_temp_failed() ? KT_SETTINGS_FILE_NO_TEMP :
+			                          KT_SETTINGS_FILE_NOT_FOUND, filename ) ;
+			MessageBox( NULL, buffer, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
+			sfree( buffer ) ;
+		}
+		return 0 ;
 	}
 	src = kitty_open_settings_r_items( items ) ;   /* owns items now */
 	kitty_settings_r_raw_secrets( src ) ;
@@ -244,4 +251,13 @@ void load_open_settings_forced(char *filename, Conf *conf) {
 	/* after the load: once per run, however many files */
 	ktx_warn_encrypted_once() ;
 	kitty_pw_seal_all( conf ) ;
+	return 1 ;
+}
+
+int load_open_settings_forced( char *filename, Conf *conf ) {
+	return ktx_load_into( filename, conf, 1 ) ;
+}
+
+int kitty_ktx_load_quiet( char *filename, Conf *conf ) {
+	return ktx_load_into( filename, conf, 0 ) ;
 }

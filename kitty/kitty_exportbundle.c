@@ -407,7 +407,10 @@ static int kitty_import_one_ktx(const char *path, int overwrite) {
     /* Every key from the file or its built-in default: the .ktx reader runs
      * KiTTY++'s session loader (kitty_settings_load.c), as a stored session's
      * load does. */
-    load_open_settings_forced((char *)path, conf);
+    if (!kitty_ktx_load_quiet((char *)path, conf)) {
+        conf_free(conf);
+        return 0;                          /* not read: counted as failed */
+    }
     base = strrchr(path, '\\');
     base = base ? base + 1 : path;
     name = kitty_ktx_session_name(base);
@@ -801,6 +804,14 @@ void kitty_import_sessions(HWND hwnd) {
     n = kitty_import_dir(dir, &fail, &prox, &skipped, overwrite);
     kitty_clear_bundle_context();
     imp_wipe(&bundlepw);
+    if (n < 0) {
+        msg = dupprintf(KT_IMPORT_FOLDER_UNREADABLE_FMT, dir,
+                        kitty_win_reason(GetLastError()));
+        sfree(dir);
+        MessageBoxA(hwnd, msg, KT_CAP_SESSION_IMPORT, MB_OK | MB_ICONERROR);
+        sfree(msg);
+        return;
+    }
     snprintf(counts, sizeof(counts), KT_BRIDGE_IMPORTED_COUNTS,
              n, n == 1 ? "" : "s", prox, prox == 1 ? "y" : "ies");
     if (skipped > 0) { char t[80]; snprintf(t, sizeof(t), KT_BRIDGE_IMPORTED_KEPT, skipped); strncat(counts, t, sizeof(counts)-strlen(counts)-1); }
@@ -841,13 +852,29 @@ void kitty_import_sessions(HWND hwnd) {
  * imported; optional outs: *failOut, *proxyOut (named proxies restored),
  * *skippedOut (existing sessions kept because overwrite==0). Used by -importdir
  * (which always overwrites). */
+/* -1: the folder itself cannot be read (missing, not a folder, too long,
+ * no access), nothing imported, Windows' reason in GetLastError(). It
+ * counted as "0 imported", and -importdir ended with exit 0. */
 int kitty_import_dir(const char *dir, int *failOut, int *proxyOut,
                      int *skippedOut, int overwrite) {
-    char *pat = dupprintf("%s\\*%s", dir, ktx_ext());
+    char *pat;
     WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(pat, &fd);
+    HANDLE h;
     int n = 0, fail = 0, skipped = 0;
+    DWORD attr = GetFileAttributesA(dir);
+    if (failOut) *failOut = 0;
+    if (proxyOut) *proxyOut = 0;
+    if (skippedOut) *skippedOut = 0;
+    if (attr == INVALID_FILE_ATTRIBUTES || !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+        if (attr != INVALID_FILE_ATTRIBUTES) SetLastError(ERROR_DIRECTORY);
+        return -1;
+    }
+    pat = dupprintf("%s\\*%s", dir, ktx_ext());
+    h = FindFirstFileA(pat, &fd);
     sfree(pat);
+    if (h == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_NOT_FOUND &&
+        GetLastError() != ERROR_NO_MORE_FILES)
+        return -1;                         /* there, but its list unreadable */
     if (h != INVALID_HANDLE_VALUE) {
         do {
             if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;

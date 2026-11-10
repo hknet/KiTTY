@@ -13,6 +13,7 @@ void kitty_demo_templates(void);
 /* KiTTY helpers (putty.c does not include kitty.h) */
 #include "../kitty/kitty_storemove.h"
 #include "../kitty/kitty_text.h"   /* shared captions + command-line wordings */
+#include "../kitty/kitty_winerr.h" /* kitty_win_reason: -importdir of a folder it cannot read */
 #include "../kitty/kitty_urlsession.h"   /* a link opens a matching saved session */
 #include "../kitty/kitty_pwmem.h"  /* passwords wrapped in memory */
 #ifdef MOD_PERSO
@@ -890,6 +891,13 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
         }
         n = kitty_import_dir(kitty_cli_importdir, &fail, &prox, NULL, 1);
         kitty_clear_bundle_context();
+        if (n < 0) {
+            msg = dupprintf(KT_IMPORT_FOLDER_UNREADABLE_FMT, kitty_cli_importdir,
+                            kitty_win_reason(GetLastError()));
+            kitty_cli_result(KT_CAP_SESSION_IMPORT, msg, 1);
+            sfree(msg);
+            cleanup_exit(1);
+        }
         /* before the box: a running launcher need not wait for its answer */
         kitty_notify_launcher_sessions_changed();
         msg = dupprintf(KT_CLI_IMPORT_DONE,
