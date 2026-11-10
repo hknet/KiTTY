@@ -574,6 +574,7 @@ void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg,
     char buf[32];
 
     if (event == EVENT_REFRESH) {
+        /* store-pairs: read param KiTTY KI_PORTABLEBACKUPCOUNT,KI_SAVBACKUPCOUNT - the count of this store mode (ctrl->context.p) */
         sprintf(buf, "%d", kitty_kset_backupcount(key));
         /* dlg_editbox_set fires EVENT_VALCHANGE: unguarded, showing the
          * default would write it. */
@@ -589,6 +590,7 @@ void kitty_kset_backupcount_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (v < 0) v = 0;
             if (v > 50) v = 50;
             sprintf(buf, "%d", v);
+            /* store-pairs: write param KiTTY KI_PORTABLEBACKUPCOUNT,KI_SAVBACKUPCOUNT - the count of this store mode (ctrl->context.p) */
             WriteParameter(INIT_SECTION, (char *)key, buf);
         }
         sfree(s);

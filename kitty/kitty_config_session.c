@@ -2522,28 +2522,27 @@ static bool sessionsaver_rename_folder_to(struct sessionsaver_data *ssd,
  * Explain that, and offer the one outcome the user can actually have - hiding
  * it from the list via [ConfigBox] defaultsettings=no.
  *
- * Written with writeINI() straight to kitty.ini, NOT WriteParameter(): this key
- * is declared use_readini=1 in kitty.c's ini_params[], i.e. it is always READ
- * with readINI(KittyIniFile,...) whatever the save mode. WriteParameter would
- * put it in the registry outside SAVEMODE_DIR, where nothing would ever read it
- * back and the setting would silently not stick.
+ * Written with WriteParameter(), the store in charge: [ConfigBox] is a param
+ * section. The ini_params[] row and LoadParameters read defaultsettings with
+ * ReadParameterN. Application > Config Window > Session Panel writes it with
+ * WriteParameter. A kitty.ini value written here lost to a hive value in
+ * registry mode, so the row came back at the next start.
  *
- * There is deliberately no UI to unhide: the entry is gone from the list, so a
- * checkbox for it would have nowhere to live. Hence the message states the file
- * path and the exact key needed to undo it.
+ * The message points to that panel's "Show "Default Settings"" list, the
+ * way to show the row again.
  */
 static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
                                             dlgparam *dlg)
 {
-    extern int writeINI(const char *filename, const char *section,
-                        const char *key, const char *value);
     const char *ini = GetKittyIniFile();
-    char *msg;
+    const int dir = GetIniFileFlag() == SAVEMODE_DIR;
+    char *msg, *where;
     int yes;
 
-    /* conf=no (no configuration file at all) or readonly=yes: the setting
-     * cannot be persisted, so do not offer a choice we can't honour. */
-    if (GetNoKittyFileFlag() || !ini || !ini[0] || GetReadOnlyFlag()) {
+    /* readonly=yes, or a folder store without its kitty.ini (conf=no): the
+     * setting cannot be stored, so no choice is offered. The registry modes
+     * store it in the hive, with or without a kitty.ini. */
+    if (GetReadOnlyFlag() || (dir && (GetNoKittyFileFlag() || !ini || !ini[0]))) {
         msg = dupprintf(KT_CFG_DEFAULT_CANT_DELETE_NOSAVE,
                         KITTY_DEFAULT_SESSION,
                         GetReadOnlyFlag() ? KT_CFG_DEFAULT_READONLY
@@ -2553,17 +2552,21 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
         return;
     }
 
-    /* the kitty.ini path in full */
-    msg = dupprintf(KT_CFG_DEFAULT_HIDE_Q, KITTY_DEFAULT_SESSION, ini);
+    msg = dupprintf(KT_CFG_DEFAULT_HIDE_Q, KITTY_DEFAULT_SESSION);
     yes = MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY,
                       MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES;
     sfree(msg);
     if (!yes)
         return;                          /* No = keep showing it */
 
-    CreateDefaultIniFile();              /* no-op when it already exists */
-    if (!writeINI(ini, KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DEFAULTSETTINGS, "no")) {
-        msg = dupprintf(KT_CFG_DEFAULT_WRITE_FAILED, ini, KITTY_DEFAULT_SESSION);
+    if (dir)
+        CreateDefaultIniFile();          /* no-op when it already exists */
+    /* readonly=yes is refused above: KITTY_RO_REFUSED cannot come back here.
+     * NoReport: the box below gives the failure, not a second one. */
+    if (!WriteParameterNoReport(KI_SECTION_CONFIGBOX, KI_CONFIGBOX_DEFAULTSETTINGS, "no")) {
+        where = dir ? dupstr(ini) : dupprintf("HKCU\\%s", kitty_registry_base());
+        msg = dupprintf(KT_CFG_DEFAULT_WRITE_FAILED, where, KITTY_DEFAULT_SESSION);
+        sfree(where);
         MessageBoxA(kitty_cfg_modal_owner(), msg, KT_CAP_KITTY, MB_OK | MB_ICONERROR);
         sfree(msg);
         return;

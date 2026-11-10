@@ -92,6 +92,7 @@ int kitty_update_state_enabled(void)
     /* the store that is authoritative decides; the other is a fallback */
     if (kitty_inifile_registry_authoritative()) {
         char rb[32];
+        /* store-pairs: read param KiTTY KI_CHECKUPDATE - kageant's hand-rolled read of the hive (KUS_REG_BASE) when the registry is in charge */
         if (RegGetValueA(HKEY_CURRENT_USER, KUS_REG_BASE, KI_CHECKUPDATE,
                          RRF_RT_REG_SZ, NULL, rb, &sz) == ERROR_SUCCESS) {
             rb[sizeof(rb) - 1] = '\0';

@@ -835,6 +835,30 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking fixed character arrays against tools/fixed-arrays.allow")
   add_custom_target(check_fixed_arrays ALL DEPENDS ${KITTY_FIXARR_CHECK_STAMP})
 
+  # A global setting read from one store and written to the other: param
+  # (ReadParameter* / WriteParameter, the hive in registry mode) or file
+  # (kitty.ini only). Such a setting does not stick, or a stale hive value
+  # shadows the file. Also two param keys of different sections with one
+  # name (the hive is flat). Also a call with a variable key that neither a
+  # known accessor nor a "store-pairs:" marker places. A kept exception is
+  # listed in tools/store-pairs.allow. A stale line fails. Every .c and .h of
+  # the tree is read (the same glob as the Conf check). The self-test runs
+  # first, on planted sources.
+  set(KITTY_STOREPAIRS_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_storepairs_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_STOREPAIRS_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-store-pairs.py --self-test
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-store-pairs.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_STOREPAIRS_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-store-pairs.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/store-pairs.allow
+            ${KITTY_CONF_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking that each global setting is read from the store it is written to")
+  add_custom_target(check_store_pairs ALL DEPENDS ${KITTY_STOREPAIRS_CHECK_STAMP})
+
   # A buffer wiped and then freed: memset(p, ...) directly before free(p) or
   # sfree(p) is a dead store the compiler may drop, so the secret stays in
   # freed memory; smemclr cannot be dropped. Any fill value counts, and so

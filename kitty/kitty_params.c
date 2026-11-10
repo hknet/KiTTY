@@ -1025,7 +1025,10 @@ void LoadParameters( void ) {
 		init_delay = (int)(1000*atof( buffer )) ;
 		if( init_delay < 0 ) init_delay = 2000 ; 
 	}
-	if( ReadParameterN( INIT_SECTION, KI_FILEEXTENSION, buffer, sizeof(buffer) ) ) {
+	/* kitty.ini only, where the Storage panel writes it and kitty_store.c
+	 * reads it: a hive value (a store move used to put one there) shadowed
+	 * the file. */
+	if( readINI( KittyIniFile, INIT_SECTION, KI_FILEEXTENSION, buffer, sizeof(buffer) ) ) {
 		if( strlen(buffer) > 0 ) {
 			snprintf( FileExtension, sizeof(FileExtension), "%s%s", (buffer[0]!='.')?".":"", buffer ) ;
 			str_rtrim( FileExtension, " " ) ;

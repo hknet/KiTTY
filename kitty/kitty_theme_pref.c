@@ -82,6 +82,7 @@ int kitty_theme_pref_get(void)
     char buf[32];
     int ini_v = -1, reg_v;
 
+    /* store-pairs: read param KiTTY KI_THEME - the satellites' hand-rolled param read: the hive (KITTY_THEME_REG_BASE) or kitty.ini, by the store in charge */
     if (kitty_inifile_read(KI_SECTION_KITTY, KI_THEME,
                             buf, sizeof(buf)))
         ini_v = kitty_theme_pref_from_string(buf);
@@ -108,6 +109,7 @@ int kitty_theme_pref_set(int pref)
     if (pref < KITTY_THEME_SYSTEM || pref > KITTY_THEME_DARK)
         pref = KITTY_THEME_SYSTEM;
     if (!kitty_inifile_registry_authoritative())
+        /* store-pairs: write param KiTTY KI_THEME - the satellites' hand-rolled param write: kitty.ini or the hive (theme_reg_write), by the store in charge */
         return kitty_inifile_write(KI_SECTION_KITTY, KI_THEME,
                                     kitty_theme_pref_to_string(pref));
     return theme_reg_write(pref);

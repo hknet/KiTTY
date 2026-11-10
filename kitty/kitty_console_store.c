@@ -140,6 +140,7 @@ void kitty_console_store_init(void)
             }
         }
         if (!v[0])
+            /* store-pairs: read param KiTTY KI_INHERITDEFAULTSETTINGS - the kitty.ini leg of the hand-rolled param read above (the hive first, as ReadParameterN) */
             kitty_inifile_read(KI_SECTION_KITTY, KI_INHERITDEFAULTSETTINGS, v, sizeof(v));
         kitty_set_inherit_default_settings(!stricmp(v, "yes"));
     }

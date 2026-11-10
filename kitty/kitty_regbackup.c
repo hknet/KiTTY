@@ -722,6 +722,7 @@ void RetireConfigPasswordLeftovers( void ) {
 	 * copy (folder store) leaves HKCU alone - an installed copy cleans its
 	 * own hive at its next start */
 	if( IniFileFlag != SAVEMODE_DIR && retire_reg_value_present( KI_PASSWORD ) )
+		/* store-pairs: write param KiTTY KI_PASSWORD - the retired configuration password, deleted from the hive */
 		RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD ) ;
 	if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag() && retire_ini_value_present( KI_PASSWORD ) )
 		delINI( KittyIniFile, INIT_SECTION, KI_PASSWORD ) ;
@@ -751,9 +752,13 @@ void RetireCountUpLeftovers( void ) {
 	size_t i ;
 	for( i = 0 ; i < lenof(dead) ; i++ ) {
 		if( IniFileFlag != SAVEMODE_DIR   /* a portable copy leaves HKCU alone (above) */
+		    /* store-pairs: read param KiTTY KR_KILASTUP,KR_KILASTUH,KR_KISESS,KR_KISESS_COMMENTED,KR_KIVERS,KR_KIPATH - the retired bookkeeping values (dead[]) */
 		    && retire_reg_value_present( dead[i] ) )
+			/* store-pairs: write param KiTTY KR_KILASTUP,KR_KILASTUH,KR_KISESS,KR_KISESS_COMMENTED,KR_KIVERS,KR_KIPATH - the retired bookkeeping values (dead[]) */
 			RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), dead[i] ) ;
+		/* store-pairs: read file KiTTY KR_KILASTUP,KR_KILASTUH,KR_KISESS,KR_KISESS_COMMENTED,KR_KIVERS,KR_KIPATH - the retired bookkeeping values (dead[]) */
 		if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag() && retire_ini_value_present( dead[i] ) )
+			/* store-pairs: write file KiTTY KR_KILASTUP,KR_KILASTUH,KR_KISESS,KR_KISESS_COMMENTED,KR_KIVERS,KR_KIPATH - the retired bookkeeping values (dead[]) */
 			delINI( KittyIniFile, INIT_SECTION, dead[i] ) ;
 	}
 	}

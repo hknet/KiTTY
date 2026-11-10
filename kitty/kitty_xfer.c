@@ -377,6 +377,7 @@ static char *kh_store_name_dup( const char *full ) {
 static char *kh_store_get_dup( const char *full ) {
 	char *name = kh_store_name_dup( full ), *hex = NULL ;
 	if( IniFileFlag == SAVEMODE_DIR ) {
+		/* store-pairs: read param TrustedHelpers * - the store in charge: kitty.ini with savemode=dir, the TrustedHelpers subkey of the hive otherwise (below) */
 		hex = kitty_read_ini_dup( GetKittyIniFile(), KH_STORE_SECTION, name ) ;
 	} else {
 		char *key = dupprintf( "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;
@@ -399,6 +400,7 @@ static void kh_store_put( const char *full, const char *hex ) {
 	name = kh_store_name_dup( full ) ;
 	if( strchr( name, '=' ) ) { sfree( name ) ; return ; }   /* not a kitty.ini key: confirmed again next time */
 	if( IniFileFlag == SAVEMODE_DIR ) {
+		/* store-pairs: write param TrustedHelpers * - the store in charge: kitty.ini with savemode=dir, the TrustedHelpers subkey of the hive otherwise (below) */
 		if( !GetReadOnlyFlag() ) writeINI( GetKittyIniFile(), KH_STORE_SECTION, name, hex ) ;
 	} else {
 		char *key = dupprintf( "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;

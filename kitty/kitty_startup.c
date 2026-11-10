@@ -573,6 +573,88 @@ static void kitty_startup_load_failed( const char *file ) {
 	sfree( msg ) ;
 	}
 
+/* One AutoText key name of an old hive list: a number, or a key
+ * DefineShortcuts knows; nothing kitty.ini cannot hold as a key. */
+static int AutoTextNameOk( const char * name ) {
+	const char * p ;
+	char * probe ;
+	int ok ;
+	if( !name[0] || name[0] == ';' || name[0] == '#' || name[0] == '[' ) return 0 ;
+	for( p = name ; *p ; p++ )
+		if( (unsigned char)*p < 0x20 || *p == '=' || *p == ']' ) return 0 ;
+	if( name[0] >= '0' && name[0] <= '9' ) {
+		for( p = name ; *p ; p++ ) if( *p < '0' || *p > '9' ) return 0 ;
+		return 1 ;
+	}
+	probe = dupstr( name ) ;
+	ok = DefineShortcuts( probe ) > 0 ;
+	sfree( probe ) ;
+	return ok ;
+	}
+
+/*
+ * The AutoText (the [Shortcuts] list and the texts of its keys) an older
+ * build read with ReadParameterDup, so a registry copy kept it in the hive.
+ * [Shortcuts] is kitty.ini only now (InitShortcuts), so that AutoText is
+ * copied into kitty.ini once, before InitShortcuts first reads it.
+ *
+ * Only when the registry is the store in charge (not savemode=dir), kitty.ini
+ * has no list in [Shortcuts] yet and the hive has a list. Copied: the list
+ * and the texts of the key names it holds. A list with a word that is no key
+ * name is left as it is. The list is written last, so a copy cut short is
+ * done again at the next start. The hive values are deleted only after every
+ * kitty.ini write succeeded: that deletion is the done-marker, as for the
+ * retired values of kitty_regbackup.c.
+ *
+ * Under readonly=yes nothing is copied: the hive's AutoText stays unseen
+ * until readonly is lifted. With conf=no and no kitty.ini, none is created.
+ */
+static void AutoTextFromRegistry( void ) {
+	const char * base = kitty_registry_base() ;
+	char * have, * list, * words, * p, * q ;
+	char ** names = NULL ;
+	size_t n = 0, size = 0, i ;
+	int ok = 1 ;
+	if( IniFileFlag == SAVEMODE_DIR || GetReadOnlyFlag() ) return ;
+	if( KittyIniFile == NULL || !KittyIniFile[0] ) return ;
+	if( GetNoKittyFileFlag() && !existfile( KittyIniFile ) ) return ;
+	if( ( have = kitty_read_ini_dup( KittyIniFile, KI_SECTION_SHORTCUTS, KI_SC_LIST ) ) != NULL ) {
+		sfree( have ) ;
+		return ;
+	}
+	/* store-pairs: read param Shortcuts KI_SC_LIST - the one-time copy of an older build's AutoText out of the hive */
+	if( ( list = GetValueDataDup( HKEY_CURRENT_USER, base, KI_SC_LIST ) ) == NULL ) return ;
+	words = dupstr( list ) ;
+	for( p = words ; *p ; p = q ) {
+		while( *p == ' ' ) p++ ;
+		if( !*p ) break ;
+		q = p ;
+		while( *q && *q != ' ' ) q++ ;
+		if( *q ) *q++ = '\0' ;
+		if( !AutoTextNameOk( p ) ) { ok = 0 ; break ; }
+		sgrowarray( names, size, n ) ;
+		names[n++] = p ;
+	}
+	if( ok && n ) {
+		for( i = 0 ; i < n && ok ; i++ ) {
+			char * text = GetValueDataDup( HKEY_CURRENT_USER, base, names[i] ) ;
+			if( text == NULL ) continue ;          /* a key name without a text */
+			/* store-pairs: write file Shortcuts * - the one-time copy: the AutoText texts into kitty.ini */
+			if( !writeINI( KittyIniFile, KI_SECTION_SHORTCUTS, names[i], text ) ) ok = 0 ;
+			smemclr( text, strlen( text ) ) ;      /* a text can hold a password */
+			sfree( text ) ;
+		}
+		if( ok && !writeINI( KittyIniFile, KI_SECTION_SHORTCUTS, KI_SC_LIST, list ) ) ok = 0 ;
+		if( ok ) {
+			for( i = 0 ; i < n ; i++ ) RegDelValue( HKEY_CURRENT_USER, base, names[i] ) ;
+			RegDelValue( HKEY_CURRENT_USER, base, KI_SC_LIST ) ;
+		}
+	}
+	sfree( names ) ;
+	sfree( words ) ;
+	sfree( list ) ;
+	}
+
 void InitWinMain( void ) {
 	char buffer[4096];
 	int i ;
@@ -661,6 +743,8 @@ void InitWinMain( void ) {
 
 	// Add the InitialDirectory and ConfigDirectory directories to PATH
 
+	// AutoText an older build kept in the hive: into kitty.ini, once
+	AutoTextFromRegistry() ;
 	// Initialise the shortcuts
 	InitShortcuts() ;
 	NETDBG_TS("after InitShortcuts");

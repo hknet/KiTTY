@@ -404,6 +404,7 @@ static void kitty_toolpath_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
     if (event == EVENT_REFRESH) {
         /* the stored path, else the hint, whole */
+        /* store-pairs: read param KiTTY KI_WINSCPPATH,KI_FILEZILLAPATH,KI_RZCOMMAND,KI_SZCOMMAND - the helper paths of Transfers & Tools (ctrl->context.p) */
         char *stored = ReadParameterDup(INIT_SECTION, (char *)key);
         Filename *fn;
         refreshing = 1;
@@ -423,6 +424,7 @@ static void kitty_toolpath_handler(dlgcontrol *ctrl, dlgparam *dlg,
             return;
         fn = dlg_filesel_get(ctrl, dlg);
         val = dupstr(filename_to_str(fn));   /* whole: it was cut at 4 KB */
+        /* store-pairs: write param KiTTY KI_WINSCPPATH,KI_FILEZILLAPATH,KI_RZCOMMAND,KI_SZCOMMAND - the helper paths of Transfers & Tools (ctrl->context.p) */
         WriteParameter(INIT_SECTION, (char *)key, val);
         sfree(val);
         filename_free(fn);
@@ -1842,6 +1844,7 @@ static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
         if (event == EVENT_REFRESH)
             dlg_checkbox_set(ctrl, dlg, kitty_cfg_confirm_delete() != 0);
         else if (event == EVENT_VALCHANGE)
+            /* store-pairs: write param ConfigBox KI_CONFIGBOX_CONFIRMDELETE - the one key of this branch */
             WriteParameter(KI_SECTION_CONFIGBOX, (char *)key,
                            dlg_checkbox_get(ctrl, dlg) ? "yes" : "no");
         return;
@@ -1857,6 +1860,7 @@ static void kitty_cfgwin_flag_handler(dlgcontrol *ctrl, dlgparam *dlg,
         dlg_checkbox_set(ctrl, dlg, cur != 0);
     } else if (event == EVENT_VALCHANGE) {
         int on = dlg_checkbox_get(ctrl, dlg) ? 1 : 0;
+        /* store-pairs: write param ConfigBox KI_CONFIGBOX_FILTER,KI_CONFIGBOX_FOLDERNAVIGATION,KI_CONFIGBOX_SUPDUP,KI_CONFIGBOX_RLOGIN,KI_CONFIGBOX_LOADLASTSESSION - the checkboxes of this handler (ctrl->context.p) */
         WriteParameter(KI_SECTION_CONFIGBOX, (char *)key, on ? "yes" : "no");
         /* The running value too - EVENT_REFRESH answers from it, so writing
          * only the file leaves the box redisplaying the old state the moment
@@ -2132,6 +2136,7 @@ static void kitty_cfgwin_num_handler(dlgcontrol *ctrl, dlgparam *dlg,
                 sprintf(applied, "%d", v);
                 store = applied;
             }
+            /* store-pairs: write param ConfigBox KI_CONFIGBOX_HEIGHT,KI_CONFIGBOX_WINDOWHEIGHT,KI_CONFIGBOX_WINDOWWIDTH - the number fields of this handler (ctrl->context.p) */
             WriteParameter(KI_SECTION_CONFIGBOX, (char *)key, (char *)store);
             /*
              * And into the RUNNING program, not only the file.
@@ -4545,7 +4550,7 @@ static void sc_read_texts(struct sc_data *sc)
     sc_nstore = 0;
     sc->texts = sc_store;
     sc->ntexts = 0;
-    list = ReadParameterDup(KI_SECTION_SHORTCUTS, KI_SC_LIST);
+    list = ShortcutsIniDup(KI_SC_LIST);
     p = list;
     while (*p) {
         char *text;
@@ -4554,7 +4559,8 @@ static void sc_read_texts(struct sc_data *sc)
         q = p;
         while (*q && *q != ' ') q++;
         if (*q) *q++ = '\0';
-        text = ReadParameterDup(KI_SECTION_SHORTCUTS, p);
+        /* store-pairs: read file Shortcuts * - the AutoText texts, by the key names of the list */
+        text = ShortcutsIniDup(p);
         if (text[0]) {
             struct sc_text *t;
             sgrowarray(sc_store, sc_storesize, sc_nstore);
@@ -4577,7 +4583,7 @@ static void sc_read_texts(struct sc_data *sc)
  * their own - stay where they were. */
 static void sc_write_list(const char *remove, const char *add)
 {
-    char *list = ReadParameterDup(KI_SECTION_SHORTCUTS, KI_SC_LIST), *p, *q;
+    char *list = ShortcutsIniDup(KI_SC_LIST), *p, *q;
     strbuf *out = strbuf_new();
     bool present = false;
     p = list;
@@ -4663,7 +4669,9 @@ static void sc_save_text(struct sc_data *sc)
     if (!sc_can_write()) { sfree(text); return; }
     if (sc->tsel >= 0 && sc->tsel < sc->ntexts && strcmp(sc->texts[sc->tsel].name, name))
         old = sc->texts[sc->tsel].name;
+    /* store-pairs: write file Shortcuts * - an AutoText text, by its key name */
     if (old) delINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, old);
+    /* store-pairs: write file Shortcuts * - an AutoText text, by its key name */
     writeINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, name, text);
     sc_write_list(old, name);
     sfree(text);
@@ -4680,6 +4688,7 @@ static void sc_delete_text(struct sc_data *sc)
 {
     if (sc->tsel < 0 || sc->tsel >= sc->ntexts) return;
     if (!sc_can_write()) return;
+    /* store-pairs: write file Shortcuts * - an AutoText text, by its key name */
     delINI(GetKittyIniFile(), KI_SECTION_SHORTCUTS, sc->texts[sc->tsel].name);
     sc_write_list(sc->texts[sc->tsel].name, NULL);
     InitShortcuts();
@@ -5633,6 +5642,7 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
         } else {
             snprintf(line, sizeof(line),
                      dir ? KT_KSET_BACKUPS_DIR_SHOWN : KT_KSET_BACKUPS_REG_SHOWN,
+                     /* store-pairs: read param KiTTY KI_PORTABLEBACKUPCOUNT,KI_SAVBACKUPCOUNT - the count of this store mode */
                      kitty_kset_backupcount(key));
             ctrl_text(s, line, HELPCTX(kitty_storage));
         }
@@ -5668,7 +5678,9 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
              buf[0] ? buf : KT_KSET_STORAGE_KICLASS_DEFAULT);
     ctrl_text(s, line, HELPCTX(kitty_storage));
     buf[0] = '\0';
-    ReadParameterN(INIT_SECTION, KI_FILEEXTENSION, buf, sizeof(buf));
+    /* kitty.ini only, where it is written (kitty_params.c LoadParameters) */
+    if (!readINI(GetKittyIniFile(), INIT_SECTION, KI_FILEEXTENSION, buf, sizeof(buf)))
+        buf[0] = '\0';
     snprintf(line, sizeof(line), KT_KSET_STORAGE_FILEEXT, buf[0] ? buf : ".ktx");
     ctrl_text(s, line, HELPCTX(kitty_storage));
     buf[0] = '\0';

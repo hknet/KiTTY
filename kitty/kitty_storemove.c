@@ -75,11 +75,34 @@ static int ksm_layout_key(const char *name)
     return 0;
 }
 
-/* kitty.ini sections that live in the file only, whatever the save mode. */
-static const char *const ksm_file_sections[] = {
-    KI_SECTION_CONFIGBOX, KI_SECTION_SHORTCUTS, KI_SECTION_PRINT,
-    KI_SECTION_LAUNCHER, KI_SECTION_AGENT, KI_SECTION_FONTFALLBACK, NULL
+/* The kitty.ini sections besides [KiTTY]. [ConfigBox] and [Launcher] are
+ * param sections: read with ReadParameterN, written with WriteParameter (the
+ * hive in registry mode). The others live in the file only, whatever the
+ * save mode. */
+static const char *const ksm_param_sections[] = {
+    KI_SECTION_CONFIGBOX, KI_SECTION_LAUNCHER, NULL
 };
+static const char *const ksm_file_sections[] = {
+    KI_SECTION_SHORTCUTS, KI_SECTION_PRINT, KI_SECTION_AGENT,
+    KI_SECTION_FONTFALLBACK, NULL
+};
+
+/* [KiTTY] keys read from kitty.ini only, whatever the save mode
+ * (tools/check-store-pairs.py lists them). Through WriteParameter a move
+ * into registry mode put them in the hive, where nothing reads them. They
+ * stay in the kitty.ini they come from. */
+static int ksm_file_only_key(const char *name)
+{
+    static const char *const keys[] = {
+        KI_FILEEXTENSION, KI_FILEEXTENSIONAPPLIED, KI_HOSTKEYEXTENSION,
+        KI_HOSTKEYEXTENSIONAPPLIED, KI_SESSIONSUFFIX, KI_KEYSUFFIX,
+        KI_PUTTYCONFMIGRATED, KI_RESTRICTACL, NULL
+    };
+    int i;
+    for (i = 0; keys[i]; i++)
+        if (!_stricmp(name, keys[i])) return 1;
+    return 0;
+}
 
 static void ksm_wipe(char **p)
 {
@@ -390,6 +413,10 @@ static void ksm_copy_pair(const char *key, const char *val, void *vctx)
         GetPrivateProfileStringA(c->section, key, "", have, sizeof(have),
                                  c->dst) > 0)
         return;                                 /* the registry value won */
+    /* store-pairs: write file Shortcuts * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
+    /* store-pairs: write file Print * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
+    /* store-pairs: write file Agent * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
+    /* store-pairs: write file FontFallback * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
     if (WritePrivateProfileStringA(c->section, key, val, c->dst)) (*c->n)++;
     else (*c->fail)++;
 }
@@ -461,6 +488,13 @@ static int ksm_globals_to_ini(const char *dst, int *fail)
         ksm_walk_section(cur, INIT_SECTION, ksm_copy_pair, &c);
         c.only_missing = 0;
         c.skip_layout = 0;
+        /* [ConfigBox] and [Launcher] as the file has them. A hive value of
+         * theirs carries no section (the hive is flat): it is copied with
+         * [KiTTY] above. */
+        for (i = 0; ksm_param_sections[i]; i++) {
+            c.section = ksm_param_sections[i];
+            ksm_walk_section(cur, c.section, ksm_copy_pair, &c);
+        }
         for (i = 0; ksm_file_sections[i]; i++) {
             c.section = ksm_file_sections[i];
             ksm_walk_section(cur, c.section, ksm_copy_pair, &c);
@@ -469,27 +503,44 @@ static int ksm_globals_to_ini(const char *dst, int *fail)
     return n;
 }
 
-struct ksm_param_copy { int *n; int *fail; };
+struct ksm_param_copy { const char *section; int *n; int *fail; };
 static void ksm_param_pair(const char *key, const char *val, void *vctx)
 {
     struct ksm_param_copy *c = (struct ksm_param_copy *)vctx;
     char *v;
-    if (ksm_layout_key(key)) return;
+    if (!strcmp(c->section, INIT_SECTION) &&
+        (ksm_layout_key(key) || ksm_file_only_key(key))) return;
     v = dupstr(val);                    /* whole: it was cut at 8 KB */
-    if (WriteParameter(INIT_SECTION, key, v)) (*c->n)++;
+    /* store-pairs: write param KiTTY *
+     *   !KI_SAVEMODE !KI_CONFIGDIR !KI_BROWSEDIRECTORY !KI_KICLASSNAME !KI_SAV
+     *   !KI_CONF !KI_READONLY !KI_PORTABLEPASSWORDPROTECTION !KI_SESSIONS
+     *   !KI_SSHHOSTKEYS !KI_FILEEXTENSION !KI_FILEEXTENSIONAPPLIED
+     *   !KI_HOSTKEYEXTENSION !KI_HOSTKEYEXTENSIONAPPLIED !KI_SESSIONSUFFIX
+     *   !KI_KEYSUFFIX !KI_PUTTYCONFMIGRATED !KI_RESTRICTACL
+     *   - a store move into the store in use: every [KiTTY] key of the source
+     *   but the layout keys (ksm_layout_key) and the file-only keys
+     *   (ksm_file_only_key) */
+    /* store-pairs: write param ConfigBox * - a store move into the store in use (ksm_param_sections) */
+    /* store-pairs: write param Launcher * - a store move into the store in use (ksm_param_sections) */
+    if (WriteParameter(c->section, key, v)) (*c->n)++;
     else (*c->fail)++;
     sfree(v);
 }
 
-/* <src ini> -> the store in use: [KiTTY] via WriteParameter (the hive in
- * registry mode), the file-only sections into the kitty.ini in use. */
+/* <src ini> -> the store in use: [KiTTY], [ConfigBox] and [Launcher] via
+ * WriteParameter (the hive in registry mode), the file-only sections into
+ * the kitty.ini in use. */
 static int ksm_globals_from_ini(const char *src, int *fail)
 {
     int n = 0, i;
     const char *cur = GetKittyIniFile();
-    struct ksm_param_copy pc = { &n, fail };
+    struct ksm_param_copy pc = { INIT_SECTION, &n, fail };
     struct ksm_ini_copy fc = { cur, NULL, &n, fail, 0, 0 };
     ksm_walk_section(src, INIT_SECTION, ksm_param_pair, &pc);
+    for (i = 0; ksm_param_sections[i]; i++) {
+        pc.section = ksm_param_sections[i];
+        ksm_walk_section(src, pc.section, ksm_param_pair, &pc);
+    }
     if (cur && cur[0]) {
         for (i = 0; ksm_file_sections[i]; i++) {
             fc.section = ksm_file_sections[i];

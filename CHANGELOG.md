@@ -161,7 +161,7 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   **Run script file...** (the script engine: it waits for the prompt as set
   on Session > Scripting). **Send script file** is now **Type text
   file...** (the file typed as it is, with the auto-command's escapes,
-  never waiting for the host). Each file picker has its command's name.
+  never waiting for the host). Each file picker has its command's title.
 - kageant: requests by window messages (WM_COPYDATA, programs built on
   PuTTY before 0.75) are refused by default. kageant cannot identify
   the program that sends one: the sender passes a window of its choice. "Accept
@@ -283,6 +283,17 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- Hiding "Default Settings" (Delete on its row, then Yes) lasts in
+  registry mode. The choice went to kitty.ini, which the registry value
+  overrides. The row came back at the next start. The question now points
+  to Application > Config Window > Session Panel to show it again.
+- AutoText (Keys & Mouse > Shortcuts) is kept in kitty.ini only. In
+  registry mode an AutoText list an older build left in the registry won
+  over the one the editor saved. It could not be changed or deleted. At
+  the first start that list and its texts are copied into kitty.ini once.
+- `[KiTTY] fileextension` is read from kitty.ini only, as the panel
+  writes it. "Take a folder store..." no longer copies the kitty.ini only
+  keys into the registry. It takes `[Launcher]` into the registry.
 - Session > Scripting > CR/LF translation **Rec** plays a script
   recorded by RuTTY or classic KiTTY again. Their recorder stored a typed
   CR as CR LF, an LF as LF LF and CR LF as CR LF LF LF. Rec sent the file

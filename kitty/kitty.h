@@ -235,6 +235,8 @@ extern int NbShortCuts ;
 int DefineShortcuts( char * buf ) ;
 void TranslateShortcuts( char * st ) ;
 void InitShortcuts( void ) ;
+/* [Shortcuts] list or AutoText text of kitty.ini (sfree it), "" when absent */
+char * ShortcutsIniDup( const char * key ) ;
 int ManageShortcuts( Terminal *term, Conf *conf, HWND hwnd, const int* clips_system, int key_num, int shift_flag, int control_flag, int alt_flag, int altgr_flag, int win_flag ) ;
 /* Shortcut code -> "Ctrl+F3" (the inverse of DefineShortcuts); the key bound
  * to a menu command id; "<menu text>\t<key text>" for a menu item. */

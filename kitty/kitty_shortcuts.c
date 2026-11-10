@@ -248,10 +248,23 @@ const char * ShortcutActionName( int i ) { return ( i >= 0 && i < ShortcutAction
 int ShortcutActionValue( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? *SC_SLOT(i) : 0 ; }
 int ShortcutActionDefault( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? sc_actions[i].dflt : 0 ; }
 
+/* An AutoText value of kitty.ini, the list or the text of one key (sfree
+ * it): "" when it is not there. */
+char * ShortcutsIniDup( const char * key ) {
+	char * v = kitty_read_ini_dup( KittyIniFile, KI_SECTION_SHORTCUTS, key ) ;
+	return v ? v : dupstr( "" ) ;
+}
+
 // Init shortcuts map at startup
 void InitShortcuts( void ) {
 	char buffer[4096], *list, *pl ;
 	int i, t=0 ;
+	/* [Shortcuts] is kitty.ini only, the action keys and the AutoText alike,
+	 * in every save mode. The registry is flat (WriteParameter drops the
+	 * section), so its names - print, search, editor, protect, visible,
+	 * list - would be one registry value with any other setting of that
+	 * name. AutoText an older build kept in the registry is copied over
+	 * once at startup (kitty_startup.c), before this first runs. */
 	/* An action's key: the kitty.ini value when there is one and it parses
 	 * (an empty value parses to 0 = no key), the default otherwise. */
 	for( i=0 ; i<ShortcutActionCount() ; i++ ) {
@@ -264,7 +277,7 @@ void InitShortcuts( void ) {
 	NbShortCuts=0 ;
 	/* The list and each key's text read whole (a list is never read into
 	 * a fixed buffer: ReadParameterN cut it at 4095 characters) */
-	list = ReadParameterDup( KI_SECTION_SHORTCUTS, KI_SC_LIST ) ;
+	list = ShortcutsIniDup( KI_SC_LIST ) ;
 	if( list[0] ) {
 		pl=list ;
 		while( strlen(pl) > 0 ) {
@@ -272,7 +285,8 @@ void InitShortcuts( void ) {
 			while( (i<strlen(pl))&&(pl[i]!=' ') ) { i++ ; }
 			if( pl[i]==' ' ) { pl[i]='\0' ; t=1 ; }
 			if( strlen(pl)>0 ) {
-				char *text = ReadParameterDup( KI_SECTION_SHORTCUTS, pl ) ;
+				/* store-pairs: read file Shortcuts * - the AutoText texts, by the key names of the list */
+				char *text = ShortcutsIniDup( pl ) ;
 				if( text[0] ) {
 					sgrowarray( shortcuts_tab2, shortcuts_tab2_size, (size_t)NbShortCuts ) ;
 					if( (pl[0]<'0')||(pl[0]>'9') ) {

@@ -1,0 +1,24 @@
+# tools/store-pairs.allow - global settings kept read from one store and
+# written to another, or sharing one registry name.
+#
+# tools/check-store-pairs.py, run by the build, fails on every (section, key)
+# read from one store and written to the other. The stores: param
+# (ReadParameter* / WriteParameter: the hive in registry mode, kitty.ini with
+# savemode=dir) and file (kitty.ini only, in every save mode). It also fails
+# on a key read from both stores but not written to both. Two param keys of
+# different sections with one name fail too (the hive is flat). A line here
+# keeps one finding, with the reason. A line that matches no finding fails.
+#
+# One line per finding:   <SECTION> <KEY> | <reason>
+# A flat-name collision:  FLAT <KEY> | <reason>
+# Section and key compare without case.
+
+# deliberate
+Shortcuts list | the one-time copy of an older build's AutoText out of the hive (kitty_startup.c AutoTextFromRegistry): the hive list is read once and deleted after the copy
+KiTTY KiClassName | set by hand only (kitty_registry.c deletes a copy from PuTTY's hive). kitty.exe reads it with ReadParameterN, the satellites read kitty.ini through the resolver (kitty_inifile_read): it picks the hive itself
+KiTTY showforeignsessions | the pinned answer is the hive's ShowForeignSessions DWORD (kitty_storage.c). This text key is the fallback: ReadParameterN in kitty.exe, kitty_inifile_read in klink, kscp and ksftp (kitty_showforeign_ini.c), where ReadParameterN is a stub
+KiTTY checkupdate | kageant's own reader (kitty_update_state.c, built without kitty_params): kitty.ini, the hive first when the registry is in charge. Its hive path KUS_REG_BASE is fixed to kapper.net\KiTTY, so with KiClassName=PuTTY it misses the value kitty.exe writes to PuTTY's hive
+
+# open defects: one registry value for two settings (registry mode)
+FLAT dblclick | OPEN: [ConfigBox] dblclick (open|start, the config box list) and [Launcher] dblclick (config|manage|quickconnect, the tray icon) are one hive value in registry mode. Needs a registry name of its own for one of them
+FLAT noticeseconds | OPEN: [KiTTY] noticeseconds (kitty.exe's notices) and [Launcher] noticeseconds (the launcher's notices) are one hive value in registry mode. Needs a registry name of its own for one of them

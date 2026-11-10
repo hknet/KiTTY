@@ -307,16 +307,19 @@ static int kageant_ini_numbered_write(const char *prefix,
     DWORD err = 0;
     for (i = 0; i < n; i++) {
         snprintf(key, sizeof(key), "%s%d", prefix, i + 1);
+        /* store-pairs: write file Agent * - the numbered [Agent] lists startupkeyN and keyorderN */
         if (!kitty_inifile_write(KI_SECTION_AGENT, key, items[i]) && ok) {
             ok = 0; err = GetLastError();
         }
     }
     for (i = n + 1, gap = 0; gap < 8; i++) {
         snprintf(key, sizeof(key), "%s%d", prefix, i);
+        /* store-pairs: read file Agent * - the numbered [Agent] lists startupkeyN and keyorderN */
         probe = kageant_ini_read_dup(key);
         if (!probe) { gap++; continue; }
         sfree(probe);
         gap = 0;
+        /* store-pairs: write file Agent * - the numbered [Agent] lists startupkeyN and keyorderN */
         if (!kitty_inifile_write(KI_SECTION_AGENT, key, NULL) && ok) {
             ok = 0; err = GetLastError();
         }
@@ -403,6 +406,7 @@ int kageant_save_startup_keys(void)
                                 kageant_autoenc_token(ae, aebuf, sizeof(aebuf)),
                                 fp ? "," : "", fp ? fp : "");
                 sfree(store);
+                /* store-pairs: write file Agent * - the numbered [Agent] lists startupkeyN and keyorderN */
                 if (!kitty_inifile_write(KI_SECTION_AGENT, key, val) && ok) {
                     ok = 0; err = GetLastError();
                 }
@@ -414,9 +418,11 @@ int kageant_save_startup_keys(void)
         /* now the entries past the new end */
         for (i = written + 1, gap = 0; gap < 8; i++) {
             snprintf(key, sizeof(key), "startupkey%d", i);
+            /* store-pairs: read file Agent * - the numbered [Agent] lists startupkeyN and keyorderN */
             probe = kageant_ini_read_dup(key);
             if (probe) {
                 sfree(probe);
+                /* store-pairs: write file Agent * - the numbered [Agent] lists startupkeyN and keyorderN */
                 if (!kitty_inifile_write(KI_SECTION_AGENT, key, NULL) && ok) {
                     ok = 0; err = GetLastError();
                 }
@@ -2477,6 +2483,7 @@ static void kageant_forget_startup_entry(const char *want)
         for (i = 1, gap = 0; gap < 8; i++) {
             char *val;
             snprintf(key, sizeof(key), "startupkey%d", i);
+            /* store-pairs: read file Agent * - the numbered [Agent] lists startupkeyN and keyorderN */
             val = kageant_ini_read_dup(key);
             if (!val) { gap++; continue; }
             gap = 0;
@@ -3002,6 +3009,7 @@ void kageant_load_startup_keys(void)
             kar_entry_tokens tk;
             snprintf(key, sizeof(key), "startupkey%d", i);
             sfree(val);                 /* the previous entry */
+            /* store-pairs: read file Agent * - the numbered [Agent] lists startupkeyN and keyorderN */
             val = kageant_ini_read_dup(key);
             if (!val) { gap++; continue; }
             gap = 0;
@@ -3301,6 +3309,7 @@ void kageant_apply_saved_order(void)
         int n = 0, i, gap;
         for (i = 1, gap = 0; gap < 8; i++) {
             snprintf(key, sizeof(key), "keyorder%d", i);
+            /* store-pairs: read file Agent * - the numbered [Agent] lists startupkeyN and keyorderN */
             kitty_inifile_read(KI_SECTION_AGENT, key, val, sizeof(val));
             if (!val[0]) { gap++; continue; }
             gap = 0;

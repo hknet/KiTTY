@@ -4671,12 +4671,9 @@
         "of picking a session. With the row hidden you would reach that " \
         "by setting [ConfigBox] loadlastsession=no instead.\n\n" \
         "Hide it?\n\n" \
-        "To show it again later you have to edit the configuration file " \
-        "by hand and set:\n" \
-        "    [ConfigBox]\n" \
-        "    defaultsettings=yes\n\n" \
-        "Configuration file:\n%s"
-#define KT_CFG_DEFAULT_WRITE_FAILED                  "Could not write to the configuration file:\n%s\n\n" \
+        "To show it again: Application > Config Window > Session Panel, " \
+        "Show \"Default Settings\": always."
+#define KT_CFG_DEFAULT_WRITE_FAILED                  "Could not store the setting in:\n%s\n\n" \
         "\"%s\" is still shown."
 #define KT_KSET_WRITE_FAILED_FMT                     "Setting not stored: [%s] %s\n\nStore: %s\n%s\n\n" \
         "The setting keeps its stored value."

@@ -529,7 +529,9 @@ int kitty_store_ini_takeover(void) {
 		 * in kitty.ini nor read from putty.conf any more. */
 		for( i = 0 ; i < (int)(sizeof(keys)/sizeof(keys[0])) ; i++ )
 			if( (kstore_pc_found & keys[i].bit) ) {
+				/* store-pairs: read file KiTTY KI_SESSIONS,KI_FILEEXTENSION,KI_SSHHOSTKEYS,KI_HOSTKEYEXTENSION - the keys putty.conf hands over (keys[]) */
 				char *have = kstore_ini_dup( ini, keys[i].key ) ;
+				/* store-pairs: write file KiTTY KI_SESSIONS,KI_FILEEXTENSION,KI_SSHHOSTKEYS,KI_HOSTKEYEXTENSION - the keys putty.conf hands over (keys[]) */
 				if( !have && !writeINI( ini, INIT_SECTION, keys[i].key, keys[i].val ) )
 					all = 0 ;
 				sfree( have ) ;
@@ -545,16 +547,20 @@ int kitty_store_ini_takeover(void) {
 		} ;
 		int i ;
 		for( i = 0 ; i < 2 ; i++ )
+			/* store-pairs: read file KiTTY KI_SESSIONSUFFIX,KI_KEYSUFFIX - the old names of renames[] */
 			if( ( pv = kitty_read_ini_dup( ini, INIT_SECTION, renames[i][0] ) ) != NULL ) {
 				char cur[64] ;
 				str_rtrim( pv, " \n\r\t" ) ;
 				/* the old name goes only once its value is under the new one */
+				/* store-pairs: read file KiTTY KI_FILEEXTENSION,KI_HOSTKEYEXTENSION - the new names of renames[] */
 				if( pv[0] && ( !readINI( ini, INIT_SECTION, renames[i][1], cur, sizeof(cur) ) || !cur[0] ) &&
+				    /* store-pairs: write file KiTTY KI_FILEEXTENSION,KI_HOSTKEYEXTENSION - the new names of renames[] */
 				    !writeINI( ini, INIT_SECTION, renames[i][1], pv ) ) {
 					sfree( pv ) ;
 					continue ;
 				}
 				sfree( pv ) ;
+				/* store-pairs: write file KiTTY KI_SESSIONSUFFIX,KI_KEYSUFFIX - the old names of renames[] */
 				delINI( ini, INIT_SECTION, renames[i][0] ) ;
 			}
 	}
