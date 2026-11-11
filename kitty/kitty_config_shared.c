@@ -766,6 +766,14 @@ bool kitty_renderer_is_d2d(void)
     ReadParameterN(KI_SECTION_KITTY, KI_RENDERER, v, sizeof(v));
     return stricmp(v, "gdi") != 0 && kset_d2d_supported();
 }
+/* [KiTTY] d2dgdifont=yes: Direct2D draws with the face GDI selected for the
+ * window's font (windows/paint-d2d.c font_of), default no. */
+bool kitty_d2d_gdi_font(void)
+{
+    char v[16] = "";
+    ReadParameterN(KI_SECTION_KITTY, KI_D2DGDIFONT, v, sizeof(v));
+    return stricmp(v, "yes") == 0;
+}
 static void kset_set_framepace(int v)
 {
     char buf[16];
@@ -891,7 +899,9 @@ static const struct kset_key kset_keys[] = {
      * nothing stored a Windows below 8.1 shows GDI (the refresh below). */
     { INIT_SECTION, KI_RENDERER,       KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 1,
       NULL, NULL, kset_renderer_choices, lenof(kset_renderer_choices) },
-    { INIT_SECTION, KI_FRAMEPACE,      KSET_CHOICE, false, NULL, kset_set_framepace, NULL, 0, 0, -1,
+    /* read when a Direct2D window is created (kitty_d2d_gdi_font) */
+    { INIT_SECTION, KI_D2DGDIFONT,     KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
+    { INIT_SECTION, KI_FRAMEPACE,     KSET_CHOICE, false, NULL, kset_set_framepace, NULL, 0, 0, -1,
       NULL, NULL, kset_framepace_choices, lenof(kset_framepace_choices) },
     { INIT_SECTION, KI_CTXTINT,        KSET_CHOICE, false, NULL, kset_set_ctxtint, NULL, 0, 0, 10,
       NULL, NULL, kset_ctxtint_choices, lenof(kset_ctxtint_choices) },

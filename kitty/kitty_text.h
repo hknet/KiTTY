@@ -1693,12 +1693,21 @@
 #define KT_KSET_WD_RENDERER_GDI                      "GDI"
 #define KT_KSET_WD_RENDERER_D2D                      "Direct2D (default)"
 #define KT_KSET_WD_RENDERER_D2D_OLD                  "Direct2D (Win8.1+ only)"
+#define KT_KSET_WD_D2DGDIFONT                        "Direct2D: use GDI font selection"
 #define KT_D2D_BADGE                                 "D2D"   /* the renderer badge, paint-d2d.c */
 #define KT_D2D_FALLBACK_EVENT                        "Direct2D renderer: the graphics device failed %d times in a row " \
         "(last loss 0x%08lX); this window now draws with the software renderer (WARP)."   /* the Terminal Window's Event Log, paint-d2d.c */
 /* the Terminal Window's Event Log, paint-d2d.c: the graphics adapter the device runs on */
 #define KT_D2D_ADAPTER_EVENT                         "Direct2D renderer: graphics adapter %s (vendor 0x%04X, device 0x%04X)"
 #define KT_D2D_ADAPTER_SOFT_EVENT                    "Direct2D renderer: graphics adapter %s (vendor 0x%04X, device 0x%04X), software rendering"
+/* the Terminal Window's Event Log, window.c: the window's font at the start
+ * and after each change - the setting, the cell, the face GDI selected */
+#define KT_FONT_EVENT                                "Font: %s, %d pt, cell %d x %d px, GDI face %s, weight %d"
+/* the same for Direct2D, paint-d2d.c: the file and weight it draws with */
+#define KT_D2D_FONT_EVENT                            "Direct2D font: %s, weight %d, %s"
+#define KT_D2D_FONT_NOFILE                           "no font file"
+#define KT_D2D_FONT_VIA_GDI                          "the face GDI selects (d2dgdifont=yes)"
+#define KT_D2D_FONT_VIA_DWRITE                       "DirectWrite's match for the font name"
 #define KT_KSET_WD_FRAMEPACE                         "Frame pacing:"
 #define KT_KSET_WD_FP_AUTO                           "Follow the display (auto)"
 #define KT_KSET_WD_FP_30                             "30fps"

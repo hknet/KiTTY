@@ -120,6 +120,10 @@ typedef struct KittyPainterVtable {
      * change). A painter that caches per HFONT drops its cache: handle
      * values are recycled, so an old entry could describe another font. */
     void (*fonts_changed)(KittyPainter *p);
+    /* A line for the Terminal Window's Event Log: what the painter draws
+     * the HFONT with, beyond the HFONT itself (NULL: nothing to add).
+     * Freed by the caller. */
+    char *(*font_note)(KittyPainter *p, HFONT hfont);
     /* Move the pixels inside `band` (client pixels) by dy pixels (negative
      * = up), within the frame being drawn; what moved out of the band is
      * dropped, what came in is left for the caller to draw. False when the
@@ -187,6 +191,7 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
 #define kp_hdc(p)                        ((p)->vt->hdc(p))
 #define kp_frame_signal(p)               ((p)->vt->frame_signal(p))
 #define kp_fonts_changed(p)              ((p)->vt->fonts_changed(p))
+#define kp_font_note(p, f)               ((p)->vt->font_note((p), (f)))
 #define kp_scroll_rows(p, band, dy)      ((p)->vt->scroll_rows((p), (band), (dy)))
 #define kp_overlay(p, it, n, clip, bg)   ((p)->vt->overlay((p), (it), (n), (clip), (bg)))
 #define kp_under(p, it, part, bg)        ((p)->vt->under((p), (it), (part), (bg)))

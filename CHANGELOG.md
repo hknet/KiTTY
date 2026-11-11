@@ -6,6 +6,19 @@ Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md);
 for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.21-beta — 2026-11-11
+
+### New
+
+- Direct2D: use GDI font selection (`[KiTTY] d2dgdifont=yes`, Application >
+  KiTTY++ Settings > Terminal): Direct2D draws with the font face GDI
+  selects. Aligns behaviour for text with a font family that puts more than
+  four weights under one legacy name. Refs hknet/KiTTY#85.
+- The Terminal Window's Event Log shows the window's font at the start and
+  after each font change: the font, its size, the cell, the face GDI
+  selects with its weight, and under Direct2D the font file and weight it
+  draws with.
+
 ## 0.85.1.20-beta — 2026-11-11
 
 ### New

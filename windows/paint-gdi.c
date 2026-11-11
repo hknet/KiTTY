@@ -429,6 +429,13 @@ static void gdi_fonts_changed(KittyPainter *p)
     kitty_wc_clear(&((GdiPainter *)p)->wc);
 }
 
+/* GDI draws with the window's HFONT itself: window.c's own line covers it. */
+static char *gdi_font_note(KittyPainter *p, HFONT hfont)
+{
+    (void)p; (void)hfont;
+    return NULL;
+}
+
 /* The band's pixels moved by dy within the window DC. What ScrollDC could
  * not copy (a covered part, on Windows without composition) comes back in
  * the update region beside the rows the caller draws anyway; that rest is
@@ -769,6 +776,7 @@ static const KittyPainterVtable gdi_vt = {
     .hdc = gdi_hdc,
     .frame_signal = gdi_frame_signal,
     .fonts_changed = gdi_fonts_changed,
+    .font_note = gdi_font_note,
     .scroll_rows = gdi_scroll_rows,
     .overlay = gdi_overlay,
     .under = gdi_under,

@@ -47,6 +47,9 @@ bool kitty_red_caption(const char *text);
  * Direct2D, unless the stored value is "gdi" (in any case) or this Windows
  * is older than 8.1. windows/window.c asks it once per window. */
 bool kitty_renderer_is_d2d(void);
+/* [KiTTY] d2dgdifont=yes: Direct2D takes the font face GDI selected, read
+ * once per Direct2D window (windows/paint-d2d.c). */
+bool kitty_d2d_gdi_font(void);
 /* readonly=yes: a control whose action writes the settings store is greyed
  * (on every EVENT_REFRESH) and its action refused. True: the event stops. */
 bool kitty_cfg_ro_control(struct dlgcontrol *ctrl, struct dlgparam *dlg, int event);

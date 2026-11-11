@@ -451,6 +451,13 @@ char default_init_file_content[] =
 ;    Application > KiTTY++ Settings > Terminal.\n\
 ;renderer=d2d\n\
 \n\
+; d2dgdifont: yes = Direct2D draws with the font face GDI selects for the\n\
+; session's font. Helps a font family that puts more than four weights\n\
+; under one legacy name, where Direct2D can pick a thinner face than GDI.\n\
+; Applies to new terminal windows. Also on the configuration window,\n\
+;    Application > KiTTY++ Settings > Terminal.\n\
+;d2dgdifont=no\n\
+\n\
 ; framepace: how often the window may repaint while output streams in.\n\
 ;    auto (the default): one frame per display refresh, whatever the display\n\
 ;    does - 60, 100, 144 Hz; a Direct2D window takes the display's own\n\

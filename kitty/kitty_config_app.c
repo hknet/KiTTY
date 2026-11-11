@@ -3791,6 +3791,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     }
     s = ctrl_getset(b, KSET_PATH("Terminal"), "features", KT_KSET_WD_FEATURES);
     KSET_DROPLIST(s, KT_KSET_WD_RENDERER, KI_RENDERER, kitty_kset_window);
+    KSET_CHECKBOX(s, KT_KSET_WD_D2DGDIFONT, KI_D2DGDIFONT, kitty_kset_window);
     KSET_DROPLIST(s, KT_KSET_WD_FRAMEPACE, KI_FRAMEPACE, kitty_kset_window);
     ctrl_text(s, KT_KSET_WD_RENDERER_NOTE, HELPCTX(kitty_kset_window));
     KSET_CHECKBOX(s, KT_KSET_WD_CTRLTAB, KI_CTRLTAB, kitty_kset_window);

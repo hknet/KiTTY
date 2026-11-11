@@ -2501,6 +2501,10 @@ older Windows the entry reads \q{Direct2D (Win8.1+ only)}, cannot be
 chosen and GDI is used. Direct2D works with \q{Window transparency} too:
 a window that may be dimmed is layered from its creation. A window opened
 while transparency is off stays opaque.
+\q{Direct2D: use GDI font selection} makes Direct2D draw with the font
+face GDI selects for the session's font. It helps a font family that
+puts more than four weights under one legacy name, where Direct2D can
+pick a thinner face than GDI. It applies to new terminal windows.
 \q{Frame pacing} is
 how often the window repaints
 while output streams in: \q{Follow the display} means one frame per
@@ -2540,7 +2544,7 @@ into a running launcher and otherwise to its own icon; it never starts
 a launcher.
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{wintitle}, \c{size},
-\c{winroll}, \c{renderer}, \c{framepace}, \c{ctrltab},
+\c{winroll}, \c{renderer}, \c{d2dgdifont}, \c{framepace}, \c{ctrltab},
 \c{transparency}, \c{bgimage}, \c{hyperlink}, \c{slidedelay},
 \c{shrinkbitmap}, \c{sendtermenv} and \c{traymode}.
 

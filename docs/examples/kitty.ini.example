@@ -448,6 +448,13 @@
 ;    Application > KiTTY++ Settings > Terminal.
 ;renderer=d2d
 
+; d2dgdifont: yes = Direct2D draws with the font face GDI selects for the
+; session's font. Helps a font family that puts more than four weights
+; under one legacy name, where Direct2D can pick a thinner face than GDI.
+; Applies to new terminal windows. Also on the configuration window,
+;    Application > KiTTY++ Settings > Terminal.
+;d2dgdifont=no
+
 ; framepace: how often the window may repaint while output streams in.
 ;    auto (the default): one frame per display refresh, whatever the display
 ;    does - 60, 100, 144 Hz; a Direct2D window takes the display's own

@@ -109,6 +109,7 @@ typedef struct D2DFont {
     DWRITE_FONT_WEIGHT weight;
     DWRITE_FONT_STYLE style;
     float ul_top, ul_height;           /* pixels below the top of the cell */
+    bool via_gdi;                      /* the face GDI selected (d2dgdifont) */
 } D2DFont;
 
 
@@ -239,6 +240,9 @@ typedef struct D2DPainter {
     WCHAR badge_text[16];
     float badge_w, badge_h, badge_margin;
     D2D1_TEXT_ANTIALIAS_MODE textaa;
+    /* [KiTTY] d2dgdifont=yes: the face GDI selected into a DC, not
+     * DirectWrite's own match for the LOGFONT (font_of) */
+    bool gdiface;
     /* the current style */
     D2DFont *font;
     COLORREF fg, bg;
@@ -371,6 +375,9 @@ static void d2d_trace(const char *fmt, ...)
 #else
 #define D2D_TRACE(...) ((void)0)
 #endif
+
+/* KiTTY: [KiTTY] d2dgdifont (kitty/kitty_config_shared.c). */
+bool kitty_d2d_gdi_font(void);
 
 /* ---- device loss --------------------------------------------------- */
 
@@ -1018,6 +1025,28 @@ static void d2d_fonts_changed(KittyPainter *p)
     kitty_wc_clear(&((D2DPainter *)p)->wc);   /* widths of recycled handles */
 }
 
+static D2DFont *font_of(D2DPainter *d, HFONT hfont);
+static void d2d_face_info(D2DPainter *d, IDWriteFontFace *face, UINT cp,
+                          int *weight, int *style, char **file);
+
+/* The Terminal Window's Event Log line for the window's font: the file and
+ * the weight Direct2D draws it with, and how the face was found. */
+static char *d2d_font_note(KittyPainter *p, HFONT hfont)
+{
+    D2DPainter *d = (D2DPainter *)p;
+    D2DFont *f = font_of(d, hfont);
+    char *file, *note;
+    int weight, style;
+    if (!f || !f->face)
+        return NULL;
+    d2d_face_info(d, f->face, CP_ACP, &weight, &style, &file);
+    note = dupprintf(KT_D2D_FONT_EVENT, file ? file : KT_D2D_FONT_NOFILE,
+                     weight, f->via_gdi ? KT_D2D_FONT_VIA_GDI
+                                        : KT_D2D_FONT_VIA_DWRITE);
+    sfree(file);
+    return note;
+}
+
 /* The band's pixels moved by dy within the persistent canvas, mid-frame:
  * the frame so far is ended (a bitmap copy is not made on a bitmap that is
  * being drawn into), the band goes canvas -> scratch -> canvas at its new
@@ -1084,6 +1113,72 @@ static bool d2d_scroll_rows(KittyPainter *p, const RECT *band, int dy)
     return true;
 }
 
+/* What a DirectWrite face is: its weight and style (-1 when the system
+ * collection does not hold it) and its font file (NULL when it has no local
+ * file), in the code page given. For the Terminal Window's Event Log
+ * (d2d_font_note) and the test trace. */
+static void d2d_face_info(D2DPainter *d, IDWriteFontFace *face, UINT cp,
+                          int *weight, int *style, char **file)
+{
+    IDWriteFont *font = NULL;
+    IDWriteFontFile *ff = NULL;
+    IDWriteFontFileLoader *ld = NULL;
+    IDWriteLocalFontFileLoader *local = NULL;
+    UINT32 nfiles = 1;
+    const void *key;
+    UINT32 keysize;
+    WCHAR *wpath = NULL;
+    UINT32 plen = 0;
+
+    *weight = *style = -1;
+    *file = NULL;
+    if (d->sysfonts && SUCCEEDED(IDWriteFontCollection_GetFontFromFontFace(
+                                     d->sysfonts, face, &font))) {
+        *weight = (int)IDWriteFont_GetWeight(font);
+        *style = (int)IDWriteFont_GetStyle(font);
+        IDWriteFont_Release(font);
+    }
+    if (SUCCEEDED(IDWriteFontFace_GetFiles(face, &nfiles, &ff)) && ff &&
+        SUCCEEDED(IDWriteFontFile_GetReferenceKey(ff, &key, &keysize)) &&
+        SUCCEEDED(IDWriteFontFile_GetLoader(ff, &ld)) &&
+        SUCCEEDED(IUnknown_QueryInterface((IUnknown *)ld,
+                                          &IID_IDWriteLocalFontFileLoader,
+                                          (void **)&local)) &&
+        SUCCEEDED(IDWriteLocalFontFileLoader_GetFilePathLengthFromKey(
+                      local, key, keysize, &plen))) {
+        wpath = snewn(plen + 1, WCHAR);
+        if (SUCCEEDED(IDWriteLocalFontFileLoader_GetFilePathFromKey(
+                          local, key, keysize, wpath, plen + 1)))
+            *file = dup_wc_to_mb(cp, wpath, "?");
+        sfree(wpath);
+    }
+    if (local) IUnknown_Release((IUnknown *)local);
+    if (ld) IUnknown_Release((IUnknown *)ld);
+    if (ff) IUnknown_Release((IUnknown *)ff);
+}
+
+#ifdef KITTY_TEST_BUILD_LABEL
+/* The trace line for one face (KITTY_D2D_TRACE): the LOGFONT requested,
+ * GDI's weight, and the face DirectWrite draws with - its weight and its
+ * font file. The proof of which face a font name resolved to. */
+static void d2d_trace_face(D2DPainter *d, const LOGFONTW *lf, int gdiweight,
+                           IDWriteFontFace *face, const char *how)
+{
+    char *name, *file;
+    int dwweight, dwstyle;
+
+    if (!getenv("KITTY_D2D_TRACE"))
+        return;
+    d2d_face_info(d, face, CP_UTF8, &dwweight, &dwstyle, &file);
+    name = dup_wc_to_mb(CP_UTF8, lf->lfFaceName, "?");
+    D2D_TRACE("font face=\"%s\" lfweight=%d gdiweight=%d via=%s "
+              "dwweight=%d dwstyle=%d file=\"%s\"", name, (int)lf->lfWeight,
+              gdiweight, how, dwweight, dwstyle, file ? file : "?");
+    sfree(name);
+    sfree(file);
+}
+#endif
+
 static D2DFont *font_of(D2DPainter *d, HFONT hfont)
 {
     int i;
@@ -1093,7 +1188,10 @@ static D2DFont *font_of(D2DPainter *d, HFONT hfont)
     DWRITE_FONT_METRICS fm;
     HDC screen;
     TEXTMETRICW tm;
+    bool have_tm;
     HFONT old;
+    IDWriteFontFace *face = NULL;
+    const char *how = "logfont";
 
     for (i = 0; i < d->nfonts; i++)
         if (d->fonts[i].hfont == hfont)
@@ -1104,21 +1202,48 @@ static D2DFont *font_of(D2DPainter *d, HFONT hfont)
         fonts_forget(d);               /* never full: start over */
     if (!GetObjectW(hfont, sizeof(lf), &lf))
         return NULL;
-    if (FAILED(IDWriteGdiInterop_CreateFontFromLOGFONT(d->gdi, &lf, &font)))
-        return NULL;
+    /* GDI's own pick for this HFONT: its metrics always (the baseline
+     * below), its face too with [KiTTY] d2dgdifont=yes. DirectWrite's match
+     * for the LOGFONT goes through the font's legacy family names and can
+     * land on another face of the family than GDI's (a family that puts
+     * every weight under one legacy name, hknet/KiTTY#85). A bitmap font
+     * has no DirectWrite face: today's path then, as without the option. */
+    screen = GetDC(NULL);
+    old = SelectObject(screen, hfont);
+    have_tm = GetTextMetricsW(screen, &tm) != 0;
+    if (d->gdiface &&
+        SUCCEEDED(IDWriteGdiInterop_CreateFontFaceFromHdc(d->gdi, screen, &face)))
+        how = "gdi";
+    SelectObject(screen, old);
+    ReleaseDC(NULL, screen);
+    if (!face) {
+        if (FAILED(IDWriteGdiInterop_CreateFontFromLOGFONT(d->gdi, &lf, &font)))
+            return NULL;
+        if (FAILED(IDWriteFont_CreateFontFace(font, &face))) {
+            IDWriteFont_Release(font);
+            return NULL;
+        }
+        IDWriteFont_Release(font);
+    }
     f = &d->fonts[d->nfonts];
     memset(f, 0, sizeof(*f));
-    if (FAILED(IDWriteFont_CreateFontFace(font, &f->face))) {
-        IDWriteFont_Release(font);
-        return NULL;
-    }
-    IDWriteFont_Release(font);
+    f->face = face;
     f->hfont = hfont;
     f->underline = lf.lfUnderline != 0;
+    f->via_gdi = !strcmp(how, "gdi");
     wcsncpy(f->family, lf.lfFaceName, LF_FACESIZE - 1);
-    f->weight = lf.lfWeight >= FW_BOLD ? DWRITE_FONT_WEIGHT_BOLD
-                                       : DWRITE_FONT_WEIGHT_NORMAL;
-    f->style = lf.lfItalic ? DWRITE_FONT_STYLE_ITALIC : DWRITE_FONT_STYLE_NORMAL;
+    if (face && !strcmp(how, "gdi") && have_tm) {
+        /* the fallback looks for GDI's weight and style, not the LOGFONT's */
+        f->weight = (DWRITE_FONT_WEIGHT)tm.tmWeight;
+        f->style = tm.tmItalic ? DWRITE_FONT_STYLE_ITALIC : DWRITE_FONT_STYLE_NORMAL;
+    } else {
+        f->weight = lf.lfWeight >= FW_BOLD ? DWRITE_FONT_WEIGHT_BOLD
+                                           : DWRITE_FONT_WEIGHT_NORMAL;
+        f->style = lf.lfItalic ? DWRITE_FONT_STYLE_ITALIC : DWRITE_FONT_STYLE_NORMAL;
+    }
+#ifdef KITTY_TEST_BUILD_LABEL
+    d2d_trace_face(d, &lf, have_tm ? (int)tm.tmWeight : -1, f->face, how);
+#endif
     IDWriteFontFace_GetMetrics(f->face, &fm);
     f->units_per_em = (float)fm.designUnitsPerEm;
     /* The em size in pixels: a negative lfHeight IS the em height; a
@@ -1130,14 +1255,10 @@ static D2DFont *font_of(D2DPainter *d, HFONT hfont)
         f->emsize = lf.lfHeight * f->units_per_em /
             (float)(fm.ascent + fm.descent);
     /* The baseline where GDI put it: TA_TOP + tmAscent. */
-    screen = GetDC(NULL);
-    old = SelectObject(screen, hfont);
-    if (GetTextMetricsW(screen, &tm))
+    if (have_tm)
         f->ascent = (float)tm.tmAscent;
     else
         f->ascent = fm.ascent * f->emsize / f->units_per_em;
-    SelectObject(screen, old);
-    ReleaseDC(NULL, screen);
     /* The face's own underline (what GDI draws for lfUnderline):
      * position is measured from the baseline, negative = below. */
     {
@@ -1726,6 +1847,7 @@ static const KittyPainterVtable d2d_vt = {
     .hdc = d2d_hdc,
     .frame_signal = d2d_frame_signal,
     .fonts_changed = d2d_fonts_changed,
+    .font_note = d2d_font_note,
     .scroll_rows = d2d_scroll_rows,
     .overlay = d2d_overlay,
     .under = d2d_under,
@@ -2061,6 +2183,7 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
       case FQ_CLEARTYPE:      d->textaa = D2D1_TEXT_ANTIALIAS_MODE_CLEARTYPE; break;
       default:                d->textaa = D2D1_TEXT_ANTIALIAS_MODE_DEFAULT; break;
     }
+    d->gdiface = kitty_d2d_gdi_font();
 
     d->d3d11dll = LoadLibraryA("d3d11.dll");
     d->d2d1dll = LoadLibraryA("d2d1.dll");

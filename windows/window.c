@@ -227,6 +227,9 @@ static int TranslateKey(WinGuiSeat *wgs, UINT message, WPARAM wParam,
                         LPARAM lParam, unsigned char *output);
 static void init_palette(WinGuiSeat *wgs);
 static void init_fonts(WinGuiSeat *wgs, int, int);
+#ifdef MOD_PERSO
+static void kitty_font_event(WinGuiSeat *wgs);   /* KiTTY: the font line */
+#endif
 static void init_dpi_info(WinGuiSeat *wgs);
 static void another_font(WinGuiSeat *wgs, int);
 static void deinit_fonts(WinGuiSeat *wgs);
@@ -3220,6 +3223,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     wgs->logctx = log_init(&wgs->logpolicy, wgs->conf);
     term_provide_logctx(wgs->term, wgs->logctx);
 #ifdef MOD_PERSO
+    /* KiTTY: the font line init_fonts could not write yet (no log then) */
+    kitty_font_event(wgs);
     /* KiTTY feature: URL hyperlinks - init urlhack + compile regex. After
      * log_init: a custom pattern that does not compile is reported in this
      * Terminal Window's Event Log (urlhack_report_fallback), which needs logctx. */
@@ -4783,6 +4788,50 @@ static void init_dpi_info(WinGuiSeat *wgs)
  *
  * - find a trust sigil icon that will look OK with the chosen font.
  */
+#ifdef MOD_PERSO
+/* KiTTY: the window's font in the Terminal Window's Event Log, at the start
+ * (once the log exists) and after every font change: the setting, the cell,
+ * the face GDI selected with its weight, and under Direct2D the file and
+ * weight it draws with. Written only when the text differs from the last
+ * one, so a resize that rebuilds the same font adds nothing. */
+static void kitty_font_event(WinGuiSeat *wgs)
+{
+    static char *last = NULL;
+    FontSpec *fs;
+    HDC dc;
+    HFONT old;
+    TEXTMETRICA tm;
+    char face[LF_FACESIZE] = "";
+    char *line, *note = NULL, *all;
+
+    if (!wgs->logctx || !wgs->fonts[FONT_NORMAL])
+        return;
+    fs = conf_get_fontspec(wgs->conf, CONF_font);
+    dc = GetDC(wgs->term_hwnd);
+    old = SelectObject(dc, wgs->fonts[FONT_NORMAL]);
+    GetTextFaceA(dc, sizeof(face), face);
+    if (!GetTextMetricsA(dc, &tm))
+        tm.tmWeight = -1;
+    SelectObject(dc, old);
+    ReleaseDC(wgs->term_hwnd, dc);
+    line = dupprintf(KT_FONT_EVENT, fs->name, fs->height, wgs->font_width,
+                     wgs->font_height, face, (int)tm.tmWeight);
+    if (wgs->painter)
+        note = kp_font_note(wgs->painter, wgs->fonts[FONT_NORMAL]);
+    all = dupcat(line, " | ", note ? note : "");
+    if (!last || strcmp(last, all)) {
+        logevent(wgs->logctx, line);
+        if (note)
+            logevent(wgs->logctx, note);
+        sfree(last);
+        last = all;
+    } else
+        sfree(all);
+    sfree(line);
+    sfree(note);
+}
+#endif
+
 static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
 {
     TEXTMETRIC tm;
@@ -5052,6 +5101,7 @@ static void init_fonts(WinGuiSeat *wgs, int pick_width, int pick_height)
         kitty_ctxcrumb_refresh(wgs);
         kitty_switchnotice_line(wgs->font_height);
     }
+    kitty_font_event(wgs);
 #endif
 }
 
