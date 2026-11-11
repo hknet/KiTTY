@@ -690,7 +690,7 @@ static int launcher_shortcut_points_here( int common, const char *exe ) {
 /* This program's real path in quotes, in full (sfree it); NULL with Windows'
  * reason in GetLastError() when it cannot be read. It begins every command
  * line the launcher starts. Not the 8.3 form: short names can be switched off
- * on a volume, and a terminal started by it reads its own path in that form. */
+ * on a volume. A terminal started by it also reads its own path in that form. */
 static char * launcher_exe_quoted_dup( void ) {
 	char * exe = kitty_module_path_dup( NULL ), * q ;
 	if( exe == NULL ) return NULL ;
@@ -1225,6 +1225,10 @@ static LRESULT CALLBACK LauncherMenuMsgFilter( int code, WPARAM wParam, LPARAM l
 		    ( m->message == WM_LBUTTONDOWN || m->message == WM_LBUTTONDBLCLK ||
 		      m->message == WM_NCLBUTTONDOWN || m->message == WM_NCLBUTTONDBLCLK ) ) {
 			LauncherTrayClickArmed = 0 ;
+			LAUNCHER_TRACEF( "menu hook: first press msg 0x%04x at %ld,%ld time %lu (%ld ms after the tray click at %ld,%ld)",
+			                 m->message, (long)m->pt.x, (long)m->pt.y, (unsigned long)m->time,
+			                 (long)( m->time - LauncherTrayClickTick ),
+			                 (long)LauncherClickPoint.x, (long)LauncherClickPoint.y ) ;
 			if( LauncherTraySecondClick( m->pt, m->time ) ) {
 				LAUNCHER_TRACEF( "menu hook: second click of a double click" ) ;
 				LauncherTrayDblPending = 1 ;
@@ -1940,6 +1944,8 @@ static void LauncherTrayLeftClick( HWND hwnd ) {
 	int dbl ;
 	GetCursorPos( &LauncherClickPoint ) ;
 	LauncherTrayClickTick = GetTickCount() ;
+	LAUNCHER_TRACEF( "tray left click handled at %ld,%ld tick %lu",
+	                 (long)LauncherClickPoint.x, (long)LauncherClickPoint.y, (unsigned long)LauncherTrayClickTick ) ;
 	LauncherTrayDblPending = 0 ;
 	LauncherTrayDblSwallowUp = 0 ;
 	LauncherTrayIconRcValid = LauncherTrayIconRectRead( &LauncherTrayIconRc ) ;

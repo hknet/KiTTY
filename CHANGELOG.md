@@ -314,9 +314,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
-- Start at login (the launcher's tray menu, and "Start Launcher at
-  Login" on Application > KiTTY++ Settings > Launcher): a change Windows
-  refused showed the new state while nothing changed. A message box now
+- Start at login (the launcher's tray menu, "Start Launcher at Login" on
+  Application > KiTTY++ Settings > Launcher): a change Windows refused
+  showed the new state while nothing changed. A message box now
   gives the reason. The tick shows what is in force.
 - `KiTTY.ses.updt`: a saved session with a name of 255 characters was
   left out of `KiTTY.ses.updt.reg`. It gets its section now.
