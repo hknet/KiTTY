@@ -6,7 +6,7 @@ Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md);
 for the full feature list see [FEATURES.md](FEATURES.md).
 
-## 0.85.1.20-beta — 2026-10-28
+## 0.85.1.20-beta — 2026-11-11
 
 ### New
 
@@ -158,8 +158,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   and `prev` at its end, so each event can be checked from the Windows
   Event Log alone. A record repeating the one before it is counted, not
   written: one record (event ID 172) holds the count.
-- kittygen and kittygen-cli warn about a certificate without names in
-  Certificate info..., `-O cert-info` and Add certificate to key.
+- kittygen and kittygen-cli warn when a certificate has no host or user
+  names, which OpenSSH 10.3 accepts for no one: in Certificate info...,
+  `-O cert-info` and Add certificate to key.
 - docs/AGENTIC-USE.md: KiTTY++ for AI agentic use cases, for the human in
   control: the text that points any AI agent at its guide, the job with its
   hosts, host-key layers and stop points. The page keeps the SSH keys in
@@ -210,9 +211,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   prompt until its host key is signed with names, or until its CA's record
   has "Accept certificates without names" ticked (not recommended). The
   Terminal Window's Event Log gives the reason.
-- Port knocking ("Port knocking sequence:") runs from PuTTY's timers, so a
-  pause leaves the window working. klink, kscp and ksftp knock too, with the
-  new option `-knock`. Every address of the host is knocked, IPv4 and IPv6.
+- Port knocking ("Port knocking sequence:") no longer freezes the window
+  during its pauses. klink, kscp and ksftp knock too, with the new option
+  `-knock`. Every address of the host is knocked, IPv4 and IPv6.
   With a proxy or jump host the TCP knocks go through it. The proxy's
   answer decides whether a knock counts as sent, failed or unknown. A UDP
   knock through a proxy is not sent: the connection goes on without

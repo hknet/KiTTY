@@ -209,7 +209,7 @@ Known limitations of this release:
 - **Antivirus & UPX:** the standard ZIP holds plain signed executables. The
   `-upx.zip` and the installers carry UPX-compressed ones, which some
   antivirus tools object to - take the standard ZIP then.
-- **Version string:** binaries report `0.85.1.19-beta @ 2026-10-28`.
+- **Version string:** binaries report `0.85.1.20-beta @ 2026-11-11`.
 - **The configuration box's Exit button has no Alt key.** Esc works.
 - **Script with `kittygen-cli.exe`, not `kittygen.exe`**: the window version
   reports an unknown switch in a dialog and waits for OK.
