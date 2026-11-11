@@ -20,22 +20,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   show. Application > KiTTY++ Settings > Appearance sets how long it stays
   (`[KiTTY] eventlognotice`: never, 5 to 60 seconds, or until the Event Log
   is opened. Default 5 seconds).
-- kageant: when startup keys that were not there come back on a drive and
-  load, one notice reports that they can sign again. A click opens the key
-  list. The agent log records each key that comes back with its
-  fingerprint, comment, file and trigger (event ID 117). Settings > Agent >
-  "Notify when startup keys arrive" (on by default,
-  `[Agent] messageonkeyarrival`) silences only the notice.
-- kageant: the agent log is a chain. Every line carries `seq`, `prev`
-  (the hash of the line before it) and `sig`, its signature with a key
-  kageant holds in its memory only. The anchor records (event ID 171) go to
-  the Windows Event Log with every destination. `kageant -verifylog <file>`
-  and the agent log window's Verify button check the file and its
-  generations against those anchors (exit 0 intact, 1 broken, 2 cannot
-  verify). Every agent event 100-172 gains the fields `seq`, `sig`, `ts`
-  and `prev` at its end, so each event can be checked from the Windows
-  Event Log alone. A record repeating the one before it is counted, not
-  written: one record (event ID 172) holds the count.
+- Direct2D renderer: each device writes the graphics adapter's name, vendor
+  ID and device ID to the Terminal Window's Event Log, with "software
+  rendering" for WARP or another software adapter.
 - Script bridge: another program hands a terminal a script over
   `WM_COPYDATA`, played by the script engine with the session's settings
   (RuTTY's AutoHotkey interface, rebuilt). At `[KiTTY] scriptbridge=prompt`
@@ -44,6 +31,23 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   Scripting). Every refusal is in the Terminal Window's Event Log. How to
   write such a program, with examples in PowerShell and AutoHotkey v2:
   [docs/SCRIPTING.md](docs/SCRIPTING.md).
+- The shortcut editor has an action for every command of the terminal
+  window's menus except About, Help and Exit. New, no key by default:
+  "Run script file" (`[Shortcuts] runscriptfile`), "Stop script"
+  (`stopscript`), "Paste" (`paste`), "Restart session" (`reconnect`),
+  "Save as new session" (`savenewsession`), "Check for updates"
+  (`updatecheck`), "Terminal name" (`winname`), "Export current
+  settings" (`exportsettings`), "Shortcuts on/off" (`shortcutstoggle`),
+  "Hyperlinks on/off" (`hyperlinktoggle`), "Accept broadcast on/off"
+  (`broadcasttoggle`), "Accept script bridge on/off"
+  (`scriptbridgetoggle`), "ZModem receive", "ZModem upload" and "ZModem
+  abort" (`zmodemreceive`, `zmodemupload`, `zmodemabort`). The key of
+  Shortcuts on/off also works while the shortcuts are off. The menu
+  shows it then. The Restart session key restarts a closed connection.
+  On a live one it goes on to the server. A ZModem key
+  works only while the menu offers its entry. The menus show the key of
+  each after a tab, also of Type text file, Open mNotepad and Open
+  mNotepad with clipboard.
 - Manage Sessions: folders and sessions get a place of their own by drag
   and drop between rows. A pin marks a row with a stored place. Reset Order
   in a folder's menu forgets the places of that level. The configuration
@@ -53,6 +57,37 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   such a file in place. The registry keeps it below `SessionOrder`.
   Migration's "Take a folder store" and the portable copy carry it.
 - Folders whose names differ only in case are one folder in every list.
+- Links in a session comment open with a click: the box under the session
+  list underlines web addresses, `file://` links and UNC paths and opens
+  them in the program Windows has registered for them. A path with blanks
+  goes in double quotes or angle brackets. Enter opens the first link. The
+  right-click menu copies a link or the comment in full. A long comment
+  scrolls.
+- Launcher: a right-click on a saved session offers Open in WinSCP and Open
+  in FileZilla, each when it is installed. The same from the command line:
+  `kitty.exe -load <session> -winscp` or `-filezilla`. (cyd01/KiTTY#501)
+- Start FileZilla and the launcher's Open in FileZilla hand the session's
+  key file to FileZilla, through a temporary site entry deleted once
+  FileZilla has read it, at the latest after a minute. FileZilla prompts
+  for the key's passphrase itself.
+- Host keys: a server can rotate its key. Up to "Keys per type and host"
+  keys of one type are stored per host and port (Application > Security >
+  Host Keys > Settings, `hostkeyspertype`, 1 to 32, default 2). The host key
+  update stores a proven new key beside the old one. When the server no
+  longer offers the old key, it is removed. A key the limit has no room
+  for is proven all the same, so the Event Log line of the limit lists
+  only keys the server proved. "Keys the server proves
+  (hostkeys-00)" has a third choice, "Confirm each change"
+  (`updatehostkeys=ask`). kitty.exe shows a notice for each key the update
+  stores. Unknown key, changed key and the changes offered share one host
+  key box, with the fingerprints and First seen in its detail field. The
+  Host Keys leaf has a Filter and follows the store by itself.
+- klink, kscp, ksftp and kitty.exe: the jump host's host key from the
+  command line. `-proxyhostkey <fp>` pins it. `-proxy-accept-new` stores
+  an unknown one. A changed key always ends the connection. `-J
+  [user@]host[:port]` gives one jump host. `klink -scan` goes through it
+  and reports the keys of the host behind it. A refusal on the jump host
+  shows its host and port.
 - kageant: OpenSSH's session-bind (the Windows `ssh.exe` and every OpenSSH
   client from 8.9 on). kageant verifies the server's signature and shows the
   server a key is used for: in the key-use confirmation (Destination,
@@ -97,33 +132,34 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   program receives, kageant shows a notice with the program, the server and
   the reason, once per agent connection. Event 104 records it (result
   `no-key-offered`).
-- Links in a session comment open with a click: the box under the session
-  list underlines web addresses, `file://` links and UNC paths and opens
-  them in the program Windows has registered for them. A path with blanks
-  goes in double quotes or angle brackets. Enter opens the first link. The
-  right-click menu copies a link or the comment in full. A long comment
-  scrolls.
-- Launcher: a right-click on a saved session offers Open in WinSCP and Open
-  in FileZilla, each when it is installed. The same from the command line:
-  `kitty.exe -load <session> -winscp` or `-filezilla`. (cyd01/KiTTY#501)
-- Host keys: a server can rotate its key. Up to "Keys per type and host"
-  keys of one type are stored per host and port (Application > Security >
-  Host Keys > Settings, `hostkeyspertype`, 1 to 32, default 2). The host key
-  update stores a proven new key beside the old one. When the server no
-  longer offers the old key, it is removed. A key the limit has no room
-  for is proven all the same, so the Event Log line of the limit lists
-  only keys the server proved. "Keys the server proves
-  (hostkeys-00)" has a third choice, "Confirm each change"
-  (`updatehostkeys=ask`). kitty.exe shows a notice for each key the update
-  stores. Unknown key, changed key and the changes offered share one host
-  key box, with the fingerprints and First seen in its detail field. The
-  Host Keys leaf has a Filter and follows the store by itself.
-- klink, kscp, ksftp and kitty.exe: the jump host's host key from the
-  command line. `-proxyhostkey <fp>` pins it. `-proxy-accept-new` stores
-  an unknown one. A changed key always ends the connection. `-J
-  [user@]host[:port]` gives one jump host. `klink -scan` goes through it
-  and reports the keys of the host behind it. A refusal on the jump host
-  shows its host and port.
+- kageant: a key and its OpenSSH certificates are one row of the key list,
+  with a Certificate column. A certificate expiring within 14 days shows
+  in amber, an expired or not yet valid one in red. Key details lists each
+  certificate with its CA, principals, validity, status and critical
+  options. A fingerprint form that includes the certificate is listed only
+  where it differs from the plain form. The Key details window is shorter.
+  Remove, Move and dragging act on every identity of the private key.
+  kageant checks its certificates after each key change, once a day and
+  after a resume from sleep: one notice per certificate and state, event
+  ID 141.
+- kageant: when startup keys that were not there come back on a drive and
+  load, one notice reports that they can sign again. A click opens the key
+  list. The agent log records each key that comes back with its
+  fingerprint, comment, file and trigger (event ID 117). Settings > Agent >
+  "Notify when startup keys arrive" (on by default,
+  `[Agent] messageonkeyarrival`) silences only the notice.
+- kageant: the agent log is a chain. Every line carries `seq`, `prev`
+  (the hash of the line before it) and `sig`, its signature with a key
+  kageant holds in its memory only. The anchor records (event ID 171) go to
+  the Windows Event Log with every destination. `kageant -verifylog <file>`
+  and the agent log window's Verify button check the file and its
+  generations against those anchors (exit 0 intact, 1 broken, 2 cannot
+  verify). Every agent event 100-172 gains the fields `seq`, `sig`, `ts`
+  and `prev` at its end, so each event can be checked from the Windows
+  Event Log alone. A record repeating the one before it is counted, not
+  written: one record (event ID 172) holds the count.
+- kittygen and kittygen-cli warn about a certificate without names in
+  Certificate info..., `-O cert-info` and Add certificate to key.
 - docs/AGENTIC-USE.md: KiTTY++ for AI agentic use cases, for the human in
   control: the text that points any AI agent at its guide, the job with its
   hosts, host-key layers and stop points. The page keeps the SSH keys in
@@ -135,42 +171,6 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   The build checks every switch on both pages against the usage text of
   its tool. This is a first take how to instruct AI agents to use the
   KiTTY++ suite and its binaries for remote access and/or filetransfers, etc.
-- Start FileZilla and the launcher's Open in FileZilla hand the session's
-  key file to FileZilla, through a temporary site entry deleted once
-  FileZilla has read it, at the latest after a minute. FileZilla prompts
-  for the key's passphrase itself.
-- kageant: a key and its OpenSSH certificates are one row of the key list,
-  with a Certificate column. A certificate expiring within 14 days shows
-  in amber, an expired or not yet valid one in red. Key details lists each
-  certificate with its CA, principals, validity, status and critical
-  options. A fingerprint form that includes the certificate is listed only
-  where it differs from the plain form. The Key details window is shorter.
-  Remove, Move and dragging act on every identity of the private key.
-  kageant checks its certificates after each key change, once a day and
-  after a resume from sleep: one notice per certificate and state, event
-  ID 141.
-- Direct2D renderer: each device writes the graphics adapter's name, vendor
-  ID and device ID to the Terminal Window's Event Log, with "software
-  rendering" for WARP or another software adapter.
-- kittygen and kittygen-cli warn about a certificate without names in
-  Certificate info..., `-O cert-info` and Add certificate to key.
-- The shortcut editor has an action for every command of the terminal
-  window's menus except About, Help and Exit. New, no key by default:
-  "Run script file" (`[Shortcuts] runscriptfile`), "Stop script"
-  (`stopscript`), "Paste" (`paste`), "Restart session" (`reconnect`),
-  "Save as new session" (`savenewsession`), "Check for updates"
-  (`updatecheck`), "Terminal name" (`winname`), "Export current
-  settings" (`exportsettings`), "Shortcuts on/off" (`shortcutstoggle`),
-  "Hyperlinks on/off" (`hyperlinktoggle`), "Accept broadcast on/off"
-  (`broadcasttoggle`), "Accept script bridge on/off"
-  (`scriptbridgetoggle`), "ZModem receive", "ZModem upload" and "ZModem
-  abort" (`zmodemreceive`, `zmodemupload`, `zmodemabort`). The key of
-  Shortcuts on/off also works while the shortcuts are off. The menu
-  shows it then. The Restart session key restarts a closed connection.
-  On a live one it goes on to the server. A ZModem key
-  works only while the menu offers its entry. The menus show the key of
-  each after a tab, also of Type text file, Open mNotepad and Open
-  mNotepad with clipboard.
 
 ### Changed
 
@@ -180,9 +180,6 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   read. `reload=no` reads the hand-edited `Launcher` key or folder as
   before and never writes it. `/initlauncher` makes the running launchers
   rebuild their menus.
-- Diagnostic switches read from environment variables (trace files
-  such as `KITTY_WINPOS_DEBUG`, test doors) are in test builds only.
-  A release build has none of their code.
 - The shortcut editor's action "Send a script file" is now "Type text
   file" (it runs Tools > Type text file), with the kitty.ini key
   `[Shortcuts] typetextfile`. The first start renames `script` to
@@ -193,89 +190,26 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   on Session > Scripting). **Send script file** is now **Type text
   file...** (the file typed as it is, with the auto-command's escapes,
   never waiting for the host). Each file picker has its command's title.
-- kageant: requests by window messages (WM_COPYDATA, programs built on
-  PuTTY before 0.75) are refused by default. kageant cannot identify
-  the program that sends one: the sender passes a window of its choice. "Accept
-  requests by window messages" (`[Agent] allowwmcopydata=yes`) serves them
-  as a legacy option, for an unknown program: never with a key unlocked for
-  another program, and no program shown in the notice or the agent log.
-- kageant: a session-bind signed with SHA-1 is refused (`ssh-rsa` from an
-  RSA host key, every `ssh-dss` signature). The login goes on without a
-  destination, so a key restricted to destinations is not used on it.
 - Session > Scripting: with "Wait for a prompt before each line" a script ends
   right after its last line, instead of waiting for one more prompt and
   stopping with the timeout notice when none came. A condition line after
   the last line keeps that wait. Until the prompt after the last line
   arrives, the next script waits for it before its first line, also with
   "Except for first command".
+- Typed keystrokes are paced by a timer: the pauses of `\p`, `\sNN` and the
+  character delay no longer stop the window while a long text is typed.
+  The multiline input box is modeless, one at a time. It reads the
+  clipboard text when it opens and sends its own copy of the text with OK.
+- Remote clipboard > Limits: the read-grant numbers are greyed while
+  clipboard reads are Deny. Remote clipboard > Notifications: the marker
+  seconds are greyed while the marker is off.
+- Help: Security > Host Keys > Settings has a page of its own.
 - Host certificates without names (signed without `ssh-keygen -n`) are
   valid for no host, as in OpenSSH 10.3: in kitty.exe, klink, kscp, ksftp
   and kageant's rules. A server with such a certificate gets the host key
   prompt until its host key is signed with names, or until its CA's record
   has "Accept certificates without names" ticked (not recommended). The
   Terminal Window's Event Log gives the reason.
-
-- Application > Security: "Extra tracing in the Event Log" is now "Extra
-  tracing in the Terminal Window's Event Log", the Event Log it writes to.
-- Transfer window of an OSC 8 `file://` download: Open and Open File
-  Location (Folder) close it.
-- Help: Security > Host Keys > Settings has a page of its own.
-- Get File with Protocol SCP (Connection > SSH > KSCP): kitty.exe starts
-  kscp in SFTP mode also when the remote file name holds a character other
-  than letters, digits and / . _ - ~ % * ?. Before, only the folder was
-  checked.
-- kscp and ksftp over SFTP: a remote path that starts with `~` or `~user`
-  is that home folder, as with OpenSSH's scp and sftp
-  (`expand-path@openssh.com`). Before, `host:~/x` failed.
-- Remote clipboard > Limits: the read-grant numbers are greyed while
-  clipboard reads are Deny. Remote clipboard > Notifications: the marker
-  seconds are greyed while the marker is off.
-- Windows Event Log: every record has an event ID of its own with its
-  fields, also without the system MSI. New: 103 a request kageant refused,
-  905 a KiTTY++ program file that failed its integrity check (a red row on
-  the Applications panel), 906 a helper program refused, allowed or
-  declined, 907 a session log not written without a desktop. Event ID 0
-  (one line of text) is no longer written. A custom URL regex that does
-  not compile and the Direct2D fallback to WARP go to the Terminal
-  Window's Event Log. A failed `kitty.exe -edit` shows its box only.
-- The Terminal Window's Event Log shows that window's title in its own
-  title bar: "KiTTY++ terminal Event Log: <window title>".
-- kageant Settings > Log > Destination: "Windows Event Log" and "file and
-  Windows Event Log". Shortcuts: "Event Log" is now "Show the Terminal
-  Window's Event Log".
-- kageant serves PuTTY's list-extended, reencrypt and reencrypt-all to its
-  own window only. A program over the pipe gets the answer for an unknown
-  extension. `query` no longer lists them. A remote host behind a
-  forwarded agent can no longer re-encrypt the keys. Programs read a key's
-  state with key-state-v00@kapper.net. kitty.exe's reconnect wait uses it
-  (list-extended with an older kageant).
-- Start WinSCP and the launcher's Open in WinSCP: WinSCP 6.0 and later get
-  the session, proxy and tunnel passwords through a named pipe instead of
-  a temporary file. Only the WinSCP just started can read it, once. No file
-  with the password is written. While a WinSCP is already running, the
-  pipe also opens for that WinSCP (the same program file), which takes the
-  session as a tab. An older WinSCP still gets the temporary file.
-  `kitty.exe -winscp`
-  ends once WinSCP has read the password. Refs cyd01/KiTTY#419.
-- kageant command line as ssh-add: `-h <destination>` restricts the key
-  files of the call (host, user@host, via>host, host:port, a pattern), the
-  host keys looked up as the rule editor does. A host without one adds
-  nothing. A running kageant gets them as `ssh-add -h` sends them. `-d`
-  removes a key (file or SHA256 fingerprint), `-D` every key. Reports go
-  to the console, with an exit code. `-h` is no longer short for `-help`.
-  `-l` lists every key with its destination rules. `-R` removes a key's
-  rules after a confirmation at the desktop. Each key the command line
-  adds is reported with its stored rules. The notices of adds and removals
-  show the rules that apply or stay stored. The rule editor keeps a typed
-  port. Each change of a key's rules is recorded (event 116). Settings >
-  Security: "Refuse key changes from a forwarded agent" (default on: add,
-  remove, lock refused, reason `forwarded`) and "Accept requests by window
-  messages" (PuTTY before 0.75, off by default, see Changed). A program
-  using window messages gets a notice once per run.
-- kageant: the confirm mode in force for a key is the strictest one of all
-  its identities, a certificate included. Before, a certificate of a key
-  set to confirm signed without a confirmation. The destination rules of a
-  certificate are filed under its base key's fingerprint.
 - Port knocking ("Port knocking sequence:") runs from PuTTY's timers, so a
   pause leaves the window working. klink, kscp and ksftp knock too, with the
   new option `-knock`. Every address of the host is knocked, IPv4 and IPv6.
@@ -293,6 +227,13 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   Web. An allowed file connects as before. The prompt "Connection file
   from an untrusted place" lists the entries and takes all of them or
   none. A refusal points to Unblock or the administrator.
+- Get File with Protocol SCP (Connection > SSH > KSCP): kitty.exe starts
+  kscp in SFTP mode also when the remote file name holds a character other
+  than letters, digits and / . _ - ~ % * ?. Before, only the folder was
+  checked.
+- kscp and ksftp over SFTP: a remote path that starts with `~` or `~user`
+  is that home folder, as with OpenSSH's scp and sftp
+  (`expand-path@openssh.com`). Before, `host:~/x` failed.
 - kscp, ksftp and klink get the session and proxy passwords in memory only
   (`-pwhandle`, `-proxypwhandle`), never from a file. A helper without
   that, such as an older kscp or PuTTY's pscp, gets no password: the
@@ -302,54 +243,119 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   password reaches FileZilla:". A session saved with the former choice
   "Command line (readable by other processes)" gets "Temporary
   configuration file".
-- Typed keystrokes are paced by a timer: the pauses of `\p`, `\sNN` and the
-  character delay no longer stop the window while a long text is typed.
-  The multiline input box is modeless, one at a time. It reads the
-  clipboard text when it opens and sends its own copy of the text with OK.
+- Start WinSCP and the launcher's Open in WinSCP: WinSCP 6.0 and later get
+  the session, proxy and tunnel passwords through a named pipe instead of
+  a temporary file. Only the WinSCP just started can read it, once. No file
+  with the password is written. While a WinSCP is already running, the
+  pipe also opens for that WinSCP (the same program file), which takes the
+  session as a tab. An older WinSCP still gets the temporary file.
+  `kitty.exe -winscp`
+  ends once WinSCP has read the password. Refs cyd01/KiTTY#419.
+- Transfer window of an OSC 8 `file://` download: Open and Open File
+  Location (Folder) close it.
 - A failed ZModem transfer writes one line "ZModem helper error:" to the
   Terminal Window's Event Log, with the exit code and the helper's last
   line. A cancel writes none.
+- kageant: requests by window messages (WM_COPYDATA, programs built on
+  PuTTY before 0.75) are refused by default. kageant cannot identify
+  the program that sends one: the sender passes a window of its choice. "Accept
+  requests by window messages" (`[Agent] allowwmcopydata=yes`) serves them
+  as a legacy option, for an unknown program: never with a key unlocked for
+  another program, and no program shown in the notice or the agent log.
+- kageant: a session-bind signed with SHA-1 is refused (`ssh-rsa` from an
+  RSA host key, every `ssh-dss` signature). The login goes on without a
+  destination, so a key restricted to destinations is not used on it.
+- kageant: the confirm mode in force for a key is the strictest one of all
+  its identities, a certificate included. Before, a certificate of a key
+  set to confirm signed without a confirmation. The destination rules of a
+  certificate are filed under its base key's fingerprint.
+- kageant serves PuTTY's list-extended, reencrypt and reencrypt-all to its
+  own window only. A program over the pipe gets the answer for an unknown
+  extension. `query` no longer lists them. A remote host behind a
+  forwarded agent can no longer re-encrypt the keys. Programs read a key's
+  state with key-state-v00@kapper.net. kitty.exe's reconnect wait uses it
+  (list-extended with an older kageant).
+- kageant command line as ssh-add: `-h <destination>` restricts the key
+  files of the call (host, user@host, via>host, host:port, a pattern), the
+  host keys looked up as the rule editor does. A host without one adds
+  nothing. A running kageant gets them as `ssh-add -h` sends them. `-d`
+  removes a key (file or SHA256 fingerprint), `-D` every key. Reports go
+  to the console, with an exit code. `-h` is no longer short for `-help`.
+  `-l` lists every key with its destination rules. `-R` removes a key's
+  rules after a confirmation at the desktop. Each key the command line
+  adds is reported with its stored rules. The notices of adds and removals
+  show the rules that apply or stay stored. The rule editor keeps a typed
+  port. Each change of a key's rules is recorded (event 116). Settings >
+  Security: "Refuse key changes from a forwarded agent" (default on: add,
+  remove, lock refused, reason `forwarded`) and "Accept requests by window
+  messages" (PuTTY before 0.75, off by default, see above). A program
+  using window messages gets a notice once per run.
+- kageant Settings > Log > Destination: "Windows Event Log" and "file and
+  Windows Event Log". Shortcuts: "Event Log" is now "Show the Terminal
+  Window's Event Log".
+- Windows Event Log: every record has an event ID of its own with its
+  fields, also without the system MSI. New: 103 a request kageant refused,
+  905 a KiTTY++ program file that failed its integrity check (a red row on
+  the Applications panel), 906 a helper program refused, allowed or
+  declined, 907 a session log not written without a desktop. Event ID 0
+  (one line of text) is no longer written. A custom URL regex that does
+  not compile and the Direct2D fallback to WARP go to the Terminal
+  Window's Event Log. A failed `kitty.exe -edit` shows its box only.
+- The Terminal Window's Event Log shows that window's title in its own
+  title bar: "KiTTY++ terminal Event Log: <window title>".
+- Application > Security: "Extra tracing in the Event Log" is now "Extra
+  tracing in the Terminal Window's Event Log", the Event Log it writes to.
 - A bell sound file that does not play and an OSC 8 folder link without a
   program for folders write an Event Log line instead of a notice.
+- Diagnostic switches read from environment variables (trace files
+  such as `KITTY_WINPOS_DEBUG`, test doors) are in test builds only.
+  A release build has none of their code.
 
 ### Fixed
 
-- Start at login (the launcher's tray menu, "Start Launcher at Login" on
-  Application > KiTTY++ Settings > Launcher): a change Windows refused
-  showed the new state while nothing changed. A message box now
-  gives the reason. The tick shows what is in force.
-- `KiTTY.ses.updt`: a saved session with a name of 255 characters was
-  left out of `KiTTY.ses.updt.reg`. It gets its section now.
-- kscp, WinSCP (and its `/privatekey`), the editor for a dropped
-  `kitty.ini` and every start from the launcher use the program's full
-  path in quotes instead of its 8.3 short name. Windows can switch short
-  names off for a drive.
 - `/screenshot` in an installed KiTTY++ wrote into the program folder
   when the Pictures folder was 255 characters long. It goes to
   `Pictures\KiTTY++` at any length now, or the result line gives the
   folder in full and why. Without a Pictures folder no file is written.
-- Session import (`-importdir` and the import button): a .ktx that
-  cannot be read is skipped and counted as failed. It ended the import
-  with an access violation, the rest of the folder not imported. A
-  folder that cannot be read is reported with Windows' reason (exit 1).
-  It counted as "0 imported" and ended with exit 0.
+- Run clipboard command (Ctrl+F5): a command Windows does not start
+  writes an Event Log line with the reason.
+- Enter restarts a disconnected session also when it never logged in,
+  for example a window Windows brought back after a restart whose first
+  login failed because the agent had no key loaded yet. Other keys
+  restart only a session that had logged in, as before.
+- Session > Scripting > CR/LF translation **Rec** plays a script
+  recorded by RuTTY or classic KiTTY again. Their recorder stored a typed
+  CR as CR LF, an LF as LF LF and CR LF as CR LF LF LF. Rec sent the file
+  as it was. Each line carried the recorder's extra line feed. A typed LF
+  or CR LF added empty lines. KiTTY++ itself does not record yet.
+- Login script: the match read past the bytes the server sent and could
+  match early. The next reply, often a password, then went out before the
+  server's prompt.
+- The `\k` and `\x` escapes of typed text take their operand only with two
+  hex digits. A text ending in `\k`, `\kA`, `\x` or `\xA` read past its
+  end. The backslash is now typed as it is.
+- The port forwarding list (session menu) shows every rule. It stopped at
+  2000 characters.
+- A window restored from minimised with Direct2D and transparency allowed
+  (the default) shrank to one row: the rows below the cursor stayed black
+  and the SSH server got the one-row size. (hknet/KiTTY#88)
+- A terminal made shorter than the rows below its cursor keeps those rows
+  while the main screen is in front. Growing back returns them before any
+  blank row. Output, a reset, a cleared scrollback, a width change or the
+  alternate screen drops them.
+- GDI: a redrawn run keeps the ClearType fringe of the next cell's glyph,
+  so the window matches a complete repaint.
+- The mark strip at the right edge of the terminal draws the background
+  image under its ticks. It was a dark bar beside the scroll bar.
 - A long value written after other text could lose its end: the
   "-sshhandler" report cut another program's long command line and ran
   the next line into it. The text formatter took a cut piece as
   complete whenever it was shorter than the whole buffer. Upstream PuTTY
   has the same test. Its appends are short.
-- Copying a registry installation into a folder store puts each
-  `[ConfigBox]` and `[Launcher]` setting into its own section of the
-  copy's kitty.ini. They landed in `[KiTTY]`, where nothing reads them,
-  and the copy started with their defaults.
-- "Take a folder store..." carries `[KiTTY] restrictacl` into the
-  kitty.ini in use. It never overwrites a value there.
-- With `[KiTTY] KiClassName=PuTTY`, kageant and kittygen read the theme
-  and kageant reads `checkupdate` and the stored update answer from
-  PuTTY's registry key, where kitty.exe writes them.
-- `[ConfigBox] applicationsettings=no` is read from kitty.ini only. In
-  registry mode a user's own registry value brought the Application tab
-  back past a locked kitty.ini.
+- Start at login (the launcher's tray menu, "Start Launcher at Login" on
+  Application > KiTTY++ Settings > Launcher): a change Windows refused
+  showed the new state while nothing changed. A message box now
+  gives the reason. The tick shows what is in force.
 - `[Launcher] dblclick` is now `traydblclick` and `[Launcher] noticeseconds`
   is now `proxynoticeseconds`. In registry mode the old names were one
   registry value with `[ConfigBox] dblclick` and `[KiTTY] noticeseconds`.
@@ -357,6 +363,61 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   other. The first start renames both keys in kitty.ini and in the
   registry. A registry `noticeseconds` is copied: both notices keep their
   time. "Take a folder store..." takes the old names under the new ones.
+- The broadcast console (KiTTY++ Settings > Automation > Broadcast) keeps
+  the selected groups after Send, so the next commands go to the same
+  groups. A window closed in the meantime drops out. Its sessions list is
+  a view only: no row can be selected there, Send goes to the groups.
+- The broadcast's `\kXX` keys, `\c` and the login script no longer press
+  keys through Windows: a key with a modifier, Escape, Home and End are
+  translated in the terminal itself, `\c` sends the break to the server.
+  The window need not have the focus, no other window can receive a key,
+  and a modifier left on no longer carries into the next send. The Win key
+  is not sent any more.
+- Broadcast: a window that does not answer within two seconds is skipped
+  and logged with its process id. One hung window stopped the send to it
+  and to every window after it. `-sendcmd` and `-sendcmdfile` exit with
+  code 2 when a window was skipped.
+- `[Shortcuts]` key remaps have no fixed limit. A list longer than 512
+  entries wrote past the table. The AutoText editor lists every remap and
+  keeps all of them when it saves. An `antiidle=` text longer than 127
+  characters is reported once in the Event Log.
+- Extra tracing: a `[Shortcuts]` remap and the automatic command log the
+  length of their text only, since both can hold a password. A `%` in the
+  automatic command no longer garbles its line.
+- kscp, WinSCP (and its `/privatekey`), the editor for a dropped
+  `kitty.ini` and every start from the launcher use the program's full
+  path in quotes instead of its 8.3 short name. Windows can switch short
+  names off for a drive.
+- WinSCP: a password that gets neither a named pipe nor a temporary file
+  is not handed over. It went on WinSCP's command line before, where
+  `/passwordsfromfiles` took it for a file path.
+- Start FileZilla: when no temporary site entry can be written, an Event
+  Log line reports it. FileZilla then prompts for the password.
+- Closing a transfer window no longer leaves the terminal behind another
+  program: the terminal that started the transfer comes to the front.
+- OSC 5113 refuses every file name Windows reserves for a device:
+  `COM0`, `LPT0`, `COM¹`-`COM³`, `LPT¹`-`LPT³`, `CONIN$`, `CONOUT$` and
+  names with spaces before the extension were missing.
+- `KiTTY.ses.updt`: a saved session with a name of 255 characters was
+  left out of `KiTTY.ses.updt.reg`. It gets its section now.
+- Settings files are written complete or not at all. A full disk left a
+  named proxy without its password and counted it as saved. A named proxy
+  that cannot be written is listed with the reason among the skipped
+  ones. The start-up `.ses.updt` file is deleted only once its `.reg` is
+  written.
+- Copying a registry installation into a folder store puts each
+  `[ConfigBox]` and `[Launcher]` setting into its own section of the
+  copy's kitty.ini. They landed in `[KiTTY]`, where nothing reads them,
+  and the copy started with their defaults.
+- "Take a folder store..." carries `[KiTTY] restrictacl` into the
+  kitty.ini in use. It never overwrites a value there.
+- "Take a folder store..." reports a missing temporary folder.
+- `[KiTTY] fileextension` is read from kitty.ini only, as the panel
+  writes it. "Take a folder store..." no longer copies the kitty.ini only
+  keys into the registry. It takes `[Launcher]` into the registry.
+- `[ConfigBox] applicationsettings=no` is read from kitty.ini only. In
+  registry mode a user's own registry value brought the Application tab
+  back past a locked kitty.ini.
 - Hiding "Default Settings" (Delete on its row, then Yes) lasts in
   registry mode. The choice went to kitty.ini, which the registry value
   overrides. The row came back at the next start. The question now points
@@ -365,14 +426,48 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   registry mode an AutoText list an older build left in the registry won
   over the one the editor saved. It could not be changed or deleted. At
   the first start that list and its texts are copied into kitty.ini once.
-- `[KiTTY] fileextension` is read from kitty.ini only, as the panel
-  writes it. "Take a folder store..." no longer copies the kitty.ini only
-  keys into the registry. It takes `[Launcher]` into the registry.
-- Session > Scripting > CR/LF translation **Rec** plays a script
-  recorded by RuTTY or classic KiTTY again. Their recorder stored a typed
-  CR as CR LF, an LF as LF LF and CR LF as CR LF LF LF. Rec sent the file
-  as it was. Each line carried the recorder's extra line feed. A typed LF
-  or CR LF added empty lines. KiTTY++ itself does not record yet.
+- With `[KiTTY] KiClassName=PuTTY`, kageant and kittygen read the theme
+  and kageant reads `checkupdate` and the stored update answer from
+  PuTTY's registry key, where kitty.exe writes them.
+- klink, kscp and ksftp use PuTTY's registry hive when kitty.ini has
+  `[KiTTY] KiClassName=PuTTY`, as kitty.exe does. Before, `-load` did not
+  find a session kitty.exe had saved. A transfer kitty.exe starts checked
+  the host key in a store kitty.exe never wrote.
+- Folder store: when KiTTY++ cannot read its own program folder, it stops
+  with the reason. Before, it used the working folder, wherever that was.
+- Session import (`-importdir` and the import button): a .ktx that
+  cannot be read is skipped and counted as failed. It ended the import
+  with an access violation, the rest of the folder not imported. A
+  folder that cannot be read is reported with Windows' reason (exit 1).
+  It counted as "0 imported" and ended with exit 0.
+- An encrypted .ktx file whose temporary copy cannot be written reports
+  the temporary folder instead of a missing file.
+- An ed25519 public key of the wrong length ended the program that
+  decoded it: a server's host key in kitty.exe, klink, kscp and ksftp, a
+  session-bind or an `ssh-add -h` host key in kageant. Such a key is now
+  refused.
+- The host key prompt for a host certificate without a server name from
+  a trusted certification authority names that authority and the
+  missing name, with the CA store's checkbox that allows such
+  certificates. It read "signed by a different certification
+  authority" before.
+- Host keys a server offers after login (hostkeys-00) are not stored for
+  DSA (its proof is SHA-1 only) or for a type below the warn line of the
+  session's host-key list. One Event Log line reports each.
+- `-masterpwfile -` reads the whole first line of standard input. A line
+  longer than 4096 characters is refused. It was cut at 1023, and the
+  rest reached the server as typed text in klink and ksftp.
+- `KITTY_PWDEBUG` works in test builds only and writes no characters and
+  no checksum of a password.
+- Decrypted passwords and keys are cleared before their memory is freed.
+  A wipe the compiler could drop, three secrets without a wipe and the two
+  plain copies of each saved password a session load left behind are
+  fixed. The build checks the rule.
+- A program start that failed twice put its command line in clear into
+  the notice and the Terminal Window's Event Log. Every session secret is
+  masked there now, in every form a command line carries it.
+- Workplace proxy mode checks and uses one copy of its arming record, so
+  the record cannot change between the check and the use.
 - kageant: `kageant key.ppk` beside a running kageant no longer ends with
   an access violation (0xC0000005) when "Load remembered keys at startup"
   is on. The key always reached the running agent. The second kageant
@@ -384,12 +479,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   missing startup key beside it, the notice "kageant: startup keys" came
   right after and replaced it. The refused key's notice now comes last,
   after the notices for missing and unverified keys.
-- klink, kscp and ksftp use PuTTY's registry hive when kitty.ini has
-  `[KiTTY] KiClassName=PuTTY`, as kitty.exe does. Before, `-load` did not
-  find a session kitty.exe had saved. A transfer kitty.exe starts checked
-  the host key in a store kitty.exe never wrote.
-- Closing a transfer window no longer leaves the terminal behind another
-  program: the terminal that started the transfer comes to the front.
+- kageant: a key set to confirm with Windows Hello goes through Windows
+  Hello in every confirmation mode. `askconfirmation=no`, which any
+  program of the same user can write, skipped it.
 - kageant rule editor: "Ignore the port for clients that send none" is
   dropped from a CA destination opened while the CA's Valid hosts has no
   port condition. Key details and the rule editor show "port ignored for
@@ -397,25 +489,6 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - kageant refuses `session-bind@openssh.com` over window messages
   (WM_COPYDATA). Every such request reaches the agent as one client, so a
   binding applied to the later requests of other programs.
-- docs/KITTY-INI.md listed `askconfirmation=hello`, which kageant never
-  read. Windows Hello for every confirmation is `helloconfirm=yes`.
-- An ed25519 public key of the wrong length ended the program that
-  decoded it: a server's host key in kitty.exe, klink, kscp and ksftp, a
-  session-bind or an `ssh-add -h` host key in kageant. Such a key is now
-  refused.
-- Enter restarts a disconnected session also when it never logged in,
-  for example a window Windows brought back after a restart whose first
-  login failed because the agent had no key loaded yet. Other keys
-  restart only a session that had logged in, as before.
-- The host key prompt for a host certificate without a server name from
-  a trusted certification authority names that authority and the
-  missing name, with the CA store's checkbox that allows such
-  certificates. It read "signed by a different certification
-  authority" before.
-- The broadcast console (KiTTY++ Settings > Automation > Broadcast) keeps
-  the selected groups after Send, so the next commands go to the same
-  groups. A window closed in the meantime drops out. Its sessions list is
-  a view only: no row can be selected there, Send goes to the groups.
 - kageant: the host name a client sends with its session-bind
   (`session-bind-host-v00`) must be a host name (RFC 1123) or an IP
   address. A look-alike or right-to-left character can no longer make the
@@ -428,79 +501,8 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - kageant: a repeat of an identical session-bind is answered with
   success, as OpenSSH's agent does. It was refused and logged as a failed
   bind.
-- Host keys a server offers after login (hostkeys-00) are not stored for
-  DSA (its proof is SHA-1 only) or for a type below the warn line of the
-  session's host-key list. One Event Log line reports each.
-- The broadcast's `\kXX` keys, `\c` and the login script no longer press
-  keys through Windows: a key with a modifier, Escape, Home and End are
-  translated in the terminal itself, `\c` sends the break to the server.
-  The window need not have the focus, no other window can receive a key,
-  and a modifier left on no longer carries into the next send. The Win key
-  is not sent any more.
-- WinSCP: a password that gets neither a named pipe nor a temporary file
-  is not handed over. It went on WinSCP's command line before, where
-  `/passwordsfromfiles` took it for a file path.
-- `-masterpwfile -` reads the whole first line of standard input. A line
-  longer than 4096 characters is refused. It was cut at 1023, and the
-  rest reached the server as typed text in klink and ksftp.
-- OSC 5113 refuses every file name Windows reserves for a device:
-  `COM0`, `LPT0`, `COM¹`-`COM³`, `LPT¹`-`LPT³`, `CONIN$`, `CONOUT$` and
-  names with spaces before the extension were missing.
-- The port forwarding list (session menu) shows every rule. It stopped at
-  2000 characters.
-- `KITTY_PWDEBUG` works in test builds only and writes no characters and
-  no checksum of a password.
-- kageant: a key set to confirm with Windows Hello goes through Windows
-  Hello in every confirmation mode. `askconfirmation=no`, which any
-  program of the same user can write, skipped it.
-- Decrypted passwords and keys are cleared before their memory is freed.
-  A wipe the compiler could drop, three secrets without a wipe and the two
-  plain copies of each saved password a session load left behind are
-  fixed. The build checks the rule.
-- A program start that failed twice put its command line in clear into
-  the notice and the Terminal Window's Event Log. Every session secret is
-  masked there now, in every form a command line carries it.
-- Extra tracing: a `[Shortcuts]` remap and the automatic command log the
-  length of their text only, since both can hold a password. A `%` in the
-  automatic command no longer garbles its line.
-- The `\k` and `\x` escapes of typed text take their operand only with two
-  hex digits. A text ending in `\k`, `\kA`, `\x` or `\xA` read past its
-  end. The backslash is now typed as it is.
-- Login script: the match read past the bytes the server sent and could
-  match early. The next reply, often a password, then went out before the
-  server's prompt.
-- Workplace proxy mode checks and uses one copy of its arming record, so
-  the record cannot change between the check and the use.
-- Broadcast: a window that does not answer within two seconds is skipped
-  and logged with its process id. One hung window stopped the send to it
-  and to every window after it. `-sendcmd` and `-sendcmdfile` exit with
-  code 2 when a window was skipped.
-- `[Shortcuts]` key remaps have no fixed limit. A list longer than 512
-  entries wrote past the table. The AutoText editor lists every remap and
-  keeps all of them when it saves. An `antiidle=` text longer than 127
-  characters is reported once in the Event Log.
-- Settings files are written complete or not at all. A full disk left a
-  named proxy without its password and counted it as saved. A named proxy
-  that cannot be written is listed with the reason among the skipped
-  ones. The start-up `.ses.updt` file is deleted only once its `.reg` is
-  written.
-- A window restored from minimised with Direct2D and transparency allowed
-  (the default) shrank to one row: the rows below the cursor stayed black
-  and the SSH server got the one-row size. (hknet/KiTTY#88)
-- A terminal made shorter than the rows below its cursor keeps those rows
-  while the main screen is in front. Growing back returns them before any
-  blank row. Output, a reset, a cleared scrollback, a width change or the
-  alternate screen drops them.
-- GDI: a redrawn run keeps the ClearType fringe of the next cell's glyph,
-  so the window matches a complete repaint.
-- Start FileZilla without its temporary site entry and a clipboard command
-  Windows does not start write an Event Log line. FileZilla then prompts
-  for the password. "Take a folder store..." reports a missing temporary
-  folder. An encrypted .ktx file reports the temporary folder instead of a
-  missing file. A program folder that cannot be read stops the start with
-  its reason.
-- The mark strip at the right edge of the terminal draws the background
-  image under its ticks. It was a dark bar beside the scroll bar.
+- docs/KITTY-INI.md listed `askconfirmation=hello`, which kageant never
+  read. Windows Hello for every confirmation is `helloconfirm=yes`.
 
 ## 0.85.1.19-beta — 2026-10-28
 
