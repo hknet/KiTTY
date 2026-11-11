@@ -1018,6 +1018,24 @@ looks the host keys up in OpenSSH's \c{known_hosts} itself. Set
 values, the host keys looked up as the rule editor looks them up
 (\k{pageant-cmdline-restrict}).
 
+\q{Allow agent forwarding to the other destinations} decides whether the
+key works through a forwarded agent. Example: the key has the
+destinations \c{monitor.example.net} and \c{*.example.net}. You log in
+to monitor.example.net with agent forwarding and run
+\c{ssh web01.example.net} there.
+
+\b Ticked on monitor.example.net: the key signs the login to
+web01.example.net.
+
+\b Not ticked: kageant does not offer the key to web01.example.net. The
+agent log has the line \c{ev="restricted" result="no-key-offered"
+reason="destination"}, with monitor.example.net in \c{fwd=}.
+
+The tick covers every other destination of the key without a via host.
+For a single hop add a destination with a via host instead:
+\c{web01.example.net} via \c{monitor.example.net}. Key details shows
+\q{forwarding} on the line of a ticked destination.
+
 The rules of a key stay in the rule file when the key is removed, and
 apply again when it is loaded. kageant shows it: the notice of a key added
 by a program (\c{ssh-add}, kageant's command line, an encrypted PPK) or
