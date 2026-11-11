@@ -232,6 +232,7 @@ static dlgcontrol *ctrl_new(struct controlset *s, int type,
     c->context = context;
     c->label = NULL;
     c->align_next_to = NULL;
+    c->same_place_as = NULL;   /* KiTTY: see dialog.h */
     return c;
 }
 

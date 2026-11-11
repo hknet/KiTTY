@@ -131,6 +131,12 @@
 ;    configuration instead of inheriting whatever was used before.
 ;loadlastsession=yes
 
+; quickserialspeed: the speed of the last quick connect to a serial line,
+;    written when one is opened (default 9600 until then). Quick Connect
+;    Serial ("kitty.exe -quickconnectserial", the launcher) and quick
+;    connect switched to Serial fill it in, beside the first port detected.
+;quickserialspeed=9600
+
 ; noexit: if yes, closing a TERMINAL window starts a fresh instance showing the
 ;    configuration box, so you land back in the session picker instead of at an
 ;    empty desktop. That includes a terminal whose connection never came up - a
@@ -1506,12 +1512,19 @@
 ; traydblclick: what a double click on the launcher's tray icon opens -
 ;    config
 ;    (a new configuration window, the default), manage (Manage Sessions
-;    alone, as "kitty.exe -manage" opens it) or quickconnect (Quick Connect,
-;    as "kitty.exe -quickconnect" opens it). Read at each double click, so a
-;    running launcher follows a change at once.
+;    alone, as "kitty.exe -manage" opens it), quickconnect (Quick Connect,
+;    as "kitty.exe -quickconnect" opens it) or quickconnectserial (Quick
+;    Connect Serial, as "kitty.exe -quickconnectserial" opens it). Read at
+;    each double click, so a running launcher follows a change at once.
 ;    Set in Application > KiTTY++ Settings > Launcher. Until 0.85.1.19-beta
 ;    named dblclick, renamed at the first start.
 ;traydblclick=config
+
+; trayquickserial: with yes, the launcher's tray menu carries Quick Connect
+;    Serial: the configuration box on Serial, the first port detected and the
+;    speed of the last quick serial connect ([ConfigBox] quickserialspeed).
+;    Default no. Set in Application > KiTTY++ Settings > Launcher.
+;trayquickserial=no
 
 ; globalhotkey: a key combination, from any program, that does what the
 ;    double click above does (e.g. Ctrl+Alt+K: one or more of Ctrl, Alt,

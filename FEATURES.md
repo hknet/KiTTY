@@ -68,6 +68,7 @@ AI agentic use cases: [docs/AGENTIC-USE.md](docs/AGENTIC-USE.md) is for the huma
   - [Quick start of a duplicate session](#quick-start-of-a-duplicate-session)
   - [Window title placeholders](#window-title-placeholders)
   - [Host-Title and Window-Title together](#host-title-and-window-title-together)
+  - [Serial lines: speed, port, Find speed](#serial-lines-speed-port-find-speed)
 - **Graphical features**
   - [An icon for each session](#an-icon-for-each-session)
   - [Send to tray](#send-to-tray)
@@ -368,7 +369,7 @@ The configuration box opens with the session you used last, which is what you wa
 
 Quick connect starts from **Default Settings** instead, with the cursor already in *Host Name (or IP address)* and its contents selected, so an address can be typed over whatever is there and opened with Enter.
 
-**How to enable:** load **Default Settings** once. KiTTY++ remembers it like any other session, recognises it at the next start, and stays in quick connect until you load a different session — so it is a mode you leave by loading something, not one you have to switch back and forth. Typing an address into an unsaved session records nothing, so the mode survives connecting. To work that way permanently, put `loadlastsession=no` in the `[ConfigBox]` section of your `kitty.ini`; see [docs/KITTY-INI.md](docs/KITTY-INI.md). `kitty.exe -quickconnect` opens the configuration box on Default Settings, ready for a host; kageant's tray menu entry **Quick Connect**, the Start menu entry **KiTTY++ Quick-Connect** and the launcher's tray icon double-click (when **Application > KiTTY++ Settings > Launcher > Tray icon double-click opens:** is *Quick Connect*) do the same.
+**How to enable:** load **Default Settings** once. KiTTY++ remembers it like any other session, recognises it at the next start, and stays in quick connect until you load a different session — so it is a mode you leave by loading something, not one you have to switch back and forth. Typing an address into an unsaved session records nothing, so the mode survives connecting. To work that way permanently, put `loadlastsession=no` in the `[ConfigBox]` section of your `kitty.ini`; see [docs/KITTY-INI.md](docs/KITTY-INI.md). `kitty.exe -quickconnect` opens the configuration box on Default Settings, ready for a host; kageant's tray menu entry **Quick Connect**, the Start menu entry **KiTTY++ Quick-Connect** and the launcher's tray icon double-click (when **Application > KiTTY++ Settings > Launcher > Tray icon double-click opens:** is *Quick Connect*) do the same. For a serial line see [Serial lines: speed, port, Find speed](#serial-lines-speed-port-find-speed) (Quick Connect Serial).
 
 Where the saved-session list shows **Default Settings** is set on **Application > Config Window > Session Panel > Show "Default Settings":** — *always* (the default), *never*, or *only in root*, at the top level of the list and not inside folders (`[ConfigBox] defaultsettings=yes|no|root`). Hidden, the entry still exists as the template every new session starts from. **Reset Default Settings** on the same panel rewrites it with the KiTTY++ defaults after a confirmation; whatever was set there is lost, so load it first and save it under another name to keep it. Saved sessions do not change.
 
@@ -1265,6 +1266,20 @@ For full details and examples, see [`docs/window-title-placeholders.md`](docs/wi
 ### Host-Title and Window-Title together
 
 **Combine Host-Title and Window-Title** on **Window > Title & Icon** shows the title the remote host sets beside the session's Window-Title, joined by ` | `: *Configured first* or *Host first*. Host first puts the Window-Title at the end, where the taskbar cuts long titles off. Until the host sets a title, the Window-Title stands alone. With remote title changing disabled there is no Host-Title to combine. **Icon-Title** on the same panel sets the taskbar text of a minimised window and its label in the launcher. Empty, the Window-Title is used.
+
+(no screenshot)
+
+### Serial lines: speed, port, Find speed
+
+On a serial session the terminal window's menu has a **Serial** submenu:
+
+- **The speeds** 300 to 2000000 baud, the one in force ticked. A speed applies to the open port at once. A speed the port refuses is reported in the Terminal Window's Event Log and in the terminal. The previous one stays in force (the same for Change Settings).
+- **Find speed** listens at each speed of the list for a second and sends nothing. It scores what arrives: the share of printable characters, less the framing and parity errors the port reports. The best speed is set, or the old one stays. It ends with one line in the terminal and in the Event Log: `Find speed: 115200 baud chosen.`, `Find speed: no data received, speed stays at 9600 baud.` or `Find speed: no speed gave readable data, speed stays at 9600 baud.` The data received during the scan is not shown. A device that sends nothing (it waits for input) cannot be detected this way.
+- **The ports** detected now (`COM5 - USB-SERIAL CH340`), the one in use ticked. A port restarts the session on it. Closing a port drops DTR, which resets many boards (an Arduino among them).
+
+**Connection > Serial**: *Serial line to connect to* and *Speed (baud)* are editable drop-downs. The line list holds the ports detected when it opens, so a port not plugged in yet can still be typed (`COM12`, `\\.\CNCA0`). The Session panel shows the same two drop-downs in place of *Host Name* and *Port* while *Serial* is selected.
+
+**Quick Connect Serial**: the configuration box on Serial with the first port detected and the speed of the last quick serial connect (`[ConfigBox] quickserialspeed`, 9600 before the first). `kitty.exe -quickconnectserial`, the launcher's tray menu (**Application > KiTTY++ Settings > Launcher > Quick Connect Serial in the tray menu**, `[Launcher] trayquickserial=yes`) and the tray double-click (*Quick Connect Serial*). A quick connect switched to Serial fills in the same two values.
 
 (no screenshot)
 

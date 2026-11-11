@@ -68,7 +68,8 @@ select Raw mode, you will almost certainly need to fill in the
 
 If you select \q{Serial} from the \q{Connection type} radio buttons,
 the \q{Host Name} and \q{Port} boxes are replaced by \q{Serial line}
-and \q{Speed}; see \k{config-serial} for more details of these.
+and \q{Speed}, two editable drop-down lists in the same place. See
+\k{config-serial} for more details of these.
 
 \S{config-saving} \ii{Loading and storing saved sessions}
 
@@ -4403,9 +4404,18 @@ than one serial port.
 On Windows, the first serial line is called \i\cw{COM1}, and if there
 is a second it is called \cw{COM2}, and so on.
 
+The box is an editable drop-down list. Its list holds the serial
+ports present when it is opened, each with the description Windows
+has for it (\cq{COM5 - USB-SERIAL CH340}). Picking one stores the
+port name only. A port not plugged in yet, or a device such as
+\cw{\\\\.\\CNCA0}, can be typed.
+
 This configuration setting is also visible on the Session panel,
 where it replaces the \q{Host Name} box (see \k{config-hostname}) if
 the connection type is set to \q{Serial}.
+
+A running serial session changes its port from the \q{Serial}
+submenu of the window menu (see \k{using-serial}).
 
 \S{config-serial-speed} Selecting the speed of your serial line
 
@@ -4415,9 +4425,19 @@ at which to talk to the serial line. Typical values might be 9600,
 at the other end of the serial cable; consult the manual for that
 device if you are in doubt.
 
+The box is an editable drop-down list of the usual speeds, 300 to
+2000000. Another speed (74880, for one) can be typed.
+
 This configuration setting is also visible on the Session panel,
 where it replaces the \q{Port} box (see \k{config-hostname}) if the
 connection type is set to \q{Serial}.
+
+In a running session the speed changes from Change Settings or from
+the \q{Serial} submenu of the window menu. It takes effect at once.
+A speed the port refuses is reported in the Event Log and in the
+terminal window. The previous speed stays in force. \q{Find speed}
+in the same submenu looks for an unknown speed (see
+\k{using-serial}).
 
 \S{config-serial-databits} Selecting the number of data bits
 

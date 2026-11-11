@@ -35,6 +35,7 @@ void kitty_demo_templates(void);
 #include "../kitty/kitty_secretstore.h"
 #include "../kitty/kitty_commands.h"   /* kitty_cli_help_box */
 #include "../kitty/kitty_inifile.h"    /* kitty_store_readonly: readonly=yes */
+#include "../kitty/kitty_serialports.h"   /* quick connect to a serial line */
 #include "kitty_gui.h"
 #endif
 /* -exportall <dir> / -importdir <dir>: whole-store move; stashed here and run
@@ -187,6 +188,9 @@ static bool kitty_start_at_config_box = false;
 /* KiTTY: -quickconnect (kageant's "Quick Connect"): the configuration box on
  * Default Settings in quick-connect mode, whatever session was used last. */
 static bool kitty_start_quick_connect = false;
+/* KiTTY: -quickconnectserial: the same with Serial selected, the first port
+ * detected and the speed of the last quick serial connect (hknet/KiTTY#86) */
+static bool kitty_start_quick_serial = false;
 #endif
 
 #ifdef MOD_PERSO
@@ -342,6 +346,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 kitty_start_at_config_box = true;
             } else if (!strcmp(p, "-quickconnect")) {
                 kitty_start_quick_connect = true;
+            } else if (!strcmp(p, "-quickconnectserial")) {
+                kitty_start_quick_connect = true;
+                kitty_start_quick_serial = true;
             } else if (!strcmp(p, "-winscp")) {
                 kitty_cli_xfer = 1;
             } else if (!strcmp(p, "-filezilla")) {
@@ -1050,6 +1057,10 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                 if (kitty_start_quick_connect || !GetLoadLastSessionFlag() ||
                     (havelast && !strcmp(lastsess, "Default Settings"))) {
                     SetQuickConnectMode(1);
+                    /* Quick Connect Serial: Serial, the first port detected,
+                     * the speed of the last one */
+                    if (kitty_start_quick_serial)
+                        kitty_serial_quick_setup(conf);
                 } else if (havelast && !kitty_start_at_config_box) {
                     /* Not when a parent handed us settings: they are the whole
                      * point of this window, and loading the last-used session
@@ -1101,6 +1112,9 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
              * did this, so a portable user who never reconfigures mid-session
              * got no backup. Self-skips when disabled / no sav target. */
             SaveRegistryKey();
+            /* KiTTY: a quick connect to a serial line remembers its speed
+             * for the next one (hknet/KiTTY#86) */
+            kitty_serial_quick_remember(conf);
 #endif
             NETDBG_TS("cmdline: after do_config (user closed config box)");
         }

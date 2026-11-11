@@ -1403,6 +1403,9 @@ static void kitty_cfg_panel_windows(struct dlgparam *dp,
 {
     for (size_t i = 0; i < p->nctrls; i++) {
         struct winctrl *c = p->ctrls[i];
+        /* a control hidden by dlg_ctrl_show stays hidden */
+        if (show && c->hidden)
+            continue;
         for (int k = 0; k < c->num_ids; k++) {
             HWND item = kitty_cfg_item(dp->hwnd, c->base_id + k);
             if (item) {
@@ -1421,6 +1424,19 @@ static void kitty_cfg_panel_windows(struct dlgparam *dp,
         }
     }
     kitty_config_panel_shown(p->path, show);
+}
+
+/* KiTTY (windows/platform.h): is this control on the panel on screen? A
+ * control of no cached panel (the button row, any other dialog) is. */
+bool kitty_cfg_winctrl_on_screen(struct winctrl *c)
+{
+    for (size_t i = 0; i < kitty_cfg_npanels; i++) {
+        struct kitty_cfg_panel *p = kitty_cfg_panels[i];
+        for (size_t j = 0; j < p->nctrls; j++)
+            if (p->ctrls[j] == c)
+                return p == kitty_cfg_active_panel;
+    }
+    return true;
 }
 
 /* Show or hide a cached panel's windows, and swap its shortcuts in or out of
@@ -2155,6 +2171,7 @@ static struct kitty_cfg_panel *kitty_cfg_panel_create(
     p->nctrls = p->ctrlsize = 0;
     sgrowarray(kitty_cfg_panels, kitty_cfg_panelsize, kitty_cfg_npanels);
     kitty_cfg_panels[kitty_cfg_npanels++] = p;
+    kitty_cfg_on_screen_hook = kitty_cfg_winctrl_on_screen;
     kitty_cfg_panel_build(pds, p);
     return p;
 }

@@ -545,6 +545,35 @@ connection to notify the other that the connection is finished.
 Therefore, KiTTY++ in serial mode will remain connected until you
 close the window using the close button.
 
+On a serial session the window menu has a \i{\q{Serial} submenu}:
+
+\b The speeds, 300 to 2000000 baud, with a check mark on the one in
+force. A speed applies to the open port at once. A speed the port
+refuses is reported in the Event Log and in the terminal window. The
+previous speed stays in force.
+
+\b \i{\q{Find speed}} listens at each speed of the list for a second
+and sends nothing. It scores the data received: the share of
+printable characters, less the framing and parity errors the port
+reports. The best speed is set. With no data, or no readable data at
+any speed, the speed stays as it was. One line in the terminal window
+and in the Event Log reports the outcome, for example \cq{Find speed:
+115200 baud chosen.} The data received during the scan is not shown.
+A device that sends nothing until it receives something cannot be
+found this way.
+
+\b The serial ports present now, with a check mark on the one in use.
+A port restarts the session on it. Closing the old port drops DTR,
+which resets many boards (an Arduino among them).
+
+\i{Quick Connect Serial} opens the configuration box on \q{Serial}
+with the first port detected and the speed of the last quick serial
+connect (9600 before the first): \c{kitty.exe -quickconnectserial},
+the launcher's tray menu (\q{Quick Connect Serial in the tray menu}
+on Application > KiTTY++ Settings > Launcher) or the tray
+double-click. A quick connect switched to \q{Serial} fills in the
+same two values.
+
 \H{using-rawprot} Making \i{raw TCP connections}
 
 A lot of \I{debugging Internet protocols}Internet protocols are

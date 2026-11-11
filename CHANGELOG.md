@@ -18,6 +18,21 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   after each font change: the font, its size, the cell, the face GDI
   selects with its weight, and under Direct2D the font file and weight it
   draws with.
+- Serial lines: a **Serial** submenu in the terminal window's menu on a
+  serial session. Speeds and detected COM ports with check marks. Speed-change
+  applies to the open port, a port change restarts the session. **Find
+  speed** listens at each speed for a second, 115200 and 9600 first and
+  stops at the first one with readable data. Refs hknet/KiTTY#86.
+- Connection > Serial: serial line and speed are editable drop-downs, the
+  line list holds the detected ports with their descriptions. The Session
+  panel shows the same two drop-downs in place of Host Name and Port while
+  Serial is selected.
+- Quick Connect Serial: `kitty.exe -quickconnectserial`, the launcher's
+  tray menu (`[Launcher] trayquickserial=yes`) or the tray double-click.
+  Serial, the first detected port, the last quick serial speed
+  (`[ConfigBox] quickserialspeed`, default 9600).
+- A serial setting the port refuses is reported in the Terminal Window's
+  Event Log and inline of the terminal. The previous setting stays in force.
 
 ## 0.85.1.20-beta — 2026-11-11
 

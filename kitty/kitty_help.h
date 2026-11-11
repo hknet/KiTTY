@@ -22,6 +22,8 @@ Starting a session\r\n\
 * -winscp / -filezilla: with -load <session>, open the session in WinSCP or\r\n\
     FileZilla, no terminal window\r\n\
 * -quickconnect: open the configuration box on Default Settings, ready for a host\r\n\
+* -quickconnectserial: the same with Serial, the first port detected and the\r\n\
+    speed of the last quick serial connect (default 9600)\r\n\
 * -kload <file> (also -loadfile): load session settings from a .ktx file\r\n\
 * -folder <folder>: open a specific folder; must come before -load\r\n\
 * -fullscreen: start directly in full screen mode\r\n\

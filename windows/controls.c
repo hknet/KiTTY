@@ -2562,6 +2562,68 @@ static void move_windows(HWND hwnd, int base_id, int num_ids, LONG dy)
     }
 }
 
+/*
+ * KiTTY: put an overlay (same_place_as, dialog.h) onto the control it
+ * overlays, window by window, then hide it. Its handler shows it.
+ *
+ * A combo box ignores the height it is created with and sizes its closed
+ * field from the font, so over an edit box it would stand taller than the
+ * edit it replaces. CB_SETITEMHEIGHT with index -1 sets the height of that
+ * field. The combo adds its own edges to it, so the item height is moved by
+ * the difference measured on the window, then measured once more. The
+ * window's own height (the size handed to SetWindowPos) is the height of
+ * the opened list. It is kept.
+ */
+static void kitty_overlay_place(HWND parent, struct winctrl *mine,
+                                struct winctrl *partner)
+{
+    mine->hidden = true;
+    for (int k = 0; k < mine->num_ids; k++) {
+        HWND b = GetDlgItem(parent, mine->base_id + k);
+        HWND a = (partner && k < partner->num_ids) ?
+            GetDlgItem(parent, partner->base_id + k) : NULL;
+        RECT ra, rb;
+        char cls[32];
+
+        if (!b)
+            continue;
+        if (a && GetWindowRect(a, &ra)) {
+            MapWindowPoints(NULL, parent, (POINT *)&ra, 2);
+            if (GetClassNameA(b, cls, sizeof(cls)) &&
+                !stricmp(cls, "COMBOBOX")) {
+                int want = (int)(ra.bottom - ra.top), listh;
+                for (int tries = 0; tries < 2; tries++) {
+                    LRESULT ih;
+                    int have;
+                    if (!GetWindowRect(b, &rb))
+                        break;
+                    have = (int)(rb.bottom - rb.top);
+                    if (have == want)
+                        break;
+                    ih = SendMessage(b, CB_GETITEMHEIGHT, (WPARAM)-1, 0);
+                    if (ih == CB_ERR || ih + (want - have) < 1)
+                        break;
+                    SendMessage(b, CB_SETITEMHEIGHT, (WPARAM)-1,
+                                (LPARAM)(ih + (want - have)));
+                }
+                if (SendMessage(b, CB_GETDROPPEDCONTROLRECT, 0,
+                                (LPARAM)&rb))
+                    listh = (int)(rb.bottom - rb.top);
+                else
+                    listh = want * 8;
+                SetWindowPos(b, NULL, ra.left, ra.top,
+                             ra.right - ra.left, listh,
+                             SWP_NOACTIVATE | SWP_NOZORDER);
+            } else {
+                SetWindowPos(b, NULL, ra.left, ra.top,
+                             ra.right - ra.left, ra.bottom - ra.top,
+                             SWP_NOACTIVATE | SWP_NOZORDER);
+            }
+        }
+        ShowWindow(b, SW_HIDE);
+    }
+}
+
 void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
                     struct ctlpos *cp, struct controlset *s, int *id)
 {
@@ -2579,6 +2641,9 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
     char *escaped;
     int i, actual_base_id, base_id, num_ids, align_id_relative;
     void *data;
+    /* KiTTY: where each control of this set started (its ypos), so that an
+     * overlay (same_place_as, dialog.h) can start at the same place */
+    int *kitty_top = snewn(s->ncontrols + 1, int);
 
     base_id = *id;
 
@@ -2591,6 +2656,7 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
         c->base_id = c->align_id = base_id;
         c->num_ids = 1;
         c->data = NULL;
+        c->hidden = false;
         memset(c->shortcuts, NO_SHORTCUT, lenof(c->shortcuts));
         winctrl_add(wc, c);
         beginbox(cp, s->boxtitle, base_id);
@@ -2604,6 +2670,7 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
         c->base_id = c->align_id = base_id;
         c->num_ids = 1;
         c->data = dupstr(s->boxtitle);
+        c->hidden = false;
         memset(c->shortcuts, NO_SHORTCUT, lenof(c->shortcuts));
         winctrl_add(wc, c);
         paneltitle(cp, base_id);
@@ -2705,6 +2772,17 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
             for (col = colstart; col < colstart+colspan; col++)
                 if (pos.ypos < columns[col].ypos)
                     pos.ypos = columns[col].ypos;
+
+            /* KiTTY: an overlay starts where the control it overlays
+             * started (same_place_as, dialog.h) */
+            if (ctrl->same_place_as) {
+                for (int j = 0; j < i; j++)
+                    if (s->ctrls[j] == ctrl->same_place_as) {
+                        pos.ypos = kitty_top[j];
+                        break;
+                    }
+            }
+            kitty_top[i] = pos.ypos;
 
             /*
              * If this control is to be tabdelayed, add it to the
@@ -2954,11 +3032,20 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
             c->align_id = c->base_id + align_id_relative;
             c->num_ids = num_ids;
             c->data = data;
+            c->hidden = false;
             memcpy(c->shortcuts, shortcuts, sizeof(shortcuts));
+            /* KiTTY: an overlay draws its letter in the label but does
+             * not claim it - the control it overlays holds the same one,
+             * and only one of the two is ever visible */
+            if (ctrl->same_place_as)
+                memset(c->shortcuts, NO_SHORTCUT, lenof(c->shortcuts));
             winctrl_add(wc, c);
             winctrl_add_shortcuts(dp, c);
             if (actual_base_id == base_id)
                 base_id += num_ids;
+            if (ctrl->same_place_as)
+                kitty_overlay_place(pos.hwnd, c,
+                                    winctrl_findbyctrl(wc, ctrl->same_place_as));
 
             if (ctrl->align_next_to) {
                 /*
@@ -3003,16 +3090,18 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
             sfree(data);
         }
 
-        if (colstart >= 0) {
+        if (colstart >= 0 && !ctrl->same_place_as) {
             /*
              * Update the ypos in all columns crossed by this
-             * control.
+             * control. (KiTTY: not for an overlay, which takes no
+             * space of its own.)
              */
             int i;
             for (i = colstart; i < colstart+colspan; i++)
                 columns[i].ypos = pos.ypos;
         }
     }
+    sfree(kitty_top);
 
     /*
      * We've now finished laying out the controls; so now update
@@ -3589,6 +3678,32 @@ void dlg_editbox_show_end(dlgcontrol *ctrl, dlgparam *dp)
     len = SendMessage(h, WM_GETTEXTLENGTH, 0, 0);
     SendMessage(h, EM_SETSEL, (WPARAM)len, (LPARAM)len);
     SendMessage(h, EM_SCROLLCARET, 0, 0);
+}
+
+/* KiTTY: see dialog.h. Hiding acts at once. Showing acts only when the
+ * control's panel is the one on screen (a full refresh reaches the hidden
+ * panels too). Otherwise the panel shows it when it comes up. */
+bool (*kitty_cfg_on_screen_hook)(struct winctrl *c) = NULL;
+
+void dlg_ctrl_show(dlgcontrol *ctrl, dlgparam *dp, bool shown)
+{
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+    if (!c)
+        return;
+    c->hidden = !shown;
+    if (shown && kitty_cfg_on_screen_hook && !kitty_cfg_on_screen_hook(c))
+        return;
+    for (int k = 0; k < c->num_ids; k++) {
+        HWND h = kitty_cfg_item(dp->hwnd, c->base_id + k);
+        bool vis;
+        if (!h)
+            continue;
+        /* the window's own style bit: IsWindowVisible() also reads the
+         * parents, which are not visible yet while the box is being built */
+        vis = (GetWindowLongPtr(h, GWL_STYLE) & WS_VISIBLE) != 0;
+        if (vis != shown)
+            ShowWindow(h, shown ? SW_SHOWNA : SW_HIDE);
+    }
 }
 
 /* The `listbox' functions can also apply to combo boxes. */

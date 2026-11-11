@@ -181,6 +181,22 @@ struct dlgcontrol {
      * can't cause the first one to be retrospectively moved.
      */
     dlgcontrol *align_next_to;
+    /*
+     * KiTTY: an OVERLAY. Non-NULL = this control sits exactly where the
+     * referred-to control sits: same position, same width, for a combo box
+     * over an edit box also the same height. It consumes no layout space
+     * of its own and is created hidden. Its handler shows it with
+     * dlg_ctrl_show() on EVENT_REFRESH while the other handler hides the
+     * other control, so the two take turns in one place. Its keyboard
+     * shortcut is drawn in the label but not claimed: both controls carry
+     * the same letter. Windows gives the key to the visible one.
+     *
+     * Set it on the LATER control, pointing back to an earlier control of
+     * the same controlset. Unconditional for the same reason as the KiTTY
+     * fields of the editbox union below. Front ends without it lay the
+     * overlay out as an ordinary control below the other one.
+     */
+    dlgcontrol *same_place_as;
 
     /*
      * Union of further fields specific to each control type.
@@ -634,6 +650,11 @@ void dlg_editbox_select_range(dlgcontrol *ctrl, dlgparam *dp,
 void dlg_editbox_show_end(dlgcontrol *ctrl, dlgparam *dp);
 /* KiTTY: show/hide the masked text of a password editbox at runtime. */
 void dlg_editbox_set_masked(dlgcontrol *ctrl, dlgparam *dp, bool visible);
+/* KiTTY: show or hide a control - every window of it, its label included.
+ * A hidden control stays hidden when its panel is shown again. Showing one
+ * on a panel that is not on screen only records the state: the panel shows
+ * it when it comes up. See same_place_as. */
+void dlg_ctrl_show(dlgcontrol *ctrl, dlgparam *dp, bool shown);
 /* The `listbox' functions can also apply to combo boxes. */
 void dlg_listbox_clear(dlgcontrol *ctrl, dlgparam *dp);
 void dlg_listbox_del(dlgcontrol *ctrl, dlgparam *dp, int index);

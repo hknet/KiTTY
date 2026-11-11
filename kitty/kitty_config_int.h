@@ -121,6 +121,9 @@ void config_host_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
 void config_port_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_upstream.c */
 struct hostport {
     dlgcontrol *host, *port, *protradio, *protlist;
+    /* KiTTY: the serial line and speed drop-downs over host and port, shown
+     * instead of them while Serial is selected (kitty_serialports.c) */
+    dlgcontrol *serline, *serspeed;
     bool mid_refresh;
 };
 void config_protocols_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_upstream.c */

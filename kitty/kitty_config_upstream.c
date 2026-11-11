@@ -45,6 +45,7 @@
 #include "kitty_hostkeys.h"
 #include "kitty_hostkey_verify.h"
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
+#include "kitty_serialports.h"  /* the serial pair, quick connect to a serial line */
 
 #define PRINTER_DISABLED_STRING "None (printing disabled)"
 
@@ -262,6 +263,11 @@ void config_host_handler(dlgcontrol *ctrl, dlgparam *dlg,
      * different places depending on the protocol.
      */
     if (event == EVENT_REFRESH) {
+        /* KiTTY: with Serial selected the serial line drop-down takes this
+         * box's place (kitty_serialports.c), so this one is hidden. The
+         * relabelling below stays: the hidden box still mirrors Conf. */
+        dlg_ctrl_show(ctrl, dlg,
+                      conf_get_int(conf, CONF_protocol) != PROT_SERIAL);
         if (conf_get_int(conf, CONF_protocol) == PROT_SERIAL) {
             /*
              * This label text is carefully chosen to contain an n,
@@ -295,6 +301,9 @@ void config_port_handler(dlgcontrol *ctrl, dlgparam *dlg,
      * different places depending on the protocol.
      */
     if (event == EVENT_REFRESH) {
+        /* KiTTY: hidden for Serial, the speed drop-down takes its place */
+        dlg_ctrl_show(ctrl, dlg,
+                      conf_get_int(conf, CONF_protocol) != PROT_SERIAL);
         if (conf_get_int(conf, CONF_protocol) == PROT_SERIAL) {
             /*
              * This label text is carefully chosen to contain a p,
@@ -477,8 +486,18 @@ void config_protocols_handler(dlgcontrol *ctrl, dlgparam *dlg,
             if (port == cvt->default_port)
                 conf_set_int(conf, CONF_port, nvt->default_port);
 
+            /* KiTTY: quick connect switched to Serial gets the first port
+             * detected and the speed of the last quick serial connect */
+            if (newproto == PROT_SERIAL)
+                kitty_serial_quick_prefill(conf);
+
             dlg_refresh(hp->host, dlg);
             dlg_refresh(hp->port, dlg);
+            /* KiTTY: and the serial pair over them, shown or hidden */
+            if (hp->serline)
+                dlg_refresh(hp->serline, dlg);
+            if (hp->serspeed)
+                dlg_refresh(hp->serspeed, dlg);
         }
     }
 }

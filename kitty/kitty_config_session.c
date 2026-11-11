@@ -57,6 +57,7 @@
 #include "kitty_hostkeys.h"
 #include "kitty_hostkey_verify.h"
 #include "kitty_config_int.h"   /* what the kitty_config_*.c files share */
+#include "kitty_serialports.h"  /* the serial line and speed drop-downs */
 #include "kitty_logkeep.h"      /* the Logging panel greys on its time-code test */
 #include "kitty_url_regex.h"    /* kitty_urlregex_error: the custom-regex field's red line */
 #include "kitty_commentview.h"  /* the comment box under the list: links that open */
@@ -1085,6 +1086,19 @@ dlgcontrol *kitty_config_session_filter_ctrl(void)
  * on every treeview switch, so the pointer is only ever used while that panel
  * is the live one. */
 static dlgcontrol *quickconnect_host_ctrl = NULL;
+/* KiTTY: its Serial counterpart, the serial line drop-down in the same place
+ * (shown instead of the host box while Serial is selected) */
+static dlgcontrol *quickconnect_serline_ctrl = NULL;
+
+/* The quick connect target for the protocol selected: the host box, or the
+ * serial line drop-down that replaces it for Serial. */
+static dlgcontrol *quickconnect_target(Conf *conf)
+{
+    if (conf && conf_get_int(conf, CONF_protocol) == PROT_SERIAL &&
+        quickconnect_serline_ctrl)
+        return quickconnect_serline_ctrl;
+    return quickconnect_host_ctrl;
+}
 
 /* KiTTY: the same dialog's session-saver data, for the Ctrl+G "search
  * everywhere" jump (windows/dialog.c). Registered and cleared together with
@@ -1763,8 +1777,8 @@ static bool load_selected_session(
      * cannot do this one: it fires once, on the first refresh. */
     SetQuickConnectMode(isdef ? 1 : 0);
     kitty_dlg_mark_quickconnect(dlg, isdef);
-    if (isdef && quickconnect_host_ctrl)
-        dlg_set_focus_later(quickconnect_host_ctrl, dlg);
+    if (isdef && quickconnect_target(conf))
+        dlg_set_focus_later(quickconnect_target(conf), dlg);
     return true;
 }
 
@@ -3416,8 +3430,8 @@ static void sessionsaver_handler(dlgcontrol *ctrl, dlgparam *dlg,
                  * contents, so a host left over from last time is replaced by
                  * typing and kept by pressing Enter. */
                 dlg_set_focus_later((GetQuickConnectMode() &&
-                                     quickconnect_host_ctrl) ?
-                                    quickconnect_host_ctrl : ctrl, dlg);
+                                     quickconnect_target(conf)) ?
+                                    quickconnect_target(conf) : ctrl, dlg);
                 /* ...and show it in the title bar, for the box that comes UP in
                  * quick connect. The Load path marks it when the mode changes
                  * later; this is the one case that happens before any Load. */
@@ -5238,6 +5252,25 @@ void scb_panel_session(struct controlbox *b, bool midsession)
                          config_port_handler, I(0), I(0));
         c->column = 1;
         hp->port = c;
+        /* KiTTY: for Serial, drop-downs of the detected ports and the
+         * speeds in the same place, editable (a port not plugged in yet
+         * can be typed). Overlays: no row of their own, the panel keeps
+         * its layout (same_place_as, dialog.h). */
+        c = ctrl_combobox(s, KT_CFG_SERIAL_LINE, 'n', 100,
+                          HELPCTX(serial_line),
+                          kitty_serline_handler, P(hp), I(0));
+        c->column = 0;
+        c->same_place_as = hp->host;
+        c->editbox.dropdown = kitty_serline_dropdown;
+        hp->serline = c;
+        quickconnect_serline_ctrl = c;
+        c = ctrl_combobox(s, KT_CFG_SPEED, 'p', 100,
+                          HELPCTX(serial_speed),
+                          kitty_serspeed_handler, P(hp), I(0));
+        c->column = 1;
+        c->same_place_as = hp->port;
+        c->editbox.dropdown = kitty_serspeed_dropdown;
+        hp->serspeed = c;
 
         ctrl_columns(s, 1, 100);
         ctrl_columns(s, 2, 62, 38);
@@ -8944,15 +8977,25 @@ void scb_panel_serial(struct controlbox *b, bool midsession, int protocol)
              */
             s = ctrl_getset(b, "Connection/Serial", "serline",
                             KT_SERIAL_SELECT_A_SERIAL_LINE);
-            ctrl_editbox(s, KT_SERIAL_SERIAL_LINE_TO_CONNECT, 'l', 40,
-                         HELPCTX(serial_line),
-                         conf_editbox_handler, I(CONF_serline), ED_STR);
+            /* KiTTY: an editable drop-down of the ports detected, filled
+             * when it opens (kitty_serialports.c). Typing stays possible. */
+            {
+                dlgcontrol *c = ctrl_combobox(s, KT_SERIAL_SERIAL_LINE_TO_CONNECT,
+                                              'l', 40, HELPCTX(serial_line),
+                                              kitty_serline_handler, P(NULL), I(0));
+                c->editbox.dropdown = kitty_serline_dropdown;
+            }
         }
 
         s = ctrl_getset(b, "Connection/Serial", "sercfg", KT_SERIAL_CONFIGURE_THE_SERIAL_LINE);
-        ctrl_editbox(s, KT_SERIAL_SPEED_BAUD, 's', 40,
-                     HELPCTX(serial_speed),
-                     conf_editbox_handler, I(CONF_serspeed), ED_INT);
+        /* KiTTY: an editable drop-down of the usual speeds (74880 and the
+         * like can still be typed) */
+        {
+            dlgcontrol *c = ctrl_combobox(s, KT_SERIAL_SPEED_BAUD, 's', 40,
+                                          HELPCTX(serial_speed),
+                                          kitty_serspeed_handler, P(NULL), I(0));
+            c->editbox.dropdown = kitty_serspeed_dropdown;
+        }
         ctrl_editbox(s, KT_SERIAL_DATA_BITS, 'b', 40,
                      HELPCTX(serial_databits),
                      conf_editbox_handler, I(CONF_serdatabits), ED_INT);

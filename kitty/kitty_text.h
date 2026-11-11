@@ -4667,6 +4667,27 @@
 #define KT_CFG_PROTO_OTHER                           "Other:"
 #define KT_CFG_SERIAL_LINE                           "Serial line"
 #define KT_CFG_SPEED                                 "Speed"
+/* hknet/KiTTY#86, serial lines: the port lists (kitty_serialports.c), the
+ * terminal window's Serial submenu and Find speed (kitty_serialmenu.c), a
+ * setting the port refused (windows/serial.c), Quick Connect Serial
+ * (kitty_launcher.c, the Launcher panel) */
+#define KT_SERIAL_PORT_LABEL_FMT                     "%s - %s"
+#define KT_WINFEAT_SERIAL_NAMES                      "serial port descriptions in the port lists"
+#define KT_SYSMENU_SERIAL                            "&Serial"
+#define KT_SERIAL_MENU_SPEED_FMT                     "%d baud"
+#define KT_SERIAL_MENU_FIND_SPEED                    "&Find speed"
+#define KT_SERIAL_MENU_NO_PORTS                      "(no port detected)"
+#define KT_SERIAL_FIND_CHOSEN_FMT                    "Find speed: %d baud chosen."
+#define KT_SERIAL_FIND_NO_DATA_FMT                   "Find speed: no data received, speed stays at %d baud."
+#define KT_SERIAL_FIND_UNREADABLE_FMT                "Find speed: no speed gave readable data, speed stays at %d baud."
+#define KT_SERIAL_FIND_START_FMT                     "Find speed: listening at %d speeds, 1 s each"
+#define KT_SERIAL_FIND_STEP_FMT                      "Find speed: %d baud: %d bytes, %d%% readable, %d framing/parity errors"
+#define KT_SERIAL_FIND_REFUSED_FMT                   "Find speed: %d baud refused by the port: %s"
+#define KT_SERIAL_FIND_CLOSED                        "Find speed: stopped, serial line closed"
+#define KT_SERIAL_REFUSED_FMT                        "Serial settings not applied, previous settings stay in force: %s"
+#define KT_MENU_QUICK_CONNECT_SERIAL                 "&Quick Connect Serial"
+#define KT_KSET_LA_DBL_QUICKSERIAL                   "Quick Connect Serial"
+#define KT_KSET_LA_TRAY_QUICKSERIAL                  "Quick Connect Serial in the tray menu"
 #define KT_CFG_RENAME                                "Rename"
 #define KT_CFG_COMMENT_SELECT                        "Select a session to see its comment"
 #define KT_CFG_COMMENT_NONE                          "(no comment stored for this session)"

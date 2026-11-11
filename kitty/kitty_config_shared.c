@@ -826,7 +826,8 @@ static const struct kset_choice kset_second_launcher_choices[] = {
 /* [Launcher] traydblclick: what a double click on the tray icon opens */
 static const struct kset_choice kset_launcher_dblclick_choices[] = {
     { KT_KSET_LA_DBL_CONFIG, "config", 0 }, { KT_KSET_LA_DBL_MANAGE, "manage", 1 },
-    { KT_KSET_LA_DBL_QUICK, "quickconnect", 2 } };
+    { KT_KSET_LA_DBL_QUICK, "quickconnect", 2 },
+    { KT_KSET_LA_DBL_QUICKSERIAL, "quickconnectserial", 3 } };
 /* [KiTTY] urlsessions: what an ssh:// or telnet:// link opens */
 static const struct kset_choice kset_urlsessions_choices[] = {
     { KT_URLSESS_OPEN_DEFAULT, "no", 0 }, { KT_URLSESS_OPEN_SAVED, "yes", 1 } };
@@ -989,6 +990,8 @@ static const struct kset_key kset_keys[] = {
       NULL, NULL, kset_second_launcher_choices, lenof(kset_second_launcher_choices) },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_DBLCLICK,         KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
       NULL, NULL, kset_launcher_dblclick_choices, lenof(kset_launcher_dblclick_choices) },
+    /* Quick Connect Serial in the tray menu (hknet/KiTTY#86) */
+    { KI_SECTION_LAUNCHER, KI_LAUNCHER_TRAYQUICKSERIAL,  KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
     /* empty = no global hotkey; written once the typing stops (KSET_TEXT) */
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_GLOBALHOTKEY,     KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0 },
     { KI_SECTION_LAUNCHER, KI_LAUNCHER_EXITWITHWORKPLACE, KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 1 },
@@ -1071,10 +1074,12 @@ int kset_write(const struct kset_key *k, const char *text)
          * reads [Launcher] reload at that rebuild: unticking "Keep my
          * hand-edited launcher menu" reached it only at the next Save or
          * Refresh. Ticked, the refresh leaves the hand-edited menu alone.
-         * The same refresh registers the global hotkey again. */
+         * The same refresh registers the global hotkey again. It also adds
+         * or removes Quick Connect Serial. */
         if (!strcmp(k->section, KI_SECTION_LAUNCHER) &&
             (!strcmp(k->key, KI_LAUNCHER_RELOAD) ||
-             !strcmp(k->key, KI_LAUNCHER_GLOBALHOTKEY)))
+             !strcmp(k->key, KI_LAUNCHER_GLOBALHOTKEY) ||
+             !strcmp(k->key, KI_LAUNCHER_TRAYQUICKSERIAL)))
             kitty_notify_launcher_sessions_changed();
         return 1;
     }

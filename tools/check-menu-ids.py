@@ -38,7 +38,8 @@ WINDOW_C = ROOT / "windows" / "window.c"
 # base -> (how many ids it covers, why)
 RANGES = {
     "IDM_USERCMD": (1024, "predefined user commands, NB_MENU_MAX"),
-    "IDM_LAUNCHER": (16, "launcher tray menu, IDM_LAUNCHER+1..+9"),
+    "IDM_LAUNCHER": (16, "launcher tray menu, IDM_LAUNCHER+1..+11"),
+    "IDM_SERIAL_MIN": (0x400, "the Serial submenu, IDM_SERIAL_MIN + 0x10 * slot, 64 slots"),
 }
 
 DEFINE = re.compile(r"^\s*#\s*define\s+(IDM_[A-Z_0-9]+)\s+(0x[0-9a-fA-F]+|\d+)")

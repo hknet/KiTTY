@@ -190,6 +190,8 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_CONFIGBOX_LOADLASTSESSION        "loadlastsession"
 #define KI_CONFIGBOX_NOEXIT                 "noexit"
 #define KI_CONFIGBOX_PROXYSELECTION         "proxyselection"
+/* the speed of the last quick connect to a serial line (kitty_serialports.c) */
+#define KI_CONFIGBOX_QUICKSERIALSPEED       "quickserialspeed"
 #define KI_CONFIGBOX_RLOGIN                 "rlogin"
 #define KI_CONFIGBOX_SUPDUP                 "supdup"
 #define KI_CONFIGBOX_SWITCHPAINT            "switchpaint"
@@ -318,11 +320,14 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_LAUNCHER_NOTICESECONDS           "proxynoticeseconds"
 #define KI_LAUNCHER_RELOAD                  "reload"
 #define KI_LAUNCHER_UNHIDEAFTER             "unhideafter"
-/* what a double click on the tray icon opens: config (default) | manage */
+/* what a double click on the tray icon opens: config (default) | manage |
+ * quickconnect | quickconnectserial */
 #define KI_LAUNCHER_DBLCLICK                "traydblclick"
 /* the launcher's global hotkey ("Ctrl+Alt+K"): does what traydblclick opens;
  * empty or absent = none */
 #define KI_LAUNCHER_GLOBALHOTKEY            "globalhotkey"
+/* Quick Connect Serial in the tray menu: yes | no (default) */
+#define KI_LAUNCHER_TRAYQUICKSERIAL         "trayquickserial"
 
 /* [FontFallback] */
 #define KI_FONTFALLBACK_ACTIVE              "active"

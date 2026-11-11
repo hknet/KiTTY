@@ -70,6 +70,7 @@
 #include "../kitty/kitty_pwmem.h"   /* KiTTY: passwords wrapped in memory */
 #include "../kitty/kitty_sessionpath.h"   /* KiTTY: @name as a folder path */
 #include "../kitty/kitty_sessorder.h"    /* KiTTY: the manual order of the Saved Sessions menu */
+#include "../kitty/kitty_serialmenu.h"   /* KiTTY: the Serial submenu, Find speed (hknet/KiTTY#86) */
 #ifdef MOD_PERSO
 #include "../kitty/kitty.h"
 #include "../kitty/kitty_params.h"
@@ -1350,6 +1351,9 @@ static void win_seat_notify_session_started(Seat *seat);
 #endif
 static void win_seat_nonfatal(Seat *seat, const char *msg);
 static void win_seat_update_specials_menu(Seat *seat);
+#ifdef MOD_PERSO
+static void kitty_serial_menu_update_wgs(WinGuiSeat *wgs);
+#endif
 static void win_seat_set_busy_status(Seat *seat, BusyStatus status);
 static void win_seat_set_trust_status(Seat *seat, bool trusted);
 static bool win_seat_can_set_trust_status(Seat *seat);
@@ -3573,6 +3577,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * system menu above has been built, because GetSystemMenu(FALSE) hands back
      * the menu that setup populated. */
     kitty_apply_close_button(wgs, wgs->term_hwnd);
+    /* KiTTY: the Serial submenu from the start, so a port that failed to
+     * open can still be changed from it (the back end only adds it once
+     * the port is open) */
+    kitty_serial_menu_update_wgs(wgs);
 #endif
 
     if (restricted_acl()) {
@@ -4223,6 +4231,21 @@ static void update_savedsess_menu(WinGuiSeat *wgs)
                    "(No sessions)");
 }
 
+#ifdef MOD_PERSO
+/* KiTTY: the Serial submenu (kitty/kitty_serialmenu.c) goes in front of the
+ * separator under Special Command, or - with no specials - in front of the
+ * Event Log with a separator of its own. */
+static void kitty_serial_menu_update_wgs(WinGuiSeat *wgs)
+{
+    HMENU menus[lenof(wgs->popup_menus)];
+    for (size_t j = 0; j < lenof(wgs->popup_menus); j++)
+        menus[j] = wgs->popup_menus[j].menu;
+    kitty_serial_menu_update(menus, (int)lenof(menus), wgs->conf,
+                             wgs->specials_menu ? IDM_SPECIALSEP : IDM_SHOWLOG,
+                             !wgs->specials_menu);
+}
+#endif
+
 /*
  * Update the Special Commands submenu.
  */
@@ -4293,6 +4316,10 @@ static void win_seat_update_specials_menu(Seat *seat)
         }
     }
     wgs->specials_menu = new_menu;
+#ifdef MOD_PERSO
+    /* KiTTY: the Serial submenu beside it (hknet/KiTTY#86) */
+    kitty_serial_menu_update_wgs(wgs);
+#endif
 }
 
 static void update_mouse_pointer(WinGuiSeat *wgs)
@@ -6818,6 +6845,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #endif
 #endif
 #ifdef MOD_PERSO
+        /* KiTTY: the Serial submenu is filled as it opens - the ports
+         * present now, the speed and the port in force ticked */
+        kitty_serial_menu_popup((HMENU)wParam, wgs->conf, wgs->backend);
         /* the [Shortcuts] keys after a tab, in whichever menu opens - last,
          * after the blocks above have set the items' texts */
         kitty_menu_show_shortcuts((HMENU)wParam,
@@ -7265,6 +7295,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 backend_reconfig(wgs->backend, identconf ? identconf : wgs->conf);
                 if (identconf)
                     conf_free(identconf);
+                /* KiTTY: a serial setting the port refused is put back to
+                 * the one in force (hknet/KiTTY#86) */
+                kitty_serial_after_reconfig(wgs->conf, wgs->backend);
             }
 #else
             if (wgs->backend)
@@ -7772,6 +7805,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                                     wgs->specials[i].arg);
             }
 #ifdef MOD_PERSO
+            /* KiTTY: the Serial submenu's range (hknet/KiTTY#86) */
+            if (kitty_serial_menu_command(hwnd, wParam & ~(WPARAM)0xF,
+                                          wgs->conf, wgs->backend,
+                                          wgs->term, wgs->logctx))
+                break;
             /* KiTTY predefined-command shortcuts: Ctrl+Shift+A..Z (and User
              * Command context-menu clicks) arrive here as WM_COMMAND
              * IDM_USERCMD+n; run the n-th command of the entry table. */

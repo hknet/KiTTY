@@ -943,6 +943,8 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_sessorg.c   # KiTTY: Organize sessions, Arrange, the folder-delete box (#55)
   ${KITTY_DIR}/kitty_urlsession.c   # KiTTY: a link opens a matching saved session (cyd01/KiTTY#540)
   ${KITTY_DIR}/kitty_tags.c   # KiTTY: session tags - Session > Startup, Manage Sessions' tag pane (#60)
+  ${KITTY_DIR}/kitty_serialports.c   # KiTTY: the serial ports, the serial drop-downs, quick connect to a serial line (#86)
+  ${KITTY_DIR}/kitty_serialmenu.c    # KiTTY: the terminal window's Serial submenu and Find speed (#86)
   ${KITTY_DIR}/kitty_hostkeys.c
   ${KITTY_DIR}/kitty_hostkey_blob.c   # KiTTY: a stored key's text -> its blob (kitty_hostkeys.c, kageant)
   ${KITTY_DIR}/kitty_hostkey_verify.c
@@ -1066,6 +1068,10 @@ add_executable(kitty
   # logging.c likewise, for the per-line LogTimestamp: it reaches other binaries
   # through the utils library, built without MOD_PERSO.
   ${CMAKE_SOURCE_DIR}/logging.c
+  # serial.c likewise, for the Serial submenu's hooks and the report of a
+  # refused setting: it reaches other binaries through the otherbackends
+  # library, built without MOD_PERSO.
+  serial.c
   # NOTE: config.c is deliberately NOT here. The kitty/kitty_config*.c set
   # below is a full KiTTY replacement for it, compiled with MOD_PERSO, and it
   # already wins at link time. Adding config.c as well gives "multiple
@@ -1167,6 +1173,7 @@ add_executable(kitty_portable
   # why config.c must NOT be listed)
   ${CMAKE_SOURCE_DIR}/cmdline.c
   ${CMAKE_SOURCE_DIR}/logging.c
+  serial.c   # see the kitty target above
   ${CMAKE_SOURCE_DIR}/stubs/no-console.c
   kitty.rc
   ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)

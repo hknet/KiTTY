@@ -57,6 +57,7 @@
 #include "kitty_winutil.h"
 #include "kitty_dlgbox.h"
 #include "kitty_launcher.h"
+#include "kitty_serialports.h"   /* Quick Connect Serial: the speed remembered */
 #include "winfont_fallback.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
@@ -882,6 +883,15 @@ static HMENU InitLauncherMenu( char * Key ) {
 	 * refresh is written into it, and an open menu cannot grow. */
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+7, KT_MENU_REFRESH "\t   " ) ;
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+1, KT_MENU_CONFIGURATION ) ;
+	/* Quick Connect Serial ([Launcher] trayquickserial, the Launcher panel):
+	 * the configuration box on Serial, the first port detected, the speed
+	 * of the last quick serial connect (hknet/KiTTY#86) */
+	{
+		char v[16] = "" ;
+		if( ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_TRAYQUICKSERIAL, v, sizeof(v) )
+		    && !stricmp( v, "yes" ) )
+			AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+11, KT_MENU_QUICK_CONNECT_SERIAL ) ;
+	}
 	AppendMenu( menu, MF_ENABLED, IDM_LAUNCHER+2, KT_MENU_TTYED ) ;
 	/* KiTTY: workplace proxy mode. While it is on, ONE item that shows which
 	 * proxy everything is going through and switches it off; while it is off, a
@@ -1928,15 +1938,20 @@ static void LauncherTrayDoubleAction( HWND hwnd, const char * from ) {
 static void LauncherTrayDoubleRun( HWND hwnd, const char * from ) {
 	{
 		/* [Launcher] traydblclick=manage: Manage Sessions, =quickconnect: Quick
-		 * Connect, else a configuration box (read at each double click, so
-		 * the panel's choice applies to a running launcher without a restart) */
-		char what[32] = "", manage_arg[] = "-manage", quick_arg[] = "-quickconnect", none[] = "" ;
+		 * Connect, =quickconnectserial: Quick Connect Serial, else a
+		 * configuration box (read at each double click, so the panel's choice
+		 * applies to a running launcher without a restart) */
+		char what[32] = "", manage_arg[] = "-manage", quick_arg[] = "-quickconnect",
+		     serial_arg[] = "-quickconnectserial", none[] = "" ;
 		int got = ReadParameterN( KI_SECTION_LAUNCHER, KI_LAUNCHER_DBLCLICK, what, sizeof(what) ) ;
 		int manage = got && !stricmp( what, "manage" ) ;
 		int quick = got && !stricmp( what, "quickconnect" ) ;
+		int serial = got && !stricmp( what, "quickconnectserial" ) ;
 		LAUNCHER_TRACEF( "double click via %s: %s", from,
-		                 manage ? "Manage Sessions" : quick ? "Quick Connect" : "new configuration box" ) ;
-		RunKiTTYpp( hwnd, manage ? manage_arg : quick ? quick_arg : none ) ;
+		                 manage ? "Manage Sessions" : quick ? "Quick Connect" :
+		                 serial ? "Quick Connect Serial" : "new configuration box" ) ;
+		RunKiTTYpp( hwnd, manage ? manage_arg : quick ? quick_arg :
+		                  serial ? serial_arg : none ) ;
 	}
 }
 
@@ -3130,6 +3145,11 @@ static LRESULT CALLBACK Launcher_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 					LAUNCHER_TRACEF( "menu entry: new configuration box" ) ;
 					RunKiTTYpp( hwnd, "" ) ;
 					break ;
+				case IDM_LAUNCHER+11: {
+					char serial_arg[] = "-quickconnectserial" ;
+					LAUNCHER_TRACEF( "menu entry: Quick Connect Serial" ) ;
+					RunKiTTYpp( hwnd, serial_arg ) ;
+					break ; }
 				case IDM_LAUNCHER+2:
 					RunKiTTYpp( hwnd, "-ed" ) ;
 					break ;
@@ -3446,6 +3466,10 @@ void RunConfig( Conf * conf ) {
 	 * child would un-mask it; the 0.84 child does not, so it sent the masked
 	 * bytes and auto-login and WinSCP launches failed for every stored
 	 * password. */
+
+	/* A quick connect to a serial line started from the box: its speed is
+	 * the next one's (hknet/KiTTY#86). */
+	kitty_serial_quick_remember( conf ) ;
 
 	/* restricted_acl is a FUNCTION in the 0.84 core (it was a variable in the
 	 * 0.76-era tree this file came from) - testing the bare identifier was

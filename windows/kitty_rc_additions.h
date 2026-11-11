@@ -395,6 +395,15 @@
 #define IDM_SEARCH 0xB240        /* Find... - the scrollback search's bar */
 #endif   /* Save as New Session... (kitty_savenew_box) */
 #endif
+/* The terminal window's Serial submenu (kitty/kitty_serialmenu.c,
+ * hknet/KiTTY#86): a RANGE of 64 entries, IDM_SERIAL_MIN + 0x10 * slot -
+ * steps of 0x10 because WM_SYSCOMMAND masks the low four bits. Slots: the
+ * speeds, the speed in force when it is not one of them, Find speed, then
+ * the ports. Decoded in window.c's default case, like the specials. */
+#ifndef IDM_SERIAL_MIN
+#define IDM_SERIAL_MIN 0xB250
+#define IDM_SERIAL_MAX 0xB650   /* first id past the range */
+#endif
 
 /* KiTTY send-text input boxes ([Shortcuts] input / inputm and the password
  * variant) and the InfoBox banner. The 0.76 originals were ordinals 117-120,

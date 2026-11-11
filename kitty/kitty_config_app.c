@@ -3954,6 +3954,8 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     ctrl_text(s, KT_KSET_LA_READ_AT_START, HELPCTX(kitty_kset_launcher));
     s = ctrl_getset(b, KSET_PATH("Launcher"), "menu", KT_KSET_LA_MENU);
     KSET_CHECKBOX(s, KT_KSET_LA_RELOAD, KI_LAUNCHER_RELOAD, kitty_kset_launcher_menu);
+    KSET_CHECKBOX(s, KT_KSET_LA_TRAY_QUICKSERIAL, KI_LAUNCHER_TRAYQUICKSERIAL,
+                  kitty_kset_launcher_menu);
     KSET_DROPLIST(s, KT_KSET_LA_SECOND, KI_LAUNCHER_ALREADYRUNCHECK, kitty_kset_launcher);
     KSET_DROPLIST(s, KT_KSET_LA_DBLCLICK, KI_LAUNCHER_DBLCLICK, kitty_kset_launcher);
 #ifdef MOD_LAUNCHER

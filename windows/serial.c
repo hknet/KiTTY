@@ -7,6 +7,12 @@
 #include <limits.h>
 
 #include "putty.h"
+#ifdef MOD_PERSO
+/* KiTTY (hknet/KiTTY#86): the hooks of kitty_serialmenu.c, a refused
+ * setting reported */
+#include "../kitty/kitty_serialports.h"
+#include "../kitty/kitty_text.h"
+#endif
 
 #define SERIAL_MAX_BACKLOG 4096
 
@@ -20,6 +26,16 @@ struct Serial {
     long clearbreak_time;
     bool break_in_progress;
     Backend backend;
+#ifdef MOD_PERSO
+    /* KiTTY: the data tap (Find speed, kitty_serialmenu.c). Then the
+     * settings the port took last: the Serial submenu's check mark and
+     * Change Settings show what is in force, not a refused value. */
+    serial_tap_fn tap;
+    void *tapctx;
+    bool applied_valid;
+    int applied_speed, applied_databits, applied_stopbits;
+    int applied_parity, applied_flow;
+#endif
 };
 
 static void serial_terminate(Serial *serial)
@@ -38,6 +54,14 @@ static void serial_terminate(Serial *serial)
         CloseHandle(serial->port);
         serial->port = INVALID_HANDLE_VALUE;
     }
+#ifdef MOD_PERSO
+    /* KiTTY: a tap still set learns that the port is gone */
+    if (serial->tap) {
+        serial_tap_fn tap = serial->tap;
+        serial->tap = NULL;
+        tap(serial->tapctx, NULL, 0);
+    }
+#endif
 }
 
 static size_t serial_gotdata(
@@ -69,6 +93,16 @@ static size_t serial_gotdata(
 
         return 0;
     } else {
+#ifdef MOD_PERSO
+        /* KiTTY: while Find speed scans, what arrives goes to its scoring
+         * (kitty_serialmenu.c) and is NOT shown in the terminal: it is
+         * read at speeds that are mostly wrong. It would fill the screen
+         * with garbage. */
+        if (serial->tap) {
+            serial->tap(serial->tapctx, data, len);
+            return 0;
+        }
+#endif
         return seat_stdout(serial->seat, data, len);
     }
 }
@@ -176,6 +210,15 @@ static char *serial_configure(Serial *serial, HANDLE serport, Conf *conf)
         if (!SetCommState(serport, &dcb))
             return dupprintf("Configuring serial port: %s",
                              win_strerror(GetLastError()));
+#ifdef MOD_PERSO
+        /* KiTTY: what the port took is what is in force now */
+        serial->applied_valid = true;
+        serial->applied_speed = conf_get_int(conf, CONF_serspeed);
+        serial->applied_databits = conf_get_int(conf, CONF_serdatabits);
+        serial->applied_stopbits = conf_get_int(conf, CONF_serstopbits);
+        serial->applied_parity = conf_get_int(conf, CONF_serparity);
+        serial->applied_flow = conf_get_int(conf, CONF_serflow);
+#endif
 
         timeouts.ReadIntervalTimeout = 1;
         timeouts.ReadTotalTimeoutMultiplier = 0;
@@ -297,12 +340,32 @@ static void serial_reconfig(Backend *be, Conf *conf)
 {
     Serial *serial = container_of(be, Serial, backend);
 
+#ifdef MOD_PERSO
+    /*
+     * KiTTY: a setting the port refused (SetCommState failed) is reported
+     * in the Terminal Window's Event Log and as a line in the terminal.
+     * The port keeps the settings it had: a failed SetCommState changes
+     * nothing. serial_backend_applied() still returns them, so the caller
+     * can put them back into the Conf.
+     */
+    char *err = serial_configure(serial, serial->port, conf);
+    if (err) {
+        char *msg = dupprintf(KT_SERIAL_REFUSED_FMT, err);
+        char *line = dupprintf("\r\n%s\r\n", msg);
+        logevent(serial->logctx, msg);
+        seat_stdout(serial->seat, line, strlen(line));
+        sfree(line);
+        sfree(msg);
+        sfree(err);
+    }
+#else
     serial_configure(serial, serial->port, conf);
 
     /*
      * FIXME: what should we do if that call returned a non-NULL error
      * message?
      */
+#endif
 }
 
 /*
@@ -466,3 +529,44 @@ const BackendVtable serial_backend = {
                            (1 << SER_FLOW_RTSCTS) |
                            (1 << SER_FLOW_DSRDTR)),
 };
+
+#ifdef MOD_PERSO
+/* KiTTY (hknet/KiTTY#86): the hooks of the Serial submenu and Find speed,
+ * see kitty/kitty_serialports.h. */
+static Serial *serial_of(Backend *be)
+{
+    if (!be || be->vt != &serial_backend)
+        return NULL;
+    return container_of(be, Serial, backend);
+}
+
+bool serial_backend_tap(Backend *be, serial_tap_fn fn, void *ctx)
+{
+    Serial *serial = serial_of(be);
+    if (!serial)
+        return false;
+    serial->tap = fn;
+    serial->tapctx = ctx;
+    return true;
+}
+
+HANDLE serial_backend_port(Backend *be)
+{
+    Serial *serial = serial_of(be);
+    return serial ? serial->port : INVALID_HANDLE_VALUE;
+}
+
+bool serial_backend_applied(Backend *be, int *speed, int *databits,
+                            int *stopbits, int *parity, int *flow)
+{
+    Serial *serial = serial_of(be);
+    if (!serial || !serial->applied_valid)
+        return false;
+    *speed = serial->applied_speed;
+    *databits = serial->applied_databits;
+    *stopbits = serial->applied_stopbits;
+    *parity = serial->applied_parity;
+    *flow = serial->applied_flow;
+    return true;
+}
+#endif

@@ -134,6 +134,12 @@ char default_init_file_content[] =
 ;    configuration instead of inheriting whatever was used before.\n\
 ;loadlastsession=yes\n\
 \n\
+; quickserialspeed: the speed of the last quick connect to a serial line,\n\
+;    written when one is opened (default 9600 until then). Quick Connect\n\
+;    Serial (\"kitty.exe -quickconnectserial\", the launcher) and quick\n\
+;    connect switched to Serial fill it in, beside the first port detected.\n\
+;quickserialspeed=9600\n\
+\n\
 ; noexit: if yes, closing a TERMINAL window starts a fresh instance showing the\n\
 ;    configuration box, so you land back in the session picker instead of at an\n\
 ;    empty desktop. That includes a terminal whose connection never came up - a\n\
@@ -1509,12 +1515,19 @@ char default_init_file_content[] =
 ; traydblclick: what a double click on the launcher's tray icon opens -\n\
 ;    config\n\
 ;    (a new configuration window, the default), manage (Manage Sessions\n\
-;    alone, as \"kitty.exe -manage\" opens it) or quickconnect (Quick Connect,\n\
-;    as \"kitty.exe -quickconnect\" opens it). Read at each double click, so a\n\
-;    running launcher follows a change at once.\n\
+;    alone, as \"kitty.exe -manage\" opens it), quickconnect (Quick Connect,\n\
+;    as \"kitty.exe -quickconnect\" opens it) or quickconnectserial (Quick\n\
+;    Connect Serial, as \"kitty.exe -quickconnectserial\" opens it). Read at\n\
+;    each double click, so a running launcher follows a change at once.\n\
 ;    Set in Application > KiTTY++ Settings > Launcher. Until 0.85.1.19-beta\n\
 ;    named dblclick, renamed at the first start.\n\
 ;traydblclick=config\n\
+\n\
+; trayquickserial: with yes, the launcher's tray menu carries Quick Connect\n\
+;    Serial: the configuration box on Serial, the first port detected and the\n\
+;    speed of the last quick serial connect ([ConfigBox] quickserialspeed).\n\
+;    Default no. Set in Application > KiTTY++ Settings > Launcher.\n\
+;trayquickserial=no\n\
 \n\
 ; globalhotkey: a key combination, from any program, that does what the\n\
 ;    double click above does (e.g. Ctrl+Alt+K: one or more of Ctrl, Alt,\n\

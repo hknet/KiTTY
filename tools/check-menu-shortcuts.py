@@ -74,6 +74,7 @@ MENU_SOURCES = [
     "windows/window.c",
     "kitty/kitty_specialmenu.c",   # InitSpecialMenu: the User Command menu
     "kitty/kitty_win.c",           # kitty_sync_transparency_menu
+    "kitty/kitty_serialmenu.c",    # the Serial submenu (IDM_SERIAL_MIN range)
 ]
 # file -> why its variable ids are known
 VARIABLE_IDS = {
@@ -308,6 +309,9 @@ SELF_KWIN = r'''
 void sync(HMENU menu, UINT id_up) { InsertMenu(menu, anchor, MF_BYPOSITION, id_up, "Up"); }
 %(extra_kwin)s
 '''
+SELF_SERIAL = r'''
+void fill(HMENU m, int i) { AppendMenu(m, MF_STRING, IDM_SERIAL_MIN + 0x10 * i, text); }
+'''
 SELF_ACTIONS = r'''
 static const struct sc_action sc_actions[] = {
 	SC_ACT( eventlog, KI_SC_EVENTLOG, 0, KT_SC_ACT_EVENTLOG, IDM_SHOWLOG, SC_MENU, NULL ),
@@ -371,6 +375,7 @@ def self_test():
             for rel, text in (("windows/window.c", SELF_WINDOW),
                               ("kitty/kitty_specialmenu.c", SELF_SPECIAL),
                               ("kitty/kitty_win.c", SELF_KWIN),
+                              ("kitty/kitty_serialmenu.c", SELF_SERIAL),
                               (ACTIONS, SELF_ACTIONS),
                               (ALLOW, SELF_ALLOW)):
                 p = os.path.join(tmp, rel)

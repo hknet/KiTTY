@@ -660,6 +660,11 @@ struct winctrl {
      * store temporary data about the control.
      */
     void *data;
+    /*
+     * KiTTY: hidden by dlg_ctrl_show (an overlay starts hidden, see
+     * same_place_as in dialog.h). A panel shown again leaves it hidden.
+     */
+    bool hidden;
 };
 /*
  * And this structure holds a set of the above, in two separate
@@ -686,6 +691,12 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
 void winctrl_add_shortcuts(struct dlgparam *dp, struct winctrl *c);
 void winctrl_rem_shortcuts(struct dlgparam *dp, struct winctrl *c);
 bool winctrl_context_help(struct dlgparam *dp, HWND hwnd, int id);
+/* KiTTY (windows/dialog.c): false for a control of a cached configuration
+ * box panel that is not the one on screen, true for any other control.
+ * controls.c reaches it through kitty_cfg_on_screen_hook, which dialog.c
+ * sets: kittygen links controls.c without dialog.c. */
+bool kitty_cfg_winctrl_on_screen(struct winctrl *c);
+extern bool (*kitty_cfg_on_screen_hook)(struct winctrl *c);
 
 void dp_init(struct dlgparam *dp);
 void dp_add_tree(struct dlgparam *dp, struct winctrls *tree);
