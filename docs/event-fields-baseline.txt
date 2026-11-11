@@ -1,27 +1,35 @@
-# The event IDs of release 0.85.1.19 with their fields in order. Every field list of
+# The event IDs of release 0.85.1.20 with their fields in order. Every field list of
 # kitty/kitty_eventids.h must start with the list here: fields are only appended
 # (tools/check-kitty-events.py, rule 13). Written by check-kitty-events.py
 # --write-baseline from the release tag; release.ps1 -NextBaseline refreshes it.
-release 0.85.1.19
-100 sign fp comment result reason req reqpath pid
-101 confirm fp comment result reason req reqpath pid
-110 add fp comment result reason req reqpath pid path
-111 loadkey path result enc
-112 forget-path path result
-113 retry trigger loaded refused absent broken
-114 remove fp comment result reason req reqpath pid
-115 remove-all fp comment result reason req reqpath pid
-120 lock fp comment result reason req reqpath pid
-121 unlock fp comment result reason req reqpath pid
-130 hello-enrol path result detail
-131 hello-protect path dest result detail err
-132 hello-unlock path result detail
-140 keyfile-warning path warning
-150 reencrypt-all fp comment result reason req reqpath pid
-151 reencrypt fp comment result reason req reqpath pid
-152 decrypt fp comment result trigger req reqpath pid
-160 agent result
-170 logrotate result
+release 0.85.1.20
+100 sign fp comment result reason req reqpath pid dest fwd seq sig ts prev
+101 confirm fp comment result reason req reqpath pid dest fwd seq sig ts prev
+102 session-bind result dest forwarding req reqpath pid seq sig ts prev
+103 request result reason req reqpath pid dest fwd seq sig ts prev
+104 restricted fp comment result reason req reqpath pid dest fwd rule seq sig ts prev
+110 add fp comment result reason req reqpath pid path restrict seq sig ts prev
+111 loadkey path result enc seq sig ts prev
+112 forget-path path result seq sig ts prev
+113 retry trigger loaded refused absent broken seq sig ts prev
+114 remove fp comment result reason req reqpath pid seq sig ts prev
+115 remove-all fp comment result reason req reqpath pid seq sig ts prev
+116 rules fp comment result reason req reqpath pid restrict seq sig ts prev
+117 key-arrival fp comment path trigger seq sig ts prev
+120 lock fp comment result reason req reqpath pid seq sig ts prev
+121 unlock fp comment result reason req reqpath pid seq sig ts prev
+130 hello-enrol path result detail seq sig ts prev
+131 hello-protect path dest result detail err seq sig ts prev
+132 hello-unlock path result detail seq sig ts prev
+140 keyfile-warning path warning seq sig ts prev
+141 certificate fp comment result valid seq sig ts prev
+150 reencrypt-all fp comment result reason req reqpath pid seq sig ts prev
+151 reencrypt fp comment result reason req reqpath pid seq sig ts prev
+152 decrypt fp comment result trigger req reqpath pid seq sig ts prev
+160 agent result seq sig ts prev
+170 logrotate result seq sig ts prev
+171 logchain result run logkey file fragment value rotation keep expired seq sig ts prev
+172 repeated count first last of seq sig ts prev
 200 session-open session host port proto addr from pid
 201 session-close session host port result reason exitcode pid
 210 hostkey-known host port keytype fp basis pid proxy
@@ -54,3 +62,6 @@ release 0.85.1.19
 902 missing-features features missing
 903 session-save-failed session path reason
 904 store-rights-not-set path reason
+905 app-file-warning path reason
+906 helper-program result path reason
+907 session-log-not-written path

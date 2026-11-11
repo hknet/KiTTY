@@ -14,6 +14,11 @@
   "kind": "bool",
   "values": null
  },
+ "AcceptScriptBridge": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
  "AddressFamily": {
   "default": "0",
   "kind": "enum",
@@ -645,8 +650,7 @@
   "kind": "enum",
   "values": [
    0,
-   1,
-   2
+   1
   ]
  },
  "FileZillaPort": {
@@ -1528,6 +1532,11 @@
  "SaveOnExit": {
   "default": "0",
   "kind": "bool",
+  "values": null
+ },
+ "ScriptBridgeKey": {
+  "default": "",
+  "kind": "text",
   "values": null
  },
  "ScriptCRLF": {

@@ -9,13 +9,9 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 - **Default** applies when the key is missing (`-`: computed at load, e.g. `PortNumber` from `Protocol`, fonts from the system). With `[KiTTY] inheritdefaultsettings=yes` a missing key comes from `Default Settings` instead.
 - **What it does** is the line for the key in `tools/session-key-descriptions.txt` where it has one, else the first sentence of the help topic of the key's control; `-` where neither exists.
 
-## Changed since 0.85.1.19
+## Changed since 0.85.1.20
 
-| Change | Key | Was | Now |
-|---|---|---|---|
-| added | `AcceptScriptBridge` | - | bool |
-| added | `ScriptBridgeKey` | - | text |
-| type changed | `FileZillaPasswordMode` | enum 0/1/2 | enum 0/1 |
+No key added, removed or changed.
 
 ## Keys
 
