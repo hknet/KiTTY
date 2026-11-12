@@ -1781,8 +1781,9 @@ static void signop_coroutine(PageantAsyncOp *pao)
     /* KiTTY key-usage confirmation: a key whose comment requests it must be
      * confirmed by the user before each use (Cernko patch). The hook is NULL
      * except in the Pageant GUI, and returns nonzero unless confirmation is
-     * required and the user refused. */
-    if (kageant_confirm_hook) {
+     * required and the user refused. A security key requires its own touch
+     * (and PIN): that is the confirmation, no box before it. */
+    if (kageant_confirm_hook && !ssh_keyalg_is_sk(ssh_key_alg(sign_key))) {
         /*
          * The confirm box is modal and pumps the message loop, so another
          * agent request - including one that deletes this key - can be served
@@ -1839,6 +1840,17 @@ static void signop_coroutine(PageantAsyncOp *pao)
     strbuf *signature = strbuf_new();
     ssh_key_sign(sign_key, ptrlen_from_strbuf(so->data_to_sign),
                  so->flags, BinarySink_UPCAST(signature));
+
+    /* KiTTY: a security key signs on the device, which can be absent, be
+     * refused a touch, or time out - an empty signature then, and the
+     * reason from the key code. Every other key always signs. */
+    if (!signature->len) {
+        strbuf_free(signature);
+        response = strbuf_new();
+        failure(so->pao.info->pc, so->pao.reqid, response, so->failure_type,
+                "security key: %s", sk_sign_error());
+        goto respond;
+    }
 
     /* KiTTY: a key was just used to authenticate -- let the GUI agent nudge. */
     so->signed_ok = true;
@@ -2660,6 +2672,13 @@ static PageantAsyncOp *pageant_make_op(
             fail("algorithm unknown");
             goto add2_cleanup;
         }
+        /* KiTTY: a security key this agent could never sign with (no
+         * webauthn.dll: Windows before 10 1903) is refused, not held */
+        if (ssh_keyalg_is_sk(alg) && !sk_assert_provider) {
+            fail("security keys require Windows 10 1903 or later "
+                 "(webauthn.dll)");
+            goto add2_cleanup;
+        }
 
         key->key = ssh_key_new_priv_openssh(alg, msg);
 
@@ -2696,6 +2715,24 @@ static PageantAsyncOp *pageant_make_op(
                 const char *derr = "";
                 if (get_err(msg))
                     break;            /* reported below */
+                /* KiTTY: sk-provider@openssh.com names the middleware
+                 * ssh-add would load ("internal" on Windows): kageant
+                 * signs through webauthn.dll whatever it names. Only for
+                 * a security key; the value goes to the client log. */
+                if (ptrlen_eq_string(ctname, "sk-provider@openssh.com")) {
+                    ptrlen prov = get_string(msg);
+                    if (get_err(msg))
+                        break;        /* reported below */
+                    if (!ssh_keyalg_is_sk(alg)) {
+                        fail("sk-provider constraint on a key that is not a "
+                             "security key");
+                        goto add2_cleanup;
+                    }
+                    pageant_client_log(pc, reqid, "sk-provider \"%.*s\" "
+                                       "ignored: kageant signs through "
+                                       "Windows", PTRLEN_PRINTF(prov));
+                    continue;
+                }
                 if (!ptrlen_eq_string(ctname, KAR_EXT_NAME)) {
                     fail("this key constraint is not supported by kageant");
                     goto add2_cleanup;

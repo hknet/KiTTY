@@ -1351,10 +1351,13 @@ struct khw_job {
     void *arg;
 };
 
+/* The thread owns its job record: a caller that stops waiting
+ * (limit_ms below) never touches it again. */
 static DWORD WINAPI khw_job_thread(LPVOID p)
 {
     struct khw_job *j = (struct khw_job *)p;
     j->fn(j->arg);
+    sfree(j);
     return 0;
 }
 
@@ -1371,11 +1374,20 @@ void kitty_hello_on_worker(void)
     khw_on_worker = true;
 }
 
-static bool khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller)
+/* KHW_RAN: fn ran to its end. KHW_BUSY: not started. KHW_ABANDONED:
+ * limit_ms ran out first - fn runs on alone and must own everything it
+ * touches (khw_sk_job). limit_ms INFINITE: no limit. */
+#define KHW_RAN        1
+#define KHW_BUSY       0
+#define KHW_ABANDONED -1
+static int khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller,
+                             DWORD limit_ms)
 {
-    struct khw_job j;
+    struct khw_job *j;
     HANDLE h;
     bool disabled = false;
+    int ret = KHW_RAN;
+    DWORD start = GetTickCount();
     if (khw_on_worker) {
         if (caller && IsWindow(caller) && IsWindowEnabled(caller)) {
             EnableWindow(caller, FALSE);
@@ -1384,15 +1396,18 @@ static bool khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller)
         fn(arg);
         if (disabled)
             EnableWindow(caller, TRUE);
-        return true;
+        return KHW_RAN;
     }
     if (khw_busy)
-        return false;          /* no re-entry from the pumped messages */
-    j.fn = fn;
-    j.arg = arg;
-    h = CreateThread(NULL, 0, khw_job_thread, &j, 0, NULL);
-    if (!h)
-        return false;
+        return KHW_BUSY;       /* no re-entry from the pumped messages */
+    j = snew(struct khw_job);
+    j->fn = fn;
+    j->arg = arg;
+    h = CreateThread(NULL, 0, khw_job_thread, j, 0, NULL);
+    if (!h) {
+        sfree(j);
+        return KHW_BUSY;
+    }
     khw_busy = true;
     /* The pump below dispatches to the caller's windows while their own
      * modal loop is suspended underneath - their buttons would be live
@@ -1413,14 +1428,17 @@ static bool khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller)
         HandleWaitList *hwl = get_handle_wait_list();
         HANDLE waits[MAXIMUM_WAIT_OBJECTS];
         int nw = hwl->nhandles;
-        DWORD w;
+        DWORD w, wait = INFINITE;
         MSG msg;
         bool worker_done;
+        if (limit_ms != INFINITE) {
+            DWORD spent = GetTickCount() - start;
+            wait = spent < limit_ms ? limit_ms - spent : 0;
+        }
         memcpy(waits, hwl->handles, nw * sizeof(HANDLE));
         waits[nw] = h;
         w = MsgWaitForMultipleObjects(nw + 1, waits, FALSE,
-                                      toplevel_callback_pending() ? 0
-                                                                  : INFINITE,
+                                      toplevel_callback_pending() ? 0 : wait,
                                       QS_ALLINPUT);
         if ((unsigned)(w - WAIT_OBJECT_0) < (unsigned)nw)
             handle_wait_activate(hwl, w - WAIT_OBJECT_0);
@@ -1428,6 +1446,11 @@ static bool khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller)
         handle_wait_list_free(hwl);
         if (worker_done)
             break;
+        if (limit_ms != INFINITE && GetTickCount() - start >= limit_ms &&
+            WaitForSingleObject(h, 0) == WAIT_TIMEOUT) {
+            ret = KHW_ABANDONED;
+            break;
+        }
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
@@ -1438,7 +1461,7 @@ static bool khw_run_on_thread(void (*fn)(void *), void *arg, HWND caller)
         EnableWindow(caller, TRUE);
     khw_busy = false;
     CloseHandle(h);
-    return true;
+    return ret;
 }
 
 struct khw_assert_job {
@@ -1728,7 +1751,8 @@ int kitty_hello_prf_kek(HWND owner, const unsigned char *credid,
         a.api = api; a.owner = host ? host : owner;
         a.credid = credid; a.credidlen = credidlen; a.out = prf_out;
         a.hr = E_FAIL;
-        if (!khw_run_on_thread(khw_assert_job_run, &a, owner))
+        if (khw_run_on_thread(khw_assert_job_run, &a, owner, INFINITE) !=
+            KHW_RAN)
             a.hr = E_FAIL;
         hr = a.hr;
         owner = a.owner;   /* for the detail line */
@@ -2235,3 +2259,285 @@ int kitty_hello_enrol_auto(HWND owner, const char *container,
     return ret;
 }
 
+
+#include "kitty_sk.h"
+
+/* ====================================================================
+ * FIDO security keys in SSH (sk-*@openssh.com, crypto/sk-keys.c): one
+ * signature from a ROAMING authenticator (a YubiKey) through webauthn.dll,
+ * the only way to the device a process without admin rights has from
+ * Windows 10 1903 on. The SSH data goes in as the client data itself:
+ * Windows hashes it, so the device signs authenticatorData ||
+ * SHA256(data) - what PROTOCOL.u2f requires. No extensions are requested,
+ * so authenticatorData stays 37 bytes (sk-keys.c checks it). API version
+ * 1 is enough: the options are passed at their version-1 layout.
+ */
+
+#define KHW_ATTACHMENT_CROSS_PLATFORM  2
+#define KHW_UV_DISCOURAGED             3
+
+/* Windows' wait for the device is not always bounded by the timeout it
+ * is given (the Sandbox: no prompt at all, the call never returned), so
+ * kageant ends it itself: WebAuthNCancelCurrentOperation on the request's
+ * cancellation id once its own time is up (both API version 1). */
+typedef HRESULT (WINAPI *pWebAuthNGetCancellationId_t)(GUID *);
+typedef HRESULT (WINAPI *pWebAuthNCancelCurrentOperation_t)(const GUID *);
+
+typedef struct khw_sk_api {
+    int state;                       /* 0 untried, 1 ok, -1 unusable */
+    pWebAuthNGetAssertion_t GetAssertion;
+    pWebAuthNFreeAssertion_t FreeAssertion;
+    pWebAuthNGetErrorName_t ErrorName;       /* optional */
+    pWebAuthNGetCancellationId_t GetCancellationId;      /* optional */
+    pWebAuthNCancelCurrentOperation_t CancelOperation;   /* optional */
+} khw_sk_api;
+
+static khw_sk_api *khw_sk_load(void)
+{
+    static khw_sk_api api;
+    if (api.state == 0) {
+        HMODULE dll = LoadLibraryW(L"webauthn.dll");
+        if (dll) {
+            api.GetAssertion = (pWebAuthNGetAssertion_t)
+                kitty_api_from(dll, "webauthn.dll",
+                               "WebAuthNAuthenticatorGetAssertion",
+                               KITTY_API_OPTIONAL, KT_CAP_SK_KEYS);
+            api.FreeAssertion = (pWebAuthNFreeAssertion_t)
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeAssertion",
+                               KITTY_API_OPTIONAL, KT_CAP_SK_KEYS);
+            api.ErrorName = (pWebAuthNGetErrorName_t)
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNGetErrorName",
+                               KITTY_API_OPTIONAL, KT_CAP_SK_KEYS);
+            api.GetCancellationId = (pWebAuthNGetCancellationId_t)
+                kitty_api_from(dll, "webauthn.dll", "WebAuthNGetCancellationId",
+                               KITTY_API_OPTIONAL, KT_CAP_SK_KEYS);
+            api.CancelOperation = (pWebAuthNCancelCurrentOperation_t)
+                kitty_api_from(dll, "webauthn.dll",
+                               "WebAuthNCancelCurrentOperation",
+                               KITTY_API_OPTIONAL, KT_CAP_SK_KEYS);
+        }
+        api.state = (api.GetAssertion && api.FreeAssertion) ? 1 : -1;
+    }
+    return api.state > 0 ? &api : NULL;
+}
+
+int kitty_sk_timeout_ms = KITTY_SK_TIMEOUT_MS;
+
+int kitty_sk_available(void)
+{
+    return khw_sk_load() != NULL;
+}
+
+/* One signature request. Heap-owned with copies of everything it reads:
+ * when Windows keeps the request open past every cancel, kageant answers
+ * the client anyway (KHW_SK_GRACE_MS) and the worker ends alone. The
+ * caller, the worker and the watchdog each hold one reference. */
+struct khw_sk_job {
+    LONG refs;
+    khw_sk_api *api;
+    HWND owner;
+    wchar_t *rp_id;
+    unsigned char *handle, *data;
+    size_t handlelen, datalen;
+    DWORD uv;
+    HRESULT hr;
+    unsigned char *auth, *sig;
+    DWORD authlen, siglen;
+    GUID cancel_id;
+    bool have_cancel;
+    HANDLE done;         /* set by the worker when Windows returns */
+    DWORD cancel_after;  /* ms before the first cancel */
+};
+
+/* How long kageant waits for Windows after the first cancel before it
+ * answers the client without the worker. */
+#define KHW_SK_GRACE_MS 8000
+
+/* A worker left waiting on Windows blocks nothing: the next signature is
+ * a request of its own with its own cancellation id and the same bound.
+ * Windows answers it or refuses it busy while it still holds the old one. */
+
+static void khw_sk_job_release(struct khw_sk_job *a)
+{
+    if (InterlockedDecrement(&a->refs) != 0)
+        return;
+    if (a->done)
+        CloseHandle(a->done);
+    sfree(a->rp_id);
+    sfree(a->handle);
+    sfree(a->data);
+    sfree(a->auth);
+    sfree(a->sig);
+    sfree(a);
+}
+
+/* The watchdog: waits for the request to end (done set) or for the time
+ * to run out, then cancels it - again every second, as Windows can let a
+ * cancel pass while its prompt is still coming up. */
+static DWORD WINAPI khw_sk_watch_thread(LPVOID p)
+{
+    struct khw_sk_job *a = (struct khw_sk_job *)p;
+    DWORD wait = a->cancel_after;
+    int tries = 0;
+    while (WaitForSingleObject(a->done, wait) == WAIT_TIMEOUT &&
+           tries++ < 120) {
+        a->api->CancelOperation(&a->cancel_id);
+        wait = 1000;
+    }
+    khw_sk_job_release(a);
+    return 0;
+}
+
+static void khw_sk_job_run(void *arg)
+{
+    struct khw_sk_job *a = (struct khw_sk_job *)arg;
+    KHW_CLIENT_DATA cd;
+    KHW_CREDENTIAL cred;
+    KHW_ASSERT_OPTS opts;
+    KHW_ASSERTION *asrt = NULL;
+    HRESULT hr;
+
+    memset(&cd, 0, sizeof(cd));
+    cd.dwVersion = 1;
+    cd.cbClientDataJSON = (DWORD)a->datalen;
+    cd.pbClientDataJSON = a->data;
+    cd.pwszHashAlgId = L"SHA-256";
+
+    memset(&cred, 0, sizeof(cred));
+    cred.dwVersion = 1;
+    cred.cbId = (DWORD)a->handlelen;
+    cred.pbId = a->handle;
+    cred.pwszCredentialType = L"public-key";
+
+    memset(&opts, 0, sizeof(opts));
+    opts.dwVersion = a->have_cancel ? 3 : 1;     /* 3: pCancellationId */
+    opts.dwTimeoutMilliseconds = (DWORD)kitty_sk_timeout_ms;
+    if (a->have_cancel)
+        opts.pCancellationId = &a->cancel_id;
+    opts.CredentialList.cCredentials = 1;
+    opts.CredentialList.pCredentials = &cred;
+    opts.dwAuthenticatorAttachment = KHW_ATTACHMENT_CROSS_PLATFORM;
+    opts.dwUserVerificationRequirement = a->uv;
+
+    hr = a->api->GetAssertion(a->owner, a->rp_id, &cd, &opts, &asrt);
+    if (SUCCEEDED(hr) && asrt) {
+        a->auth = snewn(asrt->cbAuthenticatorData + 1, unsigned char);
+        memcpy(a->auth, asrt->pbAuthenticatorData, asrt->cbAuthenticatorData);
+        a->authlen = asrt->cbAuthenticatorData;
+        a->sig = snewn(asrt->cbSignature + 1, unsigned char);
+        memcpy(a->sig, asrt->pbSignature, asrt->cbSignature);
+        a->siglen = asrt->cbSignature;
+        a->api->FreeAssertion(asrt);
+    } else if (SUCCEEDED(hr)) {
+        hr = E_FAIL;
+    }
+    a->hr = hr;
+    if (a->done)
+        SetEvent(a->done);
+    khw_sk_job_release(a);
+}
+
+static unsigned char *khw_memdup(ptrlen p)
+{
+    unsigned char *d = snewn(p.len + 1, unsigned char);
+    memcpy(d, p.ptr, p.len);
+    return d;
+}
+
+const char *kitty_sk_assert(HWND owner, ptrlen application,
+                            ptrlen key_handle, unsigned key_flags,
+                            ptrlen data, SkAssertion *out)
+{
+    static char reason[160];
+    khw_sk_api *api = khw_sk_load();
+    struct khw_sk_job *a;
+    HWND host;
+    HANDLE wt = NULL;
+    HRESULT hr;
+    DWORD limit = INFINITE;
+    int ran;
+
+    if (!api)
+        return KT_SK_NO_WEBAUTHN;
+    if (khw_busy && !khw_on_worker)
+        return KT_SK_BUSY;       /* before the card and the threads */
+
+    a = snew(struct khw_sk_job);
+    memset(a, 0, sizeof(*a));
+    a->refs = 1;                                 /* the caller's */
+    a->api = api;
+    {   /* application is a counted string, not terminated */
+        char *app = mkstr(application);
+        a->rp_id = dup_mb_to_wc(CP_UTF8, app);
+        sfree(app);
+    }
+    a->handle = khw_memdup(key_handle);
+    a->handlelen = key_handle.len;
+    a->data = khw_memdup(data);
+    a->datalen = data.len;
+    a->uv = (key_flags & SSH_SK_USER_VERIFICATION_REQD) ? KHW_UV_REQUIRED
+                                                       : KHW_UV_DISCOURAGED;
+    a->hr = E_FAIL;
+    a->have_cancel = api->GetCancellationId && api->CancelOperation &&
+        SUCCEEDED(api->GetCancellationId(&a->cancel_id));
+    a->cancel_after = (DWORD)kitty_sk_timeout_ms + 2000;  /* Windows' own first */
+    if (a->have_cancel)
+        a->done = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+    host = khw_owner_usable(owner) ? NULL : khw_host_create();
+    a->owner = host ? host : owner;
+
+    InterlockedIncrement(&a->refs);              /* the worker's */
+    if (a->done) {
+        InterlockedIncrement(&a->refs);          /* the watchdog's */
+        wt = CreateThread(NULL, 0, khw_sk_watch_thread, a, 0, NULL);
+        if (!wt)
+            InterlockedDecrement(&a->refs);
+        else
+            limit = a->cancel_after + KHW_SK_GRACE_MS;
+    }
+    /* Without a watchdog no cancel can end the request: no limit then,
+     * the worker would only be left waiting on its own. */
+    ran = khw_run_on_thread(khw_sk_job_run, a, owner, limit);
+    if (ran == KHW_BUSY)
+        InterlockedDecrement(&a->refs);          /* the worker never ran */
+    if (ran == KHW_ABANDONED &&
+        WaitForSingleObject(a->done, 0) == WAIT_OBJECT_0)
+        ran = KHW_RAN;          /* it did end, just now: hr is set first */
+    if (wt)
+        CloseHandle(wt);
+    khw_host_destroy(host);
+
+    if (ran == KHW_BUSY) {
+        if (a->done)
+            SetEvent(a->done);                   /* ends the watchdog */
+        khw_sk_job_release(a);
+        return KT_SK_BUSY;
+    }
+    if (ran == KHW_ABANDONED) {
+        khw_sk_job_release(a);
+        return KT_SK_CANCELLED;
+    }
+    hr = a->hr;
+    if (SUCCEEDED(hr)) {
+        put_data(out->auth_data, a->auth, a->authlen);
+        put_data(out->signature, a->sig, a->siglen);
+    }
+    khw_sk_job_release(a);
+
+    if (SUCCEEDED(hr))
+        return NULL;
+    if (hr == NTE_USER_CANCELLED ||
+        hr == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+        return KT_SK_CANCELLED;
+    if (hr == NTE_NOT_FOUND)
+        return KT_SK_NOT_THIS_DEVICE;
+    {
+        PCWSTR name = api->ErrorName ? api->ErrorName(hr) : NULL;
+        char *n = name ? dup_wc_to_mb(CP_UTF8, name, "?") : dupstr("");
+        snprintf(reason, sizeof(reason), KT_SK_WINDOWS_ERROR,
+                 n, (unsigned long)hr);
+        sfree(n);
+    }
+    return reason;
+}

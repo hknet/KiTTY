@@ -362,6 +362,15 @@ add_executable(test_certinfo
   sshpubk.c)
 target_link_libraries(test_certinfo crypto utils ${platform_libraries})
 
+# KiTTY: unit test for FIDO security keys (crypto/sk-keys.c): OpenSSH's
+# own vectors parse and verify, key files load, a device's answer becomes
+# a signature, every refusal gives its reason.
+add_executable(test_sk
+  test/test_sk.c
+  import.c
+  sshpubk.c)
+target_link_libraries(test_sk crypto utils ${platform_libraries})
+
 # KiTTY: unit test for the port-knocking sequence (kitty/kitty_knockparse.c,
 # in the network library): the entry forms, the separators, the port range,
 # the pause limit, the entry shown when one is not valid.
@@ -578,7 +587,7 @@ foreach(t
     test_textrun test_mpw_params test_hello_container
     test_far2l test_oscnotify test_progstatus test_modkeys test_kittykeys
     test_termenv test_droppath test_sendesc test_strbuf_catf test_secretmask test_getfile test_hostmatch test_search test_acceptnew test_jumphost test_hostkeys00
-    test_agentbind test_agentrestrict test_certinfo
+    test_agentbind test_agentrestrict test_certinfo test_sk
     test_auditparse test_auditchain test_eventids test_evclass
     test_commentlinks)
   kitty_add_test(${t})

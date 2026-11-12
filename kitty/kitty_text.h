@@ -1967,6 +1967,14 @@
 #define KT_CAP_KITTYGEN_FATAL                        "KiTTYgen Fatal Error"
 #define KT_CAP_HELLO                                 "Windows Hello"
 #define KT_CAP_HELLO_KEYS                            "Windows Hello protected keys"
+#define KT_CAP_SK_KEYS                               "FIDO security keys"
+/* why a security key did not sign: kageant's client log and the agent
+ * failure, after "security key: " (kitty_hello.c kitty_sk_assert) */
+#define KT_SK_NO_WEBAUTHN                            "webauthn.dll not available (Windows 10 1903 or later required)"
+#define KT_SK_BUSY                                   "another Windows Hello or security key request in progress"
+#define KT_SK_CANCELLED                              "cancelled or timed out"
+#define KT_SK_NOT_THIS_DEVICE                        "key not found on the inserted security key"
+#define KT_SK_WINDOWS_ERROR                          "Windows refused the request: %s (0x%08lX)"
 #define KT_CAP_LAUNCHER                              "KiTTY++ Launcher"
 #define KT_CAP_LAUNCHER_HOTKEY                       "KiTTY++ Launcher hotkey"
 #define KT_CAP_SESSION_IMPORT                        KT_MIG_BOX_TITLE  /* the Migration panel's box carries the same title */

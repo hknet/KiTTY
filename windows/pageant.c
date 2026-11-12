@@ -34,6 +34,7 @@
 #include "../kitty/kitty_sessmenu.h"  /* KiTTY: Saved Sessions as the folder tree */
 #include "../kitty/kitty_protkey.h"   /* KiTTY: kitty_protkey_available (tray tip) */
 #include "../kitty/kitty_hello.h"     /* KiTTY: Windows Hello presence check */
+#include "../kitty/kitty_sk.h"        /* KiTTY: FIDO security keys */
 #include "../kitty/kitty_hello_keys.h" /* KiTTY: Hello-protected keys */
 #include "../kitty/kitty_hello_ui.h"   /* KiTTY: the shared printout window */
 #include "../kitty/kitty_auditlog.h"  /* KiTTY: the audit log's file sink */
@@ -114,6 +115,72 @@ static void kageant_start_failed(HWND hwnd, const char *what)
 #define IPCCLASSNAME  "Pageant"
 
 static HWND traywindow;
+
+/* KiTTY: a FIDO security key signs on the device, through webauthn.dll
+ * (crypto/sk-keys.c requests it. kitty_hello.c calls Windows). */
+static const char *kageant_sk_sign(ptrlen application, ptrlen key_handle,
+                                   unsigned key_flags, bool ecdsa,
+                                   ptrlen data, SkAssertion *out)
+{
+    (void)ecdsa;
+    return kitty_sk_assert(traywindow, application, key_handle, key_flags,
+                           data, out);
+}
+
+#ifdef KITTY_TEST_BUILD_LABEL
+/* Test builds: KITTY_TEST_SK_SOFTKEY=<an unencrypted Ed25519 PPK file>
+ * stands in for the device - that key signs what a security key
+ * would, so a real sshd can check a whole login.
+ * KITTY_TEST_SK_TIMEOUT_MS shortens Windows' wait for a device
+ * (a sign with no device ends in seconds). */
+static ssh2_userkey *kageant_sk_softkey;
+static const char *kageant_sk_soft_sign(ptrlen application, ptrlen key_handle,
+                                        unsigned key_flags, bool ecdsa,
+                                        ptrlen data, SkAssertion *out)
+{
+    unsigned char h[32];
+    (void)key_handle;
+    if (ecdsa)
+        return "the test stand-in signs Ed25519 only";
+    hash_simple(&ssh_sha256, application, h);
+    put_data(out->auth_data, h, 32);
+    put_byte(out->auth_data, SSH_SK_USER_PRESENCE_REQD |
+             (key_flags & SSH_SK_USER_VERIFICATION_REQD));
+    put_uint32(out->auth_data, 1);
+    strbuf *msg = strbuf_dup(ptrlen_from_strbuf(out->auth_data));
+    hash_simple(&ssh_sha256, data, h);
+    put_data(msg, h, 32);
+    strbuf *bsig = strbuf_new();
+    ssh_key_sign(kageant_sk_softkey->key, ptrlen_from_strbuf(msg), 0,
+                 BinarySink_UPCAST(bsig));
+    BinarySource src[1];
+    BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(bsig));
+    get_string(src);
+    put_datapl(out->signature, get_string(src));
+    strbuf_free(bsig);
+    strbuf_free(msg);
+    return NULL;
+}
+
+static void kageant_sk_test_doors(void)
+{
+    const char *p = getenv("KITTY_TEST_SK_TIMEOUT_MS");
+    if (p && atoi(p) > 0)
+        kitty_sk_timeout_ms = atoi(p);
+    p = getenv("KITTY_TEST_SK_SOFTKEY");
+    if (p && *p) {
+        Filename *fn = filename_from_str(p);
+        const char *err = NULL;
+        ssh2_userkey *uk = ppk_load_f(fn, "", &err);
+        filename_free(fn);
+        if (uk && uk != SSH2_WRONG_PASSPHRASE && uk->key &&
+            ssh_key_alg(uk->key) == &ssh_ecdsa_ed25519) {
+            kageant_sk_softkey = uk;
+            sk_assert_provider = kageant_sk_soft_sign;
+        }
+    }
+}
+#endif
 static HWND keylist;
 static HWND aboutbox;
 
@@ -10050,6 +10117,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                  (UINT)kitty_audit_chain_head_ms() : 10000, NULL);
         kitty_hello_cache_ttl_set(kageant_hello_ttl());  /* KiTTY: KEK cache */
         kageant_confirm_hook = kageant_do_confirm;
+        if (kitty_sk_available())       /* KiTTY: FIDO security keys */
+            sk_assert_provider = kageant_sk_sign;
+#ifdef KITTY_TEST_BUILD_LABEL
+        kageant_sk_test_doors();
+#endif
         kageant_refused_hook = kageant_audit_refused;   /* KiTTY: refusals in the audit log */
         kageant_bind_hook = kageant_audit_bind;         /* KiTTY: session-binds in the audit log */
         kageant_comment_confirm_hook = kageant_comment_wants_confirm;

@@ -560,6 +560,8 @@ const ssh_keyalg *const all_keyalgs[] = {
     &ssh_ecdsa_nistp521,
     &ssh_ecdsa_ed25519,
     &ssh_ecdsa_ed448,
+    &ssh_sk_ed25519,          /* KiTTY: FIDO security keys */
+    &ssh_sk_ecdsa_nistp256,
     &opensshcert_ssh_dsa,
     &opensshcert_ssh_rsa,
     &opensshcert_ssh_rsa_sha256,
@@ -1653,6 +1655,11 @@ strbuf *ppk_save_sb(ssh2_userkey *key, const char *passphrase,
 bool ppk_save_f(const Filename *filename, ssh2_userkey *key,
                 const char *passphrase, const ppk_save_parameters *params)
 {
+    /* KiTTY: a FIDO security key has no PPK form (its handle has no place
+     * there); OpenSSH format keeps it */
+    if (ssh_keyalg_is_sk(ssh_key_alg(key->key)))
+        return false;
+
     FILE *fp = f_open(filename, "wb", true);
     if (!fp)
         return false;

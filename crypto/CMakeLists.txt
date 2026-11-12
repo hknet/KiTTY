@@ -34,6 +34,7 @@ add_sources_from_current_dir(crypto
   pubkey-ssh1.c
   rfc6979.c
   rsa.c
+  sk-keys.c
   sha256-common.c
   sha256-select.c
   sha256-sw.c

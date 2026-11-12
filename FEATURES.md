@@ -41,6 +41,7 @@ AI agentic use cases: [docs/AGENTIC-USE.md](docs/AGENTIC-USE.md) is for the huma
   - [kageant — reorder loaded keys](#kageant--reorder-loaded-keys)
   - [kageant — lock the agent](#kageant--lock-the-agent)
   - [kageant — destination of a key use](#kageant--destination-of-a-key-use)
+  - [kageant — FIDO security keys](#kageant--fido-security-keys)
   - [Dark mode](#dark-mode)
   - [Post-quantum key-exchange warning](#post-quantum-key-exchange-warning)
   - [Command-line key generator (kittygen-cli)](#command-line-key-generator-kittygen-cli)
@@ -778,6 +779,21 @@ A binding whose signature does not verify is refused and logged as a refused req
 **How to enable:** always on, nothing to configure. OpenSSH's known_hosts as a source: **Settings > Agent > Use OpenSSH's known_hosts as a host-key source**.
 
 (no screenshot)
+
+### kageant — FIDO security keys
+
+kageant holds security keys made with `ssh-keygen -t ed25519-sk` or
+`-t ecdsa-sk`: `ssh-add id_ed25519_sk` adds one, the key list shows it as
+*Ed25519 security key* or *NIST p256 security key*. The secret stays on the
+device. For each signature kageant sends the request to the device through
+Windows' security-key support (webauthn.dll, Windows 10 1903 or later).
+Windows shows its prompt for the touch. A key made with
+`-O verify-required` also requires the PIN. No kageant confirmation box
+comes before it, whatever the confirmation
+setting: the touch is the confirmation. A missing device, a cancelled
+prompt or no touch within 60 seconds ends the request with the reason in
+the agent's log. On older Windows kageant refuses to add such a key.
+kageant's own Add Key does not read these key files yet; `ssh-add` does.
 
 ### Dark mode
 

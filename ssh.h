@@ -1397,6 +1397,32 @@ extern const ssh_keyalg ssh_rsa;
 extern const ssh_keyalg ssh_rsa_sha256;
 extern const ssh_keyalg ssh_rsa_sha512;
 extern const ssh_keyalg ssh_ecdsa_ed25519;
+/* KiTTY: FIDO security keys (crypto/sk-keys.c, OpenSSH PROTOCOL.u2f) */
+extern const ssh_keyalg ssh_sk_ed25519;
+extern const ssh_keyalg ssh_sk_ecdsa_nistp256;
+#define SSH_SK_USER_PRESENCE_REQD     0x01
+#define SSH_SK_USER_VERIFICATION_REQD 0x04
+#define SSH_SK_RESIDENT_KEY           0x20
+/* What the device returned for one signature: authenticatorData, and the
+ * signature itself (Ed25519: 64 bytes; p256: DER SEQUENCE { r, s }). */
+typedef struct SkAssertion {
+    strbuf *auth_data;
+    strbuf *signature;
+} SkAssertion;
+/* The program holding security keys sets this: have the device sign
+ * data (the client data handed to it as is) for the key handle. NULL on
+ * success, else the reason. Unset, a security key cannot sign. */
+typedef const char *(*sk_assert_fn)(ptrlen application, ptrlen key_handle,
+                                    unsigned key_flags, bool ecdsa,
+                                    ptrlen data, SkAssertion *out);
+extern sk_assert_fn sk_assert_provider;
+/* Why the last security-key signature was not made ("" after success). */
+const char *sk_sign_error(void);
+bool ssh_keyalg_is_sk(const ssh_keyalg *alg);
+const char *sk_signature_from_assertion(const ssh_keyalg *alg,
+                                        ptrlen application,
+                                        ptrlen auth_data, ptrlen dev_sig,
+                                        BinarySink *bs);
 extern const ssh_keyalg ssh_ecdsa_ed448;
 extern const ssh_keyalg ssh_ecdsa_nistp256;
 extern const ssh_keyalg ssh_ecdsa_nistp384;

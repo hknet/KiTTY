@@ -10,6 +10,13 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- kageant can now hold FIDO security keys (`sk-ssh-ed25519@openssh.com`,
+  `sk-ecdsa-sha2-nistp256@openssh.com`, a YubiKey for example) that
+  `ssh-add` adds. A signature goes to the device through Windows
+  (webauthn.dll, Windows 10 1903 or later). Windows prompts for the touch.
+  A key made with `-O verify-required` also requires the PIN. kitty.exe, klink, kscp
+  and ksftp log in with such a key from the agent. Without a device the
+  agent refuses with the reason in its log.
 - Window > Appearance: **Ease blinking** (`BlinkEase`) fades the blinking
   cursor and blinking text out and in instead of switching plain off and on.
 - Direct2D: use GDI font selection (`[KiTTY] d2dgdifont=yes`, Application >
