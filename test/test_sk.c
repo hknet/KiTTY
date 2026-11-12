@@ -3,7 +3,9 @@
  * test vectors (regress/unittests/sshkey and sshsig, openssh-portable)
  * parse, keep their fingerprints and verify; private key files load; a
  * signature is built from what a device returns, through the provider,
- * and every refusal path gives its reason. No device is needed.
+ * and every refusal path gives its reason. No device is needed. The key
+ * files as kageant reads them (stage 4): the public key without the
+ * passphrase, a passphrase-protected file, a wrong passphrase.
  */
 #include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
@@ -28,14 +30,17 @@ void modalfatalbox(const char *p, ...)
     exit(1);
 }
 
-/* Linked for the key code; nothing here makes a key or a random number:
- * Ed25519 and ECDSA (RFC 6979) sign deterministically. */
+/* Linked for the key code; nothing here makes a key: Ed25519 and ECDSA
+ * (RFC 6979) sign deterministically. The one caller of random_read is the
+ * key file writer (test_file_protected: the bcrypt salt and the check
+ * value), which a fixed pattern serves. */
 void old_keyfile_warning(void) {}
 void random_read(void *buf, size_t size)
 {
-    (void)buf;
-    (void)size;
-    modalfatalbox("random_read called in test_sk");
+    static unsigned char next = 0x5a;
+    unsigned char *p = buf;
+    for (size_t i = 0; i < size; i++)
+        p[i] = next++;
 }
 
 static int fails = 0;
@@ -190,6 +195,22 @@ static void test_file(const char *name, const char *file, const char *pub,
     expect(what, ptrlen_eq_ptrlen(ptrlen_from_strbuf(pb),
                                   ptrlen_from_strbuf(want)), true);
 
+    /* kageant's first look at the file (pageant_sk_keyfile_pub): the
+     * public key read without loading the key */
+    {
+        strbuf *fb = strbuf_new();
+        BinarySource fsrc[1];
+        BinarySource_BARE_INIT(fsrc, file, strlen(file));
+        bool got = import_openssh_new_pub_s(fsrc, BinarySink_UPCAST(fb),
+                                            NULL);
+        snprintf(what, sizeof(what),
+                 "%s: the public key read from the key file alone", name);
+        expect(what, got && ptrlen_eq_ptrlen(ptrlen_from_strbuf(fb),
+                                             ptrlen_from_strbuf(want)),
+               true);
+        strbuf_free(fb);
+    }
+
     /* the agent form (ADD_IDENTITY body, kageant's protected copy): out
      * and in again, the same key with the same flags */
     strbuf *ob = strbuf_new();
@@ -224,6 +245,84 @@ static void test_file(const char *name, const char *file, const char *pub,
     ssh_key_free(uk->key);
     sfree(uk->comment);
     sfree(uk);
+}
+
+/* A passphrase-protected key file, as ssh-keygen writes one when a
+ * passphrase is given: written here by the OpenSSH exporter, then read as
+ * kageant reads it. The public key needs no passphrase. A wrong one fails
+ * with "decryption check failed" - the text pageant_add_keyfile takes as
+ * "prompt again". */
+static void test_file_protected(const char *name, const char *file,
+                                const char *pub, const ssh_keyalg *alg)
+{
+    char what[128], *path, *dir = NULL;
+    const char *err = NULL;
+    BinarySource src[1];
+    BinarySource_BARE_INIT(src, file, strlen(file));
+    ssh2_userkey *uk = import_ssh2_s(src, SSH_KEYTYPE_OPENSSH_NEW, "", &err);
+    if (!uk || uk == SSH2_WRONG_PASSPHRASE) {
+        snprintf(what, sizeof(what), "%s: protected file - the key loads",
+                 name);
+        expect(what, false, true);
+        return;
+    }
+
+    DWORD n = GetTempPathA(0, NULL);
+    if (n) {
+        dir = snewn(n + 1, char);
+        if (!GetTempPathA(n + 1, dir))
+            dir[0] = '\0';
+    }
+    path = dupprintf("%stest_sk_%s_%lu", dir ? dir : "", name,
+                     (unsigned long)GetCurrentProcessId());
+    sfree(dir);
+    Filename *fn = filename_from_str(path);
+    char pass[] = "correct horse";
+    snprintf(what, sizeof(what), "%s: protected file - written", name);
+    expect(what, export_ssh2(fn, SSH_KEYTYPE_OPENSSH_NEW, uk, pass), true);
+    ssh_key_free(uk->key);
+    sfree(uk->comment);
+    sfree(uk);
+
+    char *cmt = NULL;
+    snprintf(what, sizeof(what), "%s: protected file - is encrypted", name);
+    expect(what, import_encrypted(fn, SSH_KEYTYPE_OPENSSH_NEW, &cmt), true);
+    sfree(cmt);
+
+    strbuf *fb = strbuf_new(), *want = b64(pub);
+    snprintf(what, sizeof(what),
+             "%s: protected file - public key read without the passphrase",
+             name);
+    expect(what, import_openssh_new_pub(fn, BinarySink_UPCAST(fb), NULL) &&
+           ptrlen_eq_ptrlen(ptrlen_from_strbuf(fb), ptrlen_from_strbuf(want)),
+           true);
+
+    char wrong[] = "wrong horse";
+    err = NULL;
+    ssh2_userkey *bad = import_ssh2(fn, SSH_KEYTYPE_OPENSSH_NEW, wrong, &err);
+    snprintf(what, sizeof(what),
+             "%s: protected file - a wrong passphrase gives "
+             "\"decryption check failed\"", name);
+    expect(what, !bad && err && !strcmp(err, "decryption check failed"),
+           true);
+
+    err = NULL;
+    ssh2_userkey *good = import_ssh2(fn, SSH_KEYTYPE_OPENSSH_NEW, pass, &err);
+    snprintf(what, sizeof(what),
+             "%s: protected file - the right passphrase loads the security "
+             "key", name);
+    expect(what, good && good != SSH2_WRONG_PASSPHRASE &&
+           ssh_key_alg(good->key) == alg, true);
+    if (good && good != SSH2_WRONG_PASSPHRASE) {
+        ssh_key_free(good->key);
+        sfree(good->comment);
+        sfree(good);
+    }
+    strbuf_free(fb);
+    strbuf_free(want);
+    DeleteFileA(path);
+    sfree(path);
+    filename_free(fn);
 }
 
 /* An SSHSIG (PROTOCOL.sshsig) carries the key and its signature over
@@ -552,6 +651,8 @@ int main(void)
               "ED25519-SK test key #1", 1);
     test_file("ecdsa-sk", EC_FILE, EC_PUB, &ssh_sk_ecdsa_nistp256,
               "ECDSA-SK test key #1", 1);
+    test_file_protected("ed25519-sk", ED_FILE, ED_PUB, &ssh_sk_ed25519);
+    test_file_protected("ecdsa-sk", EC_FILE, EC_PUB, &ssh_sk_ecdsa_nistp256);
     test_sshsig("ed25519-sk", ED_SSHSIG, &ssh_sk_ed25519);
     test_sshsig("ecdsa-sk", EC_SSHSIG, &ssh_sk_ecdsa_nistp256);
     test_device("ed25519-sk", false);

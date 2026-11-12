@@ -4590,6 +4590,25 @@ void pageant_set_add_dest(const struct kar_rules *r)
     }
 }
 
+bool pageant_sk_keyfile_pub(const Filename *fn, BinarySink *blob)
+{
+    strbuf *b = strbuf_new();
+    bool ok = key_type(fn) == SSH_KEYTYPE_OPENSSH_NEW &&
+        import_openssh_new_pub(fn, BinarySink_UPCAST(b), NULL);
+
+    if (ok) {
+        BinarySource src[1];
+        const ssh_keyalg *alg;
+        BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(b));
+        alg = find_pubkey_alg_len(get_string(src));
+        ok = alg && ssh_keyalg_is_sk(alg);
+    }
+    if (ok && blob)
+        put_datapl(blob, ptrlen_from_strbuf(b));
+    strbuf_free(b);
+    return ok;
+}
+
 int pageant_add_keyfile(Filename *filename, const char *passphrase,
                         char **retstr, bool add_encrypted)
 {
@@ -4612,7 +4631,14 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
     *retstr = NULL;
 
     type = key_type(filename);
-    if (type != SSH_KEYTYPE_SSH1 && type != SSH_KEYTYPE_SSH2) {
+    /* KiTTY: the OpenSSH key file of a FIDO security key is read here too.
+     * It keeps no secret (the device holds it), so there is no encrypted
+     * form to hold back: such a file is always added in the clear, its own
+     * passphrase still prompted for. Other OpenSSH key files stay refused. */
+    bool sk_file = pageant_sk_keyfile_pub(filename, NULL);
+    if (sk_file)
+        add_encrypted = false;
+    if (!sk_file && type != SSH_KEYTYPE_SSH1 && type != SSH_KEYTYPE_SSH2) {
         *retstr = dupprintf("Couldn't load this key (%s)",
                             key_type_to_str(type));
         return PAGEANT_ACTION_FAILURE;
@@ -4652,6 +4678,9 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
                 return PAGEANT_ACTION_FAILURE;
             }
             kl = pageant_get_keylist(1);
+        } else if (sk_file) {
+            pageant_sk_keyfile_pub(filename, BinarySink_UPCAST(blob));
+            kl = pageant_get_keylist(2);
         } else {
             if (!ppk_loadpub_f(filename, NULL, BinarySink_UPCAST(blob),
                                NULL, &error)) {
@@ -4753,6 +4782,8 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
     error = NULL;
     if (type == SSH_KEYTYPE_SSH1)
         needs_pass = rsa1_encrypted_f(filename, &comment);
+    else if (sk_file)   /* KiTTY: the comment is the file's path */
+        needs_pass = import_encrypted(filename, type, &comment);
     else
         needs_pass = ppk_encrypted_f(filename, &comment);
     attempts = 0;
@@ -4801,7 +4832,28 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
 
         if (type == SSH_KEYTYPE_SSH1)
             ret = rsa1_load_f(filename, rkey, this_passphrase, &error);
-        else {
+        else if (sk_file) {
+            /* KiTTY: import_ssh2 has no wrong-passphrase result: a wrong
+             * passphrase fails the file's check value. The prompt repeats
+             * as for a PPK. The private part must be a security key too,
+             * as its public half promised. */
+            skey = import_ssh2(filename, type, (char *)this_passphrase,
+                               &error);
+            if (skey && !ssh_keyalg_is_sk(ssh_key_alg(skey->key))) {
+                sfree(skey->comment);
+                ssh_key_free(skey->key);
+                sfree(skey);
+                skey = NULL;
+                error = key_type_to_str(type);
+            }
+            if (skey)
+                ret = 1;
+            else if (needs_pass && error &&
+                     !strcmp(error, "decryption check failed"))
+                ret = -1;
+            else
+                ret = 0;
+        } else {
             skey = ppk_load_f(filename, this_passphrase, &error);
             if (skey == SSH2_WRONG_PASSPHRASE)
                 ret = -1;

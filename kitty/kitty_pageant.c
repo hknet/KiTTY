@@ -497,6 +497,8 @@ static int kageant_key_needs_pass(const char *abspath)
     int kt = key_type(pf), needs = 1;
     if (kt == SSH_KEYTYPE_SSH2) needs = ppk_encrypted_f(pf, &cmt);
     else if (kt == SSH_KEYTYPE_SSH1) needs = rsa1_encrypted_f(pf, &cmt);
+    else if (pageant_sk_keyfile_pub(pf, NULL))   /* a security key's file */
+        needs = import_encrypted(pf, kt, &cmt);
     sfree(cmt);
     filename_free(pf);
     return needs;
@@ -761,6 +763,9 @@ static strbuf *kageant_pubblob_comment(const char *path, char **comment_out)
         *comment_out = NULL;
     if (key_type(fn) == SSH_KEYTYPE_SSH1)
         ok = rsa1_loadpub_f(fn, BinarySink_UPCAST(blob), &comment, &error) == 1;
+    else if (pageant_sk_keyfile_pub(fn, BinarySink_UPCAST(blob)))
+        ok = true;   /* a security key's OpenSSH file: its comment is in
+                      * the part a passphrase may protect, so none here */
     else
         ok = ppk_loadpub_f(fn, &alg, BinarySink_UPCAST(blob), &comment, &error);
     filename_free(fn);
@@ -1084,8 +1089,11 @@ static int kageant_can_defer(const char *path)
 {
     Filename *fn = filename_from_str(path);
     int type = key_type(fn);
+    /* KiTTY: nor a security key's OpenSSH file - the deferred form is a PPK
+     * one, and the file keeps no secret to hold back */
+    bool sk = pageant_sk_keyfile_pub(fn, NULL);
     filename_free(fn);
-    return type != SSH_KEYTYPE_SSH1;
+    return type != SSH_KEYTYPE_SSH1 && !sk;
 }
 
 /*
@@ -1113,7 +1121,9 @@ static void kageant_audit_load(const char *ev, const char *path,
 {
     Filename *fn = filename_from_str(path);
     char *cmt = NULL;
-    int enc = ppk_encrypted_f(fn, &cmt);
+    int enc = pageant_sk_keyfile_pub(fn, NULL) ?
+        import_encrypted(fn, SSH_KEYTYPE_OPENSSH_NEW, &cmt) :
+        ppk_encrypted_f(fn, &cmt);
     filename_free(fn);
     sfree(cmt);
     kitty_audit(ev, "path", path, "result", result,

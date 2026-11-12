@@ -259,7 +259,7 @@ add_executable(pageant
   ${pageant_conditional_sources})
 be_list(pageant Pageant)
 target_link_libraries(pageant
-  eventloop console agent settings network crypto utils
+  eventloop console agent keygen settings network crypto utils
   ${pageant_libs})
 installed_program(pageant)
 

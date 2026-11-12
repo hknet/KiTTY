@@ -1112,6 +1112,9 @@ struct openssh_new_key {
     int nkeys, key_wanted;
     /* This too points to a position within keyblob */
     ptrlen private;
+    /* KiTTY: the first key's public half, also within keyblob
+     * (import_openssh_new_pub_s) */
+    ptrlen public_blob;
 
     strbuf *keyblob;
 };
@@ -1267,9 +1270,14 @@ static struct openssh_new_key *load_openssh_new_key(BinarySource *filesrc,
     }
     key->key_wanted = 0;
 
-    /* Read and ignore a string per public key. */
-    for (key_index = 0; key_index < key->nkeys; key_index++)
+    /* Read and ignore a string per public key. KiTTY: the first one is
+     * kept for import_openssh_new_pub_s. */
+    key->public_blob = PTRLEN_LITERAL("");
+    for (key_index = 0; key_index < key->nkeys; key_index++) {
         str = get_string(src);
+        if (key_index == 0)
+            key->public_blob = str;
+    }
 
     /*
      * Now we expect a string containing the encrypted part of the
@@ -1317,6 +1325,39 @@ static bool openssh_new_encrypted(BinarySource *src)
     smemclr(key, sizeof(*key));
     sfree(key);
     return ret;
+}
+
+/*
+ * KiTTY: the public key of a new-format OpenSSH private key file, read
+ * without its passphrase: the file keeps the public half in the clear.
+ * kageant reads the key files of FIDO security keys with it
+ * (pageant_sk_keyfile_pub in pageant.c).
+ */
+bool import_openssh_new_pub_s(BinarySource *src, BinarySink *bs,
+                              const char **errmsg_p)
+{
+    struct openssh_new_key *key = load_openssh_new_key(src, errmsg_p);
+
+    if (!key)
+        return false;
+    put_datapl(bs, key->public_blob);
+    strbuf_free(key->keyblob);
+    smemclr(key, sizeof(*key));
+    sfree(key);
+    return true;
+}
+
+bool import_openssh_new_pub(const Filename *filename, BinarySink *bs,
+                            const char **errmsg_p)
+{
+    LoadedFile *lf = lf_load_keyfile(filename, errmsg_p);
+    bool toret;
+
+    if (!lf)
+        return false;
+    toret = import_openssh_new_pub_s(BinarySource_UPCAST(lf), bs, errmsg_p);
+    lf_free(lf);
+    return toret;
 }
 
 static ssh2_userkey *openssh_new_read(

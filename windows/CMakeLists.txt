@@ -306,7 +306,7 @@ add_executable(pageant
   pageant.rc)
 add_dependencies(pageant generated_licence_h)
 target_link_libraries(pageant
-  guimisc agent network crypto eventloop utils
+  guimisc agent keygen network crypto eventloop utils   # KiTTY: keygen = import.c (OpenSSH security-key files)
   uuid.lib   # KiTTY: CLSID_ShellLink / IID_IShellLink GUIDs (kitty_startup_shortcut.c)
   comctl32.lib   # KiTTY: InitCommonControlsEx for the key-list ListView
   wintrust crypt32 version   # KiTTY: kitty_authenticode.c (New key launcher gate)

@@ -793,7 +793,9 @@ comes before it, whatever the confirmation
 setting: the touch is the confirmation. A missing device, a cancelled
 prompt or no touch within 60 seconds ends the request with the reason in
 the agent's log. On older Windows kageant refuses to add such a key.
-kageant's own Add Key does not read these key files yet; `ssh-add` does.
+kageant also reads the key file itself: Add Key, its command line and the
+startup keys take it, so the key is back after a restart. kageant prompts for
+a passphrase on the file as for any key file.
 
 ### Dark mode
 

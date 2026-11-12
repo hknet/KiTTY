@@ -1841,6 +1841,11 @@ ssh2_userkey *import_ssh2(const Filename *filename, int type,
                           char *passphrase, const char **errmsg_p);
 ssh2_userkey *import_ssh2_s(BinarySource *src, int type,
                             char *passphrase, const char **errmsg_p);
+/* KiTTY: a new-format OpenSSH key file's public key, no passphrase needed */
+bool import_openssh_new_pub(const Filename *filename, BinarySink *bs,
+                            const char **errmsg_p);
+bool import_openssh_new_pub_s(BinarySource *src, BinarySink *bs,
+                              const char **errmsg_p);
 bool export_ssh1(const Filename *filename, int type,
                  RSAKey *key, char *passphrase);
 bool export_ssh2(const Filename *filename, int type,

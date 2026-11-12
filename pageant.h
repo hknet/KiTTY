@@ -392,6 +392,11 @@ enum {
 };
 int pageant_add_keyfile(Filename *filename, const char *passphrase,
                         char **retstr, bool add_encrypted);
+/* KiTTY: true for a new-format OpenSSH key file of a FIDO security key
+ * (ssh-keygen -t ed25519-sk / ecdsa-sk), which pageant_add_keyfile reads
+ * too; its public key goes to blob when blob is not NULL. Read without the
+ * passphrase. */
+bool pageant_sk_keyfile_pub(const Filename *fn, BinarySink *blob);
 void pageant_forget_passphrases(void);
 
 struct pageant_pubkey {
