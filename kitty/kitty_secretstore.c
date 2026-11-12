@@ -109,8 +109,8 @@ int kitty_portable_password_dpapi(void)
 /* ---- master-password (MPW1) glue ----------------------------------------
  * The crypto lives in kitty/kitty_mpw.c (Argon2id + AES-CBC/HMAC), which needs
  * the crypto lib + CSPRNG and is linked only into tools that have them; it
- * self-registers these ops via a constructor. Tools without it (puttytel/pterm)
- * leave the pointers NULL, so MPW is unavailable: under the master-password
+ * self-registers these ops via a constructor. A program without it (the stock
+ * PuTTY build) leaves the pointers NULL, so MPW is unavailable: under the master-password
  * policy their saves are refused (kept and reported), never DPAPI instead.
  * The unlock state, per-store salt and verifier (registry) live here. */
 #define KSEC_MPW_KEYLEN  64    /* must match KITTY_MPW_DERIVED_LEN */

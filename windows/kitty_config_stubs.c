@@ -1,12 +1,12 @@
 /*
- * Link-time stubs for the stock PuTTY GUI variants (putty / puttytel / pterm).
+ * Link-time stubs for the stock PuTTY GUI variant (putty).
  *
- * Those targets compile KiTTY's shared, modified windows/dialog.c (via the
- * guiterminal library) but do NOT link the KiTTY config/proxy sources
+ * That target compiles KiTTY's shared, modified windows/dialog.c (via the
+ * guiterminal library) but does NOT link the KiTTY config/proxy sources
  * (kitty/kitty.c, kitty/kitty_proxy.c) that define these accessors. Without
- * these stubs they fail to link. The values chosen make the KiTTY config-box
- * height override and the named-proxy Proxy-choice row inert, so those targets
- * render the stock config box.
+ * these stubs it fails to link. The values chosen make the KiTTY config-box
+ * height override and the named-proxy Proxy-choice row inert, so it renders
+ * the stock config box.
  *
  * The real implementations, driving the actual KiTTY behaviour, live in
  * kitty/kitty.c (GetConfigBoxHeight / GetConfigBoxWindowHeight) and

@@ -10,7 +10,7 @@
  * which needs the real names to resolve and call.
  *
  * The ProcThreadAttributeList pair is conpty.c's: also Vista+, also a
- * loader-killer for pterm. On XP the wrappers are never reached - conpty.c
+ * loader-killer for kitty.exe's Local type. On XP the wrappers are never reached - conpty.c
  * checks CreatePseudoConsole availability first - so their fallback only
  * has to exist, not to work.
  */

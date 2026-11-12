@@ -1,7 +1,7 @@
 # KiTTY++ in the Windows Event Log
 
 KiTTY++ can write what its binaries do - sessions (SSH, telnet, raw, rlogin,
-SUPDUP, serial lines), host keys, logins, the proxies and jump hosts a
+SUPDUP, serial lines, Local programs), host keys, logins, the proxies and jump hosts a
 connection went through, every transferred file, key generation, and every
 action of the SSH agent kageant - to the Windows Event Log. Each kind of
 record has its own event ID, and each field is its own insertion string in
@@ -22,7 +22,7 @@ Viewer's *User* column.
 | Program | Source | Event IDs | Log (system MSI installed) | Default |
 |---|---|---|---|---|
 | kageant (agent log) | `KiTTY++_agent` | 100-199 | `KiTTY++_Agent` | on when the log `KiTTY++_Agent` exists (file and Windows Event Log), otherwise file only |
-| kitty.exe, kitty_tel sessions | `KiTTY++_kitty` | 200-299 | `KiTTY++_Session` | off |
+| kitty.exe sessions | `KiTTY++_kitty` | 200-299 | `KiTTY++_Session` | off |
 | klink, kscp, ksftp | `KiTTY++_cli` | 300-399 | `KiTTY++_Session` | off |
 | kittygen, kittygen-cli | `KiTTY++_kittygen` | 400-499 | `KiTTY++_Session` | off |
 | the suite | `KiTTY++` | 900-999 | `Application` | always written |
@@ -62,13 +62,13 @@ settings show this under the Log page (section 7).
 
 ## 2. Turning it on
 
-### kitty.exe, kitty_tel, klink/kscp/ksftp, kittygen
+### kitty.exe, klink/kscp/ksftp, kittygen
 
 Configuration box: *Application > Security*, group **Windows Event Log**:
 
 | Checkbox | `[KiTTY]` key in `kitty.ini` | Covers |
 |---|---|---|
-| **kitty.exe sessions** | `sessioneventlog` | IDs 200-241, kitty.exe and kitty_tel |
+| **kitty.exe sessions** | `sessioneventlog` | IDs 200-241, kitty.exe |
 | **klink, kscp, ksftp** | `clieventlog` | IDs 300-331 |
 | **kittygen** | `kittygeneventlog` | IDs 400-403, kittygen and kittygen-cli |
 
@@ -198,6 +198,9 @@ Warning, 900 is Error, the rest are classified as Information.
   in `restrict`.
 - **Serial lines:** `proto` `serial`, `host` the line (`COM3`), `port` the
   speed.
+- **Local sessions:** `proto` `conpty`, `host` and `addr` the program
+  (`wsl.exe`, `cmd.exe` when the command line is empty), `port` empty. 201
+  carries the program's exit code in `exitcode`.
 - **The agent log's chain (kageant):** every agent record 100-172 ends with
   `seq` (its line in the chain of the agent log file), `sig` (the signature
   of that line), `ts` and `prev` (the line's time and the hash of the line
@@ -494,7 +497,7 @@ agentlog=yes
 agentlogsink=both
 ```
 
-`sessioneventlog`: kitty.exe and kitty_tel. `clieventlog`: klink, kscp,
+`sessioneventlog`: kitty.exe. `clieventlog`: klink, kscp,
 ksftp. `kittygeneventlog`: kittygen, kittygen-cli. `agentlog` with
 `agentlogsink` `eventlog` or `both`: kageant. Outside portable mode the
 registry value of the same name takes precedence (section 2). Each program
@@ -1332,10 +1335,10 @@ Source `KiTTY++_kitty`, `%1` = `session-open`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `session` | the saved session's name, empty when none was loaded |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
-| `%5` | `proto` | the protocol; values: ssh, telnet, raw, rlogin, supdup, serial |
-| `%6` | `addr` | the address connected to (a proxy's when one is used); a serial line's name |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
+| `%5` | `proto` | the protocol; values: ssh, telnet, raw, rlogin, supdup, serial, conpty (a Local session) |
+| `%6` | `addr` | the address connected to (a proxy's when one is used); a serial line's name; a Local session's program |
 | `%7` | `from` | the local end of the connection, address and port |
 | `%8` | `pid` | the process writing the record |
 
@@ -1346,8 +1349,8 @@ Source `KiTTY++_kitty`, `%1` = `session-close`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `session` | the saved session's name, empty when none was loaded |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%5` | `result` | the outcome; closed, remote-closed, fatal, user |
 | `%6` | `reason` | the fatal error's text |
 | `%7` | `exitcode` | the remote command's exit code |
@@ -1359,8 +1362,8 @@ Source `KiTTY++_kitty`, `%1` = `hostkey-known`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
 | `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
 | `%6` | `basis` | how the host key was known; values: cache, manual, ca |
@@ -1373,8 +1376,8 @@ Source `KiTTY++_kitty`, `%1` = `hostkey-new`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
 | `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
 | `%6` | `result` | the outcome; accept-new, accepted, refused |
@@ -1387,8 +1390,8 @@ Source `KiTTY++_kitty`, `%1` = `hostkey-mismatch`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
 | `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
 | `%6` | `result` | the outcome; accept-new, accepted, refused |
@@ -1401,8 +1404,8 @@ Source `KiTTY++_kitty`, `%1` = `hostkey-update`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
 | `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
 | `%6` | `result` | the outcome; stored, added (beside a stored key of its type), replaced, made-primary, removed, proof-failed, refused (the server refused the proof request), over-limit (more keys of one type than hostkeyspertype), declined (Change nothing, or no, with updatehostkeys=ask), unanswered (no answer with updatehostkeys=ask) |
@@ -1416,8 +1419,8 @@ Source `KiTTY++_kitty`, `%1` = `auth-ok`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
 | `%5` | `method` | the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident |
 | `%6` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
@@ -1431,8 +1434,8 @@ Source `KiTTY++_kitty`, `%1` = `auth-failed`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
 | `%5` | `method` | the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident |
 | `%6` | `reason` | access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text |
@@ -1448,8 +1451,8 @@ Source `KiTTY++_kitty`, `%1` = `proxy-used`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `proxy` | the proxy's type: http, socks4, socks5, telnet, local-command |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; local-command: the program's file name |
-| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; local-command: empty |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's; local-command: the program's file name |
+| `%4` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's; local-command: empty |
 | `%5` | `user` | the user name sent to the proxy, empty when none |
 | `%6` | `credentials` | yes when a user name or password went to the proxy, else no |
 | `%7` | `pid` | the process writing the record |
@@ -1462,7 +1465,7 @@ Source `KiTTY++_kitty`, `%1` = `farend-refused`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `session` | the saved session's name, empty when none was loaded |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
 | `%4` | `request` | what the far end asked for; values: osc52-read, osc5522-read, far2l-clipboard, file-read, file-write |
 | `%5` | `reason` | the reason as text |
 | `%6` | `detail` | the refusals the rate limit merged into this record (a number), open (a far2l clipboard open), the transfer id or the file name |
@@ -1475,8 +1478,8 @@ Source `KiTTY++_kitty`, `%1` = `transfer-done`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `session` | the saved session's name, empty when none was loaded |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%5` | `user` | the user name of the login (a proxy's: the name sent to it) |
 | `%6` | `method` | zmodem or kitten-osc5113 |
 | `%7` | `direction` | put (upload, to the server) or get (download, from it) |
@@ -1492,8 +1495,8 @@ Source `KiTTY++_kitty`, `%1` = `transfer-failed`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `session` | the saved session's name, empty when none was loaded |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%5` | `user` | the user name of the login (a proxy's: the name sent to it) |
 | `%6` | `method` | zmodem or kitten-osc5113 |
 | `%7` | `direction` | put (upload, to the server) or get (download, from it) |
@@ -1510,10 +1513,10 @@ Source `KiTTY++_cli`, `%1` = `session-open`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `session` | the saved session's name, empty when none was loaded |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
-| `%5` | `proto` | the protocol; values: ssh, telnet, raw, rlogin, supdup, serial |
-| `%6` | `addr` | the address connected to (a proxy's when one is used); a serial line's name |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
+| `%5` | `proto` | the protocol; values: ssh, telnet, raw, rlogin, supdup, serial, conpty (a Local session) |
+| `%6` | `addr` | the address connected to (a proxy's when one is used); a serial line's name; a Local session's program |
 | `%7` | `from` | the local end of the connection, address and port |
 | `%8` | `pid` | the process writing the record |
 
@@ -1524,8 +1527,8 @@ Source `KiTTY++_cli`, `%1` = `session-close`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `session` | the saved session's name, empty when none was loaded |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%4` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%5` | `result` | the outcome; closed, remote-closed, fatal, user |
 | `%6` | `reason` | the fatal error's text |
 | `%7` | `exitcode` | the tool's own exit code; empty when there is none |
@@ -1537,8 +1540,8 @@ Source `KiTTY++_cli`, `%1` = `hostkey-known`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
 | `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
 | `%6` | `basis` | how the host key was known; values: cache, manual, ca |
@@ -1551,8 +1554,8 @@ Source `KiTTY++_cli`, `%1` = `hostkey-new`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
 | `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
 | `%6` | `result` | the outcome; accept-new, accepted, refused |
@@ -1565,8 +1568,8 @@ Source `KiTTY++_cli`, `%1` = `hostkey-mismatch`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
 | `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
 | `%6` | `result` | the outcome; accept-new, accepted, refused |
@@ -1579,8 +1582,8 @@ Source `KiTTY++_cli`, `%1` = `hostkey-update`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `keytype` | the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused |
 | `%5` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
 | `%6` | `result` | the outcome; stored, added (beside a stored key of its type), replaced, made-primary, removed, proof-failed, refused (the server refused the proof request), over-limit (more keys of one type than hostkeyspertype), declined (Change nothing, or no, with updatehostkeys=ask), unanswered (no answer with updatehostkeys=ask) |
@@ -1594,8 +1597,8 @@ Source `KiTTY++_cli`, `%1` = `auth-ok`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
 | `%5` | `method` | the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident |
 | `%6` | `fp` | the key fingerprint; the hash alone (SHA256:...; an SSH-1 key's MD5 hash, aa:bb:...), empty for a proxy's login |
@@ -1609,8 +1612,8 @@ Source `KiTTY++_cli`, `%1` = `auth-failed`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
-| `%3` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's |
+| `%2` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
+| `%3` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's |
 | `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
 | `%5` | `method` | the authentication method; for 221 and 321 the one refused, or the last one tried when no method was left; values: none, publickey, password, keyboard-interactive, gssapi-with-mic, over SSH-1 also tis and cryptocard; for a proxy's login: password, chap, none, ident |
 | `%6` | `reason` | access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text |
@@ -1626,8 +1629,8 @@ Source `KiTTY++_cli`, `%1` = `proxy-used`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `proxy` | the proxy's type: http, socks4, socks5, telnet, local-command |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; local-command: the program's file name |
-| `%4` | `port` | the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; local-command: empty |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's; local-command: the program's file name |
+| `%4` | `port` | the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's; local-command: empty |
 | `%5` | `user` | the user name sent to the proxy, empty when none |
 | `%6` | `credentials` | yes when a user name or password went to the proxy, else no |
 | `%7` | `pid` | the process writing the record |
@@ -1640,7 +1643,7 @@ Source `KiTTY++_cli`, `%1` = `transfer-done`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `session` | the saved session's name, empty when none was loaded |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
 | `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
 | `%5` | `direction` | put (upload, to the server) or get (download, from it) |
 | `%6` | `local` | the file's full local path; a 331 for a run that failed before any file: the local path as given |
@@ -1655,7 +1658,7 @@ Source `KiTTY++_cli`, `%1` = `transfer-failed`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `session` | the saved session's name, empty when none was loaded |
-| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's |
+| `%3` | `host` | the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's |
 | `%4` | `user` | the user name of the login (a proxy's: the name sent to it) |
 | `%5` | `direction` | put (upload, to the server) or get (download, from it) |
 | `%6` | `local` | the file's full local path; a 331 for a run that failed before any file: the local path as given |

@@ -289,7 +289,31 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
             } else if (ret == 2) {
                 arglistpos++;          /* skip next argument */
             } else if (ret == 1) {
+#if defined(MOD_PERSO) && defined(MOD_CONPTY)
+                /* KiTTY "Local": -conpty needs no host to start, so it
+                 * counts as a launchable argument (cmdline_host_ok wants a
+                 * host or a loaded session and would open the box). */
+                if (!strcmp(p, "-conpty"))
+                    special_launchable_argument = true;
+#endif
                 continue;          /* nothing further needs doing */
+#if defined(MOD_PERSO) && defined(MOD_CONPTY)
+            } else if (!strcmp(p, "-e")) {
+                /* KiTTY "Local" (hknet/KiTTY#84): the rest of the command
+                 * line, unparsed, is the program line - as kitty_pterm's -e
+                 * was. It selects the Local type and ends the switches. */
+                if (!nextarg)
+                    cmdline_error(KT_CLI_OPTION_NEEDS_ARG, p);
+                {
+                    char *cmd = cmdline_arg_remainder_utf8(nextarg);
+                    conf_set_utf8(conf, CONF_local_cmd, cmd);
+                    sfree(cmd);
+                }
+                conf_set_int(conf, CONF_protocol, PROT_CONPTY);
+                conf_set_int(conf, CONF_port, 0);
+                special_launchable_argument = true;   /* as -conpty above */
+                break;
+#endif
 #ifdef MOD_PERSO
             } else if (!strcmp(p, "-mpwkey")) {
                 /* KiTTY: inherited master-key handle from a parent KiTTY

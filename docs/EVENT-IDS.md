@@ -86,7 +86,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 ## Fields
 
 - `absent` - 113: startup keys whose file was not there.
-- `addr` - 200, 300: the address connected to (a proxy's when one is used); a serial line's name.
+- `addr` - 200, 300: the address connected to (a proxy's when one is used); a serial line's name; a Local session's program.
 - `basis` - 210, 310: how the host key was known; values: cache, manual, ca.
 - `bits` - 400: the key size in bits (255 for Ed25519, the curve size for ECDSA).
 - `broken` - 113: startup keys whose file could not be read.
@@ -115,7 +115,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `fragment` - 171 resumed: the bytes of the incomplete record a crash left at the end of the file, closed with CRLF before this record.
 - `from` - 200, 300: the local end of the connection, address and port.
 - `fwd` - 100, 101, 103, 104: the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none.
-- `host` - the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; 225, 325 local-command: the program's file name.
+- `host` - the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's; 225, 325 local-command: the program's file name.
 - `kb` - 901: the kilobytes freed.
 - `keep` - 171 rotate: agentlogkeep at this rotation, the rotated generations kept on disk.
 - `keytype` - 210-213, 310-313: the host key's type as its fingerprint names it (ssh-ed25519, ssh-rsa, ...), rsa1 for an SSH-1 key, empty in a 213, 313 refused; 400: the key's SSH type.
@@ -132,11 +132,11 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `path` - 100-170: the key file; 401-403: the file written; 903: the session file; 904: the folder or file created without the access rights; 905: the program file the Applications panel marked red; 906: the helper program's file; 907: the session log file.
 - `pattern` - 901: the folder and the log file name pattern searched.
 - `pid` - 100-170: the process that asked the agent, empty when none did; 200-403: the process writing the record.
-- `port` - the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
+- `port` - the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
 - `prev` - 100-172: the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written; 171: the head the anchor pins.
 - `program` - 900: the refused program file's path.
 - `protection` - 401, 403: none, passphrase or hello.
-- `proto` - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, serial.
+- `proto` - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, serial, conpty (a Local session).
 - `proxy` - 210-221, 310-321: empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4; 225, 325: the proxy's type: http, socks4, socks5, telnet, local-command.
 - `reason` - 100-170 except 103 and 104: a token - gui, cmdline, ipc, ipc-policy, forwarded (a key change or a lock over a connection bound for agent forwarding, refused by blockforwardedchanges), tray, cli (116: kageant -R), lifetime, device-removal, idle, windows-lock, windows-unlock, click-allow, click-deny, click-cancel-latch, pileup, suppress-latch, hello-verified, hello-denied, hello-unavailable, hello-error, known_hosts (100: a destination rule permitted the signature only through a host name read from OpenSSH's known_hosts); 104: a token - unbound (no session-bind), bind-failed, not-userauth (the data to sign is no login for the key), destination (no rule permits the server), forwarding-hop, session-id, hostkey, store-damaged, no-port (a CA destination's Valid hosts has a port condition, the client sent no port), known_hosts (result keys-added); for result no-key-offered one of destination, forwarding-hop (the last session-bind is for forwarding), bind-failed, store-damaged; for result store-damaged the file and why it cannot be read, as text; 103: the agent's reason as text (key not found, window-messages - a request by window messages refused by allowwmcopydata, unrecognised message, key usage not confirmed by user, ...); 201, 301: the fatal error's text; 221, 321: access denied, public-key signature refused, no supported authentication methods available, the server's message when it ended the connection instead of answering, or a proxy's refusal as text; 230, 241, 331, 401, 402, 903: the reason as text; 904: share (a network share without access lists), fat (a volume without access lists) or the reason setting them failed, as text; 905: the reason for the red verdict, as the panel shows it; 906: why the file was not started (refused), or the signature line the question showed (allowed, declined).
 - `refused` - 113: startup keys refused.

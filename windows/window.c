@@ -1557,6 +1557,13 @@ static void kitty_report_keyfile_format(WinGuiSeat *wgs)
         kitty_ppk_format_hook(kf, ver, enc);
 }
 #endif
+/* KiTTY: a Local session (PROT_CONPTY): a local program, no network - no
+ * reconnect, its own exit and failure lines */
+static inline bool kitty_session_is_local(Conf *conf)
+{
+    return conf_get_int(conf, CONF_protocol) == PROT_CONPTY;
+}
+
 #ifdef MOD_PERSO
 /*
  * KiTTY: [KiTTY] sessioneventlog=yes - the session's records in the Windows
@@ -1582,40 +1589,16 @@ static void kitty_wev_start(WinGuiSeat *wgs, const struct BackendVtable *vt)
     if (vt && vt->protocol == PROT_SERIAL)   /* the line and its speed */
         kitty_wev_target(conf_get_str(wgs->conf, CONF_serline),
                          conf_get_int(wgs->conf, CONF_serspeed), vt->id);
-    else
-        kitty_wev_target(conf_get_str(wgs->conf, CONF_host),
-                         conf_get_int(wgs->conf, CONF_port), vt ? vt->id : "");
-}
-#elif defined(KITTY_TEL_EVENTS)
-#include "../kitty/kitty_inikeys.h"  /* KI_SESSIONEVENTLOG */
-/*
- * KiTTY: kitty_tel.exe - this file without MOD_PERSO - writes the same
- * session records as kitty.exe (2xx, [KiTTY] sessioneventlog). The switch is
- * read as the console tools read theirs (kitty_winevent_cfg.c: the registry
- * when it is the store in charge, else kitty.ini); nothing else of kitty.exe
- * comes with it.
- */
-static void kitty_wev_start(WinGuiSeat *wgs, const struct BackendVtable *vt)
-{
-    static bool read = false;
-    if (!read) {
-        read = true;
-        kitty_wev_configure(KITTY_EVB_KITTY,
-                            kitty_wev_switch_on(KI_SESSIONEVENTLOG));
-    }
-    if (!kitty_wev_enabled())
-        return;
-    kitty_wev_main_seat(&wgs->seat);
-    kitty_wev_session_name(conf_get_str(wgs->conf, CONF_sessionname));
-    if (vt && vt->protocol == PROT_SERIAL)   /* the line and its speed */
-        kitty_wev_target(conf_get_str(wgs->conf, CONF_serline),
-                         conf_get_int(wgs->conf, CONF_serspeed), vt->id);
-    else
+    else if (vt && vt->protocol == PROT_CONPTY) {   /* Local: the program */
+        char *prog = conpty_program_name(wgs->conf);
+        kitty_wev_target(prog, -1, vt->id);   /* no port: the field stays empty */
+        sfree(prog);
+    } else
         kitty_wev_target(conf_get_str(wgs->conf, CONF_host),
                          conf_get_int(wgs->conf, CONF_port), vt ? vt->id : "");
 }
 #else
-/* pterm (no network session) and the stock PuTTY build: no records */
+/* the stock PuTTY build: no records */
 static void kitty_wev_start(WinGuiSeat *wgs, const struct BackendVtable *vt)
 {
     (void)wgs;
@@ -1863,6 +1846,14 @@ static void start_backend_connect_ex(WinGuiSeat *wgs, const char *refusal)
         kitty_wev_session_open(&wgs->seat,
                                conf_get_str(wgs->conf, CONF_serline), "");
 #ifdef MOD_PERSO
+    /* KiTTY: and for a Local session, the program it started */
+    if (!error && vt && vt->protocol == PROT_CONPTY) {
+        char *prog = conpty_program_name(wgs->conf);
+        kitty_wev_session_open(&wgs->seat, prog, "");
+        sfree(prog);
+    }
+#endif
+#ifdef MOD_PERSO
     /* The backend has taken its own copy by now. */
     if (identconf) { conf_free(identconf); identconf = NULL; connconf = wgs->conf; }
 #endif
@@ -1877,6 +1868,14 @@ static void start_backend_connect_ex(WinGuiSeat *wgs, const char *refusal)
         if (cmdline_tooltype & TOOLTYPE_NONNETWORK) {
             /* Special case for pterm. */
             msg = dupprintf("Unable to open terminal:\n%s", error);
+#ifdef MOD_PERSO
+        } else if (kitty_session_is_local(wgs->conf)) {
+            /* KiTTY: a Local session started no program - no connection,
+             * no host */
+            char *prog = conpty_program_name(wgs->conf);
+            msg = dupprintf(KT_TWIN_LOCAL_START_FAILED_FMT, prog, error);
+            sfree(prog);
+#endif
         } else {
             msg = dupprintf("Unable to open connection to\n%s\n%s",
                             conf_dest(wgs->conf), error);
@@ -1890,6 +1889,7 @@ static void start_backend_connect_ex(WinGuiSeat *wgs, const char *refusal)
         if (!refusal && GetAutoreconnectFlag() &&
             conf_get_int(wgs->conf, CONF_failure_reconnect)
             && wgs->ever_authenticated &&
+            !kitty_session_is_local(wgs->conf) &&   /* no reconnect for Local */
             kitty_reconnect_failure(wgs, msg, &rc_wait)) {
             lp_eventlog(&wgs->logpolicy, msg);
             sfree(str); sfree(msg);
@@ -1971,8 +1971,14 @@ static void start_backend_connect_ex(WinGuiSeat *wgs, const char *refusal)
              * session down: the normal title is set further below, which this
              * path never reaches, so without this a failed window is called
              * plain "KiTTY" and ten of them are indistinguishable. */
-            term_setup_window_titles(wgs->term,
-                                     conf_get_str(wgs->conf, CONF_host));
+            if (kitty_session_is_local(wgs->conf)) {
+                /* a Local session: the program it did not start */
+                char *prog = conpty_program_name(wgs->conf);
+                term_setup_window_titles(wgs->term, prog);
+                sfree(prog);
+            } else
+                term_setup_window_titles(wgs->term,
+                                         conf_get_str(wgs->conf, CONF_host));
             kitty_term_print_inline_error(wgs->term, msg, true);
             show_mouseptr(wgs, true);
             wgs->error_close = true; /* WARNING: + "(disconnected)" via close_session */
@@ -2359,7 +2365,10 @@ static void close_session(void *vctx)
      * state suffix at the end, so the connection name stays in the first few
      * characters and survives taskbar truncation. */
     if (wgs->error_close) {
-        newtitle = dupprintf(KT_TITLE_DISCONNECTED, base ? base : kitty_product_name());
+        /* a Local session had no connection to lose: "(failed)" */
+        newtitle = dupprintf(kitty_session_is_local(wgs->conf) ?
+                             KT_TITLE_LOCAL_FAILED : KT_TITLE_DISCONNECTED,
+                             base ? base : kitty_product_name());
         title_cp = CP_UTF8;
     } else if (base) {
         newtitle = dupprintf(KT_TITLE_INACTIVE, base);
@@ -4527,11 +4536,6 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
         }
         return;
     }
-#elif defined(KITTY_TEL_EVENTS)
-    /* KiTTY: event 201 for kitty_tel.exe too - a connection that ends in
-     * an error (the far end resetting it) comes here, not to
-     * exit_callback, whose exit code is then INT_MAX */
-    kitty_wev_session_close(kitty_wev_close_result(msg), msg, -1);
 #endif
 #ifdef MOD_RECONNECT
     /* KiTTY auto-reconnect: on an abnormal drop of a session that had FULLY
@@ -4558,7 +4562,7 @@ static void win_seat_connection_fatal(Seat *seat, const char *msg)
      * missed a login the server closed while the agent held the signature. */
     bool rc_wait = false;
     if (GetAutoreconnectFlag() && conf_get_int(wgs->conf, CONF_failure_reconnect) &&
-        !wgs->session_closed &&
+        !wgs->session_closed && !kitty_session_is_local(wgs->conf) &&
         wgs->ever_authenticated && kitty_reconnect_failure(wgs, msg, &rc_wait)) {
         SetConnBreakIcon(wgs->term_hwnd);
         SetSSHConnected(0);
@@ -5854,12 +5858,22 @@ static void exit_callback(void *vctx)
                 /* KiTTY (upstream cyd01/KiTTY #548): print the informational close INLINE instead of a
                  * modal box that traps the window (which stays open in this
                  * branch). */
+                /* A Local session: the program ended, with its exit code;
+                 * no remote host was involved. */
+                bool local = kitty_session_is_local(wgs->conf);
                 if (!GetModalErrorsFlag() && wgs->term) {
-                    char *line = dupprintf(
-                        KT_TWIN_CLOSED_BY_HOST_INLINE,
-                        kitty_product_name());
+                    char *line = local ?
+                        dupprintf(KT_TWIN_PROCESS_EXITED_INLINE,
+                                  kitty_product_name(), exitcode) :
+                        dupprintf(KT_TWIN_CLOSED_BY_HOST_INLINE,
+                                  kitty_product_name());
                     term_data(wgs->term, line, strlen(line));
                     sfree(line);
+                } else if (local) {
+                    char *text = dupprintf(KT_TWIN_PROCESS_EXITED_FMT, exitcode);
+                    kitty_info_box(wgs->term_hwnd, kitty_product_name(),
+                                   text, NULL);
+                    sfree(text);
                 } else
 #endif
                 kitty_info_box(wgs->term_hwnd, kitty_product_name(),
@@ -6401,7 +6415,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_POWERBROADCAST:
         if (wgs && GetAutoreconnectFlag()
             && conf_get_int(wgs->conf, CONF_wakeup_reconnect)
-            && wgs->ever_authenticated) {
+            && wgs->ever_authenticated
+            /* a Local program is neither closed at suspend nor restarted
+             * at resume */
+            && !kitty_session_is_local(wgs->conf)) {
             switch (wParam) {
               case PBT_APMRESUMESUSPEND:
               case PBT_APMRESUMEAUTOMATIC:
@@ -9233,7 +9250,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                     /* KiTTY: Ctrl + mouse wheel = zoom the terminal font, via the
                      * same path as the Font Up/Down menu items. MOD_PERSO only:
                      * kitty_font_resize() lives in kitty_bridge.c, which the stock
-                     * pterm/puttytel builds (which also compile this file) don't link. */
+                     * putty build (which also compiles this file) does not link. */
                     kitty_font_resize(wgs->term, wgs->conf,
                                       b == MBT_WHEEL_UP ? 1 : -1);
                 }
@@ -9572,6 +9589,8 @@ static void do_text_internal(
      * happens AFTER the VT100 linedraw hack above, which ASSIGNS text_adjust
      * rather than adding to it and would otherwise throw the shift away. The
      * background rectangles do not use text_adjust, so they keep filling the
+    nfg = ((attr & ATTR_FGMASK) >> ATTR_FGSHIFT);
+    nbg = ((attr & ATTR_BGMASK) >> ATTR_BGSHIFT);
      * whole, taller cell.
      */
     text_adjust += wgs->font_yshift;
@@ -9589,8 +9608,6 @@ static void do_text_internal(
     if ((text[0] & CSET_MASK) == CSET_OEMCP)
         nfont |= FONT_OEM;
 
-    nfg = ((attr & ATTR_FGMASK) >> ATTR_FGSHIFT);
-    nbg = ((attr & ATTR_BGMASK) >> ATTR_BGSHIFT);
     if (wgs->bold_font_mode == BOLD_FONT && (attr & ATTR_BOLD))
         nfont |= FONT_BOLD;
     /* KiTTY: the font's own underline only for the plain single line in the
@@ -9632,6 +9649,21 @@ static void do_text_internal(
     }
 #ifdef MOD_TUTTYCOLOR
     /* KiTTY (TuTTY): colour underlined text with the dedicated under_fg slot. */
+    if (!wgs->pal && truecolour.fg.enabled)
+        fg = RGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);
+    else
+        fg = wgs->colours[nfg];
+
+    if (!wgs->pal && truecolour.bg.enabled)
+        bg = RGB(truecolour.bg.r, truecolour.bg.g, truecolour.bg.b);
+    else
+        bg = wgs->colours[nbg];
+
+    if (!wgs->pal && (attr & ATTR_DIM)) {
+        fg = RGB(GetRValue(fg) * 2 / 3,
+                 GetGValue(fg) * 2 / 3,
+                 GetBValue(fg) * 2 / 3);
+    }
     if ((attr & ATTR_UNDER) && !is_cursor &&
         conf_get_int(wgs->conf, CONF_under_colour))
         nfg = OSC4_COLOUR_under_fg;
@@ -9649,21 +9681,6 @@ static void do_text_internal(
         truecolour.bg.enabled = false;
     }
 #endif
-    if (!wgs->pal && truecolour.fg.enabled)
-        fg = RGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);
-    else
-        fg = wgs->colours[nfg];
-
-    if (!wgs->pal && truecolour.bg.enabled)
-        bg = RGB(truecolour.bg.r, truecolour.bg.g, truecolour.bg.b);
-    else
-        bg = wgs->colours[nbg];
-
-    if (!wgs->pal && (attr & ATTR_DIM)) {
-        fg = RGB(GetRValue(fg) * 2 / 3,
-                 GetGValue(fg) * 2 / 3,
-                 GetBValue(fg) * 2 / 3);
-    }
 
     line_box.left = x;
     line_box.top = y;

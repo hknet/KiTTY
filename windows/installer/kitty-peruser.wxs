@@ -70,6 +70,10 @@
          with the Restart Manager). See kitty-system.wxs for the full rationale. -->
     <util:CloseApplication Id="CloseKitty"   Target="kitty.exe"       CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
     <util:CloseApplication Id="CloseKageant" Target="kageant.exe"     CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
+    <!-- kitty_pterm.exe and kitty_tel.exe are no longer shipped (kitty.exe
+         runs local programs and telnet itself). Kept here: an upgrade from a
+         release that installed them removes them. A running copy must not hold
+         that up. -->
     <util:CloseApplication Id="ClosePterm"   Target="kitty_pterm.exe" CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
     <util:CloseApplication Id="CloseTel"     Target="kitty_tel.exe"   CloseMessage="no" EndSessionMessage="yes" TerminateProcess="1" RebootPrompt="no" />
 
@@ -105,8 +109,6 @@
       <Component><File Source="kageant.exe" /></Component>
       <Component><File Source="kittygen.exe" /></Component>
       <Component><File Source="kittygen-cli.exe" /></Component>
-      <Component><File Source="kitty_pterm.exe" /></Component>
-      <Component><File Source="kitty_tel.exe" /></Component>
       <Component><File Source="kitty.ini.example" /></Component>
       <!-- the manual: windows/help.c looks for kitty.chm beside the exe -->
       <Component><File Source="kitty.chm" /></Component>
@@ -126,12 +128,6 @@
         </Shortcut>
         <Shortcut Id="sc_ksftp" Name="KSFTP (sftp)" Target="[INSTALLFOLDER]ksftp.exe" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KSFTP" />
-        </Shortcut>
-        <Shortcut Id="sc_pterm" Name="KiTTY++ pterm" Target="[INSTALLFOLDER]kitty_pterm.exe" WorkingDirectory="INSTALLFOLDER">
-          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYpterm" />
-        </Shortcut>
-        <Shortcut Id="sc_tel" Name="KiTTY++ Telnet" Target="[INSTALLFOLDER]kitty_tel.exe" WorkingDirectory="INSTALLFOLDER">
-          <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYTelnet" />
         </Shortcut>
         <Shortcut Id="sc_launcher" Name="KiTTY++ Launcher" Target="[INSTALLFOLDER]kitty.exe" Arguments="-launcher" Icon="klaunch.ico" WorkingDirectory="INSTALLFOLDER">
           <ShortcutProperty Key="System.AppUserModel.ID" Value="kappernet.KiTTYLauncher" />

@@ -33,6 +33,19 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   (`[ConfigBox] quickserialspeed`, default 9600).
 - A serial setting the port refuses is reported in the Terminal Window's
   Event Log and inline of the terminal. The previous setting stays in force.
+- WSL local shell support using the new Connection type **Local**
+  (Session panel, Other:): a saved session starts a local program of your
+  choosing through the Windows pseudo-console (ConPTY), e.g.
+  `wsl.exe -d Ubuntu --cd ~`, with every setting a session has. Command
+  line and start folder in place of Host Name and Port, `kitty.exe -conpty`
+  and `kitty.exe -e <program line>` from the command line. Windows 10 1809
+  or later. Refs hknet/KiTTY#84.
+
+### Changed
+
+- `kitty_pterm.exe` is no longer shipped: use a Local session.
+- `kitty_tel.exe` is no longer shipped: kitty.exe does telnet
+  (`kitty.exe -telnet <host>`).
 
 ## 0.85.1.20-beta — 2026-11-11
 

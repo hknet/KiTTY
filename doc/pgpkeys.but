@@ -65,8 +65,7 @@ by a key made for that release only, needing no Windows cryptography:
 read its own file
 refuses with \c{cannot check}; a visible one starts.
 
-\c{kitty_pterm.exe} and \c{kitty_tel.exe} are stamped but do not check
-themselves; builds from source have none of this. \q{Application >
+Builds from source have none of this. \q{Application >
 Security > Applications} in the configuration box shows the state of
 each KiTTY++ program file beside the running one (red = changed,
 foreign-signed, unchecked or other version). The checks make tampering

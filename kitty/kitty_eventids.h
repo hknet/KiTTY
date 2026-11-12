@@ -326,7 +326,7 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "113: startup keys whose file was not there" },
     { "addr",
       "200, 300: the address connected to (a proxy's when one is used); a "
-      "serial line's name" },
+      "serial line's name; a Local session's program" },
     { "basis",
       "210, 310: how the host key was known; values: cache, manual,"
       " ca" },
@@ -421,7 +421,7 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "comma; empty when there is none" },
     { "host",
       "the host name as given for the connection; a serial line's name "
-      "(COM3); with proxy set and in 225, 325: the proxy's; 225, 325 "
+      "(COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's; 225, 325 "
       "local-command: the program's file name" },
     { "kb",
       "901: the kilobytes freed" },
@@ -478,7 +478,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "100-170: the process that asked the agent, empty when none "
       "did; 200-403: the process writing the record" },
     { "port",
-      "the port connected to; a serial line's speed; with proxy set and "
+      "the port connected to; a serial line's speed; empty for a Local "
+      "session; with proxy set and "
       "in 225, 325: the proxy's; 225, 325 local-command: empty" },
     { "prev",
       "100-172: the SHA-256 of the line before this record in the file "
@@ -490,7 +491,7 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "401, 403: none, passphrase or hello" },
     { "proto",
       "200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, "
-      "serial" },
+      "serial, conpty (a Local session)" },
     { "proxy",
       "210-221, 310-321: empty for the connection's own host key and "
       "login; for a proxy's its type: ssh (a jump host), http, socks5, "

@@ -101,6 +101,8 @@ KscpProtocol	`1` runs kscp in SFTP mode, `0` in SCP mode.
 LauncherGlobalHotkey	Key combination that opens this session from anywhere, e.g. `Ctrl+Alt+K`; registered by the Launcher.
 LauncherGlobalHotkeyEnabled	`1` registers `LauncherGlobalHotkey` while the Launcher runs.
 LFImpliesCR	`1` treats every LF from the host as CR plus LF.
+LocalCommand	Local sessions (`Protocol=conpty`): the program and its arguments run in the terminal, `%VAR%` expanded. Empty = `cmd.exe`.
+LocalFolder	Local sessions (`Protocol=conpty`): the folder the program starts in, `%VAR%` expanded. Empty = the user's profile folder (`%USERPROFILE%`).
 LocalPortAcceptAll	`1` lets local forwarded ports accept connections from other hosts, not only from this PC.
 LockSize	What resizing the window changes: rows and columns, the font size, the font size only when maximised, or nothing.
 LoginShell	Unix pterm only: starts the shell as a login shell; not used on Windows.

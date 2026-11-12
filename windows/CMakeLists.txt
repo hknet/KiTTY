@@ -109,11 +109,10 @@ endif()
 #
 # Per TARGET, not on `utils`: the check needs `crypto`, which comes before
 # `utils` in the single-pass static link and which psocks does not link at
-# all. kitty_selfcheck_stamp.c (the .ktstamp block) is listed on all ten
-# shipped targets, kitty_selfcheck.c (the startup check) on the eight that link
-# crypto - pterm and puttytel carry the stamp and are verified by the release
-# check and the Applications panel, but do not check themselves - and
-# kitty_selfcheck_target() below gives each of them the defines.
+# all. kitty_selfcheck_stamp.c (the .ktstamp block) and kitty_selfcheck.c (the
+# startup check) are listed on all eight shipped targets, every one of which
+# links crypto. kitty_selfcheck_target() below gives each of them the
+# defines.
 #
 # The public key of the release is a generated header OUTSIDE the repository
 # (a fresh pair per release, the private half destroyed after stamping): by
@@ -142,7 +141,7 @@ if(KITTY_SELFCHECK)
   if(NOT EXISTS "${KITTY_SELFCHECK_KEY_HEADER}")
     message(FATAL_ERROR "KITTY_SELFCHECK is ON but the public-key header is missing: ${KITTY_SELFCHECK_KEY_HEADER} - generate it before the build")
   endif()
-  message(STATUS "KITTY_SELFCHECK: all ten shipped binaries carry the stamp, the eight with crypto verify it at startup (key: ${KITTY_SELFCHECK_KEY_HEADER})")
+  message(STATUS "KITTY_SELFCHECK: all eight shipped binaries carry the stamp and verify it at startup (key: ${KITTY_SELFCHECK_KEY_HEADER})")
   if(KITTY_SELFCHECK_FAULT)
     message(STATUS "KITTY_SELFCHECK_FAULT: TEST BUILD - the fault switch is compiled in; these binaries are never stamped for a release")
   endif()
@@ -240,9 +239,9 @@ target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c)
 # ReadParameter(), the satellite binaries through kitty_theme_pref.c.
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c)
 # KiTTY: kitty_theme.c resolves the dark-mode entry points through
-# kitty_oldwin.c, so the library carries it too. Without that, pterm - which
-# ships as kitty_pterm.exe and links guiterminal, but does not list the KiTTY
-# sources itself - fails to link. The executables list it as well; a static
+# kitty_oldwin.c, so the library carries it too. Without that, the stock putty
+# target - which links guiterminal, but does not list the KiTTY sources
+# itself - fails to link. The executables list it as well; a static
 # library member is only pulled in for a symbol nothing else defines, so the
 # duplicate costs nothing.
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c)
@@ -390,38 +389,6 @@ target_link_libraries(putty
 set_target_properties(putty PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(putty)
 
-add_executable(puttytel
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block only - no crypto here, so no startup check
-  window.c
-  paint-gdi.c
-  ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
-  putty.c
-  help.c
-  kitty_config_stubs.c
-  ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
-  ${CMAKE_SOURCE_DIR}/stubs/no-ca-config.c
-  ${CMAKE_SOURCE_DIR}/stubs/no-console.c
-  ${CMAKE_SOURCE_DIR}/stubs/no-rand.c
-  ${CMAKE_SOURCE_DIR}/stubs/no-dit.c
-  ${CMAKE_SOURCE_DIR}/proxy/nocproxy.c
-  ${CMAKE_SOURCE_DIR}/proxy/nosshproxy.c
-  # KiTTY: [KiTTY] sessioneventlog for kitty_tel's session records, read
-  # as the console tools read their switches (kitty_winevent.h)
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_winevent_cfg.c
-  puttytel.rc)
-be_list(puttytel KiTTYtel SERIAL OTHERBACKENDS)
-add_dependencies(puttytel generated_licence_h)
-target_link_libraries(puttytel
-  guiterminal guimisc eventloop otherbackends settings network utils
-  ${platform_libraries})
-set_target_properties(puttytel PROPERTIES WIN32_EXECUTABLE ON)
-# KiTTY: the session records of kitty_tel (window.c, kitty_wev_start)
-target_compile_definitions(puttytel PRIVATE KITTY_TEL_EVENTS)
-installed_program(puttytel)
-kitty_selfcheck_target(puttytel)
-
 add_executable(puttygen
   puttygen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck.c   # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
@@ -510,36 +477,10 @@ target_link_libraries(kittygen_cli
 installed_program(kittygen_cli)
 kitty_selfcheck_target(kittygen_cli)
 
-
-if(HAVE_CONPTY)
-  add_executable(pterm
-    ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c
-    ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block only - no crypto here, so no startup check
-    window.c
-    paint-gdi.c
-    ${CMAKE_SOURCE_DIR}/stubs/no-hello-keys.c  # KiTTY: no key auth here
-    pterm.c
-    help.c
-    conpty.c
-    kitty_config_stubs.c
-    ${CMAKE_SOURCE_DIR}/stubs/no-gss.c
-    ${CMAKE_SOURCE_DIR}/stubs/no-ca-config.c
-    ${CMAKE_SOURCE_DIR}/stubs/no-console.c
-    ${CMAKE_SOURCE_DIR}/stubs/no-rand.c
-    ${CMAKE_SOURCE_DIR}/stubs/no-dit.c
-    ${CMAKE_SOURCE_DIR}/proxy/nosshproxy.c
-    pterm.rc)
-  be_list(pterm pterm)
-  add_dependencies(pterm generated_licence_h)
-  target_link_libraries(pterm
-    guiterminal guimisc eventloop settings network utils
-    ${platform_libraries})
-  set_target_properties(pterm PROPERTIES WIN32_EXECUTABLE ON)
-  installed_program(pterm)
-  kitty_selfcheck_target(pterm)
-else()
-  message("ConPTY not available; cannot build Windows pterm")
-endif()
+# KiTTY: kitty_pterm (upstream's pterm target) and kitty_tel (puttytel) are
+# no longer built: kitty.exe runs a local program as its "Local" connection
+# type (windows/conpty.c, added to the kitty targets below) and does telnet
+# itself.
 
 add_executable(test_split_into_argv
   test/test_split_into_argv.c)
@@ -1092,6 +1033,16 @@ be_list(kitty KiTTY SSH SERIAL OTHERBACKENDS)
 # kitty's backend list also includes the ADB backend (MOD_ADB) - applied to the
 # per-target be-list object so other binaries' be_list.c is unaffected.
 target_compile_definitions(kitty-be-list PRIVATE MOD_ADB=1)
+# KiTTY: the "Local" connection type (hknet/KiTTY#84) - a local program
+# through the Windows pseudo-console, windows/conpty.c. MOD_CONPTY puts it in
+# the backend list (and lets putty.c take -e). The pseudo-console API itself
+# is resolved at run time, so the binary still starts on Windows without it.
+if(NOT HAVE_CONPTY)
+  message(FATAL_ERROR "kitty needs the ConPTY declarations (CreatePseudoConsole) in the Windows headers for its Local connection type")
+endif()
+target_sources(kitty PRIVATE conpty.c)
+target_compile_definitions(kitty PRIVATE MOD_CONPTY)
+target_compile_definitions(kitty-be-list PRIVATE MOD_CONPTY=1)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.c PROPERTIES COMPILE_DEFINITIONS NOMAIN)
 set_source_files_properties(${KITTY_DIR}/blocnote/notepad.rc PROPERTIES COMPILE_DEFINITIONS NOTEPAD_EMBEDDED)
 add_dependencies(kitty generated_licence_h)
@@ -1185,6 +1136,9 @@ add_executable(kitty_portable
   ${KITTY_DIR}/mini/mini.c)
 be_list(kitty_portable KiTTY SSH SERIAL OTHERBACKENDS)
 target_compile_definitions(kitty_portable-be-list PRIVATE MOD_ADB=1)
+target_sources(kitty_portable PRIVATE conpty.c)   # the Local type, see the kitty target above
+target_compile_definitions(kitty_portable PRIVATE MOD_CONPTY)
+target_compile_definitions(kitty_portable-be-list PRIVATE MOD_CONPTY=1)
 add_dependencies(kitty_portable generated_licence_h)
 kitty_selfcheck_target(kitty_portable)
 kitty_terminal_common(kitty_portable)

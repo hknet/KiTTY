@@ -4,11 +4,10 @@
  * The 256-byte block in the `.ktstamp` section that the release's stamp tool
  * fills with the Ed25519-signed SHA-256 of the file (layout and rules in
  * kitty_selfcheck_core.h). It lives in this translation unit, apart from the
- * check in kitty_selfcheck.c, because the check needs the crypto library and
- * two shipped programs link none (pterm, puttytel): they carry the stamp so the
- * release can stamp every file and the Applications panel and the release
- * check can verify them, while the programs that have the crypto library also
- * verify themselves at startup.
+ * check in kitty_selfcheck.c, because the check needs the crypto library: a
+ * program that links none could carry the stamp for the release check and
+ * the Applications panel without checking itself. Every shipped program links
+ * the crypto library today, so each one also verifies itself at startup.
  *
  * Compiled to nothing without KITTY_SELFCHECK, like the check itself. `used`
  * keeps the linker from dropping the block: nothing in the program reads this

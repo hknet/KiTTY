@@ -57,6 +57,10 @@ network. See \k{config-psusan}.
 Android Debug Bridge server running on this computer. See
 \k{kitty-cfg-adb}.
 
+\b The \q{Local} option runs a program on this computer in the
+terminal window, through the Windows pseudo-console. See
+\k{using-local}.
+
 }
 
 \b The \q{Port} box lets you specify which \i{port number} on the
@@ -70,6 +74,10 @@ If you select \q{Serial} from the \q{Connection type} radio buttons,
 the \q{Host Name} and \q{Port} boxes are replaced by \q{Serial line}
 and \q{Speed}, two editable drop-down lists in the same place. See
 \k{config-serial} for more details of these.
+
+With \q{Local} selected in the \q{Other} list, the \q{Host Name} and
+\q{Port} boxes become \q{Command line} and \q{Start folder}. See
+\k{using-local}.
 
 \S{config-saving} \ii{Loading and storing saved sessions}
 
@@ -2482,11 +2490,11 @@ proxies and SOCKS 5 proxies.
 \lcont{
 
 \b With SOCKS 5, authentication is via \i{CHAP} if the proxy
-supports it (this is not supported in \i{kitty_tel}); otherwise the
+supports it, otherwise the
 password is sent to the proxy in \I{plaintext password}plain text.
 
 \b With HTTP proxying, authentication is via \q{\i{HTTP Digest}} if
-possible (again, not supported in kitty_tel), or \q{\i{HTTP Basic}}. In
+possible, or \q{\i{HTTP Basic}}. In
 the latter case, the password is sent to the proxy in \I{plaintext
 password}plain text.
 

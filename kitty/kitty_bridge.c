@@ -1330,6 +1330,10 @@ void kitty_proxy_select(Conf *conf)
     /* A session's OWN proxy host keeps upstream behaviour; only a named proxy
      * can override it, below. */
     conf_set_int(conf, CONF_proxy_named_hostname, 0);
+    /* A Local session (PROT_CONPTY) makes no network connection: no named
+     * proxy, no workplace proxy mode. */
+    if (conf_get_int(conf, CONF_protocol) == PROT_CONPTY)
+        return;
     /* Workplace proxy mode wins over everything the session sets
      * It is a mode about where the
      * user is sitting today, so it applies to every connection this install

@@ -11,7 +11,10 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 
 ## Changed since 0.85.1.20
 
-No key added, removed or changed.
+| Change | Key | Was | Now |
+|---|---|---|---|
+| added | `LocalCommand` | - | text |
+| added | `LocalFolder` | - | text |
 
 ## Keys
 
@@ -176,8 +179,10 @@ No key added, removed or changed.
 | `LinesAtAScroll` | number | `-1` | Window | How far one notch of the mouse wheel scrolls the terminal. |
 | `LineSpacing` | number | `100` | Window/Appearance | Stretches each row to a percentage of the font's own line height, so text is easier to read without changing the font size. |
 | `LinuxFunctionKeys` | `0` ESC[n~; `1` Linux; `2` Xterm R6; `3` VT400; `4` VT100+; `5` SCO; `6` Xterm 216+ | `0` | Terminal/Keyboard | This option affects the function keys (F1 to F12) and the top row of the numeric keypad. |
+| `LocalCommand` | text | *(empty)* | - | Local sessions (`Protocol=conpty`): the program and its arguments run in the terminal, `%VAR%` expanded. Empty = `cmd.exe`. |
 | `LocalEcho` | `0` Force on; `1` Force off; `2` Auto | `2` | Terminal | With local echo disabled, characters you type into the KiTTY++ window are not echoed in the window by KiTTY++. |
 | `LocalEdit` | `0` Force on; `1` Force off; `2` Auto | `2` | Terminal | Normally, every character you type into the KiTTY++ window is sent immediately to the server the moment you type it. |
+| `LocalFolder` | text | *(empty)* | - | Local sessions (`Protocol=conpty`): the folder the program starts in, `%VAR%` expanded. Empty = the user's profile folder (`%USERPROFILE%`). |
 | `LocalPortAcceptAll` | `0` / `1` | `0` | Connection/SSH/Tunnels | `1` lets local forwarded ports accept connections from other hosts, not only from this PC. |
 | `LocalUserName` | text | *(empty)* | Connection/Rlogin | Rlogin allows an automated (password-free) form of login by means of a file called `.rhosts` on the server. |
 | `LockSize` | `0` Change the number of rows and columns; `1` Forbid resizing completely; `2` Change the size of the font; `3` Change font size only when maximised | `0` | Window | What resizing the window changes: rows and columns, the font size, the font size only when maximised, or nothing. |
@@ -238,7 +243,7 @@ No key added, removed or changed.
 | `Present` | `1`, always written | `1` | - | Not a setting: a marker classic KiTTY wrote into every session; nothing reads it, and a save drops it. |
 | `Printer` | text | *(empty)* | Terminal | A lot of VT100-compatible terminals support printing under control of the remote server (sometimes called "passthrough printing"). |
 | `PrintToClipboard` | number | `0` | Terminal | Sends what the host prints (see "Remote-controlled printing") to the Windows clipboard instead of to a printer. |
-| `Protocol` | `ssh`, `telnet`, `serial`, `rlogin`, `supdup`, `raw`, `adb`, `ssh-connection` | `ssh` | Session | Connection protocol of the session. |
+| `Protocol` | `ssh`, `telnet`, `serial`, `rlogin`, `supdup`, `raw`, `adb`, `conpty`, `ssh-connection` | `ssh` | Session | Connection protocol of the session. |
 | `ProxyDNS` | `0` No; `1` Auto; `2` Yes | `1` | Connection/Proxy | If you are using a proxy to access a private network, it can make a difference whether DNS name resolution is performed by KiTTY++ itself (on the client machine) or performed by the proxy. |
 | `ProxyExcludeList` | text | *(empty)* | Connection/Proxy | Hosts and addresses connected to directly, not through the proxy. |
 | `ProxyHost` | text | `proxy` | Connection/Proxy | Host name or IP address of the proxy server. |

@@ -52,10 +52,10 @@ static const unsigned char kt_pubkey[KT_ED25519_PUB_LEN] =
 
 /* The stamp block itself - the 256 bytes in the `.ktstamp` section the stamp
  * tool fills - is defined in kitty_selfcheck_stamp.c, a translation unit of
- * its own without any crypto dependency, so that every shipped program can
- * carry the stamp, including the two that link no crypto library and cannot
- * run this check (pterm, puttytel). The own-image read below still uses it,
- * which is also what keeps every linker from treating it as unreferenced. */
+ * its own without any crypto dependency, so that a program without a crypto
+ * library could still carry the stamp (every shipped program links one
+ * today). The own-image read below still uses it, which is also what keeps
+ * every linker from treating it as unreferenced. */
 extern const unsigned char kt_stamp_block[KT_STAMP_SIZE];
 
 #ifdef KITTY_SELFCHECK_FAULT

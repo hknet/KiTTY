@@ -1,6 +1,6 @@
 /*
  * no-hello-keys.c: stub for windows GUI targets that share window.c but
- * have no SSH key authentication (pterm, the telnet build) - the
+ * have no Windows Hello key files (the stock PuTTY build) - the
  * Hello-protected-keys hook installation is a no-op there.
  */
 #include <windows.h>

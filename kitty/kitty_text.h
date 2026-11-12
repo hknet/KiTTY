@@ -3964,6 +3964,11 @@
         "mode is on, and it did not come up. If you have left the place " \
         "that proxy belongs to, click here to switch the mode off."
 #define KT_TWIN_CLOSED_BY_HOST_INLINE                "\r\n\x1b[1;33m%s:\x1b[0m Connection closed by remote host\r\n"
+/* hknet/KiTTY#84, a Local session (conpty.c): the program ended, or did
+ * not start */
+#define KT_TWIN_PROCESS_EXITED_INLINE                "\r\n\x1b[1;33m%s:\x1b[0m Process exited with code %d\r\n"
+#define KT_TWIN_PROCESS_EXITED_FMT                   "Process exited with code %d"
+#define KT_TWIN_LOCAL_START_FAILED_FMT               "Unable to start\n%s\n%s"
 #define KT_CAP_BLOCK_CLIP_WRITES                     "KiTTY++ - block this server's clipboard writes?"
 #define KT_TWIN_BLOCK_CLIP_WRITES_Q                  "A server has been changing your clipboard " \
         "repeatedly.\n\n" \
@@ -4019,6 +4024,7 @@
 
 /* Terminal window title: state suffixes and markers (window.c, dialog.c) */
 #define KT_TITLE_DISCONNECTED                        "\xe2\x9a\xa0 %s (disconnected)"
+#define KT_TITLE_LOCAL_FAILED                        "\xe2\x9a\xa0 %s (failed)"   /* a Local session's error close */
 #define KT_TITLE_INACTIVE                            "%s (inactive)"
 #define KT_TITLE_SIZE                                " [%dx%d]"
 #define KT_TITLE_PROTECTED                           " (PROTECTED)"
@@ -4667,6 +4673,14 @@
 #define KT_CFG_PROTO_OTHER                           "Other:"
 #define KT_CFG_SERIAL_LINE                           "Serial line"
 #define KT_CFG_SPEED                                 "Speed"
+/* hknet/KiTTY#84, the Local type (windows/conpty.c): its name in the
+ * "Other:" list, the host and port boxes relabelled for it. Each
+ * label carries its box's shortcut letter (n, p). */
+#define KT_CFG_PROTO_LOCAL                           "Local"
+#define KT_CFG_PROTO_LOCAL_LC                        "local"
+#define KT_CFG_LOCAL_COMMAND                         "Command line"
+#define KT_CFG_LOCAL_FOLDER                          "Start folder"
+#define KT_CONPTY_FOLDER_FAILED_FMT                  "Start folder %s: %s"
 /* hknet/KiTTY#86, serial lines: the port lists (kitty_serialports.c), the
  * terminal window's Serial submenu and Find speed (kitty_serialmenu.c), a
  * setting the port refused (windows/serial.c), Quick Connect Serial

@@ -92,6 +92,14 @@ const struct BackendVtable *const backends[] = {
 #endif
 
     /*
+     * KiTTY's "Local" type: a local program through the Windows
+     * pseudo-console (MOD_CONPTY), only in the kitty targets.
+     */
+#if defined(MOD_CONPTY)
+    &conpty_backend,
+#endif
+
+    /*
      * Bare ssh-connection / PSUSAN is a niche protocol and goes well
      * down the list.
      */

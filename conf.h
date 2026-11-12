@@ -660,6 +660,27 @@ CONF_OPTION(passive_telnet,
     SAVE_KEYWORD("PassiveTelnet"),
 )
 
+/* KiTTY: the "Local" type (PROT_CONPTY, windows/conpty.c) */
+CONF_OPTION(local_cmd,
+    /*
+     * The program line run in the pseudo-console, as typed (%VAR% is
+     * expanded when it starts). Empty = cmd.exe. Its own value, never
+     * SSH's RemoteCommand.
+     */
+    VALUE_TYPE(STR_AMBI),
+    DEFAULT_STR(""),
+    SAVE_KEYWORD("LocalCommand"),
+)
+CONF_OPTION(local_folder,
+    /*
+     * The folder the program starts in (%VAR% expanded). Empty = the
+     * folder kitty.exe was started in.
+     */
+    VALUE_TYPE(STR_AMBI),
+    DEFAULT_STR(""),
+    SAVE_KEYWORD("LocalFolder"),
+)
+
 /* Serial port options */
 CONF_OPTION(serline,
     VALUE_TYPE(STR),

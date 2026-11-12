@@ -9,7 +9,11 @@ char const *conf_dest(Conf *conf)
 {
     if (conf_get_int(conf, CONF_protocol) == PROT_SERIAL)
         return conf_get_str(conf, CONF_serline);
-    else
+    else if (conf_get_int(conf, CONF_protocol) == PROT_CONPTY) {
+        /* KiTTY "Local": the program line, cmd.exe when it is empty */
+        const char *cmd = conf_get_str_ambi(conf, CONF_local_cmd, NULL);
+        return *cmd ? cmd : "cmd.exe";
+    } else
         return conf_get_str(conf, CONF_host);
 }
 

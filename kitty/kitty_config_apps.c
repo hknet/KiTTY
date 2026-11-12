@@ -51,8 +51,7 @@
  * compares them (see the design note), because such lists fail silently. */
 static const char *const apps_known[] = {
     "kitty.exe", "kitty_portable.exe", "klink.exe", "kscp.exe", "ksftp.exe",
-    "kageant.exe", "kittygen.exe", "kittygen-cli.exe", "kitty_pterm.exe",
-    "kitty_tel.exe",
+    "kageant.exe", "kittygen.exe", "kittygen-cli.exe",
 };
 
 enum { APPS_PENDING = -1 };

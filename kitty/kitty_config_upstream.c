@@ -54,7 +54,7 @@
  * The unrepresentable-value machinery lives in windows/dialog.c, not here.
  *
  * It has to: windows/dialog.c is compiled once into the shared GUI library
- * and linked into putty.exe and pterm.exe as well as kitty.exe, and those do
+ * and linked into the stock putty.exe as well as kitty.exe. putty.exe does
  * not link this file. Defining it here left the stock targets with undefined
  * references to functions dialog.c calls. See kitty_conf_validate there.
  */
@@ -252,6 +252,31 @@ void conf_fontsel_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 /* ==== PuTTY's per-control handlers ====================================== */
 
+/* KiTTY: an edit box over a STR_AMBI value (UTF-8 or the ANSI code page),
+ * as conf_editbox_handler handles one - the Local type's two values */
+static void kitty_cfg_ambi_editbox_set(dlgcontrol *ctrl, dlgparam *dlg,
+                                       Conf *conf, int key)
+{
+    bool utf8;
+    char *field = conf_get_str_ambi(conf, key, &utf8);
+    if (utf8)
+        dlg_editbox_set_utf8(ctrl, dlg, field);
+    else
+        dlg_editbox_set(ctrl, dlg, field);
+}
+
+static void kitty_cfg_ambi_editbox_get(dlgcontrol *ctrl, dlgparam *dlg,
+                                       Conf *conf, int key)
+{
+    char *field = dlg_editbox_get_utf8(ctrl, dlg);
+    if (!conf_try_set_utf8(conf, key, field)) {
+        sfree(field);
+        field = dlg_editbox_get(ctrl, dlg);
+        conf_set_str(conf, key, field);
+    }
+    sfree(field);
+}
+
 void config_host_handler(dlgcontrol *ctrl, dlgparam *dlg,
                                 void *data, int event)
 {
@@ -275,11 +300,20 @@ void config_host_handler(dlgcontrol *ctrl, dlgparam *dlg,
              */
             dlg_label_change(ctrl, dlg, KT_CFG_SERIAL_LINE);
             dlg_editbox_set(ctrl, dlg, conf_get_str(conf, CONF_serline));
+        } else if (conf_get_int(conf, CONF_protocol) == PROT_CONPTY) {
+            /* KiTTY "Local": the program line (LocalCommand), its label
+             * with the n as well */
+            dlg_label_change(ctrl, dlg, KT_CFG_LOCAL_COMMAND);
+            kitty_cfg_ambi_editbox_set(ctrl, dlg, conf, CONF_local_cmd);
         } else {
             dlg_label_change(ctrl, dlg, HOST_BOX_TITLE);
             dlg_editbox_set(ctrl, dlg, conf_get_str(conf, CONF_host));
         }
     } else if (event == EVENT_VALCHANGE) {
+        if (conf_get_int(conf, CONF_protocol) == PROT_CONPTY) {
+            kitty_cfg_ambi_editbox_get(ctrl, dlg, conf, CONF_local_cmd);
+            return;
+        }
         char *s = dlg_editbox_get(ctrl, dlg);
         if (conf_get_int(conf, CONF_protocol) == PROT_SERIAL)
             conf_set_str(conf, CONF_serline, s);
@@ -311,6 +345,12 @@ void config_port_handler(dlgcontrol *ctrl, dlgparam *dlg,
              */
             dlg_label_change(ctrl, dlg, KT_CFG_SPEED);
             snprintf( buf, sizeof(buf), "%d", conf_get_int(conf, CONF_serspeed));
+        } else if (conf_get_int(conf, CONF_protocol) == PROT_CONPTY) {
+            /* KiTTY "Local": the start folder (LocalFolder), a text, not
+             * a number. Its label carries the p. */
+            dlg_label_change(ctrl, dlg, KT_CFG_LOCAL_FOLDER);
+            kitty_cfg_ambi_editbox_set(ctrl, dlg, conf, CONF_local_folder);
+            return;
         } else {
             dlg_label_change(ctrl, dlg, PORT_BOX_TITLE);
             if (conf_get_int(conf, CONF_port) != 0)
@@ -321,6 +361,10 @@ void config_port_handler(dlgcontrol *ctrl, dlgparam *dlg,
         }
         dlg_editbox_set(ctrl, dlg, buf);
     } else if (event == EVENT_VALCHANGE) {
+        if (conf_get_int(conf, CONF_protocol) == PROT_CONPTY) {
+            kitty_cfg_ambi_editbox_get(ctrl, dlg, conf, CONF_local_folder);
+            return;
+        }
         char *s = dlg_editbox_get(ctrl, dlg);
         int i = atoi(s);
         sfree(s);

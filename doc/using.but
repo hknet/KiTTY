@@ -661,6 +661,37 @@ notify the other that the connection is finished.  Therefore, KiTTY++ in
 SUPDUP mode will remain connected until you close the window using the
 close button.
 
+\H{using-local} Running a \i{local program} (\i{ConPTY})
+
+The \q{Local} connection type runs a program on this computer in the
+terminal window - \c{cmd.exe}, PowerShell, a \i{WSL} distribution -
+through the Windows pseudo-console (Windows 10 1809 or later). It is a
+saved session like any other.
+
+\b Session panel: \q{Other:}, then \q{Local}. \q{Command line} holds
+the program and its arguments, for example \c{wsl.exe -d Ubuntu --cd ~}.
+Empty runs \c{cmd.exe}. \q{Start folder} is the folder it starts in.
+Empty is the user's profile folder (\c{%USERPROFILE%}). \c{%VAR%} is expanded
+in both. Saved as \c{Protocol=conpty}, \c{LocalCommand} and
+\c{LocalFolder}.
+
+\b Port knocking and Reconnect (Connection panel) do nothing for a Local
+session: a program that ends is not restarted on its own, a key pressed
+in the ended window starts it again.
+
+\b Command line: \c{kitty.exe -conpty} runs \c{cmd.exe}.
+\c{kitty.exe -e wsl.exe -d Ubuntu} runs the rest of the command line
+after \c{-e}.
+
+\b No proxy, no port knocking, no automatic reconnect. Restart Session
+starts the program again. When it ends, the terminal shows
+\cq{Process exited with code N}.
+
+\b The pseudo-console passes OSC 52, 7, 133, 9, 777, 7501, 3008 and
+1337. OSC 8 links gain an \c{id=}, OSC 2 arrives as OSC 0.
+Synchronized output (\c{CSI ? 2026 h}) has no effect and sixel images
+are dropped.
+
 \H{using-cmdline} The KiTTY++ command line
 
 KiTTY++ can be made to do various things without user intervention by
@@ -776,6 +807,10 @@ for more information.)
 \b \i\c{\-raw} selects the raw protocol.
 
 \b \i\c{\-serial} selects a serial connection.
+
+\b \i\c{\-conpty} selects a Local session (kitty.exe only, see
+\k{using-local}). \i\c{\-e} followed by a program line selects it as
+well and runs that program.
 
 Most of these options are not available in the file transfer tools
 kscp and ksftp (which only work with the SSH protocol and the bare

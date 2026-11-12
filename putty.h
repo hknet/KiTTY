@@ -473,6 +473,9 @@ enum {
     PROT_SUPDUP,
     /* PROT_ADB is KiTTY's Android Debug Bridge backend (MOD_ADB). */
     PROT_ADB,
+    /* PROT_CONPTY is KiTTY's "Local" type: a local program through the
+     * Windows pseudo-console (windows/conpty.c, MOD_CONPTY). */
+    PROT_CONPTY,
     PROTOCOL_LIMIT, /* upper bound on number of protocols */
 };
 

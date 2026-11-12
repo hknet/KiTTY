@@ -109,7 +109,7 @@ AI agentic use cases: [docs/AGENTIC-USE.md](docs/AGENTIC-USE.md) is for the huma
   - [Binary compression](#binary-compression)
   - [Clipboard printing](#clipboard-printing)
   - [Start Cygwin or cmd.exe inside KiTTY++](#start-cygwin-or-cmdexe-inside-kitty)
-  - [Local terminal (kitty_pterm)](#local-terminal-kitty_pterm)
+  - [Local programs (ConPTY)](#local-programs-conpty)
   - [File association](#file-association)
   - [Inherit Default Settings](#inherit-default-settings)
   - [Export all / Import all sessions](#export-all--import-all-sessions)
@@ -1038,7 +1038,7 @@ eventlog={CONTROL}{SHIFT}E    ; show the Terminal Window's Event Log
 
 ### Windows Event Log
 
-Sessions (kitty.exe, kitty_tel), the console tools (klink, kscp, ksftp), kittygen and kittygen-cli, and the agent kageant can write what they do to the Windows Event Log: session opened and closed, host key, login and each refused login attempt (jump hosts and proxies included), the proxy a connection went through, every transferred file, keys generated and saved, and every change to the agent's keys. One event ID per kind of record, every field its own insertion string - filterable in Event Viewer and forwardable with Windows Event Forwarding - and each record with the Windows account that wrote it. With the system MSI the records go to the logs `KiTTY++_Session` and `KiTTY++_Agent`; without it, to the Application log. KiTTY++ sends no syslog itself.
+Sessions (kitty.exe), the console tools (klink, kscp, ksftp), kittygen and kittygen-cli, and the agent kageant can write what they do to the Windows Event Log: session opened and closed, host key, login and each refused login attempt (jump hosts and proxies included), the proxy a connection went through, every transferred file, keys generated and saved, and every change to the agent's keys. One event ID per kind of record, every field its own insertion string - filterable in Event Viewer and forwardable with Windows Event Forwarding - and each record with the Windows account that wrote it. With the system MSI the records go to the logs `KiTTY++_Session` and `KiTTY++_Agent`; without it, to the Application log. KiTTY++ sends no syslog itself.
 
 Setup, the logs, read access and forwarding: [docs/WINDOWS-EVENT-LOG.md](docs/WINDOWS-EVENT-LOG.md). Every event ID with its fields: [docs/EVENT-IDS.md](docs/EVENT-IDS.md).
 
@@ -1717,15 +1717,23 @@ KiTTY++ lets you send text straight from the terminal screen to a printer. Use t
 
 ### Start Cygwin or cmd.exe inside KiTTY++
 
-KiTTY++ can host a Cygwin shell inside its terminal window through PuTTY's local-proxy mechanism and the small `cygtermd` helper. The helper is **not shipped**: build it from `contrib/cygtermd` with Cygwin's gcc (its README has the steps) and put `cygtermd.exe` in Cygwin's `/bin`. When launching `cmd.exe` this way, pick the matching code page in the Translation settings (or via the `-codepage` option); combined with the winpty tool it can also run `cmd.exe` or PowerShell. For a plain local command prompt without Cygwin, use the shipped `kitty_pterm.exe` (next section).
+KiTTY++ can host a Cygwin shell inside its terminal window through PuTTY's local-proxy mechanism and the small `cygtermd` helper. The helper is **not shipped**: build it from `contrib/cygtermd` with Cygwin's gcc (its README has the steps) and put `cygtermd.exe` in Cygwin's `/bin`. When launching `cmd.exe` this way, pick the matching code page in the Translation settings (or via the `-codepage` option); combined with the winpty tool it can also run `cmd.exe` or PowerShell. For a plain local command prompt without Cygwin, use a Local session (next section).
 
 (no screenshot)
 
-### Local terminal (kitty_pterm)
+### Local programs (ConPTY)
 
-`kitty_pterm.exe` is PuTTY's terminal **emulator** running a **local shell** instead of a network connection, through the Windows ConPTY pseudo-console (Windows 10 1809 or later). It has PuTTY's terminal: fonts, colour schemes, mouse selection and copy-paste, scrollback. It is built from upstream's pterm without KiTTY++'s own terminal features, so transparency, KiTTY++'s link and OSC handling and the other additions of a KiTTY++ SSH window are not in it. `kitty_pterm.exe -e wsl.exe` opens a WSL shell this way. It is an interactive terminal, not a scripting tool, and has no special tie to saved sessions beyond sharing the appearance.
+**Local** is a connection type of kitty.exe: the session runs a program on this computer - cmd.exe, PowerShell, a WSL distribution - in the terminal window, through the Windows pseudo-console (ConPTY, Windows 10 1809 or later). A Local session is a saved session like any other: its own font, colours, window, logging, title and every terminal feature of KiTTY++.
 
-**How to change the shell (cmd → PowerShell):** by default it runs `cmd.exe`. Launch it with `-e` to run a different shell, e.g. `kitty_pterm.exe -e powershell.exe` (Windows PowerShell) or `kitty_pterm.exe -e pwsh.exe` (PowerShell 7). For a saved session, set the same command in **Connection → Data → "Remote command"**.
+**How to set it up:** Session panel, **Other:** → **Local**. The host box becomes **Command line**: the program and its arguments, e.g. `wsl.exe -d Ubuntu --cd ~` or `pwsh.exe -NoLogo`, empty = `cmd.exe`. The port box becomes **Start folder**: the folder the program starts in, empty = the user's profile folder (`%USERPROFILE%`). `%VAR%` is expanded in both when the session starts. Stored as `Protocol=conpty`, `LocalCommand` and `LocalFolder`. SSH's Remote command is not used. The SSH, Proxy, Telnet, Rlogin, SUPDUP and Serial panels leave the tree while Local is selected. Port knocking and Reconnect on the Connection panel do nothing for a Local session: a program that ends is not restarted on its own, a key pressed in the ended window starts it again.
+
+**From the command line:** `kitty.exe -conpty` runs cmd.exe. `kitty.exe -e <program line>` runs that program - the rest of the command line, as typed: `kitty.exe -e wsl.exe -d Ubuntu`.
+
+**What is different from a network session:** no proxy (workplace proxy mode included), no port knocking and no automatic reconnect - Restart Session starts the program again. When the program ends, the terminal shows `Process exited with code N`. The window title is the session name (else the program) combined with the title the program sets, as **Window → Title & Icon → Combine Host-Title and Window-Title** decides. The Windows Event Log records 200/201 with protocol `conpty` and the program as the host.
+
+**What ConPTY changes on the way** (measured on Windows 11 26200): OSC 52, 7, 133, 9, 9;4, 777, 7501, 3008, 0 and 1337 pass unchanged. OSC 8 links gain an `id=` and OSC 2 arrives as OSC 0. Synchronized output (`CSI ? 2026 h/l`) has no effect: the pseudo-console moves it in front of the text. Sixel images are dropped. Kitty graphics and far2l's extensions are untested through ConPTY. These are properties of Windows' pseudo-console, not of KiTTY++. A WSL distribution stays running while its Local session is open.
+
+`kitty_pterm.exe`, the separate local terminal of earlier versions, is no longer shipped.
 
 (no screenshot)
 
@@ -1893,7 +1901,7 @@ Every program in the suite is also built for 32-bit Windows and ships as its own
 
 ### The programs refuse to start under a foreign name
 
-Every KiTTY++ program checks its own file name at startup and exits if that name does not begin with the program's own name: `kitty.exe` and `kitty_portable.exe` want `kitty` or `putty`, `klink.exe` wants `klink` or `plink`, `kscp.exe` `kscp` or `pscp`, `ksftp.exe` `ksftp` or `psftp`, `kageant.exe` `kageant` or `pageant`, `kittygen.exe` and `kittygen-cli.exe` `kittygen` or `puttygen`. The PuTTY name is accepted for each because a tool that expects `putty.exe` or `plink.exe` is routinely pointed at a renamed KiTTY++, and that has to keep working. Only the beginning of the name is checked and case does not matter, so a browser's duplicate `kitty (1).exe`, a version-named copy `kitty-0.85.exe`, `kitty_nocompress.exe` and `klink2.exe` all start normally. `kitty_pterm.exe` and `kitty_tel.exe` are the unchanged PuTTY programs and are not checked.
+Every KiTTY++ program checks its own file name at startup and exits if that name does not begin with the program's own name: `kitty.exe` and `kitty_portable.exe` want `kitty` or `putty`, `klink.exe` wants `klink` or `plink`, `kscp.exe` `kscp` or `pscp`, `ksftp.exe` `ksftp` or `psftp`, `kageant.exe` `kageant` or `pageant`, `kittygen.exe` and `kittygen-cli.exe` `kittygen` or `puttygen`. The PuTTY name is accepted for each because a tool that expects `putty.exe` or `plink.exe` is routinely pointed at a renamed KiTTY++, and that has to keep working. Only the beginning of the name is checked and case does not matter, so a browser's duplicate `kitty (1).exe`, a version-named copy `kitty-0.85.exe`, `kitty_nocompress.exe` and `klink2.exe` all start normally.
 
 Under any other name the windowed programs show one message box and exit, and the command-line tools print one line to stderr and exit 1:
 
@@ -1909,7 +1917,7 @@ A downloaded release build also checks its own signature at startup, right after
 
 It never refuses because a machine is unable to judge. An old or unpatched Windows that does not know the signing algorithm, cannot read the signature at all, does not hold the root certificate, or has no revocation data — Windows XP and an offline Windows 7 among them — cannot form an opinion, and KiTTY++ starts normally there. So does a machine whose own policy distrusts the certificate: that reveals something about the machine, not about the file. Nothing is fetched from the network for this, and the Windows version is never consulted: the check puts the question to Windows and acts on the answer. Builds you compile yourself carry no signature and no check.
 
-Where Authenticode cannot judge, **every release file of both widths** has a third check that needs no Windows crypto at all: every shipped program carries a stamp — the SHA-256 of the file as it was released, signed with an Ed25519 key — and the eight that have KiTTY++'s own crypto (`kitty.exe`, `kitty_portable.exe`, `klink.exe`, `kscp.exe`, `ksftp.exe`, `kageant.exe`, `kittygen.exe`, `kittygen-cli.exe`) verify it at every start with KiTTY++'s own SHA-256 and Ed25519 code, which run on Windows XP as they do anywhere else. Where the stamp sits depends on the file: in its own PE section normally, and appended to the PE overlay for the two UPX-compressed 64-bit files, because packing does not keep the section. Both are read by the same routine, and Authenticode seals either. `kitty_pterm.exe` and `kitty_tel.exe` carry the stamp without checking themselves; the Applications panel and the release check verify them. A file that no longer matches refuses to start with one message stating the finding (event 900 in the Windows Event Log (Application log, source KiTTY++)):
+Where Authenticode cannot judge, **every release file of both widths** has a third check that needs no Windows crypto at all: every shipped program carries a stamp — the SHA-256 of the file as it was released, signed with an Ed25519 key — and all eight (`kitty.exe`, `kitty_portable.exe`, `klink.exe`, `kscp.exe`, `ksftp.exe`, `kageant.exe`, `kittygen.exe`, `kittygen-cli.exe`) verify it at every start with KiTTY++'s own SHA-256 and Ed25519 code, which run on Windows XP as they do anywhere else. Where the stamp sits depends on the file: in its own PE section normally, and appended to the PE overlay for the two UPX-compressed 64-bit files, because packing does not keep the section. Both are read by the same routine, and Authenticode seals either. A file that no longer matches refuses to start with one message stating the finding (event 900 in the Windows Event Log (Application log, source KiTTY++)):
 
     Integrity check failed: this program file was changed after its release. Found: modified
 

@@ -857,7 +857,7 @@ LSTATUS kitty_oldwin_RegGetValueA(HKEY key, LPCSTR subkey, LPCSTR value,
 /* conpty.c's spawn plumbing. Never reached where the APIs are absent -
  * conpty availability (CreatePseudoConsole, itself runtime-resolved) is
  * checked before any spawn - so the fallback only exists to keep the
- * LOADER from refusing pterm on XP. */
+ * LOADER from refusing kitty.exe (its Local type) on XP. */
 typedef BOOL (WINAPI *initptal_t)(LPPROC_THREAD_ATTRIBUTE_LIST, DWORD,
                                   DWORD, PSIZE_T);
 typedef BOOL (WINAPI *updpta_t)(LPPROC_THREAD_ATTRIBUTE_LIST, DWORD,

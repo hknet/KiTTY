@@ -881,7 +881,7 @@ static void kitty_show_about_modeless(HWND owner);
  * ("KiTTY"), which the launcher, Ctrl+Tab and other programs match, so it
  * cannot change; the terminal's boxes (About, Event Log, Licence, errors)
  * show KiTTY++ instead. The other
- * programs that share this file (PuTTY, KiTTYtel, pterm) keep their name. */
+ * program that shares this file (the stock PuTTY build) keeps its name. */
 static const char *about_product_name(void)
 {
     return strcmp(appname, "KiTTY") ? appname : "KiTTY++";
@@ -2980,8 +2980,8 @@ static bool kitty_cfg_path_is_app(const char *path);   /* defined below */
 int WriteParameter(const char *key, const char *name, char *value);   /* kitty.c */
 int ReadParameterN(const char *key, const char *name, char *value, size_t size);
 /*
- * Weak defaults: this file is in libguiterminal, which stock putty.exe and
- * pterm link WITHOUT kitty.c. They never reach the code below - there is no
+ * Weak defaults: this file is in libguiterminal, which stock putty.exe
+ * links WITHOUT kitty.c. They never reach the code below - there is no
  * Application tab in those builds - but the symbols still have to resolve.
  * With kitty.c present its strong definitions win.
  */
@@ -3052,6 +3052,10 @@ static bool kitty_cfg_path_is_app(const char *path)
  */
 #define KITTY_CFG_HIDE_SUPDUP 1
 #define KITTY_CFG_HIDE_RLOGIN 2
+/* A Local session (PROT_CONPTY, hknet/KiTTY#84) has no network side: SSH
+ * and its sub-panels, Proxy, Telnet, Rlogin, SUPDUP and Serial are left out
+ * of the tree while it is the session in the box. */
+#define KITTY_CFG_HIDE_LOCAL 4
 static int kitty_cfg_tree_hidden = 0;
 
 static int kitty_cfg_tree_hidden_wanted(PortableDialogStuff *pds)
@@ -3066,11 +3070,25 @@ static int kitty_cfg_tree_hidden_wanted(PortableDialogStuff *pds)
         hidden |= KITTY_CFG_HIDE_SUPDUP;
     if (!GetConfigBoxRloginFlag() && proto != PROT_RLOGIN)
         hidden |= KITTY_CFG_HIDE_RLOGIN;
+    if (proto == PROT_CONPTY)
+        hidden |= KITTY_CFG_HIDE_LOCAL;
     return hidden;
 }
 
 static bool kitty_cfg_path_hidden(const char *path, int hidden)
 {
+    if (hidden & KITTY_CFG_HIDE_LOCAL) {
+        static const char *const network_only[] = {
+            "Connection/Proxy", "Connection/Telnet", "Connection/Rlogin",
+            "Connection/SUPDUP", "Connection/Serial",
+        };
+        if (!strcmp(path, "Connection/SSH") ||
+            !strncmp(path, "Connection/SSH/", 15))
+            return true;
+        for (size_t i = 0; i < lenof(network_only); i++)
+            if (!strcmp(path, network_only[i]))
+                return true;
+    }
     return ((hidden & KITTY_CFG_HIDE_SUPDUP) &&
             !strcmp(path, "Connection/SUPDUP")) ||
            ((hidden & KITTY_CFG_HIDE_RLOGIN) &&
@@ -3810,8 +3828,8 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
                 ti.mask = TCIF_TEXT;
                 ti.pszText = (char *)KT_DLG_TAB_SESSION;
                 SendMessage(tabstrip, TCM_INSERTITEM, 0, (LPARAM)&ti);
-                /* Only when Application panels EXIST. The stock variants
-                 * (kitty_tel, kitty_pterm, putty) build their box from the
+                /* Only when Application panels EXIST. The stock variant
+                 * (putty) builds its box from the
                  * stock config.c, which has no paths under Application/ - the tab
                  * offered a completely empty tree there. Every consumer
                  * compares TCM_GETCURSEL against 1, so a one-tab strip

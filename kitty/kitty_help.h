@@ -24,6 +24,10 @@ Starting a session\r\n\
 * -quickconnect: open the configuration box on Default Settings, ready for a host\r\n\
 * -quickconnectserial: the same with Serial, the first port detected and the\r\n\
     speed of the last quick serial connect (default 9600)\r\n\
+* -conpty: a Local session - cmd.exe in the terminal, through Windows'\r\n\
+    pseudo-console (ConPTY)\r\n\
+* -e <program line>: a Local session running that program. The rest of the\r\n\
+    command line is the program line (kitty.exe -e wsl.exe -d Ubuntu)\r\n\
 * -kload <file> (also -loadfile): load session settings from a .ktx file\r\n\
 * -folder <folder>: open a specific folder; must come before -load\r\n\
 * -fullscreen: start directly in full screen mode\r\n\

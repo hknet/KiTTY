@@ -900,8 +900,12 @@ bool cliloop_null_pre(void *vctx, const HANDLE **, size_t *);
 bool cliloop_null_post(void *vctx, size_t);
 
 extern const struct BackendVtable conpty_backend;
+/* KiTTY: the program a Local session (PROT_CONPTY) runs - the first word of
+ * LocalCommand without its quotes, "cmd.exe" when it is empty. The caller
+ * frees it. Only in the kitty targets (conpty.c). */
+char *conpty_program_name(Conf *conf);
 
-/* Functions that parametrise window.c between PuTTY and pterm */
+/* Functions that parametrise window.c between the GUI programs */
 void gui_term_process_cmdline(Conf *conf, char *cmdline);
 const struct BackendVtable *backend_vt_from_conf(Conf *conf);
 const wchar_t *get_app_user_model_id(void);

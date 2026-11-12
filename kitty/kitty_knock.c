@@ -412,8 +412,10 @@ KittyKnock *kitty_knock_start(Conf *conf, LogContext *logctx,
 
     if (refusal)
         *refusal = NULL;
+    /* no knock for a serial line or a Local program (PROT_CONPTY) */
     if (!seq || !seq[0] || !host || !host[0] ||
-        conf_get_int(conf, CONF_protocol) == PROT_SERIAL)
+        conf_get_int(conf, CONF_protocol) == PROT_SERIAL ||
+        conf_get_int(conf, CONF_protocol) == PROT_CONPTY)
         return NULL;
     k = snew(KittyKnock);
     memset(k, 0, sizeof(*k));

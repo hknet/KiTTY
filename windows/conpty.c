@@ -11,6 +11,51 @@
 #include <windows.h>
 #include <consoleapi.h>
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
+#include "../kitty/kitty_text.h"         /* KiTTY: the Local type's texts */
+
+/*
+ * KiTTY: this backend is the "Local" connection type of kitty.exe
+ * (PROT_CONPTY, Protocol=conpty), built into the kitty targets only.
+ */
+
+/* %VAR% expanded once. An unknown %name% stays as typed. */
+static wchar_t *conpty_expand_env(const wchar_t *in)
+{
+    DWORD need = ExpandEnvironmentStringsW(in, NULL, 0);
+    wchar_t *out;
+
+    if (!need)
+        return dupwcs(in);
+    out = snewn(need, wchar_t);
+    if (!ExpandEnvironmentStringsW(in, out, need)) {
+        sfree(out);
+        return dupwcs(in);
+    }
+    return out;
+}
+
+char *conpty_program_name(Conf *conf)
+{
+    const char *p = conf_get_str_ambi(conf, CONF_local_cmd, NULL);
+    const char *start, *end;
+
+    while (*p == ' ' || *p == '\t')
+        p++;
+    if (!*p)
+        return dupstr("cmd.exe");
+    if (*p == '"') {
+        start = ++p;
+        end = strchr(p, '"');
+        if (!end)
+            end = p + strlen(p);
+    } else {
+        start = p;
+        end = p + strcspn(p, " \t");
+    }
+    if (end == start)
+        return dupstr("cmd.exe");
+    return dupprintf("%.*s", (int)(end - start), start);
+}
 
 typedef struct ConPTY ConPTY;
 struct ConPTY {
@@ -239,27 +284,54 @@ static char *conpty_init(const BackendVtable *vt, Seat *seat,
     PROCESS_INFORMATION pi;
     memset(&pi, 0, sizeof(pi));
 
-    wchar_t *command;
+    /* KiTTY: the program line and the start folder are the Local type's
+     * own values (LocalCommand, LocalFolder), %VAR% expanded here, at the
+     * start, so the stored text keeps its variables. */
+    wchar_t *command, *folder = NULL;
     {
         bool utf8;
-        const char *conf_cmd = conf_get_str_ambi(conf, CONF_remote_cmd, &utf8);
+        const char *conf_cmd = conf_get_str_ambi(conf, CONF_local_cmd, &utf8);
         if (*conf_cmd) {
-            command = dup_mb_to_wc(utf8 ? CP_UTF8 : CP_ACP, conf_cmd);
+            wchar_t *typed = dup_mb_to_wc(utf8 ? CP_UTF8 : CP_ACP, conf_cmd);
+            command = conpty_expand_env(typed);
+            sfree(typed);
         } else {
             char *cmd = dupcat(get_system_dir(), "\\cmd.exe");
             command = dup_mb_to_wc(CP_ACP, cmd);
             sfree(cmd);
         }
+        const char *conf_dir = conf_get_str_ambi(conf, CONF_local_folder,
+                                                 &utf8);
+        if (*conf_dir) {
+            wchar_t *typed = dup_mb_to_wc(utf8 ? CP_UTF8 : CP_ACP, conf_dir);
+            folder = conpty_expand_env(typed);
+            sfree(typed);
+        } else {
+            /* No start folder: the user's profile folder, as Windows
+             * Terminal starts its profiles. kitty.exe's own folder would
+             * reach wsl.exe as a drive WSL may not mount ("Failed to
+             * translate"). */
+            folder = conpty_expand_env(L"%USERPROFILE%");
+        }
     }
     bool created_ok = CreateProcessW(NULL, command, NULL, NULL,
                                      false, EXTENDED_STARTUPINFO_PRESENT,
-                                     NULL, NULL, &si.StartupInfo, &pi);
+                                     NULL, folder, &si.StartupInfo, &pi);
+    DWORD create_error = created_ok ? 0 : GetLastError();
     sfree(command);
     if (!created_ok) {
-        err = dupprintf("CreateProcess: %s",
-                        win_strerror(GetLastError()));
+        if (folder && create_error == ERROR_DIRECTORY) {
+            char *f = dup_wc_to_mb(CP_UTF8, folder, "?");
+            err = dupprintf(KT_CONPTY_FOLDER_FAILED_FMT, f,
+                            win_strerror(create_error));
+            sfree(f);
+        } else {
+            err = dupprintf("CreateProcess: %s", win_strerror(create_error));
+        }
+        sfree(folder);
         goto out;
     }
+    sfree(folder);
 
     /* No local authentication phase in this protocol */
     seat_set_trust_status(seat, false);
@@ -287,7 +359,13 @@ static char *conpty_init(const BackendVtable *vt, Seat *seat,
     conpty->seat = seat;
     conpty->logctx = logctx;
 
-    *realhost = dupstr("");
+    /* KiTTY: the title's host part (%%h, "<this> - KiTTY++"): the saved
+     * session's name, else the program. What the program sets as its own
+     * title arrives as the host title, combined by WinTitleCombine. */
+    {
+        const char *sn = conf_get_str(conf, CONF_sessionname);
+        *realhost = (sn && *sn) ? dupstr(sn) : conpty_program_name(conf);
+    }
 
     /*
      * Specials are always available.
@@ -433,7 +511,9 @@ const BackendVtable conpty_backend = {
     .unthrottle = conpty_unthrottle,
     .cfg_info = conpty_cfg_info,
     .id = "conpty",
-    .displayname_tc = "ConPTY",
-    .displayname_lc = "ConPTY", /* proper name, so capitalise it anyway */
-    .protocol = -1,
+    /* KiTTY: shown as "Local" in the Session panel's "Other:" list. The
+     * stored id stays "conpty" (Protocol=conpty, the -conpty switch). */
+    .displayname_tc = KT_CFG_PROTO_LOCAL,
+    .displayname_lc = KT_CFG_PROTO_LOCAL_LC,
+    .protocol = PROT_CONPTY,
 };

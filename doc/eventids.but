@@ -15,7 +15,7 @@ The fields, by name:
 
 \b \c{absent} - 113: startup keys whose file was not there.
 
-\b \c{addr} - 200, 300: the address connected to (a proxy's when one is used); a serial line's name.
+\b \c{addr} - 200, 300: the address connected to (a proxy's when one is used); a serial line's name; a Local session's program.
 
 \b \c{basis} - 210, 310: how the host key was known; values: cache, manual, ca.
 
@@ -73,7 +73,7 @@ The fields, by name:
 
 \b \c{fwd} - 100, 101, 103, 104: the agent forwarding hops of the client's verified session-binds, in the order bound, each as in dest, separated by a comma; empty when there is none.
 
-\b \c{host} - the host name as given for the connection; a serial line's name (COM3); with proxy set and in 225, 325: the proxy's; 225, 325 local-command: the program's file name.
+\b \c{host} - the host name as given for the connection; a serial line's name (COM3); a Local session's program (wsl.exe); with proxy set and in 225, 325: the proxy's; 225, 325 local-command: the program's file name.
 
 \b \c{kb} - 901: the kilobytes freed.
 
@@ -107,7 +107,7 @@ The fields, by name:
 
 \b \c{pid} - 100-170: the process that asked the agent, empty when none did; 200-403: the process writing the record.
 
-\b \c{port} - the port connected to; a serial line's speed; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
+\b \c{port} - the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
 
 \b \c{prev} - 100-172: the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written; 171: the head the anchor pins.
 
@@ -115,7 +115,7 @@ The fields, by name:
 
 \b \c{protection} - 401, 403: none, passphrase or hello.
 
-\b \c{proto} - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, serial.
+\b \c{proto} - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, serial, conpty (a Local session).
 
 \b \c{proxy} - 210-221, 310-321: empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4; 225, 325: the proxy's type: http, socks4, socks5, telnet, local-command.
 

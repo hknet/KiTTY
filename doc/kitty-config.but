@@ -3359,7 +3359,7 @@ records of earlier versions.
 \b 100-199 - kageant's agent log (source \c{KiTTY++_agent}, log
 \c{KiTTY++_Agent}; see \k{pageant-mainwin-settings}).
 
-\b 200-299 - kitty.exe and kitty_tel.exe (source \c{KiTTY++_kitty}):
+\b 200-299 - kitty.exe (source \c{KiTTY++_kitty}):
 200 session opened, 201 closed, 210 host key known, 211 new host key,
 212 host key mismatch (also a jump host's, marked in \c{proxy}), 213
 host key update, 220 login succeeded, 221 login failed (also a jump host's or a proxy's,
@@ -3513,8 +3513,8 @@ had.
 \S{kitty-cfg-applications} The Applications panel
 
 The program files of KiTTY++ that are present beside the running program -
-the terminal, klink, kscp, ksftp, kageant, kittygen, kittygen-cli, the
-portable terminal, pterm and telnet builds - one row each, checked as the
+the terminal, klink, kscp, ksftp, kageant, kittygen, kittygen-cli and the
+portable terminal - one row each, checked as the
 panel opens. Two checks exist and each file is judged by the ones it
 carries: the \e{release stamp} (a signed hash inside the file, verified with
 the release's public key compiled into this build - the signing key is

@@ -1856,8 +1856,8 @@ void setup_config_box(struct controlbox *b, bool midsession,
      * back to the terminal: "Cancel", as upstream. "Exit" has no Alt key:
      * this row shows beside every panel and E, X, I and T are each taken
      * on one (Esc still works). (No MOD_PERSO guard: this file
-     * is built into the GUI library, without it, for kitty_tel and
-     * kitty_pterm; kitty.exe has its own box in kitty/kitty_config_session.c.) */
+     * is built into the GUI library, without it, for the stock PuTTY
+     * build. kitty.exe has its own box in kitty/kitty_config_session.c.) */
     ssd->cancelbutton = ctrl_pushbutton(s,
                                         (midsession ? "Cancel" : "Exit"),
                                         (char)(midsession ? 'c' : NO_SHORTCUT),
@@ -2225,9 +2225,9 @@ void setup_config_box(struct controlbox *b, bool midsession,
                   conf_checkbox_handler,
                   I(CONF_no_remote_wintitle));
     /* KiTTY: the four answers of kitty.exe's box (kitty_config_session.c).
-     * kitty_tel and kitty_pterm share the session store: a session saved
-     * with the fourth must find its button here, or conf_radiobutton_handler
-     * asserts. (No MOD_PERSO guard: this file is built without it.) */
+     * A program built from this box that shares the session store must find
+     * the button of a session saved with the fourth, or
+     * conf_radiobutton_handler asserts. (No MOD_PERSO guard: this file is built without it.) */
     ctrl_radiobuttons(s, "Response to remote title query (SECURITY):", 'q', 2,
                       HELPCTX(features_qtitle),
                       conf_radiobutton_handler,
