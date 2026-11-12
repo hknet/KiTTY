@@ -1257,6 +1257,10 @@ works in any of the cursor modes. (On Windows, the blink rate matches
 that configured in Control Panel; so this setting will have no effect
 if cursor blinking has been disabled system-wide.)
 
+\q{\ii{Ease blinking}} (KiTTY++) fades the blinking cursor out and in along
+an ease-in-out curve instead of switching it off and on. Blinking text
+(\k{config-blink}) fades the same way.
+
 \S{config-font} Controlling the \i{font} used in the terminal window
 
 This option allows you to choose what font, in what \I{font size}size,

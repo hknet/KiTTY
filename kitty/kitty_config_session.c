@@ -6794,9 +6794,17 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
                       KT_APPEARANCE_BLOCK, 'l', I(CURSOR_BLOCK),
                       KT_APPEARANCE_UNDERLINE, 'u', I(CURSOR_UNDERLINE),
                       KT_APPEARANCE_VERTICAL_LINE, 'v', I(CURSOR_VERTICAL_LINE));
-    ctrl_checkbox(s, KT_APPEARANCE_CURSOR_BLINKS, 'b',
-                  HELPCTX(appearance_cursor),
-                  conf_checkbox_handler, I(CONF_blink_cur));
+    /* One row: the cursor's blink and how it blinks */
+    ctrl_columns(s, 2, 50, 50);
+    c = ctrl_checkbox(s, KT_APPEARANCE_CURSOR_BLINKS, 'b',
+                      HELPCTX(appearance_cursor),
+                      conf_checkbox_handler, I(CONF_blink_cur));
+    c->column = 0;
+    c = ctrl_checkbox(s, KT_APPEARANCE_EASE_BLINKING, NO_SHORTCUT,
+                      HELPCTX(appearance_cursor),
+                      conf_checkbox_handler, I(CONF_ease_blink));
+    c->column = 1;
+    ctrl_columns(s, 1, 100);
 
     s = ctrl_getset(b, "Window/Appearance", "font",
                     KT_APPEARANCE_FONT_SETTINGS);

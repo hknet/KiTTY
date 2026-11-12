@@ -10,6 +10,8 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- Window > Appearance: **Ease blinking** (`BlinkEase`) fades the blinking
+  cursor and blinking text out and in instead of switching plain off and on.
 - Direct2D: use GDI font selection (`[KiTTY] d2dgdifont=yes`, Application >
   KiTTY++ Settings > Terminal): Direct2D draws with the font face GDI
   selects. Aligns behaviour for text with a font family that puts more than

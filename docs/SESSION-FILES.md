@@ -13,6 +13,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 
 | Change | Key | Was | Now |
 |---|---|---|---|
+| added | `BlinkEase` | - | bool |
 | added | `LocalCommand` | - | text |
 | added | `LocalFolder` | - | text |
 
@@ -60,6 +61,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | `BgSlideshow` | number | `0` | Window/Appearance/Background | Seconds between background images, taken in turn from the image's folder; `0` = the global `slidedelay`. |
 | `BgType` | `0` Solid; `1` Desktop; `2` Image | `0` | Window/Appearance/Background | Terminal background: solid colour, the desktop picture, or an image. |
 | `BlinkCur` | `0` / `1` | `0` | Window/Appearance | `1` makes the cursor blink. |
+| `BlinkEase` | `0` / `1` | `0` | Window/Appearance | `1` fades the blinking cursor and blinking text out and in instead of switching them off and on. |
 | `BlinkText` | `0` / `1` | `0` | Terminal | The server can instruct KiTTY++ to display text that blinks on and off. |
 | `BoldAsColour` | `0` The font; `1` The colour | `1` | Window/Appearance/Colours | When the server sends a control sequence indicating that some text should be displayed in bold, KiTTY++ can handle this in several ways. |
 | `BoldAsColourTest` | number | `1` | - | Unused; bold text follows `BoldAsColour`. |

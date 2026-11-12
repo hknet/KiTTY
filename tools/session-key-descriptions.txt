@@ -33,6 +33,7 @@ BgOpacity	Opacity of the terminal background over the image or desktop, 0-100; a
 BgSlideshow	Seconds between background images, taken in turn from the image's folder; `0` = the global `slidedelay`.
 BgType	Terminal background: solid colour, the desktop picture, or an image.
 BlinkCur	`1` makes the cursor blink.
+BlinkEase	`1` fades the blinking cursor and blinking text out and in instead of switching them off and on.
 BoldAsColourTest	Unused; bold text follows `BoldAsColour`.
 BoldFont	Unix version only: font for bold text; not used on Windows.
 BoldFontCharSet	Unix version only: character set of `BoldFont`; not used on Windows.

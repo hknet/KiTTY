@@ -200,6 +200,19 @@ struct terminal_tag {
      * shape. */
     int decscusr;
     bool conf_blink_cur;
+    /* KiTTY: Ease blinking (CONF_ease_blink). The blinking cursor and blinking
+     * text fade out and in instead of switching off and on. cfade / tfade =
+     * how much of each shows, 0..255, stepped by one timer (fade_pending,
+     * next_fade) that runs only while one of them fades: cfade_run while the
+     * focused cursor blinks, tfade_run while the focused window shows
+     * blinking text. *_t0 = where the cycle started (opaque). *_drawn = the
+     * level the last paint drew, a difference forces the cells to redraw.
+     * Unconditional storage, same ODR reason as the kd_* fields. */
+    bool ease_blink;
+    bool cfade_run, tfade_run, fade_pending;
+    unsigned long cfade_t0, tfade_t0;
+    long next_fade;
+    int cfade, tfade, cfade_drawn, tfade_drawn;
 
     bool xterm_mouse_forbidden;
     int xterm_mouse;                   /* send mouse messages to host */
@@ -635,6 +648,7 @@ struct terminal_tag {
      * what else a frame depends on, as at the last paint. Unconditional
      * storage, same ODR reason as above. */
     unsigned char *kd_full;
+    unsigned char *kd_blink;   /* rows that showed eased blinking text */
     int *kd_x0, *kd_x1;
     int kd_rows, kd_quiet;
     bool kd_all, kd_valid;
@@ -1312,6 +1326,15 @@ static inline int term_cursor_type(Terminal *term, int session_type)
       case 5: case 6: return CURSOR_VERTICAL_LINE;
     }
     return session_type;
+}
+/* KiTTY: Ease blinking - how much of the cursor (text = false) or of the
+ * blinking text (text = true) the front end draws, 0..255. 255 whenever
+ * nothing fades. */
+static inline int term_blink_level(Terminal *term, bool text)
+{
+    if (text)
+        return term->tfade_run ? term->tfade : 255;
+    return term->cfade_run ? term->cfade : 255;
 }
 /* KiTTY: the DA1 attributes this session really has ("1;4;22;52") */
 void term_da1_attributes(Terminal *term, char *buf, size_t size);

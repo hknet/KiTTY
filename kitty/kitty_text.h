@@ -404,6 +404,7 @@
 #define KT_APPEARANCE_UNDERLINE                      "Underline"
 #define KT_APPEARANCE_VERTICAL_LINE                  "Vertical line"
 #define KT_APPEARANCE_CURSOR_BLINKS                  "Cursor blinks"
+#define KT_APPEARANCE_EASE_BLINKING                  "Ease blinking"
 #define KT_APPEARANCE_FONT_SETTINGS                  "Font settings"
 #define KT_APPEARANCE_FONT_USED_IN_THE_TERMINAL      "Font used in the terminal window"
 #define KT_APPEARANCE_ADJUST_THE_USE_2               "Adjust the use of the mouse pointer"

@@ -9467,6 +9467,90 @@ static const RECT *kitty_fringe_clip = NULL;
 #endif
 
 /*
+ * The colours a cell's text and background are drawn in, from its
+ * attributes: reverse video, bold and blink brightening, the TuTTY slots,
+ * true colour and dim. is_cursor: the attributes carry the block cursor's
+ * own colours, which bold and the slots leave alone. Shared by the text
+ * drawing and, for Ease blinking, the cursor's fade toward the cell.
+ */
+static void cell_colours(WinGuiSeat *wgs, unsigned long attr,
+                         truecolour truecolour, bool is_cursor,
+                         COLORREF *fgp, COLORREF *bgp)
+{
+    COLORREF fg, bg;
+    int nfg, nbg, t;
+
+    nfg = ((attr & ATTR_FGMASK) >> ATTR_FGSHIFT);
+    nbg = ((attr & ATTR_BGMASK) >> ATTR_BGSHIFT);
+    if (attr & ATTR_REVERSE) {
+        struct optionalrgb trgb;
+
+        t = nfg;
+        nfg = nbg;
+        nbg = t;
+
+        trgb = truecolour.fg;
+        truecolour.fg = truecolour.bg;
+        truecolour.bg = trgb;
+    }
+    if (wgs->bold_colours && (attr & ATTR_BOLD) && !is_cursor) {
+        if (nfg < 16) nfg |= 8;
+        else if (nfg >= 256) nfg |= 1;
+    }
+    if (wgs->bold_colours && (attr & ATTR_BLINK)) {
+        if (nbg < 16) nbg |= 8;
+        else if (nbg >= 256) nbg |= 1;
+    }
+#ifdef MOD_TUTTYCOLOR
+    /* KiTTY (TuTTY): colour underlined text with the dedicated under_fg slot. */
+    if ((attr & ATTR_UNDER) && !is_cursor &&
+        conf_get_int(wgs->conf, CONF_under_colour))
+        nfg = OSC4_COLOUR_under_fg;
+#endif
+#ifdef MOD_TUTTYCOLOR
+    /* KiTTY (TuTTY): colour the selection with the dedicated sel_fg/sel_bg
+     * slots instead of reverse-video. terminal.c only sets ATTR_SELECTED
+     * when CONF_sel_colour is on, so no extra conf check is needed here. */
+    if ((attr & ATTR_SELECTED) && !is_cursor) {
+        nfg = OSC4_COLOUR_sel_fg;
+        nbg = OSC4_COLOUR_sel_bg;
+        /* Palette slots must override any 24-bit truecolour on the cell,
+         * otherwise the truecolour.fg.enabled branch below ignores nfg/nbg. */
+        truecolour.fg.enabled = false;
+        truecolour.bg.enabled = false;
+    }
+#endif
+    if (!wgs->pal && truecolour.fg.enabled)
+        fg = RGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);
+    else
+        fg = wgs->colours[nfg];
+
+    if (!wgs->pal && truecolour.bg.enabled)
+        bg = RGB(truecolour.bg.r, truecolour.bg.g, truecolour.bg.b);
+    else
+        bg = wgs->colours[nbg];
+
+    if (!wgs->pal && (attr & ATTR_DIM)) {
+        fg = RGB(GetRValue(fg) * 2 / 3,
+                 GetGValue(fg) * 2 / 3,
+                 GetBValue(fg) * 2 / 3);
+    }
+    *fgp = fg;
+    *bgp = bg;
+}
+
+#ifdef MOD_PERSO
+/* KiTTY: Ease blinking - colour a at level 255, colour b at level 0 */
+static COLORREF kitty_fade_mix(COLORREF a, COLORREF b, int level)
+{
+    int r = (GetRValue(a) * level + GetRValue(b) * (255 - level) + 127) / 255;
+    int g = (GetGValue(a) * level + GetGValue(b) * (255 - level) + 127) / 255;
+    int bl = (GetBValue(a) * level + GetBValue(b) * (255 - level) + 127) / 255;
+    return RGB(r, g, bl);
+}
+#endif
+
+/*
  * Draw a line of text in the window, at given character
  * coordinates, in given attributes.
  *
@@ -9476,8 +9560,8 @@ static void do_text_internal(
     WinGuiSeat *wgs, int x, int y, wchar_t *text, int len,
     unsigned long attr, int lattr, truecolour truecolour)
 {
-    COLORREF fg, bg, t;
-    int nfg, nbg, nfont;
+    COLORREF fg, bg;
+    int nfont;
     RECT line_box;
     bool force_manual_underline = false;
     int fnt_width, char_width;
@@ -9519,6 +9603,11 @@ static void do_text_internal(
     x = col_to_px(wgs, x, fnt_width);
     y = row_to_px(wgs, y);
 
+#ifdef MOD_PERSO
+    /* KiTTY: the cell's own colours, which a fading cursor mixes with */
+    unsigned long cell_attr = attr;
+    struct truecolour cell_tc = truecolour;   /* the parameter hides the type name */
+#endif
     if ((attr & ATTR_ACTCURS) &&
 #ifdef MOD_PERSO
         /* KiTTY: the shape a program set with DECSCUSR, else the session's */
@@ -9589,8 +9678,6 @@ static void do_text_internal(
      * happens AFTER the VT100 linedraw hack above, which ASSIGNS text_adjust
      * rather than adding to it and would otherwise throw the shift away. The
      * background rectangles do not use text_adjust, so they keep filling the
-    nfg = ((attr & ATTR_FGMASK) >> ATTR_FGSHIFT);
-    nbg = ((attr & ATTR_BGMASK) >> ATTR_BGSHIFT);
      * whole, taller cell.
      */
     text_adjust += wgs->font_yshift;
@@ -9628,57 +9715,21 @@ static void do_text_internal(
     another_font(wgs, nfont);
     if (!wgs->fonts[nfont])
         nfont = FONT_NORMAL;
-    if (attr & ATTR_REVERSE) {
-        struct optionalrgb trgb;
-
-        t = nfg;
-        nfg = nbg;
-        nbg = t;
-
-        trgb = truecolour.fg;
-        truecolour.fg = truecolour.bg;
-        truecolour.bg = trgb;
-    }
-    if (wgs->bold_colours && (attr & ATTR_BOLD) && !is_cursor) {
-        if (nfg < 16) nfg |= 8;
-        else if (nfg >= 256) nfg |= 1;
-    }
-    if (wgs->bold_colours && (attr & ATTR_BLINK)) {
-        if (nbg < 16) nbg |= 8;
-        else if (nbg >= 256) nbg |= 1;
-    }
-#ifdef MOD_TUTTYCOLOR
-    /* KiTTY (TuTTY): colour underlined text with the dedicated under_fg slot. */
-    if (!wgs->pal && truecolour.fg.enabled)
-        fg = RGB(truecolour.fg.r, truecolour.fg.g, truecolour.fg.b);
-    else
-        fg = wgs->colours[nfg];
-
-    if (!wgs->pal && truecolour.bg.enabled)
-        bg = RGB(truecolour.bg.r, truecolour.bg.g, truecolour.bg.b);
-    else
-        bg = wgs->colours[nbg];
-
-    if (!wgs->pal && (attr & ATTR_DIM)) {
-        fg = RGB(GetRValue(fg) * 2 / 3,
-                 GetGValue(fg) * 2 / 3,
-                 GetBValue(fg) * 2 / 3);
-    }
-    if ((attr & ATTR_UNDER) && !is_cursor &&
-        conf_get_int(wgs->conf, CONF_under_colour))
-        nfg = OSC4_COLOUR_under_fg;
-#endif
-#ifdef MOD_TUTTYCOLOR
-    /* KiTTY (TuTTY): colour the selection with the dedicated sel_fg/sel_bg
-     * slots instead of reverse-video. terminal.c only sets ATTR_SELECTED
-     * when CONF_sel_colour is on, so no extra conf check is needed here. */
-    if ((attr & ATTR_SELECTED) && !is_cursor) {
-        nfg = OSC4_COLOUR_sel_fg;
-        nbg = OSC4_COLOUR_sel_bg;
-        /* Palette slots must override any 24-bit truecolour on the cell,
-         * otherwise the truecolour.fg.enabled branch below ignores nfg/nbg. */
-        truecolour.fg.enabled = false;
-        truecolour.bg.enabled = false;
+    cell_colours(wgs, attr, truecolour, is_cursor, &fg, &bg);
+#ifdef MOD_PERSO
+    /* KiTTY: Ease blinking - the cursor part-faded shows its colours mixed
+     * with the cell's own, blinking text part-faded mixes into its
+     * background. Colours, not alpha: the same pixels on GDI and Direct2D. */
+    if (is_cursor) {
+        int level = term_blink_level(wgs->term, false);
+        if (level < 255) {
+            COLORREF cfg, cbg;
+            cell_colours(wgs, cell_attr, cell_tc, false, &cfg, &cbg);
+            fg = kitty_fade_mix(fg, cfg, level);
+            bg = kitty_fade_mix(bg, cbg, level);
+        }
+    } else if (attr & ATTR_FADE) {
+        fg = kitty_fade_mix(fg, bg, term_blink_level(wgs->term, true));
     }
 #endif
 
@@ -10172,9 +10223,20 @@ static void wintw_draw_cursor(
             length = wgs->font_height;
         }
         if (attr & ATTR_ACTCURS) {
+            COLORREF ccol = wgs->colours[261];
+#ifdef MOD_PERSO
+            /* KiTTY: Ease blinking - part-faded, mixed into the cell's
+             * background */
+            int level = term_blink_level(wgs->term, false);
+            if (level < 255) {
+                COLORREF cfg, cbg;
+                cell_colours(wgs, attr, truecolour, false, &cfg, &cbg);
+                ccol = kitty_fade_mix(ccol, cbg, level);
+            }
+#endif
             kp_line(wgs->painter, startx, starty,
                     startx + dx * length, starty + dy * length,
-                    wgs->colours[261]);
+                    ccol);
         } else {
             for (i = 0; i < length; i++) {
                 if (i % 2 == 0) {

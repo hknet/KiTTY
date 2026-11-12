@@ -1764,6 +1764,10 @@ CONF_OPTION(taskbar_progress, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD
 /* KiTTY: failed commands (OSC 133;D with an exit code other than 0) marked
  * with a red line on their prompt line and in the mark strip. */
 CONF_OPTION(failed_marks, VALUE_TYPE(BOOL), DEFAULT_BOOL(true), SAVE_KEYWORD("FailedCommandMarks"),)
+/* KiTTY: Ease blinking - the blinking cursor and blinking text fade out and
+ * in along an ease-in-out curve instead of switching off and on
+ * (terminal.c, term_fade_step). */
+CONF_OPTION(ease_blink, VALUE_TYPE(BOOL), DEFAULT_BOOL(false), SAVE_KEYWORD("BlinkEase"),)
 /* KiTTY: a new window width joins the wrapped rows of the main screen and
  * the scrollback and cuts them again at the new width
  * (terminal/kitty_reflow.c). */

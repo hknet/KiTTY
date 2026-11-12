@@ -1432,13 +1432,16 @@ static void kitty_kd_size(Terminal *term)
     int n = term->rows > 0 ? term->rows : 0;
     if (term->kd_rows != n) {
         sfree(term->kd_full);
+        sfree(term->kd_blink);
         sfree(term->kd_x0);
         sfree(term->kd_x1);
         term->kd_full = n ? snewn(n, unsigned char) : NULL;
+        term->kd_blink = n ? snewn(n, unsigned char) : NULL;
         term->kd_x0 = n ? snewn(n, int) : NULL;
         term->kd_x1 = n ? snewn(n, int) : NULL;
         if (n) {
             memset(term->kd_full, 0, n);
+            memset(term->kd_blink, 0, n);
             memset(term->kd_x0, 0, n * sizeof(int));
             memset(term->kd_x1, 0, n * sizeof(int));
         }
@@ -1488,6 +1491,7 @@ static void kitty_kd_scroll(Terminal *term, int top, int bot, int n)
     }
     if (n > 0) {
         memmove(term->kd_full + top, term->kd_full + top + n, band - n);
+        memmove(term->kd_blink + top, term->kd_blink + top + n, band - n);
         memmove(term->kd_x0 + top, term->kd_x0 + top + n,
                 (band - n) * sizeof(int));
         memmove(term->kd_x1 + top, term->kd_x1 + top + n,
@@ -1497,6 +1501,7 @@ static void kitty_kd_scroll(Terminal *term, int top, int bot, int n)
     } else {
         n = -n;
         memmove(term->kd_full + top + n, term->kd_full + top, band - n);
+        memmove(term->kd_blink + top + n, term->kd_blink + top, band - n);
         memmove(term->kd_x0 + top + n, term->kd_x0 + top,
                 (band - n) * sizeof(int));
         memmove(term->kd_x1 + top + n, term->kd_x1 + top,
@@ -1533,6 +1538,14 @@ static void kitty_kd_frame(Terminal *term, int curs_y)
     term->kd_tblinker = term->tblinker;
     term->kd_focus = term->has_focus;
     term->kd_preedit = preedit;
+    /* Ease blinking: a new text level redraws the rows that show blinking
+     * text, not the whole screen */
+    if (term->tfade != term->tfade_drawn && !term->kd_all && term->kd_blink) {
+        int y;
+        for (y = 0; y < term->kd_rows; y++)
+            if (term->kd_blink[y])
+                kitty_kd_row(term, y);
+    }
     kitty_kd_row(term, curs_y);
     kitty_kd_row(term, term->kd_cursy);
     term->kd_cursy = curs_y;
@@ -1708,6 +1721,10 @@ static void check_line_size(Terminal *term, termline *line)
 
 static void term_schedule_tblink(Terminal *term);
 static void term_schedule_cblink(Terminal *term);
+#ifdef MOD_PERSO
+static bool term_fade_step(Terminal *term);
+static void term_schedule_fade(Terminal *term);
+#endif
 static void term_update_callback(void *ctx);
 #ifdef KITTY_SB_DEFER
 static void term_sb_compact(Terminal *term, bool all);
@@ -1724,12 +1741,26 @@ static void term_timer(void *ctx, unsigned long now)
         term->window_update_pending = true;
     }
 
-    if (term->cblink_pending && now == term->next_cblink) {
+    if (term->cblink_pending && now == term->next_cblink
+#ifdef MOD_PERSO
+        && !term->cfade_run            /* KiTTY: the fade has no on/off timer */
+#endif
+        ) {
         term->cblinker = !term->cblinker;
         term->cblink_pending = false;
         term_schedule_cblink(term);
         term->window_update_pending = true;
     }
+
+#ifdef MOD_PERSO
+    /* KiTTY: Ease blinking, one step of the fade */
+    if (term->fade_pending && now == term->next_fade) {
+        term->fade_pending = false;
+        if (term_fade_step(term))
+            term->window_update_pending = true;
+        term_schedule_fade(term);
+    }
+#endif
 
     if (term->in_vbell && now == term->vbell_end) {
         term->in_vbell = false;
@@ -2179,6 +2210,18 @@ static void seen_disp_event(Terminal *term)
  */
 static void term_schedule_tblink(Terminal *term)
 {
+#ifdef MOD_PERSO
+    /* KiTTY: Ease blinking - no on/off timer. do_paint starts the fade
+     * (tfade_run) once blinking text is on the screen. */
+    if (term->ease_blink) {
+        term->tblinker = true;
+        term->tblink_pending = false;
+        term_schedule_fade(term);
+        return;
+    }
+    term->tfade_run = false;
+    term->tfade = 255;
+#endif
     if (term->blink_is_real) {
         if (!term->tblink_pending)
             term->next_tblink = schedule_timer(TBLINK_DELAY, term_timer, term);
@@ -2202,9 +2245,34 @@ static void term_schedule_cblink(Terminal *term)
     if (!term->blink_cur || !term->has_focus) {
         term->cblinker = true;         /* reset when not in use */
         term->cblink_pending = false;
+#ifdef MOD_PERSO
+        term->cfade_run = false;
+        term->cfade = 255;
+#endif
         return;
     }
     delay = term->cblink_delay;
+#ifdef MOD_PERSO
+    /* KiTTY: Ease blinking - no on/off timer, the fade timer steps the
+     * cursor's level. A restart (cblink_pending cleared: output, focus)
+     * begins a new cycle, opaque. */
+    if (term->ease_blink && delay > 0) {
+        if (!term->cblink_pending || !term->cfade_run) {
+            term->cfade_t0 = GETTICKCOUNT();
+            term->cfade = 255;
+        }
+        term->cblinker = true;
+        term->cblink_pending = true;
+        term->cfade_run = true;
+        term_schedule_fade(term);
+        return;
+    }
+    if (term->cfade_run) {             /* easing just ended: no timer runs */
+        term->cfade_run = false;
+        term->cfade = 255;
+        term->cblink_pending = false;
+    }
+#endif
     if (delay > 0) {
         if (!term->cblink_pending)
             term->next_cblink = schedule_timer(delay, term_timer, term);
@@ -2214,6 +2282,61 @@ static void term_schedule_cblink(Terminal *term)
         term->cblink_pending = false;
     }
 }
+
+#ifdef MOD_PERSO
+/*
+ * KiTTY: Ease blinking. One blink cycle is two blink periods: over the
+ * first the level falls from 255 to 0, over the second it rises back, both
+ * along the smoothstep curve 3u^2 - 2u^3 (slow at the ends, fast in the
+ * middle). The cursor's period is the system caret blink time, the text's
+ * TBLINK_DELAY, as without easing. One timer steps both, 30 times a second,
+ * and only while one of them fades: a window without focus, a steady
+ * cursor, or a screen without blinking text runs no timer at all.
+ */
+#define KITTY_FADE_STEP (TICKSPERSEC / 30)
+
+static int kitty_fade_level(unsigned long elapsed, int half)
+{
+    unsigned long t = elapsed % (2UL * (unsigned long)half);
+    bool rising = t >= (unsigned long)half;
+    long u, e;
+    if (rising)
+        t -= half;
+    u = (long)((t << 8) / (unsigned long)half);          /* 0 .. 255 */
+    e = (u * u * (3 * 256 - 2 * u)) >> 16;               /* 0 .. 255 */
+    if (e > 255)
+        e = 255;
+    return rising ? (int)e : 255 - (int)e;
+}
+
+/* The levels for now. True when one changed. */
+static bool term_fade_step(Terminal *term)
+{
+    unsigned long now = GETTICKCOUNT();
+    int c = 255, t = 255;
+    bool changed;
+    if (term->cfade_run && term->cblink_delay > 0)
+        c = kitty_fade_level(now - term->cfade_t0, term->cblink_delay);
+    if (term->tfade_run)
+        t = kitty_fade_level(now - term->tfade_t0, TBLINK_DELAY);
+    changed = c != term->cfade || t != term->tfade;
+    term->cfade = c;
+    term->tfade = t;
+    return changed;
+}
+
+/* Start the step timer if something fades and it is not running. A hidden
+ * cursor (DECTCEM off) has nothing to fade; do_paint calls this again when
+ * it comes back. */
+static void term_schedule_fade(Terminal *term)
+{
+    if (((term->cfade_run && term->cursor_on) || term->tfade_run) &&
+        !term->fade_pending) {
+        term->next_fade = schedule_timer(KITTY_FADE_STEP, term_timer, term);
+        term->fade_pending = true;
+    }
+}
+#endif
 
 /*
  * Call to begin a visual bell.
@@ -2573,6 +2696,8 @@ static void term_copy_stuff_from_conf(Terminal *term)
     term->conf_blink_cur = term->blink_cur;
     if (term->decscusr)
         term->blink_cur = (term->decscusr & 1) != 0;
+    /* KiTTY: Ease blinking. The callers reschedule both blinks after this. */
+    term->ease_blink = conf_get_bool(term->conf, CONF_ease_blink);
 #endif
     term->blinktext = conf_get_bool(term->conf, CONF_blinktext);
     term->cjk_ambig_wide = conf_get_bool(term->conf, CONF_cjk_ambig_wide);
@@ -3394,6 +3519,7 @@ void term_free(Terminal *term)
     kitty_links_free(term);
     kitty_ctx3008_free(term);   /* OSC 3008 contexts */
     sfree(term->kd_full);
+    sfree(term->kd_blink);
     sfree(term->kd_x0);
     sfree(term->kd_x1);
     /* KiTTY: the OSC 5522 approvals table. The passwords are wiped rather than
@@ -10063,6 +10189,11 @@ static void do_paint(Terminal *term)
                 cursor = ATTR_ACTCURS;
             else
                 cursor = 0;
+#ifdef MOD_PERSO
+            /* KiTTY: Ease blinking - faded out completely = not drawn */
+            if (term->cfade_run && term->cfade == 0)
+                cursor = 0;
+#endif
         } else
             cursor = ATTR_PASCURS;
         if (term->wrapnext)
@@ -10124,6 +10255,7 @@ static void do_paint(Terminal *term)
         int kx0, kx1;                  /* KiTTY: the columns walked */
         int kn1;                       /* KiTTY: newline[] filled below it */
         bool kfr;                      /* KiTTY: kitty_fringe_text on */
+        bool kblink = false;           /* KiTTY: eased blinking text here */
         if (!kitty_kd_due(term, i, &kx0, &kx1))
             continue;                  /* nothing marked it: unchanged */
 #endif
@@ -10315,6 +10447,21 @@ static void do_paint(Terminal *term)
 
             /* 'Real' blinking ? */
             if (term->blink_is_real && (tattr & ATTR_BLINK)) {
+#ifdef MOD_PERSO
+                /* KiTTY: Ease blinking - gone at 0, part-faded between */
+                if (term->ease_blink) {
+                    kblink = true;
+                    if (term->has_focus && term->tfade_run) {
+                        if (term->tfade == 0)
+                            tchar = term->ucsdata->unitab_line[(unsigned char)' '];
+                        else if (term->tfade < 255) {
+                            tattr |= ATTR_FADE;
+                            if (term->tfade != term->tfade_drawn)
+                                term->disptext[i]->chars[j].attr |= ATTR_INVALID;
+                        }
+                    }
+                } else
+#endif
                 if (term->has_focus && term->tblinker) {
                     tchar = term->ucsdata->unitab_line[(unsigned char)' '];
                 }
@@ -10334,8 +10481,15 @@ static void do_paint(Terminal *term)
             } else if (term->disptext[i]->chars[j].attr & ATTR_NARROW)
                 tattr |= ATTR_NARROW;
 
-            if (i == our_curs_y && j == our_curs_x)
+            if (i == our_curs_y && j == our_curs_x) {
                 tattr |= cursor;
+#ifdef MOD_PERSO
+                /* KiTTY: Ease blinking - a new level redraws the cursor */
+                if ((tattr & ATTR_ACTCURS) && term->cfade_run &&
+                    term->cfade != term->cfade_drawn)
+                    term->disptext[i]->chars[j].attr |= ATTR_INVALID;
+#endif
+            }
 
             /* FULL-TERMCHAR */
             newline[j].attr = tattr;
@@ -10347,6 +10501,16 @@ static void do_paint(Terminal *term)
             /* Combining characters are still read from lchars */
             newline[j].cc_next = 0;
         }
+#ifdef MOD_PERSO
+        /* KiTTY: Ease blinking - remember the rows with blinking text. A
+         * row walked only in part keeps what it had. */
+        if (term->kd_blink && i < term->kd_rows) {
+            if (kx0 == 0 && kx1 >= term->cols)
+                term->kd_blink[i] = kblink;
+            else if (kblink)
+                term->kd_blink[i] = 1;
+        }
+#endif
 
         /*
          * Now loop over the line again, noting where things have
@@ -10660,6 +10824,26 @@ static void do_paint(Terminal *term)
 #ifdef MOD_PERSO
     kitty_kd_spent(term);
     term->kd_quiet--;
+    /* KiTTY: Ease blinking - what this frame drew. The text fade runs while
+     * the focused window shows blinking text, starting opaque. */
+    term->cfade_drawn = term->cfade;
+    term->tfade_drawn = term->tfade;
+    {
+        bool want = term->ease_blink && term->blink_is_real &&
+                    term->has_focus;
+        int y;
+        if (want) {
+            want = false;
+            for (y = 0; y < term->kd_rows && !want; y++)
+                want = term->kd_blink[y] != 0;
+        }
+        if (want != term->tfade_run) {
+            term->tfade_run = want;
+            term->tfade_t0 = GETTICKCOUNT();
+            term->tfade = 255;
+        }
+    }
+    term_schedule_fade(term);
 #endif
     sfree(newline);
     sfree(ch);
