@@ -2261,6 +2261,7 @@ int kitty_hello_enrol_auto(HWND owner, const char *container,
 
 
 #include "kitty_sk.h"
+#include "kitty_buildlabel.h"   /* the test build's label: the device stand-in */
 
 /* ====================================================================
  * FIDO security keys in SSH (sk-*@openssh.com, crypto/sk-keys.c): one
@@ -2287,6 +2288,8 @@ typedef struct khw_sk_api {
     int state;                       /* 0 untried, 1 ok, -1 unusable */
     pWebAuthNGetAssertion_t GetAssertion;
     pWebAuthNFreeAssertion_t FreeAssertion;
+    pWebAuthNMakeCredential_t MakeCredential;            /* optional */
+    pWebAuthNFreeAttestation_t FreeAttestation;          /* optional */
     pWebAuthNGetErrorName_t ErrorName;       /* optional */
     pWebAuthNGetCancellationId_t GetCancellationId;      /* optional */
     pWebAuthNCancelCurrentOperation_t CancelOperation;   /* optional */
@@ -2304,6 +2307,14 @@ static khw_sk_api *khw_sk_load(void)
                                KITTY_API_OPTIONAL, KT_CAP_SK_KEYS);
             api.FreeAssertion = (pWebAuthNFreeAssertion_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNFreeAssertion",
+                               KITTY_API_OPTIONAL, KT_CAP_SK_KEYS);
+            api.MakeCredential = (pWebAuthNMakeCredential_t)
+                kitty_api_from(dll, "webauthn.dll",
+                               "WebAuthNAuthenticatorMakeCredential",
+                               KITTY_API_OPTIONAL, KT_CAP_SK_KEYS);
+            api.FreeAttestation = (pWebAuthNFreeAttestation_t)
+                kitty_api_from(dll, "webauthn.dll",
+                               "WebAuthNFreeCredentialAttestation",
                                KITTY_API_OPTIONAL, KT_CAP_SK_KEYS);
             api.ErrorName = (pWebAuthNGetErrorName_t)
                 kitty_api_from(dll, "webauthn.dll", "WebAuthNGetErrorName",
@@ -2328,33 +2339,38 @@ int kitty_sk_available(void)
     return khw_sk_load() != NULL;
 }
 
-/* One signature request. Heap-owned with copies of everything it reads:
- * when Windows keeps the request open past every cancel, kageant answers
- * the client anyway (KHW_SK_GRACE_MS) and the worker ends alone. The
- * caller, the worker and the watchdog each hold one reference. */
+/* One request to the device: a signature, or (make) a new key. Heap-owned
+ * with copies of everything it reads: when Windows keeps the request open
+ * past every cancel, the caller answers anyway (KHW_SK_GRACE_MS) and the
+ * worker ends alone. The caller, the worker and the watchdog each hold one
+ * reference. */
 struct khw_sk_job {
     LONG refs;
     khw_sk_api *api;
+    bool make;
+    LONG cose_alg;       /* make: -8 EdDSA, -7 ES256 */
     HWND owner;
     wchar_t *rp_id;
     unsigned char *handle, *data;
     size_t handlelen, datalen;
     DWORD uv;
     HRESULT hr;
-    unsigned char *auth, *sig;
-    DWORD authlen, siglen;
+    /* sign: authenticatorData, signature. make: authenticatorData,
+     * credential id */
+    unsigned char *out1, *out2;
+    DWORD out1len, out2len;
     GUID cancel_id;
     bool have_cancel;
     HANDLE done;         /* set by the worker when Windows returns */
     DWORD cancel_after;  /* ms before the first cancel */
 };
 
-/* How long kageant waits for Windows after the first cancel before it
- * answers the client without the worker. */
+/* How long the caller waits for Windows after the first cancel before it
+ * answers without the worker. */
 #define KHW_SK_GRACE_MS 8000
 
-/* A worker left waiting on Windows blocks nothing: the next signature is
- * a request of its own with its own cancellation id and the same bound.
+/* A worker left waiting on Windows blocks nothing: the next request is
+ * one of its own with its own cancellation id and the same bound.
  * Windows answers it or refuses it busy while it still holds the old one. */
 
 static void khw_sk_job_release(struct khw_sk_job *a)
@@ -2366,8 +2382,8 @@ static void khw_sk_job_release(struct khw_sk_job *a)
     sfree(a->rp_id);
     sfree(a->handle);
     sfree(a->data);
-    sfree(a->auth);
-    sfree(a->sig);
+    sfree(a->out1);
+    sfree(a->out2);
     sfree(a);
 }
 
@@ -2388,20 +2404,74 @@ static DWORD WINAPI khw_sk_watch_thread(LPVOID p)
     return 0;
 }
 
-static void khw_sk_job_run(void *arg)
+static unsigned char *khw_memdup(const void *p, size_t len)
 {
-    struct khw_sk_job *a = (struct khw_sk_job *)arg;
-    KHW_CLIENT_DATA cd;
+    unsigned char *d = snewn(len + 1, unsigned char);
+    memcpy(d, p, len);
+    return d;
+}
+
+static HRESULT khw_sk_make_call(struct khw_sk_job *a, KHW_CLIENT_DATA *cd)
+{
+    static unsigned char uid[32];            /* as ssh-keygen: zeroes */
+    KHW_RP_INFO rp;
+    KHW_USER_INFO user;
+    KHW_COSE_PARAM alg;
+    KHW_COSE_PARAMS algs;
+    KHW_MAKE_OPTS opts;
+    KHW_ATTESTATION *att = NULL;
+    HRESULT hr;
+
+    memset(&rp, 0, sizeof(rp));
+    rp.dwVersion = 1;
+    rp.pwszId = a->rp_id;
+    rp.pwszName = a->rp_id;
+
+    memset(&user, 0, sizeof(user));
+    user.dwVersion = 1;
+    user.cbId = sizeof(uid);
+    user.pbId = uid;
+    user.pwszName = L"kittygen";
+    user.pwszDisplayName = L"kittygen";
+
+    memset(&alg, 0, sizeof(alg));
+    alg.dwVersion = 1;
+    alg.pwszCredentialType = L"public-key";
+    alg.lAlg = a->cose_alg;
+    algs.cCredentialParameters = 1;
+    algs.pCredentialParameters = &alg;
+
+    memset(&opts, 0, sizeof(opts));
+    opts.dwVersion = a->have_cancel ? 2 : 1;     /* 2: pCancellationId */
+    opts.dwTimeoutMilliseconds = (DWORD)kitty_sk_timeout_ms;
+    if (a->have_cancel)
+        opts.pCancellationId = &a->cancel_id;
+    opts.dwAuthenticatorAttachment = KHW_ATTACHMENT_CROSS_PLATFORM;
+    opts.bRequireResidentKey = FALSE;
+    opts.dwUserVerificationRequirement = a->uv;
+    opts.dwAttestationConveyancePreference = KHW_ATTESTATION_NONE;
+
+    hr = a->api->MakeCredential(a->owner, &rp, &user, &algs, cd, &opts,
+                                &att);
+    if (SUCCEEDED(hr) && att) {
+        a->out1 = khw_memdup(att->pbAuthenticatorData,
+                             att->cbAuthenticatorData);
+        a->out1len = att->cbAuthenticatorData;
+        a->out2 = khw_memdup(att->pbCredentialId, att->cbCredentialId);
+        a->out2len = att->cbCredentialId;
+        a->api->FreeAttestation(att);
+    } else if (SUCCEEDED(hr)) {
+        hr = E_FAIL;
+    }
+    return hr;
+}
+
+static HRESULT khw_sk_assert_call(struct khw_sk_job *a, KHW_CLIENT_DATA *cd)
+{
     KHW_CREDENTIAL cred;
     KHW_ASSERT_OPTS opts;
     KHW_ASSERTION *asrt = NULL;
     HRESULT hr;
-
-    memset(&cd, 0, sizeof(cd));
-    cd.dwVersion = 1;
-    cd.cbClientDataJSON = (DWORD)a->datalen;
-    cd.pbClientDataJSON = a->data;
-    cd.pwszHashAlgId = L"SHA-256";
 
     memset(&cred, 0, sizeof(cred));
     cred.dwVersion = 1;
@@ -2419,64 +2489,53 @@ static void khw_sk_job_run(void *arg)
     opts.dwAuthenticatorAttachment = KHW_ATTACHMENT_CROSS_PLATFORM;
     opts.dwUserVerificationRequirement = a->uv;
 
-    hr = a->api->GetAssertion(a->owner, a->rp_id, &cd, &opts, &asrt);
+    hr = a->api->GetAssertion(a->owner, a->rp_id, cd, &opts, &asrt);
     if (SUCCEEDED(hr) && asrt) {
-        a->auth = snewn(asrt->cbAuthenticatorData + 1, unsigned char);
-        memcpy(a->auth, asrt->pbAuthenticatorData, asrt->cbAuthenticatorData);
-        a->authlen = asrt->cbAuthenticatorData;
-        a->sig = snewn(asrt->cbSignature + 1, unsigned char);
-        memcpy(a->sig, asrt->pbSignature, asrt->cbSignature);
-        a->siglen = asrt->cbSignature;
+        a->out1 = khw_memdup(asrt->pbAuthenticatorData,
+                             asrt->cbAuthenticatorData);
+        a->out1len = asrt->cbAuthenticatorData;
+        a->out2 = khw_memdup(asrt->pbSignature, asrt->cbSignature);
+        a->out2len = asrt->cbSignature;
         a->api->FreeAssertion(asrt);
     } else if (SUCCEEDED(hr)) {
         hr = E_FAIL;
     }
-    a->hr = hr;
+    return hr;
+}
+
+static void khw_sk_job_run(void *arg)
+{
+    struct khw_sk_job *a = (struct khw_sk_job *)arg;
+    KHW_CLIENT_DATA cd;
+
+    memset(&cd, 0, sizeof(cd));
+    cd.dwVersion = 1;
+    cd.cbClientDataJSON = (DWORD)a->datalen;
+    cd.pbClientDataJSON = a->data;
+    cd.pwszHashAlgId = L"SHA-256";
+
+    a->hr = a->make ? khw_sk_make_call(a, &cd) : khw_sk_assert_call(a, &cd);
     if (a->done)
         SetEvent(a->done);
     khw_sk_job_release(a);
 }
 
-static unsigned char *khw_memdup(ptrlen p)
-{
-    unsigned char *d = snewn(p.len + 1, unsigned char);
-    memcpy(d, p.ptr, p.len);
-    return d;
-}
-
-const char *kitty_sk_assert(HWND owner, ptrlen application,
-                            ptrlen key_handle, unsigned key_flags,
-                            ptrlen data, SkAssertion *out)
+/* Runs the request a (the caller's reference) on its worker with the
+ * watchdog and the bound - or here, on the calling thread (no bound then:
+ * Windows' own prompt has Cancel). On success hands out1/out2 over. NULL
+ * on success, else the reason, Windows' code in *hr_out. Releases the
+ * caller's reference. */
+static const char *khw_sk_run(struct khw_sk_job *a, HWND owner, bool here,
+                              strbuf *out1, strbuf *out2, HRESULT *hr_out)
 {
     static char reason[160];
-    khw_sk_api *api = khw_sk_load();
-    struct khw_sk_job *a;
+    khw_sk_api *api = a->api;
     HWND host;
     HANDLE wt = NULL;
     HRESULT hr;
     DWORD limit = INFINITE;
     int ran;
 
-    if (!api)
-        return KT_SK_NO_WEBAUTHN;
-    if (khw_busy && !khw_on_worker)
-        return KT_SK_BUSY;       /* before the card and the threads */
-
-    a = snew(struct khw_sk_job);
-    memset(a, 0, sizeof(*a));
-    a->refs = 1;                                 /* the caller's */
-    a->api = api;
-    {   /* application is a counted string, not terminated */
-        char *app = mkstr(application);
-        a->rp_id = dup_mb_to_wc(CP_UTF8, app);
-        sfree(app);
-    }
-    a->handle = khw_memdup(key_handle);
-    a->handlelen = key_handle.len;
-    a->data = khw_memdup(data);
-    a->datalen = data.len;
-    a->uv = (key_flags & SSH_SK_USER_VERIFICATION_REQD) ? KHW_UV_REQUIRED
-                                                       : KHW_UV_DISCOURAGED;
     a->hr = E_FAIL;
     a->have_cancel = api->GetCancellationId && api->CancelOperation &&
         SUCCEEDED(api->GetCancellationId(&a->cancel_id));
@@ -2498,7 +2557,12 @@ const char *kitty_sk_assert(HWND owner, ptrlen application,
     }
     /* Without a watchdog no cancel can end the request: no limit then,
      * the worker would only be left waiting on its own. */
-    ran = khw_run_on_thread(khw_sk_job_run, a, owner, limit);
+    if (here) {
+        khw_sk_job_run(a);                       /* takes the worker's */
+        ran = KHW_RAN;
+    } else {
+        ran = khw_run_on_thread(khw_sk_job_run, a, owner, limit);
+    }
     if (ran == KHW_BUSY)
         InterlockedDecrement(&a->refs);          /* the worker never ran */
     if (ran == KHW_ABANDONED &&
@@ -2508,6 +2572,7 @@ const char *kitty_sk_assert(HWND owner, ptrlen application,
         CloseHandle(wt);
     khw_host_destroy(host);
 
+    *hr_out = E_FAIL;
     if (ran == KHW_BUSY) {
         if (a->done)
             SetEvent(a->done);                   /* ends the watchdog */
@@ -2518,10 +2583,10 @@ const char *kitty_sk_assert(HWND owner, ptrlen application,
         khw_sk_job_release(a);
         return KT_SK_CANCELLED;
     }
-    hr = a->hr;
+    hr = *hr_out = a->hr;
     if (SUCCEEDED(hr)) {
-        put_data(out->auth_data, a->auth, a->authlen);
-        put_data(out->signature, a->sig, a->siglen);
+        put_data(out1, a->out1, a->out1len);
+        put_data(out2, a->out2, a->out2len);
     }
     khw_sk_job_release(a);
 
@@ -2540,4 +2605,139 @@ const char *kitty_sk_assert(HWND owner, ptrlen application,
         sfree(n);
     }
     return reason;
+}
+
+static struct khw_sk_job *khw_sk_job_new(khw_sk_api *api,
+                                         ptrlen application, ptrlen data,
+                                         bool uv)
+{
+    struct khw_sk_job *a = snew(struct khw_sk_job);
+    memset(a, 0, sizeof(*a));
+    a->refs = 1;                                 /* the caller's */
+    a->api = api;
+    {   /* application is a counted string, not terminated */
+        char *app = mkstr(application);
+        a->rp_id = dup_mb_to_wc(CP_UTF8, app);
+        sfree(app);
+    }
+    a->data = khw_memdup(data.ptr, data.len);
+    a->datalen = data.len;
+    a->uv = uv ? KHW_UV_REQUIRED : KHW_UV_DISCOURAGED;
+    return a;
+}
+
+const char *kitty_sk_assert(HWND owner, ptrlen application,
+                            ptrlen key_handle, unsigned key_flags,
+                            ptrlen data, SkAssertion *out)
+{
+    khw_sk_api *api = khw_sk_load();
+    struct khw_sk_job *a;
+    HRESULT hr;
+
+    if (!api)
+        return KT_SK_NO_WEBAUTHN;
+    if (khw_busy && !khw_on_worker)
+        return KT_SK_BUSY;       /* before the card and the threads */
+
+    a = khw_sk_job_new(api, application, data,
+                       (key_flags & SSH_SK_USER_VERIFICATION_REQD) != 0);
+    a->handle = khw_memdup(key_handle.ptr, key_handle.len);
+    a->handlelen = key_handle.len;
+    return khw_sk_run(a, owner, false, out->auth_data, out->signature, &hr);
+}
+
+#ifdef KITTY_TEST_BUILD_LABEL
+/* The registration a device would return, made from the stand-in key's
+ * public point (Ed25519 only). */
+static const char *khw_sk_make_softkey(const char *path, bool ecdsa, bool uv,
+                                       ptrlen app, strbuf *auth_data,
+                                       strbuf *cred_id)
+{
+    static const char handle[] = "kitty-test-sk-handle";
+    unsigned char h[32];
+    Filename *fn = filename_from_str(path);
+    const char *err = NULL;
+    ssh2_userkey *uk = ppk_load_f(fn, "", &err);
+    filename_free(fn);
+    if (!uk || uk == SSH2_WRONG_PASSPHRASE || !uk->key ||
+        ssh_key_alg(uk->key) != &ssh_ecdsa_ed25519 || ecdsa) {
+        if (uk && uk != SSH2_WRONG_PASSPHRASE) {
+            if (uk->key)
+                ssh_key_free(uk->key);
+            sfree(uk->comment);
+            sfree(uk);
+        }
+        return "the test stand-in makes Ed25519 keys only";
+    }
+    strbuf *pub = strbuf_new();
+    ssh_key_public_blob(uk->key, BinarySink_UPCAST(pub));
+    ssh_key_free(uk->key);
+    sfree(uk->comment);
+    sfree(uk);
+    BinarySource src[1];
+    BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(pub));
+    get_string(src);
+    ptrlen x = get_string(src);
+    hash_simple(&ssh_sha256, app, h);
+    put_data(auth_data, h, 32);
+    put_byte(auth_data, 0x41 | (uv ? 0x04 : 0));   /* UP, AT (, UV) */
+    put_uint32(auth_data, 0);                      /* counter */
+    put_padding(auth_data, 16, 0);                 /* AAGUID */
+    put_uint16(auth_data, sizeof(handle) - 1);
+    put_data(auth_data, handle, sizeof(handle) - 1);
+    /* COSE key { 1: 1 (OKP), 3: -8 (EdDSA), -1: 6 (Ed25519), -2: x } */
+    put_byte(auth_data, 0xA4);
+    put_byte(auth_data, 0x01); put_byte(auth_data, 0x01);
+    put_byte(auth_data, 0x03); put_byte(auth_data, 0x27);
+    put_byte(auth_data, 0x20); put_byte(auth_data, 0x06);
+    put_byte(auth_data, 0x21); put_byte(auth_data, 0x58);
+    put_byte(auth_data, (unsigned char)x.len);
+    put_datapl(auth_data, x);
+    put_data(cred_id, handle, sizeof(handle) - 1);
+    strbuf_free(pub);
+    return NULL;
+}
+#endif
+
+const char *kitty_sk_make(HWND owner, bool ecdsa, bool uv,
+                          ptrlen application, strbuf *auth_data,
+                          strbuf *cred_id)
+{
+    khw_sk_api *api = khw_sk_load();
+    /* The client data: only an attestation signs it, none is requested.
+     * Nothing checks it, so it stays fixed. */
+    static const unsigned char challenge[32];
+    const char *err = NULL;
+    HRESULT hr = E_FAIL;
+    int i;
+
+#ifdef KITTY_TEST_BUILD_LABEL
+    /* Test builds: KITTY_TEST_SK_SOFTKEY=<an unencrypted Ed25519 PPK file>
+     * stands in for the device, as in kageant: its public key becomes the
+     * new key's, so the kageant of the same test signs for it. */
+    {
+        const char *p = getenv("KITTY_TEST_SK_SOFTKEY");
+        if (p && *p)
+            return khw_sk_make_softkey(p, ecdsa, uv, application, auth_data,
+                                       cred_id);
+    }
+#endif
+    if (!api || !api->MakeCredential || !api->FreeAttestation)
+        return KT_SK_NO_WEBAUTHN;
+    if (khw_busy && !khw_on_worker)
+        return KT_SK_BUSY;
+
+    /* On the worker as a signature first. The Hello key creation above
+     * met RPC_E_WRONG_THREAD on a worker (a platform authenticator): then
+     * once more on the calling thread. */
+    for (i = 0; i < 2; i++) {
+        struct khw_sk_job *a = khw_sk_job_new(
+            api, application, make_ptrlen(challenge, sizeof(challenge)), uv);
+        a->make = true;
+        a->cose_alg = ecdsa ? -7 : -8;
+        err = khw_sk_run(a, owner, i == 1, auth_data, cred_id, &hr);
+        if (hr != RPC_E_WRONG_THREAD)
+            break;
+    }
+    return err;
 }

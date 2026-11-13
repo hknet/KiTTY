@@ -5,7 +5,9 @@
  * signature is built from what a device returns, through the provider,
  * and every refusal path gives its reason. No device is needed. The key
  * files as kageant reads them (stage 4): the public key without the
- * passphrase, a passphrase-protected file, a wrong passphrase.
+ * passphrase, a passphrase-protected file, a wrong passphrase. Stage 6:
+ * kittygen's new key from a device's registration (the COSE key) plus the
+ * PPK form it is saved in.
  */
 #include <winsock2.h>   /* before windows.h: putty.h pulls it in further down */
 #include <windows.h>
@@ -643,6 +645,214 @@ static void test_der(void)
     strbuf_free(out);
 }
 
+/* ---- stage 6: kittygen's new key from a registration, its PPK ---- */
+
+/* The authenticatorData a device returns for a new key: RP ID hash of
+ * app, flags, counter, AAGUID, credential id, the COSE key of the public
+ * key in pub (an OpenSSH sk public blob). */
+static strbuf *make_registration(const char *pub, ptrlen app,
+                                 unsigned char adflags, ptrlen cred_id,
+                                 bool cose_as_ed25519)
+{
+    strbuf *blob = b64(pub), *ad = strbuf_new();
+    unsigned char h[32];
+    BinarySource src[1];
+    BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(blob));
+    ptrlen type = get_string(src);
+    bool ecdsa = ptrlen_eq_string(type, ssh_sk_ecdsa_nistp256.ssh_id);
+    ptrlen x, y = PTRLEN_LITERAL("");
+    if (ecdsa) {
+        get_string(src);                         /* "nistp256" */
+        ptrlen point = get_string(src);          /* 04 || x || y */
+        x = make_ptrlen((const char *)point.ptr + 1, 32);
+        y = make_ptrlen((const char *)point.ptr + 33, 32);
+    } else {
+        x = get_string(src);
+    }
+
+    hash_simple(&ssh_sha256, app, h);
+    put_data(ad, h, 32);
+    put_byte(ad, adflags);
+    put_uint32(ad, 0);
+    put_padding(ad, 16, 0);
+    put_uint16(ad, cred_id.len);
+    put_datapl(ad, cred_id);
+    if (!cose_as_ed25519 && ecdsa) {
+        /* { 1: 2 (EC2), 3: -7 (ES256), -1: 1 (P-256), -2: x, -3: y } */
+        put_byte(ad, 0xA5);
+        put_byte(ad, 0x01); put_byte(ad, 0x02);
+        put_byte(ad, 0x03); put_byte(ad, 0x26);
+        put_byte(ad, 0x20); put_byte(ad, 0x01);
+        put_byte(ad, 0x21); put_byte(ad, 0x58); put_byte(ad, 32);
+        put_datapl(ad, x);
+        put_byte(ad, 0x22); put_byte(ad, 0x58); put_byte(ad, 32);
+        put_datapl(ad, y);
+    } else {
+        /* { 1: 1 (OKP), 3: -8 (EdDSA), -1: 6 (Ed25519), -2: x } */
+        put_byte(ad, 0xA4);
+        put_byte(ad, 0x01); put_byte(ad, 0x01);
+        put_byte(ad, 0x03); put_byte(ad, 0x27);
+        put_byte(ad, 0x20); put_byte(ad, 0x06);
+        put_byte(ad, 0x21); put_byte(ad, 0x58); put_byte(ad, 32);
+        put_datapl(ad, x);
+    }
+    strbuf_free(blob);
+    return ad;
+}
+
+static void test_registration(const char *name, const char *pub,
+                              const ssh_keyalg *alg)
+{
+    char what[128];
+    const char *err = NULL;
+    ptrlen app = PTRLEN_LITERAL("ssh:"), id = PTRLEN_LITERAL("handle-1");
+    strbuf *ad = make_registration(pub, app, 0x45, id, false);
+    ssh_key *k = sk_key_from_registration(alg, app, 0x05,
+                                          ptrlen_from_strbuf(ad), id, &err);
+    snprintf(what, sizeof(what), "%s: a new key from the registration", name);
+    expect(what, k != NULL && err == NULL, true);
+    if (k) {
+        strbuf *pb = strbuf_new(), *want = b64(pub), *ob = strbuf_new();
+        ssh_key_public_blob(k, BinarySink_UPCAST(pb));
+        snprintf(what, sizeof(what), "%s: ... its public key is the COSE "
+                 "key's", name);
+        expect(what, ptrlen_eq_ptrlen(ptrlen_from_strbuf(pb),
+                                      ptrlen_from_strbuf(want)), true);
+        ssh_key_openssh_blob(k, BinarySink_UPCAST(ob));
+        BinarySource src[1];
+        BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(ob));
+        if (ssh_keyalg_is_sk(alg) && alg == &ssh_sk_ecdsa_nistp256)
+            get_string(src);                     /* curve name */
+        get_string(src);                         /* point */
+        get_string(src);                         /* application */
+        unsigned char fl = get_byte(src);
+        ptrlen h = get_string(src);
+        snprintf(what, sizeof(what), "%s: ... flags 0x05 (touch, PIN) and "
+                 "the credential id as the key handle", name);
+        expect(what, !get_err(src) && fl == 0x05 && ptrlen_eq_ptrlen(h, id),
+               true);
+        strbuf_free(pb);
+        strbuf_free(want);
+        strbuf_free(ob);
+        ssh_key_free(k);
+    }
+    strbuf_free(ad);
+
+    ad = make_registration(pub, PTRLEN_LITERAL("ssh:other"), 0x41, id, false);
+    k = sk_key_from_registration(alg, app, 0x01, ptrlen_from_strbuf(ad), id,
+                                 &err);
+    snprintf(what, sizeof(what), "%s: a registration for another "
+             "application is refused", name);
+    expect_str(what, k ? "(a key)" : err,
+               "security key response for another application");
+    if (k)
+        ssh_key_free(k);
+    strbuf_free(ad);
+
+    ad = make_registration(pub, app, 0x01, id, false);   /* no AT flag */
+    k = sk_key_from_registration(alg, app, 0x01, ptrlen_from_strbuf(ad), id,
+                                 &err);
+    snprintf(what, sizeof(what), "%s: a registration without credential "
+             "data is refused", name);
+    expect_str(what, k ? "(a key)" : err,
+               "unexpected response from the security key");
+    if (k)
+        ssh_key_free(k);
+    strbuf_free(ad);
+
+    if (alg == &ssh_sk_ecdsa_nistp256) {
+        ad = make_registration(pub, app, 0x41, id, true);
+        k = sk_key_from_registration(alg, app, 0x01, ptrlen_from_strbuf(ad),
+                                     id, &err);
+        expect_str("ecdsa-sk: an Ed25519 COSE key for a p256 key is refused",
+                   k ? "(a key)" : err,
+                   "unexpected response from the security key");
+        if (k)
+            ssh_key_free(k);
+        strbuf_free(ad);
+    }
+}
+
+/* Save private key in kittygen: the PPK form, without and with a
+ * passphrase, back as the same key. */
+static void test_ppk(const char *name, const char *file,
+                     const ssh_keyalg *alg)
+{
+    char what[128];
+    const char *err = NULL;
+    BinarySource src[1];
+    BinarySource_BARE_INIT(src, file, strlen(file));
+    ssh2_userkey *uk = import_ssh2_s(src, SSH_KEYTYPE_OPENSSH_NEW, "", &err);
+    if (!uk || uk == SSH2_WRONG_PASSPHRASE || !uk->key) {
+        snprintf(what, sizeof(what), "%s: the key for the PPK test loads",
+                 name);
+        expect(what, false, true);
+        return;
+    }
+    strbuf *want = strbuf_new();
+    ssh_key_openssh_blob(uk->key, BinarySink_UPCAST(want));
+
+    for (int pass = 0; pass < 2; pass++) {
+        const char *pp = pass ? "pp-test" : NULL;
+        strbuf *ppk = ppk_save_sb(uk, pp, &ppk_save_default_parameters);
+        BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(ppk));
+        ssh2_userkey *back = ppk_load_s(src, pp, &err);
+        snprintf(what, sizeof(what), "%s: saved as PPK%s, loads again", name,
+                 pass ? " with a passphrase" : "");
+        expect(what, back && back != SSH2_WRONG_PASSPHRASE && back->key &&
+               ssh_key_alg(back->key) == alg, true);
+        if (!back || back == SSH2_WRONG_PASSPHRASE)
+            printf("     (%s)\n", back ? "wrong passphrase" :
+                   err ? err : "no reason");
+        if (back && back != SSH2_WRONG_PASSPHRASE && back->key) {
+            strbuf *got = strbuf_new();
+            ssh_key_openssh_blob(back->key, BinarySink_UPCAST(got));
+            snprintf(what, sizeof(what), "%s: ... the same key, flags and "
+                     "key handle", name);
+            expect(what, ptrlen_eq_ptrlen(ptrlen_from_strbuf(got),
+                                          ptrlen_from_strbuf(want)), true);
+            strbuf_free(got);
+            ssh_key_free(back->key);
+            sfree(back->comment);
+            sfree(back);
+        }
+        if (pass) {
+            BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(ppk));
+            back = ppk_load_s(src, "wrong", &err);
+            snprintf(what, sizeof(what), "%s: ... not with a wrong "
+                     "passphrase", name);
+            expect(what, back == SSH2_WRONG_PASSPHRASE, true);
+        }
+        strbuf_free(ppk);
+    }
+    /* ...and through the file writer, as kittygen and kittygen-cli save
+     * (it once refused security keys) */
+    {
+        const char *tmp = getenv("TEMP");
+        char *path = dupprintf("%s\\test_sk_%s.ppk", tmp ? tmp : ".", name);
+        Filename *fn = filename_from_str(path);
+        bool saved = ppk_save_f(fn, uk, NULL, &ppk_save_default_parameters);
+        ssh2_userkey *back = saved ? ppk_load_f(fn, NULL, &err) : NULL;
+        snprintf(what, sizeof(what), "%s: written to a PPK file and read "
+                 "back", name);
+        expect(what, saved && back && back != SSH2_WRONG_PASSPHRASE &&
+               back->key && ssh_key_alg(back->key) == alg, true);
+        if (back && back != SSH2_WRONG_PASSPHRASE) {
+            if (back->key)
+                ssh_key_free(back->key);
+            sfree(back->comment);
+            sfree(back);
+        }
+        remove(path);
+        sfree(path);
+        filename_free(fn);
+    }
+    strbuf_free(want);
+    ssh_key_free(uk->key);
+    sfree(uk->comment);
+    sfree(uk);
+}
+
 int main(void)
 {
     test_public("ed25519-sk", ED_PUB, &ssh_sk_ed25519, ED_FP);
@@ -658,6 +868,10 @@ int main(void)
     test_device("ed25519-sk", false);
     test_device("ecdsa-sk", true);
     test_der();
+    test_registration("ed25519-sk", ED_PUB, &ssh_sk_ed25519);
+    test_registration("ecdsa-sk", EC_PUB, &ssh_sk_ecdsa_nistp256);
+    test_ppk("ed25519-sk", ED_FILE, &ssh_sk_ed25519);
+    test_ppk("ecdsa-sk", EC_FILE, &ssh_sk_ecdsa_nistp256);
     expect("the sk types are not plain-key types",
            !ssh_keyalg_is_sk(&ssh_ecdsa_ed25519) &&
            !ssh_keyalg_is_sk(&ssh_ecdsa_nistp256), true);

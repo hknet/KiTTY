@@ -10,6 +10,7 @@
 #include "putty.h"
 #include "ssh.h"
 #include "kitty/kitty_hello.h"       /* KiTTY: Hello-protected keys */
+#include "kitty/kitty_sk.h"          /* KiTTY: FIDO keys made on the device */
 #include "kitty/kitty_hello_keys.h"
 #include "kitty/kitty_hello_ui.h"   /* the shared printout window */
 
@@ -969,6 +970,8 @@ enum {
     IDC_KGSIDEBOUND,   /* KiTTY: printout = code bound to the sidecar */
     IDC_KGNEW,         /* KiTTY: File > New - clear the mask */
     IDC_COPYPUB,       /* KiTTY: public key to the clipboard */
+    IDC_KEYSSH2SK,     /* KiTTY: FIDO security key, made on the device */
+    IDC_SKTYPESTATIC, IDC_SKTYPE, IDC_SKUV,
 };
 
 /*
@@ -1269,6 +1272,7 @@ void ui_set_state(HWND hwnd, struct MainDlgState *state, int status)
         EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2DSA), 1);
         EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2ECDSA), 1);
         EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2EDDSA), 1);
+        EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2SK), 1);
         EnableWindow(GetDlgItem(hwnd, IDC_BITS), 1);
         EnableMenuItem(state->filemenu, IDC_LOAD, MF_ENABLED|MF_BYCOMMAND);
         EnableMenuItem(state->filemenu, IDC_SAVE, MF_GRAYED|MF_BYCOMMAND);
@@ -1305,6 +1309,7 @@ void ui_set_state(HWND hwnd, struct MainDlgState *state, int status)
         EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2DSA), 0);
         EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2ECDSA), 0);
         EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2EDDSA), 0);
+        EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2SK), 0);
         EnableWindow(GetDlgItem(hwnd, IDC_BITS), 0);
         EnableMenuItem(state->filemenu, IDC_LOAD, MF_GRAYED|MF_BYCOMMAND);
         EnableMenuItem(state->filemenu, IDC_SAVE, MF_GRAYED|MF_BYCOMMAND);
@@ -1341,6 +1346,7 @@ void ui_set_state(HWND hwnd, struct MainDlgState *state, int status)
         EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2DSA), 1);
         EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2ECDSA), 1);
         EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2EDDSA), 1);
+        EnableWindow(GetDlgItem(hwnd, IDC_KEYSSH2SK), 1);
         EnableWindow(GetDlgItem(hwnd, IDC_BITS), 1);
         EnableMenuItem(state->filemenu, IDC_LOAD, MF_ENABLED|MF_BYCOMMAND);
         EnableMenuItem(state->filemenu, IDC_SAVE, MF_ENABLED|MF_BYCOMMAND);
@@ -1406,7 +1412,10 @@ void ui_set_state(HWND hwnd, struct MainDlgState *state, int status)
  */
 void ui_update_key_type_ctrls(HWND hwnd)
 {
-    enum { BITS, ECCURVE, EDCURVE, NOTHING } which;
+    enum { BITS, ECCURVE, EDCURVE, SK, NOTHING } which;
+    static const int sk_ids[] = {
+        IDC_SKTYPESTATIC, IDC_SKTYPE, IDC_SKUV, 0
+    };
     static const int bits_ids[] = {
         IDC_BITSSTATIC, IDC_BITS, 0
     };
@@ -1428,6 +1437,8 @@ void ui_update_key_type_ctrls(HWND hwnd)
         which = ECCURVE;
     } else if (IsDlgButtonChecked(hwnd, IDC_KEYSSH2EDDSA)) {
         which = EDCURVE;
+    } else if (IsDlgButtonChecked(hwnd, IDC_KEYSSH2SK)) {
+        which = SK;
     } else {
         /* Currently not used since Ed25519 stopped being the only
          * thing in its class, but I'll keep it here in case it comes
@@ -1438,13 +1449,24 @@ void ui_update_key_type_ctrls(HWND hwnd)
     hidemany(hwnd, bits_ids, which != BITS);
     hidemany(hwnd, eccurve_ids, which != ECCURVE);
     hidemany(hwnd, edcurve_ids, which != EDCURVE);
+    hidemany(hwnd, sk_ids, which != SK);
     hidemany(hwnd, nothing_ids, which != NOTHING);
 }
 void ui_set_key_type(HWND hwnd, struct MainDlgState *state, int button)
 {
+    /* KiTTY: IDC_KEYSSH2SK sits outside the IDC_KEYSSH1..EDDSA range (ids
+     * are appended). It has no menu item. */
+    int i;
     CheckRadioButton(hwnd, IDC_KEYSSH1, IDC_KEYSSH2EDDSA, button);
-    CheckMenuRadioItem(state->keymenu, IDC_KEYSSH1, IDC_KEYSSH2EDDSA,
-                       button, MF_BYCOMMAND);
+    CheckDlgButton(hwnd, IDC_KEYSSH2SK,
+                   button == IDC_KEYSSH2SK ? BST_CHECKED : BST_UNCHECKED);
+    if (button == IDC_KEYSSH2SK) {
+        for (i = IDC_KEYSSH1; i <= IDC_KEYSSH2EDDSA; i++)
+            CheckMenuItem(state->keymenu, i, MF_BYCOMMAND | MF_UNCHECKED);
+    } else {
+        CheckMenuRadioItem(state->keymenu, IDC_KEYSSH1, IDC_KEYSSH2EDDSA,
+                           button, MF_BYCOMMAND);
+    }
     ui_update_key_type_ctrls(hwnd);
 }
 void ui_set_primepolicy(HWND hwnd, struct MainDlgState *state, int option)
@@ -1579,6 +1601,7 @@ static void update_ui_after_load(HWND hwnd, struct MainDlgState *state,
 }
 
 static void kg_hello_sync(HWND hwnd);   /* defined below */
+static void kg_sk_hello_gate(HWND hwnd, struct MainDlgState *state);
 
 void load_key_file(HWND hwnd, struct MainDlgState *state,
                    Filename *filename, bool was_import_cmd)
@@ -1703,6 +1726,7 @@ void load_key_file(HWND hwnd, struct MainDlgState *state,
 
         sfree(state->loaded_path);
         state->loaded_path = dupstr(filename_to_str(filename));
+        kg_sk_hello_gate(hwnd, state);   /* off for a security key */
         /* KiTTY: reflect the loaded file's Hello protection in the checkbox,
          * so ticking/unticking + Save is the arm/disarm gesture. Only where
          * the box is live at all. */
@@ -2111,6 +2135,93 @@ static char *kg_wev_fp(struct MainDlgState *state)
     return h;
 }
 
+/*
+ * KiTTY: FIDO security keys made on the device. The
+ * device makes the key through webauthn.dll. Windows prompts for the touch
+ * and the PIN. What comes back is no secret: the public key and the key
+ * handle, saved as a PPK as every key (sk-keys.c's PPK form).
+ */
+/* Windows Hello protection guards a secret in the file: a security key's
+ * file holds none, so the box is off for one. */
+static void kg_sk_hello_gate(HWND hwnd, struct MainDlgState *state)
+{
+    bool sk = state->key_exists && state->ssh2 && state->ssh2key.key &&
+              ssh_keyalg_is_sk(ssh_key_alg(state->ssh2key.key));
+    if (sk) {
+        CheckDlgButton(hwnd, IDC_HELLOPROTECT, BST_UNCHECKED);
+        EnableWindow(GetDlgItem(hwnd, IDC_HELLOPROTECT), false);
+    } else {
+        EnableWindow(GetDlgItem(hwnd, IDC_HELLOPROTECT),
+                     kageant_hello_offerable());
+    }
+    kg_hello_sync(hwnd);
+}
+
+static void kg_sk_generate(HWND hwnd, struct MainDlgState *state)
+{
+    bool ecdsa = SendDlgItemMessage(hwnd, IDC_SKTYPE, CB_GETCURSEL,
+                                    0, 0) == 1;
+    bool uv = IsDlgButtonChecked(hwnd, IDC_SKUV) == BST_CHECKED;
+    const ssh_keyalg *alg = ecdsa ? &ssh_sk_ecdsa_nistp256 : &ssh_sk_ed25519;
+    ptrlen app = PTRLEN_LITERAL("ssh:");       /* as ssh-keygen */
+    unsigned char flags = SSH_SK_USER_PRESENCE_REQD |
+        (uv ? SSH_SK_USER_VERIFICATION_REQD : 0);
+    strbuf *ad = strbuf_new(), *id = strbuf_new();
+    ssh_key *key = NULL;
+    const char *err;
+
+    ui_set_state(hwnd, state, 1);
+    SetDlgItemText(hwnd, IDC_GENERATING, KT_KGEN_SK_WAITING);
+    ShowWindow(GetDlgItem(hwnd, IDC_PROGRESS), SW_HIDE);
+    state->generation_thread_exists = true;    /* Generate stays idle */
+    err = kitty_sk_make(hwnd, ecdsa, uv, app, ad, id);
+    state->generation_thread_exists = false;
+    if (!err)
+        key = sk_key_from_registration(alg, app, flags,
+                                       ptrlen_from_strbuf(ad),
+                                       ptrlen_from_strbuf(id), &err);
+    strbuf_free(ad);
+    strbuf_free(id);
+    if (!key) {
+        char *msg = dupprintf(KT_KGEN_SK_FAILED, err ? err : "");
+        ui_set_state(hwnd, state, state->key_exists ? 2 : 0);
+        MessageBox(hwnd, msg, KT_CAP_KITTYGEN_ERROR, MB_OK | MB_ICONERROR);
+        sfree(msg);
+        return;
+    }
+
+    ssh2_userkey *uk = snew(ssh2_userkey);
+    uk->key = key;
+    uk->comment = snewn(30, char);
+    {
+        struct tm tm = ltime();
+        strftime(uk->comment, 30, ecdsa ? "ecdsa-sk-key-%Y%m%d" :
+                 "ed25519-sk-key-%Y%m%d", &tm);
+    }
+    update_ui_after_load(hwnd, state, "", SSH_KEYTYPE_SSH2, NULL, uk);
+    sfree(state->loaded_path);
+    state->loaded_path = NULL;
+    state->kitty_pp_from_file = false;   /* a new key has no file yet */
+    state->kitty_pp_edited = false;
+    kg_sk_hello_gate(hwnd, state);
+
+    /* event 400, the key generated */
+    if (kitty_wev_enabled()) {
+        char *fp = kg_wev_fp(state);
+        const char *v[5];
+        v[0] = "kittygen";
+        v[1] = alg->ssh_id;
+        v[2] = ecdsa ? "256" : "255";
+        v[3] = fp;
+        v[4] = *state->commentptr;
+        kitty_wev_report(KITTY_EVO_KEY_GENERATED, 0,
+                         "tool keytype bits fp comment", v, 5);
+        sfree(fp);
+    }
+    SendMessage(hwnd, WM_NEXTDLGCTL,
+                (WPARAM)GetDlgItem(hwnd, IDC_PASSPHRASE1EDIT), TRUE);
+}
+
 static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                                     WPARAM wParam, LPARAM lParam)
 {
@@ -2329,12 +2440,13 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                        "&Save private key", IDC_SAVE);
             endbox(&cp);
             beginbox(&cp, "Parameters", IDC_BOX_PARAMS);
-            radioline(&cp, "Type of key to generate:", IDC_TYPESTATIC, 5,
+            radioline(&cp, "Type of key to generate:", IDC_TYPESTATIC, 6,
                       "&RSA", IDC_KEYSSH2RSA,
                       "&DSA", IDC_KEYSSH2DSA,
                       "&ECDSA", IDC_KEYSSH2ECDSA,
                       "EdD&SA", IDC_KEYSSH2EDDSA,
                       "SSH-&1 (RSA)", IDC_KEYSSH1,
+                      KT_KGEN_SK_RADIO, IDC_KEYSSH2SK,
                       NULL);
             cp2 = cp;
             staticedit(&cp2, "Number of &bits in a generated key:",
@@ -2377,12 +2489,52 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 }
             }
             ymax = ymax > cp2.ypos ? ymax : cp2.ypos;
+            /* KiTTY: FIDO - the key type on the device and its PIN
+             * requirement, one row in place of the bits/curve row */
+            {
+                struct ctlpos cp3;
+                cp2 = cp;
+                cp2.width = cp.width * 55 / 100;
+                staticddl(&cp2, KT_KGEN_SK_TYPE, IDC_SKTYPESTATIC,
+                          IDC_SKTYPE, 45);
+                SendDlgItemMessage(hwnd, IDC_SKTYPE, CB_RESETCONTENT, 0, 0);
+                SendDlgItemMessage(hwnd, IDC_SKTYPE, CB_ADDSTRING, 0,
+                                   (LPARAM)KT_KGEN_SK_ED25519);
+                SendDlgItemMessage(hwnd, IDC_SKTYPE, CB_ADDSTRING, 0,
+                                   (LPARAM)KT_KGEN_SK_P256);
+                SendDlgItemMessage(hwnd, IDC_SKTYPE, CB_SETCURSEL, 0, 0);
+                cp3 = cp;
+                cp3.xoff = cp.xoff + cp.width * 58 / 100;
+                cp3.width = cp.width - cp.width * 58 / 100;
+                /* centred on the combo: controls.c's COMBOHEIGHT 14 and
+                 * CHECKBOXHEIGHT 9 (dialog units, private there) */
+                cp3.ypos = cp.ypos + (14 - 9) / 2;
+                checkbox(&cp3, KT_KGEN_SK_UV, IDC_SKUV);
+                ymax = ymax > cp2.ypos ? ymax : cp2.ypos;
+            }
             cp2 = cp;
             statictext(&cp2, "(nothing to configure for this key type)",
                        1, IDC_NOTHINGSTATIC);
             ymax = ymax > cp2.ypos ? ymax : cp2.ypos;
             cp.ypos = ymax;
             endbox(&cp);
+            /* KiTTY: the shared row aligner (kitty_theme.c). A combo sizes
+             * itself from the font, not from its dialog units: each label
+             * (and the FIDO row's checkbox) is centred on its field's real
+             * height. */
+            {
+                static const struct kitty_theme_row kg_rows[] = {
+                    { IDC_FINGERPRINT,     { IDC_FPSTATIC, 0 } },
+                    { IDC_COMMENTEDIT,     { IDC_COMMENTSTATIC, 0 } },
+                    { IDC_PASSPHRASE1EDIT, { IDC_PASSPHRASE1STATIC, 0 } },
+                    { IDC_PASSPHRASE2EDIT, { IDC_PASSPHRASE2STATIC, 0 } },
+                    { IDC_BITS,            { IDC_BITSSTATIC, 0 } },
+                    { IDC_ECCURVE,         { IDC_ECCURVESTATIC, 0 } },
+                    { IDC_EDCURVE,         { IDC_EDCURVESTATIC, 0 } },
+                    { IDC_SKTYPE,          { IDC_SKTYPESTATIC, IDC_SKUV, 0 } },
+                };
+                kitty_theme_align_rows(hwnd, kg_rows, lenof(kg_rows));
+            }
         /* KiTTY: the window's height follows the layout, not the template.
          * The template's 309 units were measured for the old row heights;
          * every later change to a row (the Actions buttons)
@@ -2480,7 +2632,8 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
           case IDC_KEYSSH2RSA:
           case IDC_KEYSSH2DSA:
           case IDC_KEYSSH2ECDSA:
-          case IDC_KEYSSH2EDDSA: {
+          case IDC_KEYSSH2EDDSA:
+          case IDC_KEYSSH2SK: {
             state = (struct MainDlgState *)
                 GetWindowLongPtr(hwnd, GWLP_USERDATA);
             ui_set_key_type(hwnd, state, LOWORD(wParam));
@@ -2596,6 +2749,11 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                 break;
             state =
                 (struct MainDlgState *) GetWindowLongPtr(hwnd, GWLP_USERDATA);
+            if (!state->generation_thread_exists &&
+                IsDlgButtonChecked(hwnd, IDC_KEYSSH2SK)) {
+                kg_sk_generate(hwnd, state);   /* KiTTY: on the device */
+                break;
+            }
             if (!state->generation_thread_exists) {
                 unsigned raw_entropy_required;
                 unsigned char *raw_entropy_buf;
@@ -2781,7 +2939,11 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
                     burnstr(passphrase);
                     break;
                 }
-                if (!*passphrase) {
+                /* KiTTY: a FIDO security key's file holds no secret (the
+                 * device keeps it): no warning for an empty passphrase */
+                bool sk_key = state->ssh2 && state->ssh2key.key &&
+                    ssh_keyalg_is_sk(ssh_key_alg(state->ssh2key.key));
+                if (!*passphrase && !sk_key) {
                     int ret;
                     ret = MessageBox(hwnd,
                                      hello ?
@@ -3161,7 +3323,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
             CheckDlgButton(hwnd, IDC_ADDCONFIRM, BST_UNCHECKED);
             CheckDlgButton(hwnd, IDC_HELLOPROTECT, BST_UNCHECKED);
             CheckDlgButton(hwnd, IDC_KGSIDEBOUND, BST_UNCHECKED);
-            kg_hello_sync(hwnd);
+            kg_sk_hello_gate(hwnd, state);   /* syncs, back on if offered */
             ui_set_state(hwnd, state, 0);
             break;
           case IDC_HELLOPROTECT:
@@ -3378,6 +3540,7 @@ static INT_PTR CALLBACK MainDlgProc(HWND hwnd, UINT msg,
          * is interior to the state union. */
         if (state->ssh2)
             protect_current_ssh2_key(state);
+        kg_sk_hello_gate(hwnd, state);   /* back on after a security key */
         break;
       case WM_HELP: {
         int id = ((LPHELPINFO)lParam)->iCtrlId;

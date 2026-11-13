@@ -18,6 +18,8 @@
 #ifdef _WINDOWS
 #include "kitty/kitty_hello.h"       /* KiTTY: Hello-protected keys */
 #include "kitty/kitty_hello_keys.h"
+#include "kitty/kitty_sk.h"          /* KiTTY: FIDO keys made on the device */
+#include "kitty/kitty_text.h"
 #include "kitty/kitty_renameguard.h" /* KiTTY: refuse a foreign file name */
 #include "kitty/kitty_selfcheck.h"   /* KiTTY: refuse a file changed after release */
 #endif
@@ -185,6 +187,9 @@ void help(void)
     printf("  -t    specify key type when generating:\n"
            "           eddsa, ecdsa, rsa, dsa, rsa1   use with -b\n"
            "           ed25519, ed448                 special cases of eddsa\n"
+#ifdef _WINDOWS
+           "           ed25519-sk, ecdsa-sk           FIDO security key, made on the device\n"
+#endif
            "  -b    specify number of bits when generating key\n"
            "  -C    change or specify key comment\n"
            "  -P    change key passphrase\n"
@@ -217,6 +222,9 @@ void help(void)
            "        specify file containing old key passphrase\n"
            "  --new-passphrase file\n"
            "        specify file containing new key passphrase\n"
+#ifdef _WINDOWS
+           "  --verify-required    FIDO security key: the PIN at every use\n"
+#endif
            "  --hello-recovery file\n"
            "        save the key Hello-protected: its passphrase is a random\n"
            "        printed secret (written to stdout ONCE), and the .hello\n"
@@ -331,7 +339,8 @@ int main(int argc, char **argv)
     Filename *infilename = NULL, *outfilename = NULL;
     LoadedFile *infile_lf = NULL;
     BinarySource *infile_bs = NULL;
-    enum { NOKEYGEN, RSA1, RSA2, DSA, ECDSA, EDDSA } keytype = NOKEYGEN;
+    enum { NOKEYGEN, RSA1, RSA2, DSA, ECDSA, EDDSA, SKED, SKEC } keytype = NOKEYGEN;
+    bool sk_uv = false;          /* KiTTY: --verify-required */
     char *outfile = NULL, *outfiletmp = NULL;
     enum { PRIVATE, PUBLIC, PUBLICO, FP, OPENSSH_AUTO,
            OPENSSH_NEW, SSHCOM, TEXT, CERTINFO } outtype = PRIVATE;
@@ -562,6 +571,8 @@ int main(int argc, char **argv)
                         }
                     } else if (!strcmp(opt, "-remove-certificate")) {
                         remove_cert = true;
+                    } else if (!strcmp(opt, "-verify-required")) {
+                        sk_uv = true;
                     } else if (!strcmp(opt, "-hello-recovery")) {
                         if (!val && argc > 1)
                             --argc, val = *++argv;
@@ -731,6 +742,12 @@ int main(int argc, char **argv)
                             keytype = EDDSA, bits = 255, sshver = 2;
                         else if (!strcmp(p, "ed448"))
                             keytype = EDDSA, bits = 448, sshver = 2;
+#ifdef _WINDOWS
+                        else if (!strcmp(p, "ed25519-sk"))
+                            keytype = SKED, bits = 255, sshver = 2;
+                        else if (!strcmp(p, "ecdsa-sk"))
+                            keytype = SKEC, bits = 256, sshver = 2;
+#endif
                         else {
                             fprintf_prog(stderr,
                                     "unknown key type `%s'\n", p);
@@ -866,6 +883,13 @@ int main(int argc, char **argv)
                     (keytype == DSA ? "DSA" : "RSA"), DEFAULT_RSADSA_BITS);
             /* but this is just a warning, so proceed anyway */
         }
+    }
+
+    /* KiTTY: a security key's file keeps no secret to protect */
+    if ((keytype == SKED || keytype == SKEC) && hello_recovery) {
+        fprintf_prog(stderr, "--hello-recovery does not apply to security "
+                     "keys\n");
+        errs = true;
     }
 
     if (errs)
@@ -1066,6 +1090,44 @@ int main(int argc, char **argv)
     /*
      * Either load or generate a key.
      */
+#ifdef _WINDOWS
+    if (keytype == SKED || keytype == SKEC) {
+        /* KiTTY: made on the device (kitty_hello.c): Windows prompts for
+         * the touch and the PIN. No secret comes back, no entropy needed. */
+        bool ecdsa = (keytype == SKEC);
+        const ssh_keyalg *alg = ecdsa ? &ssh_sk_ecdsa_nistp256 :
+                                        &ssh_sk_ed25519;
+        ptrlen app = PTRLEN_LITERAL("ssh:");          /* as ssh-keygen */
+        strbuf *ad = strbuf_new(), *id = strbuf_new();
+        const char *skerr;
+        ssh_key *skkey = NULL;
+        char default_comment[80];
+        struct tm tm = ltime();
+
+        strftime(default_comment, 30, ecdsa ? "ecdsa-sk-key-%Y%m%d" :
+                 "ed25519-sk-key-%Y%m%d", &tm);
+        if (progress_fp) {
+            fprintf(progress_fp, "%s\n", KT_KGEN_SK_WAITING);
+            fflush(progress_fp);
+        }
+        skerr = kitty_sk_make(NULL, ecdsa, sk_uv, app, ad, id);
+        if (!skerr)
+            skkey = sk_key_from_registration(
+                alg, app, SSH_SK_USER_PRESENCE_REQD |
+                (sk_uv ? SSH_SK_USER_VERIFICATION_REQD : 0),
+                ptrlen_from_strbuf(ad), ptrlen_from_strbuf(id), &skerr);
+        strbuf_free(ad);
+        strbuf_free(id);
+        if (!skkey) {
+            fprintf_prog(stderr, "security key: %s\n", skerr ? skerr : "");
+            RETURN(1);
+        }
+        ssh2key = snew(ssh2_userkey);
+        ssh2key->key = skkey;
+        ssh2key->comment = dupstr(default_comment);
+        ssh1key = NULL;
+    } else
+#endif
     if (keytype != NOKEYGEN) {
         char *entropy;
         char default_comment[80];

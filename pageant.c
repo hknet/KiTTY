@@ -4609,6 +4609,26 @@ bool pageant_sk_keyfile_pub(const Filename *fn, BinarySink *blob)
     return ok;
 }
 
+bool pageant_keyfile_is_sk(const Filename *fn)
+{
+    char *algname = NULL;
+    strbuf *pub;
+    bool sk = false;
+    if (pageant_sk_keyfile_pub(fn, NULL))
+        return true;
+    if (key_type(fn) != SSH_KEYTYPE_SSH2)
+        return false;
+    pub = strbuf_new();          /* the reader needs a sink */
+    if (ppk_loadpub_f(fn, &algname, BinarySink_UPCAST(pub), NULL, NULL) &&
+        algname) {
+        const ssh_keyalg *alg = find_pubkey_alg(algname);
+        sk = alg && ssh_keyalg_is_sk(alg);
+    }
+    sfree(algname);
+    strbuf_free(pub);
+    return sk;
+}
+
 int pageant_add_keyfile(Filename *filename, const char *passphrase,
                         char **retstr, bool add_encrypted)
 {

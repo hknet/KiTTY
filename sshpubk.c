@@ -1655,11 +1655,6 @@ strbuf *ppk_save_sb(ssh2_userkey *key, const char *passphrase,
 bool ppk_save_f(const Filename *filename, ssh2_userkey *key,
                 const char *passphrase, const ppk_save_parameters *params)
 {
-    /* KiTTY: a FIDO security key has no PPK form (its handle has no place
-     * there); OpenSSH format keeps it */
-    if (ssh_keyalg_is_sk(ssh_key_alg(key->key)))
-        return false;
-
     FILE *fp = f_open(filename, "wb", true);
     if (!fp)
         return false;

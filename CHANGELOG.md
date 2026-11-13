@@ -20,6 +20,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   requires the PIN on each signature.
   kitty.exe, klink, kscp and ksftp log in with such a key from the agent.
   Without a device the agent refuses with the reason in its log.
+- kittygen generates FIDO security keys on the device: type **FIDO**, Ed25519
+  or NIST p256, optionally **PIN required (verify-required)**. Windows
+  prompts for the touch and the PIN. Save private key writes a PPK.
+  Conversions > Export OpenSSH key writes the file for `ssh-add` and
+  OpenSSH. kittygen-cli creates these with `-t ed25519-sk` or `-t ecdsa-sk`,
+  plus `--verify-required` for the PIN.
 - Window > Appearance: **Ease blinking** (`BlinkEase`) fades the blinking
   cursor and blinking text out and in instead of switching plain off and on.
 - Direct2D: use GDI font selection (`[KiTTY] d2dgdifont=yes`, Application >

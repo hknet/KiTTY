@@ -397,6 +397,9 @@ int pageant_add_keyfile(Filename *filename, const char *passphrase,
  * too; its public key goes to blob when blob is not NULL. Read without the
  * passphrase. */
 bool pageant_sk_keyfile_pub(const Filename *fn, BinarySink *blob);
+/* KiTTY: any key file of a security key - that OpenSSH file, or a PPK
+ * (kittygen saves one). Read without the passphrase. */
+bool pageant_keyfile_is_sk(const Filename *fn);
 void pageant_forget_passphrases(void);
 
 struct pageant_pubkey {

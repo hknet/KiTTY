@@ -1958,11 +1958,11 @@ void win_add_keyfile(Filename *filename, bool encrypted)
      * THAT is what gets added; a protection that was chosen and then
      * fails or is cancelled adds nothing at all (and says so); No loads
      * the file as it is. Never during the startup load, never for IPC.
-     * Never for a security key's OpenSSH file: it keeps no secret to
-     * protect, and the protected copy is a PPK one.
+     * Never for a security key's file (OpenSSH or PPK): it keeps no
+     * secret to protect.
      */
     if (hello_add_offer_armed && !kageant_startup_loading() &&
-        !pageant_sk_keyfile_pub(filename, NULL)) {
+        !pageant_keyfile_is_sk(filename)) {
         const char *p = filename_to_str(filename);
         char *cmt = NULL;
         bool has_pass = ppk_encrypted_f(filename, &cmt);

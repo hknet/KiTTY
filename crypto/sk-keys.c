@@ -134,12 +134,36 @@ static ssh_key *sk_new_pub(const ssh_keyalg *alg, ptrlen data)
     return &sk->sshk;
 }
 
-/* The PPK format has no place for a security key: it cannot be built from
- * one, and private_blob writes nothing. */
+/* The PPK form (KiTTY's, PuTTY has none): the public blob as for every
+ * key, the private blob holds what OpenSSH's private form adds after the
+ * application - flags, key handle, reserved. No secret in either. */
 static ssh_key *sk_new_priv(const ssh_keyalg *alg, ptrlen pub, ptrlen priv)
 {
-    (void)alg; (void)pub; (void)priv;
-    return NULL;
+    BinarySource src[1];
+    BinarySource_BARE_INIT_PL(src, pub);
+    if (!ptrlen_eq_string(get_string(src), alg->ssh_id))
+        return NULL;
+    sk_key *sk = sk_read_public(alg, src);
+    if (!sk)
+        return NULL;
+    if (get_avail(src)) {
+        sk_freekey(&sk->sshk);
+        return NULL;
+    }
+    BinarySource_BARE_INIT_PL(src, priv);
+    unsigned char flags = get_byte(src);
+    ptrlen handle = get_string(src);
+    ptrlen reserved = get_string(src);
+    /* trailing bytes allowed: an encrypted PPK pads this to the cipher's
+     * block size */
+    if (get_err(src) || handle.len == 0) {
+        sk_freekey(&sk->sshk);
+        return NULL;
+    }
+    sk->flags = flags;
+    sk->key_handle = strbuf_dup(handle);
+    sk->reserved = strbuf_dup(reserved);
+    return &sk->sshk;
 }
 
 /* OpenSSH's private form, after the type string: the public fields, the
@@ -192,7 +216,12 @@ static void sk_public_blob(ssh_key *key, BinarySink *bs)
 
 static void sk_private_blob(ssh_key *key, BinarySink *bs)
 {
-    (void)key; (void)bs;
+    sk_key *sk = container_of(key, sk_key, sshk);
+    put_byte(bs, sk->flags);
+    put_stringpl(bs, sk->key_handle ? ptrlen_from_strbuf(sk->key_handle) :
+                 PTRLEN_LITERAL(""));
+    put_stringpl(bs, sk->reserved ? ptrlen_from_strbuf(sk->reserved) :
+                 PTRLEN_LITERAL(""));
 }
 
 static void sk_openssh_blob(ssh_key *key, BinarySink *bs)
@@ -353,6 +382,149 @@ const char *sk_signature_from_assertion(const ssh_keyalg *alg,
     put_byte(bs, flags);
     put_data(bs, ad + 33, 4);   /* the counter, big-endian as stored */
     return NULL;
+}
+
+/*
+ * A registration (WebAuthn MakeCredential). Its authenticatorData is the
+ * RP ID hash, flags, counter, then the attested credential data: AAGUID,
+ * credential id length and id, then the public key as a COSE key - a CBOR
+ * map. Only the CBOR a COSE key uses is read: integers, byte strings, one
+ * map.
+ */
+static bool sk_cbor_head(BinarySource *src, unsigned *major, uint64_t *val)
+{
+    unsigned char b = get_byte(src);
+    unsigned ai = b & 31;
+    *major = b >> 5;
+    if (ai < 24)
+        *val = ai;
+    else if (ai == 24)
+        *val = get_byte(src);
+    else if (ai == 25)
+        *val = get_uint16(src);
+    else if (ai == 26)
+        *val = get_uint32(src);
+    else if (ai == 27)
+        *val = get_uint64(src);
+    else
+        return false;
+    return !get_err(src);
+}
+
+/* A CBOR integer (major type 0 or 1) as a signed value. */
+static bool sk_cbor_int(unsigned major, uint64_t val, int64_t *out)
+{
+    if (val > 0x7FFFFFFF)
+        return false;
+    if (major == 0)
+        *out = (int64_t)val;
+    else if (major == 1)
+        *out = -1 - (int64_t)val;
+    else
+        return false;
+    return true;
+}
+
+#define SK_COSE_KTY  1
+#define SK_COSE_ALG  3
+#define SK_COSE_CRV  (-1)
+#define SK_COSE_X    (-2)
+#define SK_COSE_Y    (-3)
+
+ssh_key *sk_key_from_registration(const ssh_keyalg *alg, ptrlen application,
+                                  unsigned char flags, ptrlen auth_data,
+                                  ptrlen cred_id, const char **err)
+{
+    const struct sk_extra *extra = sk_extra_of(alg);
+    BinarySource src[1];
+    unsigned char h[32];
+    int64_t kty = 0, calg = 0, crv = 0;
+    ptrlen x = PTRLEN_LITERAL(""), y = PTRLEN_LITERAL("");
+    unsigned major;
+    uint64_t n, i;
+
+    *err = "unexpected response from the security key";
+    BinarySource_BARE_INIT_PL(src, auth_data);
+    ptrlen rphash = get_data(src, 32);
+    unsigned char adflags = get_byte(src);
+    get_uint32(src);                         /* counter */
+    get_data(src, 16);                       /* AAGUID */
+    ptrlen id = get_data(src, get_uint16(src));
+    if (get_err(src) || !(adflags & 0x40))   /* AT: credential data present */
+        return NULL;
+    hash_simple(&ssh_sha256, application, h);
+    if (memcmp(rphash.ptr, h, 32)) {
+        *err = "security key response for another application";
+        return NULL;
+    }
+    if (cred_id.len == 0)
+        cred_id = id;                        /* the id is in both places */
+    if (cred_id.len == 0)
+        return NULL;
+
+    if (!sk_cbor_head(src, &major, &n) || major != 5 || n > 16)
+        return NULL;
+    for (i = 0; i < n; i++) {
+        int64_t key, ival;
+        uint64_t v;
+        if (!sk_cbor_head(src, &major, &v) || !sk_cbor_int(major, v, &key))
+            return NULL;
+        if (!sk_cbor_head(src, &major, &v))
+            return NULL;
+        if (major == 2) {
+            ptrlen bytes = get_data(src, (size_t)v);
+            if (get_err(src))
+                return NULL;
+            if (key == SK_COSE_X)
+                x = bytes;
+            else if (key == SK_COSE_Y)
+                y = bytes;
+        } else if (sk_cbor_int(major, v, &ival)) {
+            if (key == SK_COSE_KTY)
+                kty = ival;
+            else if (key == SK_COSE_ALG)
+                calg = ival;
+            else if (key == SK_COSE_CRV)
+                crv = ival;
+        } else {
+            return NULL;
+        }
+    }
+
+    /* after the type string: OpenSSH's private form (sk_new_priv_openssh) */
+    strbuf *priv = strbuf_new();
+    if (extra->ecdsa) {
+        /* EC2, ES256, P-256 */
+        if (kty != 2 || calg != -7 || crv != 1 || x.len != 32 ||
+            y.len != 32) {
+            strbuf_free(priv);
+            return NULL;
+        }
+        strbuf *point = strbuf_new();
+        put_byte(point, 0x04);
+        put_datapl(point, x);
+        put_datapl(point, y);
+        put_stringz(priv, "nistp256");
+        put_stringsb(priv, point);
+    } else {
+        /* OKP, EdDSA, Ed25519 */
+        if (kty != 1 || calg != -8 || crv != 6 || x.len != 32) {
+            strbuf_free(priv);
+            return NULL;
+        }
+        put_stringpl(priv, x);
+    }
+    put_stringpl(priv, application);
+    put_byte(priv, flags);
+    put_stringpl(priv, cred_id);
+    put_stringz(priv, "");                   /* reserved */
+
+    BinarySource_BARE_INIT_PL(src, ptrlen_from_strbuf(priv));
+    ssh_key *key = ssh_key_new_priv_openssh(alg, src);
+    strbuf_free(priv);
+    if (key)
+        *err = NULL;
+    return key;
 }
 
 static void sk_sign(ssh_key *key, ptrlen data, unsigned flags, BinarySink *bs)

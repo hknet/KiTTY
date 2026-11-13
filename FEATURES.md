@@ -797,6 +797,18 @@ kageant also reads the key file itself: Add Key, its command line and the
 startup keys take it, so the key is back after a restart. kageant prompts for
 a passphrase on the file as for any key file.
 
+kittygen creates such a key on the device: Parameters > **FIDO**, the type
+(Ed25519 or NIST p256) and **PIN required (verify-required)**, then
+Generate. Windows prompts for the touch and the PIN. Save private key
+writes a PPK, which kageant loads like any key file. Conversions > Export
+OpenSSH key writes the file for `ssh-add` and OpenSSH. The file holds no
+secret: a passphrase only keeps a copy of the file from being used with the
+device. On the command line: `kittygen-cli -t ed25519-sk` (or `ecdsa-sk`),
+`--verify-required` for the PIN.
+
+**[Full how-to →](docs/FIDO-KEYS.md)**: creating the key, the server side,
+kageant, ssh-add, the same key on another PC, what the failures mean.
+
 ### Dark mode
 
 KiTTY++'s windows follow a colour theme: the terminal window's title bar, border and scroll bar (its client area keeps the session's own colours), the configuration box and the dialogs around it, every kittygen window, and in kageant the key list, key details, the agent log and its record view, settings, About and the modal message boxes, the kscp transfer window, the host key dialog, and the popup menus of every program - right-click, Alt+Space, the launcher's and kageant's tray menus, kittygen's menus. The choice is **Follow the system** — the default, which tracks the Windows app-colour setting and changes with it while a window is open — or **Always light**, or **Always dark**. On Windows 11 the title bar is painted in the window's own colour rather than the system's, so it reads as part of the window instead of a band sitting on top of it.

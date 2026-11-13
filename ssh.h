@@ -1423,6 +1423,12 @@ const char *sk_signature_from_assertion(const ssh_keyalg *alg,
                                         ptrlen application,
                                         ptrlen auth_data, ptrlen dev_sig,
                                         BinarySink *bs);
+/* A key the device just made: the public key from the authenticatorData
+ * of the registration (its COSE key), cred_id as the key handle. NULL on
+ * a malformed reply, *err then holds the reason. */
+ssh_key *sk_key_from_registration(const ssh_keyalg *alg, ptrlen application,
+                                  unsigned char flags, ptrlen auth_data,
+                                  ptrlen cred_id, const char **err);
 extern const ssh_keyalg ssh_ecdsa_ed448;
 extern const ssh_keyalg ssh_ecdsa_nistp256;
 extern const ssh_keyalg ssh_ecdsa_nistp384;

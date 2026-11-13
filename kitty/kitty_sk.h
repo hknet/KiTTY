@@ -28,4 +28,13 @@ const char *kitty_sk_assert(HWND owner, ptrlen application,
                             ptrlen key_handle, unsigned key_flags,
                             ptrlen data, SkAssertion *out);
 
+/* A new key on the security key (kittygen): Ed25519, or NIST p256 when
+ * ecdsa. uv requires the PIN at every use. Hands back the registration's
+ * authenticatorData and the credential id (sk_key_from_registration makes
+ * the SSH key of them). Windows prompts for the touch and the PIN. NULL on
+ * success, else the reason. */
+const char *kitty_sk_make(HWND owner, bool ecdsa, bool uv,
+                          ptrlen application, strbuf *auth_data,
+                          strbuf *cred_id);
+
 #endif

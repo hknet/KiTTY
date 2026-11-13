@@ -3892,6 +3892,14 @@
         "(passphrase = recovery passphrase)"
 #define KT_KGEN_SIDEBOUND_CHECKBOX                   "Printout is a recover&y code bound to the " \
         ".hello file, not the key's passphrase"
+/* kittygen: FIDO security keys made on the device */
+#define KT_KGEN_SK_RADIO                             "&FIDO"
+#define KT_KGEN_SK_TYPE                              "Security key &type:"   /* y: Printout */
+#define KT_KGEN_SK_ED25519                           "Ed25519"
+#define KT_KGEN_SK_P256                              "NIST p256"
+#define KT_KGEN_SK_UV                                "PIN required (verify-required)"
+#define KT_KGEN_SK_WAITING                           "Waiting for the security key..."
+#define KT_KGEN_SK_FAILED                            "Security key: %s"
 
 /* kittygen: the passphrase prompt and the Windows Hello doors dialog */
 #define KT_KGEN_PASS_PROMPT_HELLO                    "Enter the recovery passphrase, the recovery code, or the " \
