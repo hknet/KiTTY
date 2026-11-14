@@ -30,7 +30,7 @@ int  kageant_startup_active(void);
 int kageant_startup_set(int on);
 int kageant_notify_get(void);          /* default on */
 int kageant_notice_seconds(int fallback);  /* [Agent] noticetimeout */
-/* test builds with KITTY_NOTICE_TRACE=<file>: a notice's title and text
+/* test builds with KITTY_TEST_NOTICE_TRACE=<file>: a notice's title and text
  * appended there for a harness (nothing in a release build) */
 void kageant_trace_notice(const char *title, const char *text);
 int kageant_notify_set(int on);

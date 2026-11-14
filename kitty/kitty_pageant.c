@@ -3568,13 +3568,13 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp)
     sfree(proc);
 }
 
-/* Test builds with KITTY_NOTICE_TRACE=<file>: a notice's title and text,
+/* Test builds with KITTY_TEST_NOTICE_TRACE=<file>: a notice's title and text,
  * one line appended (a line break written as " / "), for a test harness:
  * the text of a notice is painted and cannot be read from outside. */
 void kageant_trace_notice(const char *title, const char *text)
 {
 #ifdef KITTY_TEST_BUILD_LABEL
-    const char *tp = getenv("KITTY_NOTICE_TRACE");
+    const char *tp = getenv("KITTY_TEST_NOTICE_TRACE");
     FILE *f;
     if (!tp || !*tp || (f = fopen(tp, "a")) == NULL)
         return;

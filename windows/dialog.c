@@ -2453,13 +2453,13 @@ static void kitty_cfg_panel_cache_reset(void)
  * which is built WITHOUT MOD_PERSO (kitty_registry_base is still linked in). */
 extern const char *kitty_registry_base(void);   /* windows/storage.c */
 #ifdef KITTY_TEST_BUILD_LABEL
-/* A test build with KITTY_WINPOS_DEBUG=1 traces config-box positioning to
+/* A test build with KITTY_TEST_WINPOS_DEBUG=1 traces config-box positioning to
  * %TEMP%\kitty_winpos.log (shared with the main-window winpos trace). */
 static int kitty_cfgpos_dbg_enabled(void)
 {
     static int cached = -1;
     if (cached < 0)
-        cached = GetEnvironmentVariableA("KITTY_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
+        cached = GetEnvironmentVariableA("KITTY_TEST_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
     return cached;
 }
 #endif

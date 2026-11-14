@@ -74,12 +74,12 @@ static int screen_of(Terminal *term)
 
 #ifdef KITTY_TEST_BUILD_LABEL
 /*
- * KITTY_GFX_TRACE=<file> (test builds only): one line per command, for
+ * KITTY_TEST_GFX_TRACE=<file> (test builds only): one line per command, for
  * the harness: "<action> id=<id> <code>" (code OK or the error code).
  */
 static void gfx_trace(void *ctx, char a, uint32_t id, const char *code)
 {
-    const char *path = getenv("KITTY_GFX_TRACE");
+    const char *path = getenv("KITTY_TEST_GFX_TRACE");
     FILE *f;
     (void)ctx;
     if (!path || !*path)

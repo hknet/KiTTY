@@ -9998,7 +9998,7 @@ int term_kitty_placeholders(Terminal *term, KittyPhCell *out, int max)
 #endif
 
 #if defined(MOD_PERSO) && defined(KITTY_TEST_BUILD_LABEL)
-/* KITTY_REDRAW_TRACE=<file>: what do_paint draws, appended - a "frame" line
+/* KITTY_TEST_REDRAW_TRACE=<file>: what do_paint draws, appended - a "frame" line
  * per call, a "cols" line per row with the columns walked, a "draw" line per
  * run (row, first column, cells). Test builds only; without the variable
  * nothing is written. For the GDI fringe fault (TODO "GDI partial redraw
@@ -10009,7 +10009,7 @@ static FILE *kd_trace_fp(void)
     static bool tried = false;
     static FILE *fp = NULL;
     if (!tried) {
-        const char *f = getenv("KITTY_REDRAW_TRACE");
+        const char *f = getenv("KITTY_TEST_REDRAW_TRACE");
         tried = true;
         if (f && *f)
             fp = fopen(f, "a");

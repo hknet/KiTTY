@@ -509,7 +509,7 @@ void RenewPassword( Conf *conf ) {
  * silently altered a password that legitimately ends in one. No
  * DebugAddPassword() call here: that writes the password in clear to a file
  * beside the exe, and this is a path every interactive login takes.
- * KITTY_PWDEBUG (test builds only, lengths and kinds) is the diagnostic. */
+ * KITTY_TEST_PWDEBUG (test builds only, lengths and kinds) is the diagnostic. */
 void SetPasswordInConfig( const char * password ) {
 	if( GetUserPassSSHNoSave() || (password==NULL) || (conf==NULL) ) { return ; }
 	kitty_pw_set( conf, CONF_password, password ) ;
@@ -1068,13 +1068,13 @@ static int GetExt( const char * filename, char * ext, size_t extsz) {
 	return 1;
 	}
 
-/* Test builds with KITTY_BG_SELFTEST=<file>: the image Next / Previous moved
+/* Test builds with KITTY_TEST_BG_SELFTEST=<file>: the image Next / Previous moved
  * to, one line appended ("bg_switch file=<path>") - for a test harness, as a
  * switch leaves nothing else it can read (kitty_bridge.c writes the same
  * file once, at the start). */
 static void bg_trace_switch( const char * path ) {
 #ifdef KITTY_TEST_BUILD_LABEL
-	const char * st = getenv( "KITTY_BG_SELFTEST" ) ;
+	const char * st = getenv( "KITTY_TEST_BG_SELFTEST" ) ;
 	FILE * f ;
 	if( !st || !*st || ( f = fopen( st, "a" ) ) == NULL ) return ;
 	fprintf( f, "bg_switch file=%s\n", path ) ;

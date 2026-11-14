@@ -77,7 +77,7 @@ static void img_changed(void *vctx, const Far2lRect *before,
 
 #ifdef KITTY_TEST_BUILD_LABEL
 /*
- * KITTY_FAR2L_IMG_TRACE=<file> (test builds only): one line per image
+ * KITTY_TEST_FAR2L_IMG_TRACE=<file> (test builds only): one line per image
  * request, for the harness that checks the overlay's pixels:
  *   caps caps=0x<hex> cell=<w>x<h>
  *   set|transform|delete id=<id> ok=<1|0|-1> rect=<l>,<t>,<r>,<b>|none
@@ -92,7 +92,7 @@ static void img_trace(void *vctx, char op, const char *id, size_t idlen,
                       int ok, const Far2lImage *img, uint64_t caps)
 {
     TermCtx *tc = (TermCtx *)vctx;
-    const char *path = getenv("KITTY_FAR2L_IMG_TRACE");
+    const char *path = getenv("KITTY_TEST_FAR2L_IMG_TRACE");
     int cw = 0, ch = 0, ox = 0, oy = 0;
     FILE *f;
     size_t i;
@@ -190,7 +190,7 @@ void kitty_far2l_images_reset(Terminal *term)
 #ifdef KITTY_TEST_BUILD_LABEL
     {
         /* "clear count=<n>": every image went (reset, far2l0, session end) */
-        const char *path = getenv("KITTY_FAR2L_IMG_TRACE");
+        const char *path = getenv("KITTY_TEST_FAR2L_IMG_TRACE");
         FILE *f = (path && *path) ? fopen(path, "a") : NULL;
         if (f) {
             fprintf(f, "clear count=%d\n", term->far2l_images->n);

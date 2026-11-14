@@ -268,7 +268,7 @@ int portable_write_text_file(const char *subdir, const char *name,
 char *portable_read_text_file(const char *subdir, const char *name);
 
 /* ---- the password diagnostic log (test builds only: kitty_pwdebug.log
- * beside the exe while KITTY_PWDEBUG is set; lengths, modes and the kind
+ * beside the exe while KITTY_TEST_PWDEBUG is set; lengths, modes and the kind
  * of a stored value, never password characters or a checksum) ---- */
 void kitty_pwdebug(const char *fmt, ...);
 

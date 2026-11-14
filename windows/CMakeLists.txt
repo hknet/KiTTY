@@ -120,8 +120,8 @@ endif()
 # KITTY_SELFCHECK_KEY_HEADER. It is generated for the build and is never
 # committed to the repository; it must exist before the build starts.
 #
-# KITTY_SELFCHECK_FAULT is for the local stamped TEST build only: it compiles
-# in a fault switch (environment variable KITTY_SELFCHECK_FAULT) so the
+# KITTY_TEST_SELFCHECK_FAULT is for the local stamped TEST build only: it compiles
+# in a fault switch (environment variable KITTY_TEST_SELFCHECK_FAULT) so the
 # cannot-check paths can be driven, and a marker that keeps such a binary from
 # ever being stamped for a release by mistake.
 option(KITTY_SELFCHECK
@@ -133,7 +133,7 @@ option(KITTY_SELFCHECK
 # something was refused, both need the log as a FILE that outlives the window.
 # Declared here, before the targets, because kitty_terminal_common() applies it.
 option(KITTY_NETDEBUG "Tee the Event Log to %USERPROFILE%\\kitty_netdebug.log" OFF)
-option(KITTY_SELFCHECK_FAULT
+option(KITTY_TEST_SELFCHECK_FAULT
   "TEST BUILDS ONLY: compile the self-check fault switch in (such a binary is never stamped for a release)" OFF)
 set(KITTY_SELFCHECK_KEY_HEADER "${CMAKE_BINARY_DIR}/kitty_selfcheck_key.h" CACHE FILEPATH
   "generated header with KITTY_SELFCHECK_PUBKEY_BYTES; never committed to the repository")
@@ -142,18 +142,18 @@ if(KITTY_SELFCHECK)
     message(FATAL_ERROR "KITTY_SELFCHECK is ON but the public-key header is missing: ${KITTY_SELFCHECK_KEY_HEADER} - generate it before the build")
   endif()
   message(STATUS "KITTY_SELFCHECK: all eight shipped binaries carry the stamp and verify it at startup (key: ${KITTY_SELFCHECK_KEY_HEADER})")
-  if(KITTY_SELFCHECK_FAULT)
-    message(STATUS "KITTY_SELFCHECK_FAULT: TEST BUILD - the fault switch is compiled in; these binaries are never stamped for a release")
+  if(KITTY_TEST_SELFCHECK_FAULT)
+    message(STATUS "KITTY_TEST_SELFCHECK_FAULT: TEST BUILD - the fault switch is compiled in; these binaries are never stamped for a release")
   endif()
-elseif(KITTY_SELFCHECK_FAULT)
-  message(FATAL_ERROR "KITTY_SELFCHECK_FAULT needs KITTY_SELFCHECK=ON")
+elseif(KITTY_TEST_SELFCHECK_FAULT)
+  message(FATAL_ERROR "KITTY_TEST_SELFCHECK_FAULT needs KITTY_SELFCHECK=ON")
 endif()
 function(kitty_selfcheck_target target)
   if(KITTY_SELFCHECK)
     target_compile_definitions(${target} PRIVATE
       KITTY_SELFCHECK KITTY_SELFCHECK_KEY_HEADER="${KITTY_SELFCHECK_KEY_HEADER}")
-    if(KITTY_SELFCHECK_FAULT)
-      target_compile_definitions(${target} PRIVATE KITTY_SELFCHECK_FAULT)
+    if(KITTY_TEST_SELFCHECK_FAULT)
+      target_compile_definitions(${target} PRIVATE KITTY_TEST_SELFCHECK_FAULT)
     endif()
   endif()
 endfunction()

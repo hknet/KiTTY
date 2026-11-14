@@ -566,13 +566,13 @@ static void term_osc133(Terminal *term)
  */
 #include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the trace below */
 #ifdef KITTY_TEST_BUILD_LABEL
-/* KITTY_CTX3008_TRACE=<file>: one line per sequence that changed the stack,
+/* KITTY_TEST_CTX3008_TRACE=<file>: one line per sequence that changed the stack,
  * appended. Test builds only; without the variable nothing is written. */
 static void ctx3008_trace(Terminal *term, const CtxEvent *ev)
 {
     static const char *const what[] = {
         "ignored", "started", "updated", "ended", "dropped" };
-    const char *path = getenv("KITTY_CTX3008_TRACE");
+    const char *path = getenv("KITTY_TEST_CTX3008_TRACE");
     const CtxStack *s = term->ctx3008;
     const CtxContext *c;
     FILE *f;

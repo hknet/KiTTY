@@ -453,7 +453,7 @@ static HWND kitty_launcher_start(void) {
  * has put another window in front and the right to the foreground passed
  * here is worth nothing. SENT, not posted, for the same reason: the launcher
  * shows the next window while this one still holds the foreground. */
-/* A test build started with KITTY_CTRLTAB_TRACE set: one line per Ctrl+Tab
+/* A test build started with KITTY_TEST_CTRLTAB_TRACE set: one line per Ctrl+Tab
  * event to ctrltab.log beside the exe (window.c, the Ctrl+Tab switching), to
  * separate "the key never arrived as Ctrl+Tab" from "the switch was refused".
  * Without the variable - and in every release build - nothing is written. */
@@ -462,7 +462,7 @@ void kitty_ctrltab_trace(const char *fmt, ...) {
     char *exe, *path, *slash, *line;
     va_list ap;
     FILE *f;
-    if (getenv("KITTY_CTRLTAB_TRACE") == NULL)
+    if (getenv("KITTY_TEST_CTRLTAB_TRACE") == NULL)
         return;
     if ((exe = kitty_module_path_dup(NULL)) == NULL)
         return;
@@ -863,7 +863,7 @@ int kitty_apply_background(HWND hwnd, Conf *conf) {
      * image actually loaded without needing to observe the (unwired) render.
      * Test builds only. */
     {
-        const char *st = getenv("KITTY_BG_SELFTEST");
+        const char *st = getenv("KITTY_TEST_BG_SELFTEST");
         if (st && st[0]) {
             FILE *f = fopen(st, "w");
             if (f) {

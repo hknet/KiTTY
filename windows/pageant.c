@@ -8275,7 +8275,7 @@ int kageant_keylist_open(void)
 #define TID_UPDATE_LOOK          8
 #define KAGEANT_WM_UPDATE_CLICK  (WM_APP + 13)
 #define KAGEANT_UPDATE_FIRST_MS  10000u                        /* after the start */
-#define KAGEANT_UPDATE_LOOK_MS   (24u * 60u * 60u * 1000u)     /* then once a day */
+#define KITTY_TEST_KAGEANT_UPDATE_LOOK_MS   (24u * 60u * 60u * 1000u)     /* then once a day */
 static char kageant_update_latest[64];       /* "" = nothing newer is known */
 static char kageant_update_announced[64];    /* the release the notice last named */
 static int kageant_update_beta;
@@ -8791,11 +8791,11 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         }
         /* KiTTY: look at the stored update answer - shortly after the start,
          * then once a day. A TEST BUILD takes the interval in ms from
-         * KAGEANT_UPDATE_LOOK_MS so a harness need not wait a day. */
+         * KITTY_TEST_KAGEANT_UPDATE_LOOK_MS so a harness need not wait a day. */
         if (wParam == TID_UPDATE_LOOK) {
-            UINT again = KAGEANT_UPDATE_LOOK_MS;
+            UINT again = KITTY_TEST_KAGEANT_UPDATE_LOOK_MS;
 #ifdef KITTY_TEST_BUILD_LABEL
-            { const char *ms = getenv("KAGEANT_UPDATE_LOOK_MS");
+            { const char *ms = getenv("KITTY_TEST_KAGEANT_UPDATE_LOOK_MS");
               if (ms && atoi(ms) >= 1000) again = (UINT)atoi(ms); }
 #endif
             SetTimer(hwnd, TID_UPDATE_LOOK, again, NULL);

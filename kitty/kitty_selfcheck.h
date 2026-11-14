@@ -50,8 +50,8 @@
  * starts klink and kscp without a window. Invisible plus cannot check is
  * refused, reason `cannot check`, event log only - never a box.
  *
- * KITTY_SELFCHECK_FAULT (test builds only, never a release): when the
- * environment variable KITTY_SELFCHECK_FAULT is set, the check behaves as if
+ * KITTY_TEST_SELFCHECK_FAULT (test builds only, never a release): when the
+ * environment variable KITTY_TEST_SELFCHECK_FAULT is set, the check behaves as if
  * the own file could not be opened, so the cannot-check paths can be driven.
  * Such a build carries KT_SELFCHECK_FAULT_MARKER and the stamp tool refuses
  * to stamp it.

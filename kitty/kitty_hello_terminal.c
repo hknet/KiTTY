@@ -118,13 +118,13 @@ static LRESULT CALLBACK kht_sink_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 }
 
 #ifdef KITTY_TEST_BUILD_LABEL
-/* Test builds only: KITTY_HELLO_TEST_UNLOCK="<ms>:ok:<passphrase>" or
+/* Test builds only: KITTY_TEST_HELLO_UNLOCK="<ms>:ok:<passphrase>" or
  * "<ms>:deny" stands in for Windows Hello (which no test lane has) - the
  * worker waits <ms>, then answers so. Unset: the real thing. */
 static bool kht_test_door(struct kht_job *j)
 {
     char buf[512], *p, *q;
-    DWORD n = GetEnvironmentVariableA("KITTY_HELLO_TEST_UNLOCK", buf, sizeof(buf));
+    DWORD n = GetEnvironmentVariableA("KITTY_TEST_HELLO_UNLOCK", buf, sizeof(buf));
     if (n == 0 || n >= sizeof(buf))
         return false;
     p = strchr(buf, ':');
@@ -168,7 +168,7 @@ static int kht_unlock_async(const char *path,
     uintptr_t th;
     *token = NULL;
 #ifdef KITTY_TEST_BUILD_LABEL
-    if (!GetEnvironmentVariableA("KITTY_HELLO_TEST_UNLOCK", NULL, 0))
+    if (!GetEnvironmentVariableA("KITTY_TEST_HELLO_UNLOCK", NULL, 0))
 #endif
     if (!kageant_hello_has_sidecar(path))
         return 0;

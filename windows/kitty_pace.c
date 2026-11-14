@@ -64,7 +64,7 @@ static int pace_setting = PACE_AUTO;
 void kitty_pace_set_setting(const char *value)
 {
 #ifdef KITTY_TEST_BUILD_LABEL
-    const char *e = getenv("KITTY_UPDATE_PACE_MS");   /* the measuring knob */
+    const char *e = getenv("KITTY_TEST_UPDATE_PACE_MS");   /* the measuring knob */
     if (e && atoi(e) > 0)
         value = e;
 #endif
@@ -222,8 +222,8 @@ unsigned long kitty_pace_cooldown_ms(double now, double paint_ms)
         aim = early ? 0.1 : 0.5;
 #ifdef KITTY_TEST_BUILD_LABEL
         {
-            /* KITTY_PACE_AIM=<0..1>: where in the cycle (the measuring knob) */
-            const char *e = getenv("KITTY_PACE_AIM");
+            /* KITTY_TEST_PACE_AIM=<0..1>: where in the cycle (the measuring knob) */
+            const char *e = getenv("KITTY_TEST_PACE_AIM");
             if (e && *e && atof(e) >= 0 && atof(e) < 1)
                 aim = atof(e);
         }
@@ -256,12 +256,12 @@ unsigned long kitty_pace_cooldown_ms(double now, double paint_ms)
     d = target - now;
 #ifdef KITTY_TEST_BUILD_LABEL
     {
-        /* KITTY_PACE_TRACE=<file>: one line per frame decision */
+        /* KITTY_TEST_PACE_TRACE=<file>: one line per frame decision */
         static FILE *trace = NULL;
         static bool tried = false;
         static double asked_for = 0;
         if (!tried) {
-            const char *f = getenv("KITTY_PACE_TRACE");
+            const char *f = getenv("KITTY_TEST_PACE_TRACE");
             tried = true;
             if (f && *f) trace = fopen(f, "w");
         }

@@ -3985,12 +3985,12 @@ static HWND kx_gf_msgwin = NULL ;     /* takes the worker's result */
 static int kx_gf_checking_token ;
 static void kx_gf_checking_closed( void *ctx, int clicked ) { (void)ctx ; (void)clicked ; }
 
-/* Test builds with KITTY_NOTICE_TRACE=<file>: the notice's text, one line
+/* Test builds with KITTY_TEST_NOTICE_TRACE=<file>: the notice's text, one line
  * appended in the format kitty_hostnotify.c writes - for a test harness, as
  * a notice's text is painted and cannot be read from outside. */
 static void kx_gf_trace_notice( const char *text ) {
 #ifdef KITTY_TEST_BUILD_LABEL
-	const char *path = getenv( "KITTY_NOTICE_TRACE" ) ;
+	const char *path = getenv( "KITTY_TEST_NOTICE_TRACE" ) ;
 	FILE *f ;
 	if( !path || !*path || ( f = fopen( path, "a" ) ) == NULL ) return ;
 	fprintf( f, "notice accent=%06X text=%s\n", (unsigned)KX_GF_ACCENT, text ) ;

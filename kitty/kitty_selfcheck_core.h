@@ -79,11 +79,11 @@
 #define KT_STAMP_CHUNK       16384
 
 /*
- * The marker a test-only fault build carries (KITTY_SELFCHECK_FAULT). The
+ * The marker a test-only fault build carries (KITTY_TEST_SELFCHECK_FAULT). The
  * stamp tool refuses any file that contains it, so a binary with the fault
  * switch can never be stamped by mistake and go out as a release.
  */
-#define KT_SELFCHECK_FAULT_MARKER "KTSELFCHECK-FAULT-BUILD"
+#define KT_SELFCHECK_FAULT_MARKER "KITTY_TEST_SELFCHECK_FAULT_BUILD"
 
 /*
  * Where the interesting bytes of one PE file are. All offsets are file

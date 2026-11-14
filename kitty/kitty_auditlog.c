@@ -694,9 +694,9 @@ static void audit_chain_sync(void)
 unsigned long kitty_audit_chain_head_ms(void)
 {
 #ifdef KITTY_TEST_BUILD_LABEL
-    /* a TEST BUILD takes the interval in ms from KITTY_LOGCHAIN_HEAD_MS, so
+    /* a TEST BUILD takes the interval in ms from KITTY_TEST_LOGCHAIN_HEAD_MS, so
      * a harness need not wait 15 minutes for a head anchor */
-    const char *ms = getenv("KITTY_LOGCHAIN_HEAD_MS");
+    const char *ms = getenv("KITTY_TEST_LOGCHAIN_HEAD_MS");
     if (ms && atoi(ms) >= 1000)
         return (unsigned long)atoi(ms);
 #endif

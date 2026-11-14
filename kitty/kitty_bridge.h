@@ -30,7 +30,7 @@ void kitty_launcher_hide(HWND hwnd);
 void kitty_launcher_switch_hide(HWND hwnd);
 void kitty_launcher_unhide(HWND hwnd);
 void kitty_launcher_window_gone(HWND hwnd);
-/* Test builds with KITTY_CTRLTAB_TRACE set: a Ctrl+Tab event line to
+/* Test builds with KITTY_TEST_CTRLTAB_TRACE set: a Ctrl+Tab event line to
  * ctrltab.log beside the exe. Otherwise nothing is written. */
 void kitty_ctrltab_trace(const char *fmt, ...);
 /* One exit confirmation for windows closed together (kitty_bridge.c). */

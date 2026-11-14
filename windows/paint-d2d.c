@@ -290,7 +290,7 @@ typedef struct D2DPainter {
     IDXGIFactory2 *occl_factory;
     DWORD occl_cookie;
     HRESULT present_status;
-    unsigned long npresent;            /* presents so far, KITTY_D2D_FAIL_PRESENT */
+    unsigned long npresent;            /* presents so far, KITTY_TEST_D2D_FAIL_PRESENT */
     unsigned long inj_from, inj_count;
 #endif
 } D2DPainter;
@@ -344,7 +344,7 @@ static void fill(D2DPainter *d, int l, int t, int r, int b, COLORREF c)
 
 /* ---- test-build trace ---------------------------------------------- */
 
-/* A test build started with KITTY_D2D_TRACE set appends what the device
+/* A test build started with KITTY_TEST_D2D_TRACE set appends what the device
  * does (which adapter, each loss, each re-creation, the fallback) to
  * d2d_trace.log beside the exe, one "<GetTickCount> <text>" line each. A
  * normal build has none of it. */
@@ -352,7 +352,7 @@ static void fill(D2DPainter *d, int l, int t, int r, int b, COLORREF c)
 static void d2d_trace(const char *fmt, ...)
 {
     char *exe, *path, *slash;
-    const char *on = getenv("KITTY_D2D_TRACE");
+    const char *on = getenv("KITTY_TEST_D2D_TRACE");
     FILE *f;
     va_list ap;
     if (!on || !*on)
@@ -992,7 +992,7 @@ static void d2d_end(KittyPainter *p)
          * retried whole */
         where = "Present1";
 #ifdef KITTY_TEST_BUILD_LABEL
-        /* KITTY_D2D_FAIL_PRESENT=<n>[:<k>]: presents n .. n+k-1 of this
+        /* KITTY_TEST_D2D_FAIL_PRESENT=<n>[:<k>]: presents n .. n+k-1 of this
          * painter report a removed device without presenting, so the
          * recovery below runs for real on a healthy device. */
         d->npresent++;
@@ -1020,7 +1020,7 @@ static void d2d_end(KittyPainter *p)
                       hr == DXGI_STATUS_OCCLUDED ? "occluded" : "visible",
                       (unsigned long)hr);
         d->present_status = hr;
-        if (getenv("KITTY_D2D_TRACE_PRESENT"))   /* every present */
+        if (getenv("KITTY_TEST_D2D_TRACE_PRESENT"))   /* every present */
             D2D_TRACE("present 0x%08lX iconic %d", (unsigned long)hr,
                       IsIconic(d->hwnd) ? 1 : 0);
 #endif
@@ -1197,7 +1197,7 @@ static void d2d_face_info(D2DPainter *d, IDWriteFontFace *face, UINT cp,
 }
 
 #ifdef KITTY_TEST_BUILD_LABEL
-/* The trace line for one face (KITTY_D2D_TRACE): the LOGFONT requested,
+/* The trace line for one face (KITTY_TEST_D2D_TRACE): the LOGFONT requested,
  * GDI's weight, and the face DirectWrite draws with - its weight and its
  * font file. The proof of which face a font name resolved to. */
 static void d2d_trace_face(D2DPainter *d, const LOGFONTW *lf, int gdiweight,
@@ -1206,7 +1206,7 @@ static void d2d_trace_face(D2DPainter *d, const LOGFONTW *lf, int gdiweight,
     char *name, *file;
     int dwweight, dwstyle;
 
-    if (!getenv("KITTY_D2D_TRACE"))
+    if (!getenv("KITTY_TEST_D2D_TRACE"))
         return;
     d2d_face_info(d, face, CP_UTF8, &dwweight, &dwstyle, &file);
     name = dup_wc_to_mb(CP_UTF8, lf->lfFaceName, "?");
@@ -2306,8 +2306,8 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
 
 #ifdef KITTY_TEST_BUILD_LABEL
     {
-        /* KITTY_D2D_FAIL_PRESENT=<n> or <n>:<k> (see d2d_end) */
-        const char *e = getenv("KITTY_D2D_FAIL_PRESENT");
+        /* KITTY_TEST_D2D_FAIL_PRESENT=<n> or <n>:<k> (see d2d_end) */
+        const char *e = getenv("KITTY_TEST_D2D_FAIL_PRESENT");
         if (e && *e) {
             char *end;
             unsigned long n = strtoul(e, &end, 10), k = 1;

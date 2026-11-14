@@ -8853,7 +8853,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             return 0;
 #endif
         /* KiTTY Ctrl-Tab session switching (consume VK_TAB+Ctrl first). */
-        if (wParam == VK_TAB)      /* KITTY_CTRLTAB_TRACE test runs: ctrltab.log (kitty_bridge.c) */
+        if (wParam == VK_TAB)      /* KITTY_TEST_CTRLTAB_TRACE test runs: ctrltab.log (kitty_bridge.c) */
             kitty_ctrltab_trace("hwnd %p %s Tab: ctrl key state %d, async %d, "
                                 "session switch %d, global %d, own flag %d, fg %p",
                                 (void *)hwnd,
@@ -13872,12 +13872,12 @@ Conf *kitty_seat_conf(Seat *seat)
  * time to a host whose key was new offers to keep the connection as a
  * session - once per window, while [KiTTY] offernewsessioncreation is not no. A notice:
  * modeless, it never takes the keyboard from the session. ---- */
-/* A test build, KITTY_NOTICE_TRACE set: one line per step of the offer, for
+/* A test build, KITTY_TEST_NOTICE_TRACE set: one line per step of the offer, for
  * the harness (the notices' own trace file, kitty_hostnotify.c). */
 static void kitty_offer_trace(const char *fmt, ...)
 {
 #ifdef KITTY_TEST_BUILD_LABEL
-    const char *path = getenv("KITTY_NOTICE_TRACE");
+    const char *path = getenv("KITTY_TEST_NOTICE_TRACE");
     FILE *f;
     va_list ap;
     if (!path || !*path || !(f = fopen(path, "a")))
@@ -14470,18 +14470,18 @@ static void kitty_winpos_key(char *buf, int n)
 
 /* ---- window-position diagnostics ---------------------------------------------
  * Test builds only. Inert unless the environment variable
- * KITTY_WINPOS_DEBUG is set. Then it appends a trace (monitor topology,
+ * KITTY_TEST_WINPOS_DEBUG is set. Then it appends a trace (monitor topology,
  * topology key, save/restore rects, results) to %TEMP%\kitty_winpos.log.
  * Used to diagnose "remember window position" on multi-monitor / mixed-DPI
  * layouts. */
 #ifdef KITTY_TEST_BUILD_LABEL
 static int kitty_winpos_dbg_enabled(void)
 {
-    /* Off by default. KITTY_WINPOS_DEBUG=1 traces to
+    /* Off by default. KITTY_TEST_WINPOS_DEBUG=1 traces to
      * %TEMP%\kitty_winpos.log. */
     static int cached = -1;
     if (cached < 0)
-        cached = GetEnvironmentVariableA("KITTY_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
+        cached = GetEnvironmentVariableA("KITTY_TEST_WINPOS_DEBUG", NULL, 0) ? 1 : 0;
     return cached;
 }
 static void kitty_winpos_dbg(const char *fmt, ...)

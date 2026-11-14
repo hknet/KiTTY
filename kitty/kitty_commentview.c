@@ -265,13 +265,13 @@ static char *kcv_to_mb(UINT cp, const wchar_t *w)
 
 #ifdef KITTY_TEST_BUILD_LABEL
 /*
- * KITTY_COMMENTVIEW_TRACE=<file> (test builds only): a link is not opened
+ * KITTY_TEST_COMMENTVIEW_TRACE=<file> (test builds only): a link is not opened
  * but written there, one line "open <target>" in UTF-8, for the harness -
  * no browser starts in the gate.
  */
 static bool kcv_trace_open(const wchar_t *target)
 {
-    const char *path = getenv("KITTY_COMMENTVIEW_TRACE");
+    const char *path = getenv("KITTY_TEST_COMMENTVIEW_TRACE");
     char *u8;
     FILE *f;
     if (!path || !*path)

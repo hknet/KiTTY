@@ -84,7 +84,7 @@ struct hn_shown {
 /* ---- test hooks: test builds only, and only when asked for ------------- */
 
 #ifdef KITTY_TEST_BUILD_LABEL
-/* KITTY_PROGRESS_TRACE=<file> and KITTY_NOTICE_TRACE=<file>: one line per
+/* KITTY_PROGRESS_TRACE=<file> and KITTY_TEST_NOTICE_TRACE=<file>: one line per
  * event, appended. Without the variable nothing is written. */
 static void hn_trace(const char *env, const char *line)
 {
@@ -106,7 +106,7 @@ static void hn_trace_notice(COLORREF accent, const char *text)
 #ifdef KITTY_TEST_BUILD_LABEL
     strbuf *sb;
     const unsigned char *p;
-    if (!getenv("KITTY_NOTICE_TRACE"))
+    if (!getenv("KITTY_TEST_NOTICE_TRACE"))
         return;
     sb = strbuf_new();
     put_fmt(sb, "notice accent=%06X text=", (unsigned)accent);
@@ -120,7 +120,7 @@ static void hn_trace_notice(COLORREF accent, const char *text)
         else
             put_byte(sb, *p);
     }
-    hn_trace("KITTY_NOTICE_TRACE", sb->s);
+    hn_trace("KITTY_TEST_NOTICE_TRACE", sb->s);
     strbuf_free(sb);
 #else
     (void)accent;
@@ -134,11 +134,11 @@ static void hn_trace_extras(const char *action, const char *link)
 {
 #ifdef KITTY_TEST_BUILD_LABEL
     char *line;
-    if (!getenv("KITTY_NOTICE_TRACE"))
+    if (!getenv("KITTY_TEST_NOTICE_TRACE"))
         return;
     line = dupprintf("extras action=%s link=%s", action ? action : "",
                      link ? link : "");
-    hn_trace("KITTY_NOTICE_TRACE", line);
+    hn_trace("KITTY_TEST_NOTICE_TRACE", line);
     sfree(line);
 #else
     (void)action;

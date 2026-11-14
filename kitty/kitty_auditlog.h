@@ -89,7 +89,7 @@ const char *kitty_audit_run_id(void);
  * KITTY_AUDITCHAIN_HEAD_MS have passed, and the summary of repeats counted
  * KITTY_AUDITCHAIN_REPEAT_MS ago; kageant calls it every 10 seconds. */
 void kitty_audit_chain_tick(void);
-/* That interval in ms (a test build takes KITTY_LOGCHAIN_HEAD_MS). */
+/* That interval in ms (a test build takes KITTY_TEST_LOGCHAIN_HEAD_MS). */
 unsigned long kitty_audit_chain_head_ms(void);
 /* A config anchor before a change of agentlog, agentlogpath or
  * agentlogsink takes effect: value = "<setting>=<new value>". */

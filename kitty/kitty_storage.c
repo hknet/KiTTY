@@ -865,7 +865,7 @@ int kitty_session_origin(const char *sessionname)
 static int  g_store_mode = 0;        /* 0 = registry; nonzero = portable file mode */
 static char *g_sess_dir = kstr_none;   /* directory holding per-session files */
 
-/* Password-flow diagnostic log, TEST BUILDS ONLY: with env KITTY_PWDEBUG
+/* Password-flow diagnostic log, TEST BUILDS ONLY: with env KITTY_TEST_PWDEBUG
  * set, kitty_pwdebug.log beside the running exe. It records lengths, store
  * modes and the KIND of a stored value - never characters of a password
  * and no checksum of one (a checksum with the length gives a short
@@ -877,7 +877,7 @@ void kitty_pwdebug(const char *fmt, ...)
     (void)fmt;
     return;
 #else
-    if (!GetEnvironmentVariableA("KITTY_PWDEBUG", NULL, 0)) return;
+    if (!GetEnvironmentVariableA("KITTY_TEST_PWDEBUG", NULL, 0)) return;
     char *exe = kitty_module_path_dup(NULL), *path, *bs;
     if (exe && (bs = strrchr(exe, '\\')) != NULL) {
         *bs = '\0';

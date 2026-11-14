@@ -58,7 +58,7 @@ static const unsigned char kt_pubkey[KT_ED25519_PUB_LEN] =
  * every linker from treating it as unreferenced. */
 extern const unsigned char kt_stamp_block[KT_STAMP_SIZE];
 
-#ifdef KITTY_SELFCHECK_FAULT
+#ifdef KITTY_TEST_SELFCHECK_FAULT
 /*
  * Test builds only. The marker makes the build recognisable to the stamp
  * tool, which refuses to stamp it: the fault switch must never reach a
@@ -69,11 +69,11 @@ static const char kt_fault_marker[] __attribute__((used)) =
 #endif
 
 /* The switch reads the environment, so it needs a test build label too. */
-#if defined(KITTY_SELFCHECK_FAULT) && defined(KITTY_TEST_BUILD_LABEL)
+#if defined(KITTY_TEST_SELFCHECK_FAULT) && defined(KITTY_TEST_BUILD_LABEL)
 static int kt_fault_armed(void)
 {
     char v[8];
-    return GetEnvironmentVariableA("KITTY_SELFCHECK_FAULT", v, sizeof(v)) > 0;
+    return GetEnvironmentVariableA("KITTY_TEST_SELFCHECK_FAULT", v, sizeof(v)) > 0;
 }
 #else
 #define kt_fault_armed() 0
