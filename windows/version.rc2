@@ -42,7 +42,7 @@ BEGIN
 	BLOCK "080904B0"
 	BEGIN
 	    VALUE "CompanyName",	"KAPPER NETWORK-COMMUNICATIONS GmbH"
-	    VALUE "ProductName",	"KiTTY suite"
+	    VALUE "ProductName",	"KiTTY++ suite"
 	    VALUE "FileDescription",	APPDESC
 	    VALUE "InternalName",	APPNAME
 	    VALUE "OriginalFilename",	APPNAME

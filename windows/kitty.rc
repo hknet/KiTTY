@@ -8,7 +8,7 @@
 #include "../kitty/kitty_text.h"
 #include "../kitty/kitty_transfer_text.h"   /* IDD_XFERREQ, IDD_XFERDL: caption and buttons */
 
-#define APPNAME "KiTTY"
+#define APPNAME "KiTTY++"
 #define APPDESC "SSH, Telnet, Rlogin, and SUPDUP client"
 
 /* The application icon is embedded ONCE. It used to be embedded five times
