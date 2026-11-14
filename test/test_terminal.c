@@ -649,16 +649,21 @@ static void test_selection(Mock *mk)
         int clipboards[1] = { CLIP_TEST };
         term_copyall(mk->term, clipboards, 1);
     }
-    /* Check the output paste data. This time, we expect \n, not \r,
-     * because the paste data is in the form of a text file rather
-     * than terminal input, so the translation back to \r hasn't been
-     * done. */
-    IEQUAL(mk->paste_len, 5);
+    /* Check the output paste data. This time, we expect the
+     * platform's selection line ending (SEL_NL: \n on Unix, \r\n on
+     * Windows), not the \r of terminal input, because the paste data
+     * is in the form of a text file rather than terminal input, so the
+     * translation back to \r hasn't been done. Windows also ends the
+     * data with a NUL (SELECTION_NUL_TERMINATED). */
+    static const wchar_t nl[] = SEL_NL;
+    size_t i;
+    IEQUAL(mk->paste_len, 4 + lenof(nl) + SELECTION_NUL_TERMINATED);
     IEQUAL(mk->paste_data[0], 0x0061);
     IEQUAL(mk->paste_data[1], 0x034A);
     IEQUAL(mk->paste_data[2], 0x0062);
     IEQUAL(mk->paste_data[3], 0x0353);
-    IEQUAL(mk->paste_data[4], 0x000A);
+    for (i = 0; i < lenof(nl); i++)
+        IEQUAL(mk->paste_data[4 + i], nl[i]);
     /* Check the attributes. Each combining character should share the
      * attributes of its principal. */
     IEQUAL(mk->paste_attr[0],
@@ -673,7 +678,8 @@ static void test_selection(Mock *mk)
     IEQUAL(mk->paste_attr[3],
            (OSC4_COLOUR_fg << ATTR_FGSHIFT) |
            (OSC4_COLOUR_bg << ATTR_BGSHIFT));
-    IEQUAL(mk->paste_attr[4], 0);      /* no attributes on the \n */
+    for (i = 0; i < lenof(nl); i++)
+        IEQUAL(mk->paste_attr[4 + i], 0);  /* no attributes on the line end */
     /* Similarly, check the truecolour data. */
     IEQUAL(mk->paste_tc[0].fg.enabled, false);
     IEQUAL(mk->paste_tc[0].bg.enabled, false);
@@ -689,8 +695,10 @@ static void test_selection(Mock *mk)
     IEQUAL(mk->paste_tc[3].fg.g, 22);
     IEQUAL(mk->paste_tc[3].fg.b, 33);
     IEQUAL(mk->paste_tc[3].bg.enabled, false);
-    IEQUAL(mk->paste_tc[4].fg.enabled, false);
-    IEQUAL(mk->paste_tc[4].bg.enabled, false);
+    for (i = 0; i < lenof(nl); i++) {
+        IEQUAL(mk->paste_tc[4 + i].fg.enabled, false);
+        IEQUAL(mk->paste_tc[4 + i].bg.enabled, false);
+    }
 }
 
 int main(void)

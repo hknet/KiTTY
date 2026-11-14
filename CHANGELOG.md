@@ -1,7 +1,8 @@
 # KiTTY changelog
 
-KiTTY++ is the old KiTTY plus serious (speed) enhancements
-and more features onto a modern, security-patched **PuTTY 0.85** core.
+KiTTY++ is the old KiTTY plus serious (speed) enhancements and a lot
+more features based on a modern, security-patched **PuTTY 0.85** core
+with more current fixes cherry-picked to our codebase.
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md);
 for the full feature list see [FEATURES.md](FEATURES.md).
@@ -70,6 +71,16 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   "Log rotation skipped" warning at every tick is gone. A name without
   date or time switches rotation off, with one line in the Terminal
   Window's Event Log. Refs hknet/KiTTY#92.
+
+### Fixed
+
+- From upstream PuTTY after 0.85:
+  - remote port forwarding: two crashes
+  - dynamic forwarding (SOCKS): a request that arrives in pieces
+  - Telnet proxy: the login in klink
+  - proxy credentials kept after a pre-connect command
+  - rich-text copy: combining characters take their base character's attributes
+  - memory leaks in the proxy, SSH, rlogin and terminal code
 
 ## 0.85.1.20-beta — 2026-11-11
 
