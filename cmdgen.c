@@ -375,7 +375,7 @@ int main(int argc, char **argv)
 
 #ifdef _WINDOWS
     /* KiTTY: the rename guard, before the command line is looked at. This
-     * binary ships as kittygen-cli.exe and is built as kittygen_cli.exe; it is
+     * binary is built and ships as kittygen-cli.exe; it is
      * the command-line form of kittygen, so it accepts the same names. */
     {
         static const char *const names[] = { "kittygen", "puttygen" };

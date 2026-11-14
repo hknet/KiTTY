@@ -11,7 +11,7 @@
  * in kitty_storage_int.h.
  *
  * Like kitty_storage.c, this compiles into the settings lib AND standalone
- * into puttygen/kittygen_cli (windows/CMakeLists.txt): keep it free of
+ * into puttygen/kittygen-cli (windows/CMakeLists.txt): keep it free of
  * MOD_PERSO-style guards and GUI dependencies.
  */
 

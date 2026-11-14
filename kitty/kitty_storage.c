@@ -14,7 +14,7 @@
  * dispatch into both through kitty_storage.h and kitty_secretstore.h.
  *
  * Like storage.c, this compiles into the settings lib AND standalone into
- * puttygen/kittygen_cli (windows/CMakeLists.txt): keep it free of
+ * puttygen/kittygen-cli (windows/CMakeLists.txt): keep it free of
  * MOD_PERSO-style guards and GUI dependencies.
  */
 

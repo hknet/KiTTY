@@ -190,7 +190,7 @@ target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_b64.c)
 # portable file backend) and kitty_secretstore.c (at-rest credential crypto) -
 # split out of storage.c likewise.
 # NOTE: like storage.c itself, BOTH must ALSO be listed in the puttygen,
-# kittygen_cli and test_storage_roundtrip source lists below, or those
+# kittygen-cli and test_storage_roundtrip source lists below, or those
 # targets fail to link.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_storage.c)
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c)   # KiTTY: a file written whole or not at all (kitty_storage.c)
@@ -437,7 +437,7 @@ set_target_properties(puttygen PROPERTIES WIN32_EXECUTABLE ON)
 installed_program(puttygen)
 kitty_selfcheck_target(puttygen)
 
-add_executable(kittygen_cli
+add_executable(kittygen-cli
   ${CMAKE_SOURCE_DIR}/cmdgen.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck.c   # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_selfcheck_stamp.c   # KiTTY: the .ktstamp block the release fills
@@ -468,14 +468,16 @@ add_executable(kittygen_cli
   keygen-noise.c
   ${CMAKE_SOURCE_DIR}/sshpubk.c
   ${CMAKE_SOURCE_DIR}/sshrand.c
-  kittygen_cli.rc)
-add_dependencies(kittygen_cli generated_licence_h)
-target_link_libraries(kittygen_cli
+  kittygen-cli.rc)
+add_dependencies(kittygen-cli generated_licence_h)
+target_link_libraries(kittygen-cli
   keygen console crypto utils
   ${platform_libraries} crypt32 ${CMAKE_SOURCE_DIR}/kitty/libs/bcrypt_${KITTY_LIBS_BITS}.a)  # storage.c password crypto (DPAPI + legacy bcrypt)
 # console subsystem - no WIN32_EXECUTABLE
-installed_program(kittygen_cli)
-kitty_selfcheck_target(kittygen_cli)
+# The target is kittygen-cli, the name the program ships under: no rename
+# on the way to the test folders, the packages or the release.
+installed_program(kittygen-cli)
+kitty_selfcheck_target(kittygen-cli)
 
 # KiTTY: kitty_pterm (upstream's pterm target) and kitty_tel (puttytel) are
 # no longer built: kitty.exe runs a local program as its "Local" connection
