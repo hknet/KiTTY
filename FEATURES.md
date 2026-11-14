@@ -1046,7 +1046,7 @@ Timestamps apply to the session logs — *Printable output* and *All session out
 
 If you would rather not learn strftime to try it, the button under the field fills in a sensible pattern; press it again to clear it. Its label always shows which of the two it will do.
 
-**Rotation.** *Log rotation delay* starts a new log file every N seconds, so a long-running session becomes a series of manageable files instead of one that grows all week. This only works if the file name changes with time — put `&T` in it, as in `kitty_&H_&T.log`. If the name has no time-varying code, KiTTY++ **declines to rotate** and reports it in the Terminal Window's Event Log, because reopening the same name would overwrite the log instead of rotating it.
+**Rotation.** A new log file starts when the log file name changes, at most every N seconds (*New log file at most every*). A name with `&T` gets a new file every N seconds. A name with a date only, as `kitty_&H_&Y&M&D.log`, switches within a minute after midnight. A name without date or time switches rotation off, with one line in the Terminal Window's Event Log: reopening the same name would overwrite the log.
 
 **Deleting old logs.** A time-varying name leaves a new file behind every day or every rotation, so two settings under the rotation row trim them per session, the way journald trims its journal: *Delete logs after N days* removes this session's logs last written more than N days ago, and *Keep logsize below N MB* removes the oldest until their total is under the cap (`0` = off for both). Only files the log name could have produced are touched — the date and time codes become digits, `&H` and `&P` any text, so `kitty_&H_&Y&M&D.log` looks for `kitty_*_????????.log` — in the log's own folder, never a subfolder. A name with no `&Y` `&M` `&D` `&T` in it deletes nothing, and neither the log being written nor a file another program has open is ever removed. It runs before the log opens and after it closes, never on a timer. Deletion is permanent. Each run that deleted anything is event 901 (count, size, rule, pattern) in the Windows Event Log (Application log, source KiTTY++). While the session is there, a line with the same counts goes to the Terminal Window's Event Log. Note that `&H` matches any host: two sessions logging to the same folder under the same name pattern share one retention budget.
 
@@ -1062,7 +1062,7 @@ eventlog={CONTROL}{SHIFT}E    ; show the Terminal Window's Event Log
 
 **A log file that already exists, with nobody at the desktop** (a service, a scheduled task that runs whether a user is logged on or not): the session logs nothing instead of waiting on a question nobody sees. Event 907 with the log file goes to the Windows Event Log (Application log, source KiTTY++). Session > Logging > "What to do if the log file already exists", `-logoverwrite` or `-logappend` set the choice beforehand.
 
-**How to enable:** **Session > Logging**. Choose what to log, set *Log file name*, then put your pattern in *Timestamp (strftime format)* — or press the button beneath it. For rotation, set *Log rotation delay* and include `&T` in the file name.
+**How to enable:** **Session > Logging**. Choose what to log, set *Log file name*, then put your pattern in *Timestamp (strftime format)* — or press the button beneath it. For rotation, set *New log file at most every* and put a date or time code in the file name.
 
 (no screenshot)
 

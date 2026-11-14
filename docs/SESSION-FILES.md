@@ -196,7 +196,7 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 | `LoginShell` | `0` / `1` | `1` | - | Unix pterm only: starts the shell as a login shell; not used on Windows. |
 | `LogKeepDays` | number | `0` | Session/Logging | Deletes this session's log files older than this many days; `0` = off. |
 | `LogKeepMB` | number | `0` | Session/Logging | Deletes this session's oldest log files while their total is over this many MB; `0` = off. |
-| `LogTimeRotation` | number | `0` | Session/Logging | Starts a new log file every this many seconds (the log file name needs `&T`); `0` = off. |
+| `LogTimeRotation` | number | `0` | Session/Logging | A new log file when the log file name changes, at most every this many seconds (the name needs a date or time code); `0` = off. |
 | `LogTimestamp` | text | *(empty)* | Session/Logging | Written at the start of every logged line. |
 | `LogType` | `0` None; `1` Printable output; `2` All session output; `3` packets; `4` sshraw | `0` | Session/Logging | What the session log records: nothing, printable output, all output, SSH packets, or raw SSH data. |
 | `Maximize` | number | `0` | Window/Behaviour | `1` opens the window maximised. |

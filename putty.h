@@ -2358,6 +2358,11 @@ void logfclose(LogContext *logctx);
 /* KiTTY: close the log so the next write reopens it under a freshly
  * substituted name. Declined when the name would not change - see logging.c. */
 void logfile_rotate(LogContext *logctx);
+/* KiTTY: log rotation (hknet/KiTTY#92, logging.c). The setup writes its
+ * line and returns the timer period in ms (0 = no timer). The tick is one
+ * check of the timer. */
+unsigned logfile_rotation_setup(LogContext *logctx, int secs);
+void logfile_rotation_tick(LogContext *logctx, int secs);
 /* KiTTY: truncate the log being written, whatever the "file already exists"
  * setting says - an explicit clear is not the same question. */
 void logfile_clear(LogContext *logctx);

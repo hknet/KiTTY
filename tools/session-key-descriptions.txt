@@ -109,7 +109,7 @@ LockSize	What resizing the window changes: rows and columns, the font size, the 
 LoginShell	Unix pterm only: starts the shell as a login shell; not used on Windows.
 LogKeepDays	Deletes this session's log files older than this many days; `0` = off.
 LogKeepMB	Deletes this session's oldest log files while their total is over this many MB; `0` = off.
-LogTimeRotation	Starts a new log file every this many seconds (the log file name needs `&T`); `0` = off.
+LogTimeRotation	A new log file when the log file name changes, at most every this many seconds (the name needs a date or time code); `0` = off.
 LogType	What the session log records: nothing, printable output, all output, SSH packets, or raw SSH data.
 Maximize	`1` opens the window maximised.
 MouseOverride	`1` lets Shift with the mouse select text while the host has mouse reporting on.

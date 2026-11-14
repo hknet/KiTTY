@@ -141,10 +141,10 @@
 #define KT_LOGGING_ASK_THE_USER_EVERY_TIME           "Ask the user every time"
 #define KT_LOGGING_FLUSH_LOG_FILE_FREQUENTLY         "Flush log file frequently"
 #define KT_LOGGING_INCLUDE_HEADER                    "Include header"
-#define KT_LOGGING_AUTOMATIC_LOGROTATION_EVERY       "Automatic logrotation every"
+#define KT_LOGGING_AUTOMATIC_LOGROTATION_EVERY       "New log file at most every"
 #define KT_LOGGING_SEC                               "sec."
-#define KT_LOGGING_0_OFF_THE_LOG_FILE                "(0 = off. The file name needs &T in it, or rotation is " \
-        "declined.)"
+#define KT_LOGGING_0_OFF_THE_LOG_FILE                "(0 = off. The file name needs a date or time: &Y, &M, " \
+        "&D or &T.)"
 /* Log retention (cyd01/KiTTY#439): two rows shaped like the rotation row, and
  * a note split over three texts because the panel takes no newline. */
 #define KT_LOGGING_DELETE_LOGS_AFTER                 "Delete logs after"
@@ -4474,9 +4474,21 @@
  * notice; the Event Log line is logging.c's own */
 #define KT_CAP_LOG_OPEN_FAILED                       "KiTTY++ session log"
 #define KT_LOG_OPEN_FAILED_FMT                       "%s\nThe session goes on without a log."
-#define KT_LOG_ROTATION_SKIPPED                      "Log rotation skipped: the log file name does not " \
-        "change with time (use &T, or &Y&M&D, in it) - rotating " \
-        "into the same name would overwrite the log"
+/* log rotation (hknet/KiTTY#92), one line when it is set up: the name
+ * cannot change (notable), or the real interval (routine) */
+#define KT_LOG_ROTATION_OFF                          "Log rotation off: the log file name contains no date " \
+        "or time (&Y, &M, &D, &T) - each rotation would overwrite " \
+        "the log"
+#define KT_LOG_ROTATION_EVERY_UNIT                   "Log rotation: a new log file every %s (the time " \
+        "fields in its name)"
+#define KT_LOG_ROTATION_EVERY_SECS                   "Log rotation: a new log file every %d s (the " \
+        "rotation delay)"
+#define KT_LOG_ROTATION_UNIT_SECOND                  "second"
+#define KT_LOG_ROTATION_UNIT_MINUTE                  "minute"
+#define KT_LOG_ROTATION_UNIT_HOUR                    "hour"
+#define KT_LOG_ROTATION_UNIT_DAY                     "day"
+#define KT_LOG_ROTATION_UNIT_MONTH                   "month"
+#define KT_LOG_ROTATION_UNIT_YEAR                    "year"
 #define KT_LOG_TIMESTAMP_EMPTY                       "Log timestamp: that strftime pattern produces nothing, " \
         "so lines are not being stamped - check the format in " \
         "Session > Logging"

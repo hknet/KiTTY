@@ -34,6 +34,9 @@ struct LogContext {
      * matters - logfopen() also runs on every rotation reopen and after a
      * reconfiguration, and retention must never become a timer. */
     bool keep_start_done, keep_end_done;
+    /* Log rotation (hknet/KiTTY#92): when the last new file started
+     * (or rotation was set up) */
+    time_t rot_last;
 #endif
 };
 
@@ -416,13 +419,94 @@ void logfile_rotate(LogContext *ctx)
     if (!ctx || ctx->state != L_OPEN || !ctx->currlogfilename)
         return;
 
-    if (!logfile_name_varies(ctx)) {
-        logevent(ctx, KT_LOG_ROTATION_SKIPPED);
+    /* the same name would truncate the log, not rotate it */
+    if (!logfile_name_varies(ctx))
         return;
-    }
 
     logfclose(ctx);                    /* the next write reopens it */
     ctx->at_line_start = true;
+    ctx->rot_last = time(NULL);
+}
+
+/*
+ * KiTTY: log rotation from first principles (hknet/KiTTY#92). The file name
+ * is a function of time: a new file starts when the substituted name
+ * changes. "New log file at most every N sec." (CONF_logtimerotation) only
+ * limits how often - it cannot make the name change faster than its own
+ * time fields.
+ *
+ * logfile_rotation_setup: how often the name can change at all. It is
+ * substituted for a reference time in the middle of every period
+ * (2001-01-15 12:30:30) and for that time plus 1 s, 1 min, 1 h, 1 day, 32
+ * days and 366 days - no list of fields to keep up to date. A name that
+ * never changes cannot rotate: one notable line, no timer (0). Else one
+ * routine line with the real interval (the longer of N and the name's
+ * step). It returns the timer's period in ms: every minute, or every N s
+ * if that is shorter.
+ */
+unsigned logfile_rotation_setup(LogContext *ctx, int secs)
+{
+    static const struct { long off; const char *unit; } steps[] = {
+        { 1L, KT_LOG_ROTATION_UNIT_SECOND },
+        { 60L, KT_LOG_ROTATION_UNIT_MINUTE },
+        { 3600L, KT_LOG_ROTATION_UNIT_HOUR },
+        { 86400L, KT_LOG_ROTATION_UNIT_DAY },
+        { 32L * 86400L, KT_LOG_ROTATION_UNIT_MONTH },
+        { 366L * 86400L, KT_LOG_ROTATION_UNIT_YEAR },
+    };
+    struct tm base;
+    Filename *ref;
+    size_t i, step = lenof(steps);
+
+    if (!ctx || secs <= 0 || ctx->logtype == LGTYP_NONE)
+        return 0;
+    memset(&base, 0, sizeof(base));
+    base.tm_year = 101;                /* 2001-01-15 12:30:30 */
+    base.tm_mon = 0;
+    base.tm_mday = 15;
+    base.tm_hour = 12;
+    base.tm_min = 30;
+    base.tm_sec = 30;
+    base.tm_isdst = -1;
+    ref = xlatlognam(conf_get_filename(ctx->conf, CONF_logfilename),
+                     conf_dest(ctx->conf),
+                     conf_get_int(ctx->conf, CONF_port), &base);
+    for (i = 0; i < lenof(steps) && step == lenof(steps); i++) {
+        struct tm t = base;
+        Filename *n;
+        t.tm_sec += (int)steps[i].off;
+        t.tm_isdst = -1;
+        mktime(&t);                    /* normalises the fields */
+        n = xlatlognam(conf_get_filename(ctx->conf, CONF_logfilename),
+                       conf_dest(ctx->conf),
+                       conf_get_int(ctx->conf, CONF_port), &t);
+        if (!filename_equal(n, ref))
+            step = i;
+        filename_free(n);
+    }
+    filename_free(ref);
+
+    if (step == lenof(steps)) {
+        logevent(ctx, KT_LOG_ROTATION_OFF);
+        return 0;
+    }
+    if (steps[step].off >= secs)
+        logeventf(ctx, KT_LOG_ROTATION_EVERY_UNIT, steps[step].unit);
+    else
+        logeventf(ctx, KT_LOG_ROTATION_EVERY_SECS, secs);
+    ctx->rot_last = time(NULL);
+    return (unsigned)(secs < 60 ? secs : 60) * 1000U;
+}
+
+/* One check of the rotation timer: a new file when the name changed and
+ * N s have passed since the last one. Silent either way. */
+void logfile_rotation_tick(LogContext *ctx, int secs)
+{
+    if (!ctx || ctx->state != L_OPEN || !ctx->currlogfilename)
+        return;
+    if (difftime(time(NULL), ctx->rot_last) < (double)secs)
+        return;
+    logfile_rotate(ctx);
 }
 
 /*
@@ -707,6 +791,7 @@ LogContext *log_init(LogPolicy *lp, Conf *conf)
     ctx->ts_warned = false;
     ctx->keep_start_done = false;
     ctx->keep_end_done = false;
+    ctx->rot_last = time(NULL);        /* logfile_rotation_setup sets it again */
 #endif
     bufchain_init(&ctx->queue);
     return ctx;

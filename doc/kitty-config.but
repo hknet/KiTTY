@@ -199,17 +199,17 @@ undone without knowing strftime. Its label shows which it will do.
 
 \S{kitty-cfg-log-rotation} \q{Automatic logrotation}
 
-Starts a new log file every N seconds, so a session that runs for a
-week becomes a series of manageable files instead of one that grows
-without limit. \c{0} switches it off.
+Starts a new log file when the file name changes, at most every N
+seconds. \c{0} switches it off.
 
-\b This works only if the \e{file name} changes with time. Put \c{&T}
-in it, as in \c{kitty_&H_&T.log}.
+\b The name decides when it changes: \c{&T} every second, \c{&D} at
+midnight, \c{&M} on the first of the month. With \c{&T}, N sets the
+interval: \c{kitty_&H_&T.log} with 3600 gives one file per hour. With a
+date only, a new file starts at midnight.
 
-\b If the name has no time-varying code, KiTTY++ \e{declines} to rotate
-and reports so in the Terminal Window's Event Log, because reopening
-the same name would
-overwrite the log rather than rotate it.
+\b A name with no date or time code cannot rotate (each rotation would
+overwrite the log). KiTTY++ then switches rotation off for the session
+and reports so in the Terminal Window's Event Log.
 
 The log file name's own substitutions are \c{&H} host name, \c{&P}
 port, \c{&Y} \c{&M} \c{&D} year/month/day, \c{&T} time as HHMMSS, and

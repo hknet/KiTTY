@@ -1018,7 +1018,7 @@ extern void kitty_mpw_session_ended(void);              /* kitty_mpw_gui.c */
 #define TIMER_EMBEDFILL 8706   /* #554: poll host client rect, keep embedded child filling it */
 #define TIMER_SENDTOTRAY 8711  /* free across window.c + kitty.c timer ids */
 /* Session > Logging > "Log rotation delay": start a new log file every N
- * seconds (CONF_logtimerotation). Repeating; logfile_rotate() decides whether
+ * seconds (CONF_logtimerotation). Repeating. logfile_rotation_tick() decides whether
  * rotating is actually safe.
  * WARNING: 8712 is TIMER_CLIPACTIVITY (windows/kitty_rc_additions.h) - using it here
  * put this timer behind that branch, which KillTimer()s it, so rotation fired
@@ -3244,12 +3244,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     kitty_url_init();
     kitty_url_config(wgs->conf);
     {
-        /* KiTTY: arm log rotation. Repeating timer - SetTimer keeps firing
-         * until it is killed, which is what "every N seconds" wants. */
+        /* KiTTY: arm log rotation (hknet/KiTTY#92, logging.c): no timer
+         * for a name that cannot change, else a check every minute (or
+         * every N s if that is shorter). */
         int rot = conf_get_int(wgs->conf, CONF_logtimerotation);
-        if (rot > 0 && wgs->term_hwnd)
-            SetTimer(wgs->term_hwnd, TIMER_LOGROTATION,
-                     (UINT)rot * 1000, NULL);
+        unsigned period = (rot > 0 && wgs->term_hwnd) ?
+            logfile_rotation_setup(wgs->logctx, rot) : 0;
+        if (period)
+            SetTimer(wgs->term_hwnd, TIMER_LOGROTATION, period, NULL);
     }
 #endif
     term_size(wgs->term, conf_get_int(wgs->conf, CONF_height),
@@ -6369,12 +6371,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
 #endif
         if ((UINT_PTR)wParam == TIMER_LOGROTATION) {
-            /* KiTTY: time to start a new log file. logfile_rotate() only
-             * closes the current one - the next write reopens it under a
-             * freshly substituted name - and declines if that name would be
-             * the same, which would truncate the log instead of rotating it. */
+            /* KiTTY: a check of the rotation: a new log file when the
+             * name changed and N s have passed (logging.c) - the next write
+             * reopens it under the freshly substituted name. */
             if (wgs && wgs->logctx)
-                logfile_rotate(wgs->logctx);
+                logfile_rotation_tick(wgs->logctx,
+                    conf_get_int(wgs->conf, CONF_logtimerotation));
             return 0;
         }
 #ifdef MOD_RECONNECT
@@ -7261,6 +7263,22 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 
             /* Pass new config data to the logging module */
             log_reconfig(wgs->logctx, wgs->conf);
+#ifdef MOD_PERSO
+            /* KiTTY: log rotation set up again when its settings changed */
+            if (conf_get_int(wgs->conf, CONF_logtimerotation) !=
+                    conf_get_int(prev_conf, CONF_logtimerotation) ||
+                conf_get_int(wgs->conf, CONF_logtype) !=
+                    conf_get_int(prev_conf, CONF_logtype) ||
+                !filename_equal(conf_get_filename(wgs->conf, CONF_logfilename),
+                                conf_get_filename(prev_conf, CONF_logfilename))) {
+                int rot = conf_get_int(wgs->conf, CONF_logtimerotation);
+                unsigned period = rot > 0 ?
+                    logfile_rotation_setup(wgs->logctx, rot) : 0;
+                KillTimer(hwnd, TIMER_LOGROTATION);
+                if (period)
+                    SetTimer(hwnd, TIMER_LOGROTATION, period, NULL);
+            }
+#endif
 
             sfree(wgs->logpal);
             /*

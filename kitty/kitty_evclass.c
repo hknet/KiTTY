@@ -31,8 +31,10 @@ static const char *const kitty_evclass_notable[] = {
     "script timeout !",
     "script file not found",
     "script file read failed",
-    /* session log: rotation skipped, time stamp pattern empty */
-    "Log rotation skipped: *",
+    /* session log: rotation off (the name cannot change), time stamp
+     * pattern empty. The interval line ("Log rotation: a new log file
+     * every *") is routine. */
+    "Log rotation off: *",
     "Log timestamp: that strftime pattern produces nothing*",
     /* host keys: accept-new did not apply, the update's proof failed or was
      * refused, a stored key replaced or removed by the server. What

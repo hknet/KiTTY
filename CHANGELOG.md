@@ -64,6 +64,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - `kitty_pterm.exe` is no longer shipped: use a Local session.
 - `kitty_tel.exe` is no longer shipped: kitty.exe does telnet
   (`kitty.exe -telnet <host>`).
+- Session > Logging: log rotation follows the log file name. A new file
+  starts when the name changes, at most every N seconds (**New log file
+  at most every**). A name with a date only now switches at midnight. The
+  "Log rotation skipped" warning at every tick is gone. A name without
+  date or time switches rotation off, with one line in the Terminal
+  Window's Event Log. Refs hknet/KiTTY#92.
 
 ## 0.85.1.20-beta — 2026-11-11
 
