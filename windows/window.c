@@ -9103,6 +9103,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         process_clipdata(wgs, (HGLOBAL)lParam, wParam);
         return 0;
 #ifdef MOD_PERSO
+      case WM_KITTY_D2D_OCCLUSION:      /* KiTTY: DXGI, hknet/KiTTY#88 */
+        kitty_d2d_occlusion_msg(hwnd);
+        return 0;
+#endif
+#ifdef MOD_PERSO
       case WM_KITTY_EVLOG_NOTE:
         kitty_evlog_show(wgs, (char *)lParam);
         sfree((char *)lParam);

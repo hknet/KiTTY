@@ -167,6 +167,11 @@ KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal);
  * The swap chain is flip-model for the window's whole life; a window that
  * may be dimmed must be layered BEFORE this is called (window.c). */
 KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
+/* KiTTY: DXGI's occlusion notification for the Direct2D window
+ * (IDXGIFactory2::RegisterOcclusionStatusWindow, hknet/KiTTY#88): window.c
+ * hands the message to the painter. Test builds trace it (KITTY_D2D_TRACE). */
+#define WM_KITTY_D2D_OCCLUSION (WM_APP + 78)
+void kitty_d2d_occlusion_msg(HWND hwnd);
 
 #define kitty_painter_free(p)            ((p)->vt->destroy(p))
 

@@ -285,6 +285,11 @@ typedef struct D2DPainter {
     struct D2DOvCache { unsigned long serial; ID2D1Bitmap *bmp; bool used; } *ovc;
     int novc, ovc_cap;
 #ifdef KITTY_TEST_BUILD_LABEL
+    /* #88 probe: DXGI's occlusion notification plus what Present1 last
+     * reported (each change traced) */
+    IDXGIFactory2 *occl_factory;
+    DWORD occl_cookie;
+    HRESULT present_status;
     unsigned long npresent;            /* presents so far, KITTY_D2D_FAIL_PRESENT */
     unsigned long inj_from, inj_count;
 #endif
@@ -372,9 +377,27 @@ static void d2d_trace(const char *fmt, ...)
     fclose(f);
 }
 #define D2D_TRACE(...) d2d_trace(__VA_ARGS__)
+/* the painter the occlusion message is for (one terminal per process) */
+static struct D2DPainter *d2d_occl_one;
 #else
 #define D2D_TRACE(...) ((void)0)
 #endif
+
+/* Test builds, hknet/KiTTY#88: KITTY_TEST_D2D_BLT=1 presents with the
+ * blt model (DXGI_SWAP_EFFECT_DISCARD): each frame is copied into the
+ * window's own surface, as GDI's output is, instead of Windows placing
+ * the flip chain's buffers itself. One buffer, the whole canvas copied
+ * each frame, Present without dirty rectangles, no frame-latency signal.
+ * A release build has only the flip model. */
+static bool d2d_blt(void)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    const char *p = getenv("KITTY_TEST_D2D_BLT");
+    return p && *p == '1';
+#else
+    return false;
+#endif
+}
 
 /* KiTTY: [KiTTY] d2dgdifont (kitty/kitty_config_shared.c). */
 bool kitty_d2d_gdi_font(void);
@@ -924,6 +947,8 @@ static void d2d_end(KittyPainter *p)
         cur = cr;
         if (d->badge_fmt && GetTickCount() - d->badge_t0 < BADGE_SHOW_MS)
             d->full_copies = 2;        /* and two more once it is gone */
+        if (d2d_blt())
+            d->full_copies = 1;        /* #88 test: the blt model, all */
         if (d->full_copies > 0) {
             cr.left = 0; cr.top = 0; cr.right = d->width; cr.bottom = d->height;
             d->full_copies--;
@@ -977,7 +1002,10 @@ static void d2d_end(KittyPainter *p)
         else
 #endif
         {
-            hr = IDXGISwapChain1_Present1(d->swap, 0, 0, &pp);
+            if (d2d_blt())             /* no dirty rectangles there */
+                hr = IDXGISwapChain1_Present(d->swap, 0, 0);
+            else
+                hr = IDXGISwapChain1_Present1(d->swap, 0, 0, &pp);
             if (FAILED(hr) && !hr_is_loss(d, hr)) {
                 where = "Present";
                 hr = IDXGISwapChain1_Present(d->swap, 0, 0);
@@ -985,6 +1013,17 @@ static void d2d_end(KittyPainter *p)
         }
         QueryPerformanceCounter(&b);
         kitty_present_wait_ms += (b.QuadPart - a.QuadPart) * 1000.0 / f.QuadPart;
+#ifdef KITTY_TEST_BUILD_LABEL
+        if ((hr == DXGI_STATUS_OCCLUDED) !=
+            (d->present_status == DXGI_STATUS_OCCLUDED))
+            D2D_TRACE("present: %s (0x%08lX)",
+                      hr == DXGI_STATUS_OCCLUDED ? "occluded" : "visible",
+                      (unsigned long)hr);
+        d->present_status = hr;
+        if (getenv("KITTY_D2D_TRACE_PRESENT"))   /* every present */
+            D2D_TRACE("present 0x%08lX iconic %d", (unsigned long)hr,
+                      IsIconic(d->hwnd) ? 1 : 0);
+#endif
     }
     if (FAILED(hr) && hr_is_loss(d, hr)) {
         device_lost(d, hr, where);
@@ -1932,6 +1971,12 @@ static void describe_adapter(D2DPainter *d, IDXGIAdapter *adapter)
     d->adapter_note = dupprintf(strcmp(kind, "hardware") ? KT_D2D_ADAPTER_SOFT_EVENT
                                                          : KT_D2D_ADAPTER_EVENT,
                                 name, (unsigned)desc.VendorId, (unsigned)desc.DeviceId);
+    if (d2d_blt()) {                   /* test builds, #88: which model ran */
+        char *n = dupprintf("%s, blt presentation (test build)",
+                            d->adapter_note);
+        sfree(d->adapter_note);
+        d->adapter_note = n;
+    }
     sfree(name);
     if (kitty_eventlog_ready()) {      /* a re-creation: the log is there */
         do_eventlog(d->adapter_note);
@@ -1998,10 +2043,17 @@ static int create_device(D2DPainter *d)
     sd.Scaling = DXGI_SCALING_NONE;
     sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
     sd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+    if (d2d_blt()) {                   /* test builds, #88 */
+        sd.BufferCount = 1;
+        sd.Scaling = DXGI_SCALING_STRETCH;  /* NONE is flip-model only */
+        sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        sd.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+    }
     /* The frame-latency waitable object: the compositor signals it when
      * it is ready for the next frame - the display's own pace, which the
      * frame pacing waits on instead of guessing at vblanks. Windows 8.1. */
-    sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+    sd.Flags = d2d_blt() ? 0 :
+        DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
     /* Window transparency needs nothing here: a window that may be dimmed
      * is layered from its creation (window.c), and the layered alpha then
      * applies to this chain's frames as to GDI's output, title bar
@@ -2028,6 +2080,21 @@ static int create_device(D2DPainter *d)
         }
     }
 
+#ifdef KITTY_TEST_BUILD_LABEL
+    /* #88 probe: which occlusion changes does DXGI report for a
+     * windowed flip chain? */
+    if (!d->occl_factory) {
+        HRESULT ohr = IDXGIFactory2_RegisterOcclusionStatusWindow(
+            dxgifactory, d->hwnd, WM_KITTY_D2D_OCCLUSION, &d->occl_cookie);
+        D2D_TRACE("occlusion: RegisterOcclusionStatusWindow 0x%08lX",
+                  (unsigned long)ohr);
+        if (SUCCEEDED(ohr)) {
+            d->occl_factory = dxgifactory;
+            IDXGIFactory2_AddRef(dxgifactory);
+            d2d_occl_one = d;
+        }
+    }
+#endif
     if (FAILED(ID2D1RenderTarget_CreateSolidColorBrush(
                    (ID2D1RenderTarget *)d->dc, &black, NULL, &d->brush)))
         { failstep = 11; goto done; }
@@ -2145,6 +2212,16 @@ static void d2d_destroy(D2DPainter *d)
     int i;
     RemovePropA(d->hwnd, "KiTTY.renderer");
     KillTimer(d->hwnd, D2D_RETRY_TIMER_ID);
+#ifdef KITTY_TEST_BUILD_LABEL
+    if (d->occl_factory) {
+        IDXGIFactory2_UnregisterOcclusionStatus(d->occl_factory,
+                                                d->occl_cookie);
+        IDXGIFactory2_Release(d->occl_factory);
+        d->occl_factory = NULL;
+    }
+    if (d2d_occl_one == d)
+        d2d_occl_one = NULL;
+#endif
     sfree(d->adapter_note);
     d->adapter_note = NULL;
     badge_free(d);
@@ -2253,4 +2330,23 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality)
     SetPropA(hwnd, "KiTTY.renderer.fail", (HANDLE)(ULONG_PTR)failstep);
     d2d_destroy(d);
     return NULL;
+}
+
+/* KiTTY: DXGI's occlusion notification (hknet/KiTTY#88). The probe: what
+ * the swap chain reports at that moment, traced. */
+void kitty_d2d_occlusion_msg(HWND hwnd)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    D2DPainter *d = d2d_occl_one;
+    HRESULT hr = E_FAIL;
+    if (d && d->hwnd == hwnd && d->swap)
+        hr = IDXGISwapChain1_Present(d->swap, 0, DXGI_PRESENT_TEST);
+    D2D_TRACE("occlusion message: Present TEST 0x%08lX (%s), iconic %d, "
+              "foreground is this window %d", (unsigned long)hr,
+              hr == DXGI_STATUS_OCCLUDED ? "occluded" :
+              SUCCEEDED(hr) ? "visible" : "failed",
+              IsIconic(hwnd) ? 1 : 0, GetForegroundWindow() == hwnd ? 1 : 0);
+#else
+    (void)hwnd;
+#endif
 }
