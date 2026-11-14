@@ -227,6 +227,11 @@
   "kind": "bool",
   "values": null
  },
+ "BlinkEase": {
+  "default": "0",
+  "kind": "bool",
+  "values": null
+ },
  "BlinkText": {
   "default": "0",
   "kind": "bool",
@@ -925,6 +930,11 @@
    6
   ]
  },
+ "LocalCommand": {
+  "default": "",
+  "kind": "text",
+  "values": null
+ },
  "LocalEcho": {
   "default": "2",
   "kind": "enum",
@@ -942,6 +952,11 @@
    1,
    2
   ]
+ },
+ "LocalFolder": {
+  "default": "",
+  "kind": "text",
+  "values": null
  },
  "LocalPortAcceptAll": {
   "default": "0",

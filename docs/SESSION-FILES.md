@@ -9,13 +9,9 @@ Every key a saved KiTTY++ session holds: for tools that write session files ([SE
 - **Default** applies when the key is missing (`-`: computed at load, e.g. `PortNumber` from `Protocol`, fonts from the system). With `[KiTTY] inheritdefaultsettings=yes` a missing key comes from `Default Settings` instead.
 - **What it does** is the line for the key in `tools/session-key-descriptions.txt` where it has one, else the first sentence of the help topic of the key's control; `-` where neither exists.
 
-## Changed since 0.85.1.20
+## Changed since 0.85.1.21
 
-| Change | Key | Was | Now |
-|---|---|---|---|
-| added | `BlinkEase` | - | bool |
-| added | `LocalCommand` | - | text |
-| added | `LocalFolder` | - | text |
+No key added, removed or changed.
 
 ## Keys
 

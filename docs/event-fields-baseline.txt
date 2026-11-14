@@ -1,8 +1,8 @@
-# The event IDs of release 0.85.1.20 with their fields in order. Every field list of
+# The event IDs of release 0.85.1.21 with their fields in order. Every field list of
 # kitty/kitty_eventids.h must start with the list here: fields are only appended
 # (tools/check-kitty-events.py, rule 13). Written by check-kitty-events.py
 # --write-baseline from the release tag; release.ps1 -NextBaseline refreshes it.
-release 0.85.1.20
+release 0.85.1.21
 100 sign fp comment result reason req reqpath pid dest fwd seq sig ts prev
 101 confirm fp comment result reason req reqpath pid dest fwd seq sig ts prev
 102 session-bind result dest forwarding req reqpath pid seq sig ts prev
