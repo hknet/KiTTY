@@ -19,6 +19,8 @@
  *	3. Altered versions must be plainly marked as such, and must not
  *		be misrepresented as being the original software.
  *
+ * Altered for KiTTY: the hyperlink patch and two memory fixes, marked below.
+ *
  * Beware that some of this code is subtly aware of the way operator
  * precedence is structured in regular expressions.  Serious changes in
  * regular-expression syntax might require a total rethink.

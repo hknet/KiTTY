@@ -27,6 +27,7 @@
 #include "putty.h"
 #include "terminal.h"
 #include "putty-rc.h"
+#include "licence.h"   /* SHORT_COPYRIGHT_DETAILS in the About text */
 
 // Windows-specific includes (windows.h must come first)
 #include <windows.h>

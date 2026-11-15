@@ -468,10 +468,10 @@ static INT_PTR CALLBACK AboutProc(HWND hwnd, UINT msg,
         char *text = dupprintf(
             "kageant\r\n\r\n%s%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s",
             ver, testbuild, aclnote, buildinfo_text,
-            "This PuTTY 0.85 port \xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH "
+            "KiTTY++ \xc2\xa9 " SHORT_COPYRIGHT_DETAILS " "
             "\xe2\x80\x94 https://github.com/hknet/KiTTY",
             "KiTTY \xc2\xa9 2007-2013 Cyril Dupont \xe2\x80\x94 https://www.9bis.net/kitty/",
-            "Based on PuTTY \xc2\xa9 " SHORT_COPYRIGHT_DETAILS ". All rights reserved.");
+            "Based on PuTTY \xc2\xa9 " PUTTY_COPYRIGHT_DETAILS ". All rights reserved.");
         sfree(buildinfo_text);
         {
             int wn = MultiByteToWideChar(CP_UTF8, 0, text, -1, NULL, 0);

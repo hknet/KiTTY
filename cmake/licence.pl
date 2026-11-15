@@ -74,6 +74,11 @@ if ($mode eq "header") {
 
     $out .= sprintf "#define SHORT_COPYRIGHT_DETAILS \"%s\"\n",
         &stringlit($shortdetails);
+    # KiTTY: upstream's notice, for the "Based on PuTTY" lines (as licence.cmake)
+    my ($puttydetails) = grep { defined } map { /^PuTTY is copyright ([^\.]*)\./ ? $1 : undef } @paras;
+    die "LICENCE has no 'PuTTY is copyright ...' line\n" unless defined $puttydetails;
+    $out .= sprintf "#define PUTTY_COPYRIGHT_DETAILS \"%s\"\n",
+        &stringlit($puttydetails);
 } elsif ($mode eq "licencedoc") {
     # Write out doc/licence.but.
 

@@ -2326,8 +2326,8 @@
 #define KT_LAUNCHER_ABOUT_PREFIX                     "KiTTY++ Launcher "
 #define KT_LAUNCHER_ABOUT_TESTBUILD                  "TEST BUILD: "
 #define KT_LAUNCHER_ABOUT_BODY                       "\r\nQuick-launch for your saved KiTTY++ sessions, from the system tray.\r\n" \
-        "Part of the KiTTY++ suite \xe2\x80\x94 a fork of PuTTY 0.85.\r\n\r\n" \
-        "\xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH\r\n" \
+        "Part of the KiTTY++ suite.\r\n\r\n" \
+        "\xc2\xa9 " SHORT_COPYRIGHT_DETAILS "\r\n" \
         "Based on KiTTY by Cyril Dupont and PuTTY by Simon Tatham."
 #define KT_LAUNCHER_STARTUP_ON_FAILED_FMT            "The launcher could not be set to start at login: %s.\n\n" \
         "Nothing was changed."
@@ -4627,7 +4627,8 @@
 #define KT_DLG_TAB_APPLICATION                       "Application"
 /* About box. KT_DLG_ABOUT_TESTBUILD expands KITTY_TEST_BUILD_LABEL (a build
  * define, used only under #ifdef KITTY_TEST_BUILD_LABEL) and KT_DLG_ABOUT_PUTTY
- * expands SHORT_COPYRIGHT_DETAILS (version.h): both are resolved where the
+ * and KT_DLG_ABOUT_PORT expand PUTTY_COPYRIGHT_DETAILS and
+ * SHORT_COPYRIGHT_DETAILS (licence.h): all are resolved where the
  * macro is used, not here. */
 #define KT_DLG_ABOUT_NETDEBUG                        "\r\n*** NETDEBUG BUILD - the Terminal Window's Event Log is teed to " \
         "%USERPROFILE%\\kitty_netdebug.log ***"
@@ -4636,10 +4637,10 @@
         "under your account cannot open this process."
 #define KT_DLG_ABOUT_FMT                             "%s\r\n\r\n%s%s%s%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s\r\n\r\n%s" \
         "\r\n\r\n%s"
-#define KT_DLG_ABOUT_PORT                            "This PuTTY 0.85 port \xc2\xa9 KAPPER NETWORK-COMMUNICATIONS GmbH " \
+#define KT_DLG_ABOUT_PORT                            "KiTTY++ \xc2\xa9 " SHORT_COPYRIGHT_DETAILS " " \
         "\xe2\x80\x94 https://github.com/hknet/KiTTY"
 #define KT_DLG_ABOUT_KITTY                           "KiTTY \xc2\xa9 2007-2013 Cyril Dupont \xe2\x80\x94 https://www.9bis.net/kitty/"
-#define KT_DLG_ABOUT_PUTTY                           "Based on PuTTY \xc2\xa9 " SHORT_COPYRIGHT_DETAILS ". All rights reserved."
+#define KT_DLG_ABOUT_PUTTY                           "Based on PuTTY \xc2\xa9 " PUTTY_COPYRIGHT_DETAILS ". All rights reserved."
 #define KT_DLG_ABOUT_FAR2L                           "far2l terminal extensions from putty4far2l " \
         "(Ivan Sorokin, unxed, Ivan Shatsky); far2l \xe2\x80\x94 elfmz."
 #define KT_DLG_ABOUT_RUTTY                           "Session scripting from the RuTTY patch \xc2\xa9 2013-2014 " \
@@ -5321,7 +5322,7 @@
 
 /* kitty.rc: IDD_KITTYABOUT */
 #define KT_RC_KITTYABOUT_CAPTION                     "About KiTTY++"
-#define KT_RC_KITTYABOUT_BLURB                       "KiTTY++ is a fork of PuTTY, continued by kapper.net.\nInspired by the KiTTY by Cyril Dupont (9bis.com) - thanks to all contributors."
+#define KT_RC_KITTYABOUT_BLURB                       "KiTTY++ by kapper.net.\nBased on PuTTY by Simon Tatham and KiTTY by Cyril Dupont (9bis.com) - thanks to all contributors."
 #define KT_RC_KITTYABOUT_WEBPAGE                     "Visit github.com/hknet/KiTTY"
 
 /* kitty.rc: IDD_MASTERPW (the caption is IDD_MPWMOVED's too) */

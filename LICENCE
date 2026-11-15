@@ -1,3 +1,6 @@
+KiTTY++ is copyright 2026 KAPPER NETWORK-COMMUNICATIONS GmbH.
+<https://github.com/hknet/KiTTY>
+
 PuTTY is copyright 1997-2026 Simon Tatham.
 
 Portions copyright Robert de Bath, Joris van Rantwijk, Delian
@@ -9,11 +12,11 @@ Kuzmich, Nico Williams, Viktor Dukhovni, Josh Dersch, Lars Brinkhoff,
 and CORE SDI S.A.
 
 The original KiTTY features are copyright 2007-2013 Cyril Dupont
-<https://www.9bis.net/kitty/>. This KiTTY 0.85 port, and the features
-added in it, are copyright 2026 KAPPER NETWORK-COMMUNICATIONS GmbH
-<https://github.com/hknet/KiTTY>. Both are released under the same MIT
-licence as PuTTY (the identical text below), so the combined work is
-covered by the single licence that follows.
+<https://www.9bis.net/kitty/>. KiTTY++ and KiTTY are released under the
+same MIT licence as PuTTY (the identical text below), so the combined
+work is covered by the single licence that follows. The two prebuilt
+libraries kitty/libs/bcrypt_32.a and kitty/libs/bcrypt_64.a are KiTTY's
+own, shipped unchanged as Cyril Dupont published them, without source.
 
 The far2l terminal-extension support (including the far2l shared
 clipboard) is derived from the putty4far2l project. The far2l PuTTY
@@ -29,6 +32,20 @@ Ernst Dijk. It reached this port as part of KiTTY, which is distributed
 under the MIT licence; the RuTTY sources themselves carry a copyright
 notice and no licence text, so his notice is reproduced here as it
 stands rather than restated in other terms.
+
+The base64 codec of the far2l support (kitty/far2l/cencode.c and
+cdecode.c) is from the libb64 project, which placed it in the public
+domain.
+
+One part is under its own terms instead of the licence below: the
+regular-expression matcher of the URL detection (kitty/url/re_lib) is
+Henry Spencer's V8 regexp, copyright (c) 1986 by University of Toronto,
+written by Henry Spencer and not derived from licensed software. Its
+notice in kitty/url/re_lib/regexp.c grants use and free redistribution
+on three conditions. The author is not responsible for the consequences
+of use. The origin must not be misrepresented. Altered versions must be
+plainly marked. This copy is altered (KiTTY's hyperlink patch and two
+memory fixes of this port). Each change is marked in that file.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation files

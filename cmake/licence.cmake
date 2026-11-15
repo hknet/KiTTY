@@ -8,11 +8,22 @@ function(c_string_escape outvar value)
   set("${outvar}" "${value}" PARENT_SCOPE)
 endfunction()
 
-set(copyright_regex "PuTTY is copyright ([0-9]+-[0-9]+ [^\n]*[^\n.])\\.?\n")
+# KiTTY: two notices. SHORT_COPYRIGHT_DETAILS is the holder of THIS program
+# (LICENCE's first line, "KiTTY++ is copyright ..."). PUTTY_COPYRIGHT_DETAILS
+# is upstream's ("PuTTY is copyright ..."), for the "Based on PuTTY" lines.
+set(copyright_regex "KiTTY\\+\\+ is copyright ([0-9]+[-0-9]* [^\n]*[^\n.])\\.?\n")
 string(REGEX MATCH "${copyright_regex}" COPYRIGHT_NOTICE "${LICENCE_TEXT}")
 string(REGEX REPLACE "${copyright_regex}" "\\1"
   COPYRIGHT_NOTICE "${COPYRIGHT_NOTICE}")
 c_string_escape(COPYRIGHT_NOTICE "${COPYRIGHT_NOTICE}")
+set(putty_copyright_regex "PuTTY is copyright ([0-9]+-[0-9]+ [^\n]*[^\n.])\\.?\n")
+string(REGEX MATCH "${putty_copyright_regex}" PUTTY_COPYRIGHT_NOTICE "${LICENCE_TEXT}")
+string(REGEX REPLACE "${putty_copyright_regex}" "\\1"
+  PUTTY_COPYRIGHT_NOTICE "${PUTTY_COPYRIGHT_NOTICE}")
+c_string_escape(PUTTY_COPYRIGHT_NOTICE "${PUTTY_COPYRIGHT_NOTICE}")
+if(NOT COPYRIGHT_NOTICE OR NOT PUTTY_COPYRIGHT_NOTICE)
+  message(FATAL_ERROR "LICENCE needs both a 'KiTTY++ is copyright ...' and a 'PuTTY is copyright ...' line")
+endif()
 
 string(REGEX REPLACE "\n$" "" LICENCE_TEXT "${LICENCE_TEXT}")
 string(REPLACE "\r" "" LICENCE_TEXT "${LICENCE_TEXT}")
@@ -36,4 +47,5 @@ file(WRITE "${OUTPUT_FILE}" "\
     \"${LICENCE_TEXT}\"
 
 #define SHORT_COPYRIGHT_DETAILS \"${COPYRIGHT_NOTICE}\"
+#define PUTTY_COPYRIGHT_DETAILS \"${PUTTY_COPYRIGHT_NOTICE}\"
 ")
