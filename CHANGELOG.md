@@ -23,6 +23,13 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   a second copy of the panel's "Settings here are saved as you change them."
   line on the screen and laid the panels out again. The box now changes its
   frame in one step.
+- Moving or resizing the Terminal Window's Event Log stopped the terminal
+  until the drag ended, as did moving the terminal itself in a Local
+  session. The terminal now keeps showing output during the drag. The Event
+  Log has the terminal's icon and remembers its place and size. It can be
+  made much smaller than before.
+- A minimised terminal kept its cursor blinking, one frame a second that
+  nobody saw. The blink now stops while the window is minimised.
 
 ## 0.85.1.21-beta — 2026-11-14
 

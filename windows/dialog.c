@@ -576,6 +576,27 @@ static void logbox_layout(HWND hwnd)
     MoveWindow(btnclear, left + 2*(bw + gap), btop, bw, bh, true);
 }
 
+/* KiTTY: the terminal's icon (the session's own when it carries one) in the
+ * Event Log's caption. Local: kitty_dlgbox.c (kitty_dialog_icon) is not
+ * linked into every target that has dialog.c. */
+static void logbox_icon(HWND hwnd)
+{
+    HWND owner = GetWindow(hwnd, GW_OWNER);
+    HICON big, small;
+    if (!owner)
+        return;
+    big = (HICON)SendMessage(owner, WM_GETICON, ICON_BIG, 0);
+    small = (HICON)SendMessage(owner, WM_GETICON, ICON_SMALL, 0);
+    if (!big)
+        big = (HICON)GetClassLongPtr(owner, GCLP_HICON);
+    if (!small)
+        small = (HICON)GetClassLongPtr(owner, GCLP_HICONSM);
+    if (big)
+        SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)big);
+    if (small)
+        SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)small);
+}
+
 /* KiTTY: the smallest Event Log window that still works: the three buttons
  * in a row with logbox_layout's margins and gaps, and three rows of the log
  * above them. Measured from the controls themselves, so it follows the
@@ -635,6 +656,7 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
     switch (msg) {
       case WM_INITDIALOG: {
         logbox_set_title(hwnd);           /* KiTTY: with the window's title */
+        logbox_icon(hwnd);                /* KiTTY: the terminal's icon */
 
         static int tabs[4] = { 78, 108 };
         SendDlgItemMessage(hwnd, IDN_LIST, LB_SETTABSTOPS, 2,

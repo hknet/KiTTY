@@ -1027,6 +1027,10 @@ extern void kitty_mpw_session_ended(void);              /* kitty_mpw_gui.c */
  * 8707). */
 #define TIMER_LOGROTATION 8713
 #define TIMER_MODALPUMP   8714   /* KiTTY: pending work during a move or a menu */
+/* KiTTY: the pump runs every 10 ms (the shortest WM_TIMER) for up to 12 ms:
+ * while data flows it works nearly all the time, as the main loop would */
+#define KITTY_MODALPUMP_MS      10
+#define KITTY_MODALPUMP_BUDGET  12
 #define TIMER_RESIZEREST  8718   /* KiTTY: the frame rested during a drag */
 #define RESIZE_REST_MS    150
 #endif
@@ -2559,6 +2563,79 @@ static bool kitty_in_menu_loop, kitty_in_move_loop;
  * itself once that loop is over). NULL when there is none. */
 static HWND kitty_other_move_hwnd;
 static int kitty_quit_after_modal = -1;
+
+/* The main loop's work while a move/size loop or a menu holds the thread:
+ * due timers, the frame signal, the queued callbacks, then the handle-based
+ * backends (Local, serial, a proxy command) whose data waits on the handle
+ * list. The handles are served until none is ready and no callback waits,
+ * for at most KITTY_MODALPUMP_BUDGET ms per call, so the window being
+ * dragged still follows the mouse. Called from the pump timer and from the
+ * move/size messages of the dragged window (kitty_movesize_hookproc):
+ * WM_TIMER is the last message Windows hands out. A drag with its repaints
+ * kept it away for long stretches - the output then crawled. */
+static int kitty_modal_pump_busy;
+static LARGE_INTEGER kitty_modal_pump_last;
+static void kitty_modal_pump(void)
+{
+    void gui_timing_pump(void);
+    void kitty_pace_frame_pump(void);
+    LARGE_INTEGER f, t0, t;
+    bool flowing = false;
+    kitty_modal_pump_busy++;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&t0);
+    gui_timing_pump();
+    kitty_pace_frame_pump();
+    run_toplevel_callbacks();
+    for (;;) {
+        HandleWaitList *hwl;
+        DWORD n, left;
+        bool hit;
+        QueryPerformanceCounter(&t);
+        left = (DWORD)((t.QuadPart - t0.QuadPart) * 1000 / f.QuadPart);
+        if (left >= KITTY_MODALPUMP_BUDGET)
+            break;
+        left = KITTY_MODALPUMP_BUDGET - left;
+        /* Once data flows, wait for the next piece as the main loop does:
+         * a reader thread (ConPTY, serial) needs a moment to refill. Any
+         * message - the drag's mouse input among them - ends the wait at
+         * once. An idle session never waits here. */
+        hwl = get_handle_wait_list();
+        if (!hwl->nhandles)
+            n = WAIT_TIMEOUT;
+        else if (flowing && !toplevel_callback_pending())
+            n = MsgWaitForMultipleObjectsEx(hwl->nhandles, hwl->handles, left,
+                                            QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        else
+            n = WaitForMultipleObjects(hwl->nhandles, hwl->handles, FALSE, 0);
+        hit = n - WAIT_OBJECT_0 < (DWORD)hwl->nhandles;
+        if (hit)
+            handle_wait_activate(hwl, (int)(n - WAIT_OBJECT_0));
+        handle_wait_list_free(hwl);
+        run_toplevel_callbacks();
+        if (hit)
+            flowing = true;
+        else if (!toplevel_callback_pending())
+            break;
+    }
+    QueryPerformanceCounter(&kitty_modal_pump_last);
+    kitty_modal_pump_busy--;
+}
+
+/* From the dragged window's messages and from WM_NETEVENT: the pump when it
+ * has not run for KITTY_MODALPUMP_MS (0 = at once), never inside itself. The
+ * pump timer calls kitty_modal_pump directly, also within a box the pump
+ * raised, as before. */
+static void kitty_modal_pump_due(int ms)
+{
+    LARGE_INTEGER f, t;
+    if (kitty_modal_pump_busy)
+        return;
+    QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&t);
+    if ((t.QuadPart - kitty_modal_pump_last.QuadPart) * 1000 >= ms * f.QuadPart)
+        kitty_modal_pump();
+}
 /* KiTTY scroll by moving pixels: the terminal's hook (below, beside the draw
  * context functions) */
 static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines);
@@ -6172,35 +6249,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_TIMER:
 #ifdef MOD_PERSO
         if ((UINT_PTR)wParam == TIMER_MODALPUMP) {
-            /* inside a modal loop: due timers first (the window-update
-             * cooldown among them), then the callbacks they and the
-             * network left pending */
-            void gui_timing_pump(void);
-            void kitty_pace_frame_pump(void);
-            gui_timing_pump();
-            kitty_pace_frame_pump();
-            run_toplevel_callbacks();
-            {
-                /* the handle-based backends (Local, serial, a proxy
-                 * command): their data waits on the handle list, which only
-                 * the main loop served - their sessions stood still during
-                 * a move or a menu. Served here the same way, a bounded
-                 * number of handles per tick. */
-                int k;
-                for (k = 0; k < 16; k++) {
-                    HandleWaitList *hwl = get_handle_wait_list();
-                    DWORD n = hwl->nhandles ?
-                        WaitForMultipleObjects(hwl->nhandles, hwl->handles,
-                                               FALSE, 0) : WAIT_TIMEOUT;
-                    bool hit = n - WAIT_OBJECT_0 < (DWORD)hwl->nhandles;
-                    if (hit)
-                        handle_wait_activate(hwl, (int)(n - WAIT_OBJECT_0));
-                    handle_wait_list_free(hwl);
-                    if (!hit)
-                        break;
-                    run_toplevel_callbacks();
-                }
-            }
+            kitty_modal_pump();        /* inside a modal loop */
             /* started for another window's move (kitty_movesize_hookproc): that
              * window gets no message here when its loop ends, so the pump
              * checks with GetGUIThreadInfo whether the thread is still in one */
@@ -8287,6 +8336,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
       case WM_NETEVENT:
       case WM_DONE_WITH_SOCKET:
         winselgui_response(message, wParam, lParam);
+#ifdef MOD_PERSO
+        /* KiTTY: the main loop digests what a socket brought (the queued
+         * callbacks) after each WM_NETEVENT. Inside a move/size loop or a
+         * menu it is parked, so that happens here, as fast as the data
+         * comes, not once per pump tick. */
+        if (kitty_in_menu_loop || kitty_in_move_loop || kitty_other_move_hwnd)
+            kitty_modal_pump_due(0);
+#endif
         return 0;
       case WM_SETFOCUS:
         term_set_focus(wgs->term, true);
@@ -8313,7 +8370,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
       case WM_ENTERMENULOOP:
         kitty_in_menu_loop = true;   /* see kitty_post_quit */
-        SetTimer(hwnd, TIMER_MODALPUMP, 16, NULL);
+        SetTimer(hwnd, TIMER_MODALPUMP, KITTY_MODALPUMP_MS, NULL);
         break;
       case WM_EXITMENULOOP:
         kitty_in_menu_loop = false;
@@ -8331,7 +8388,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
          * parked - the cursor blinks (a timer message) while `top` stands
          * still. A timer message the modal loop does deliver pumps the
          * pending work meanwhile. */
-        SetTimer(hwnd, TIMER_MODALPUMP, 16, NULL);
+        SetTimer(hwnd, TIMER_MODALPUMP, KITTY_MODALPUMP_MS, NULL);
         kitty_in_move_loop = true;   /* see kitty_post_quit */
         /* the drag is paced by that timer, not held for the display */
         kitty_pace_set_sizing(true);
@@ -14123,6 +14180,13 @@ static HHOOK kitty_movesize_hook;
 static LRESULT CALLBACK kitty_movesize_hookproc(int code, WPARAM wp, LPARAM lp)
 {
     const CWPSTRUCT *cwp = (const CWPSTRUCT *)lp;
+    /* each step of a drag, for any window of ours (the terminal's own
+     * included): the pump, as the main loop runs after every message */
+    if (code == HC_ACTION && cwp &&
+        (cwp->message == WM_MOVING || cwp->message == WM_SIZING ||
+         cwp->message == WM_WINDOWPOSCHANGED) &&
+        (kitty_in_move_loop || kitty_other_move_hwnd))
+        kitty_modal_pump_due(0);
     if (code == HC_ACTION && cwp &&
         (cwp->message == WM_ENTERSIZEMOVE || cwp->message == WM_EXITSIZEMOVE) &&
         kitty_active_wgs && kitty_active_wgs->term_hwnd &&
@@ -14130,7 +14194,7 @@ static LRESULT CALLBACK kitty_movesize_hookproc(int code, WPARAM wp, LPARAM lp)
         HWND t = kitty_active_wgs->term_hwnd;
         if (cwp->message == WM_ENTERSIZEMOVE) {
             kitty_other_move_hwnd = cwp->hwnd;
-            SetTimer(t, TIMER_MODALPUMP, 16, NULL);
+            SetTimer(t, TIMER_MODALPUMP, KITTY_MODALPUMP_MS, NULL);
 #ifdef KITTY_TEST_BUILD_LABEL
             /* for the move-loop harness: how often a move began */
             SetPropA(t, "KiTTY.test.movesize", (HANDLE)((ULONG_PTR)

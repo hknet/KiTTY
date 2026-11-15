@@ -2239,10 +2239,14 @@ static void term_schedule_cblink(Terminal *term)
 {
     /* The blink period is cached in term->cblink_delay (term_update re-reads
      * it while the cursor blinks): on Windows reading it is a USER32
-     * syscall. A window with a steady cursor, or without focus, needs no
-     * timer at all. */
+     * syscall. A window with a steady cursor, without focus or minimised
+     * needs no timer at all (a minimised window can keep the focus). */
     int delay;
-    if (!term->blink_cur || !term->has_focus) {
+    if (!term->blink_cur || !term->has_focus
+#ifdef MOD_PERSO
+        || term->minimised
+#endif
+        ) {
         term->cblinker = true;         /* reset when not in use */
         term->cblink_pending = false;
 #ifdef MOD_PERSO
@@ -12886,7 +12890,16 @@ void term_userpass_abort(Terminal *term, prompts_t *p)
 
 void term_notify_minimised(Terminal *term, bool minimised)
 {
+#ifdef MOD_PERSO
+    bool changed = (term->minimised != minimised);
+#endif
     term->minimised = minimised;
+#ifdef MOD_PERSO
+    /* KiTTY: the cursor blink stops while minimised, restored it starts
+     * again with the cursor shown */
+    if (changed)
+        term_schedule_cblink(term);
+#endif
 }
 
 void term_notify_palette_changed(Terminal *term)
