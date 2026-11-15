@@ -127,6 +127,10 @@ static int kitty_scriptbridge_armed( WinGuiSeat *wgs )
 #ifndef IDM_REKEY
 #define IDM_REKEY 0xB200  /* [Shortcuts] keyexchange -> SS_REKEY special */
 #endif
+/* hknet/KiTTY#88 test builds: the repair entries (kitty_test_repair) */
+#define IDM_TEST_REPAIR1 0xB300
+#define IDM_TEST_REPAIR2 0xB310
+#define IDM_TEST_REPAIR3 0xB320
 #define IDM_SPECIALSEP 0x0200
 
 #define IDM_SPECIAL_MIN 0x0400
@@ -2643,6 +2647,72 @@ static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines);
 /* KiTTY cursor layer (beside wintw_draw_text) */
 static void kitty_clayer_frame_end(WinGuiSeat *wgs);
 static void kitty_clayer_blink(TermWin *tw, int half, bool ease);
+
+#ifdef KITTY_TEST_BUILD_LABEL
+/* hknet/KiTTY#88 test builds: the Direct2D picture sits up and left by the
+ * frame and title bar after a long full cover, and a minimise and restore
+ * puts it back. That does three things at once; with KITTY_TEST_D2D_REPAIR=1
+ * the window menu offers each alone, to find which one is the repair:
+ *   1  redraw everything: the whole window painted and presented again
+ *   2  re-read the window frame: SetWindowPos SWP_FRAMECHANGED, Windows
+ *      computes the frame and the client area again (nothing else moves)
+ *   3  new swap chain buffers at the same size, then a full repaint
+ * Each writes the window's, the client area's and the visible frame's place
+ * on the screen to the Terminal Window's Event Log. */
+static bool kitty_test_repair_on(void)
+{
+    const char *p = getenv("KITTY_TEST_D2D_REPAIR");
+    return p && *p == '1';
+}
+
+static void kitty_test_repair(WinGuiSeat *wgs, int which)
+{
+    typedef HRESULT (WINAPI *dwmattr_t)(HWND, DWORD, PVOID, DWORD);
+    static dwmattr_t dwmattr;
+    static bool dwmtried;
+    HWND h = wgs->term_hwnd;
+    const char *name = which == 1 ? "redraw" : which == 2 ? "frame" : "buffers";
+    RECT wr, cr, fr;
+    POINT o = { 0, 0 };
+    char *line;
+    switch (which) {
+      case 1:
+        term_invalidate(wgs->term);
+        InvalidateRect(h, NULL, FALSE);
+        break;
+      case 2:
+        SetWindowPos(h, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE |
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                     SWP_NOOWNERZORDER);
+        break;
+      default:
+        if (!kitty_d2d_test_new_buffers(wgs->painter))
+            name = "buffers, not done: not Direct2D or not now";
+        break;
+    }
+    if (!dwmtried) {
+        HMODULE dwm = LoadLibraryExA("dwmapi.dll", NULL,
+                                     LOAD_LIBRARY_SEARCH_SYSTEM32);
+        dwmtried = true;
+        dwmattr = dwm ? (dwmattr_t)(void *)GetProcAddress(
+                            dwm, "DwmGetWindowAttribute") : NULL;
+    }
+    GetWindowRect(h, &wr);
+    GetClientRect(h, &cr);
+    ClientToScreen(h, &o);
+    fr = wr;
+    if (dwmattr)                       /* DWMWA_EXTENDED_FRAME_BOUNDS */
+        dwmattr(h, 9, &fr, sizeof(fr));
+    line = dupprintf(KT_TEST_REPAIR_EVENT, which, name,
+                     (long)wr.left, (long)wr.top, (long)(wr.right - wr.left),
+                     (long)(wr.bottom - wr.top), (long)o.x, (long)o.y,
+                     (long)cr.right, (long)cr.bottom, (long)fr.left,
+                     (long)fr.top, (long)(fr.right - fr.left),
+                     (long)(fr.bottom - fr.top));
+    logevent(wgs->logctx, line);
+    sfree(line);
+}
+#endif
 static void kitty_post_quit(HWND hwnd, int code)
 {
     if (kitty_in_menu_loop || kitty_in_move_loop || kitty_other_move_hwnd) {
@@ -3679,6 +3749,14 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
             sfree(str);
 #ifdef MOD_PERSO
             AppendMenu(m, MF_ENABLED, IDM_CHECKUPDATE, KT_SYSMENU_CHECK_UPDATES);
+#ifdef KITTY_TEST_BUILD_LABEL
+            if (kitty_test_repair_on()) {  /* hknet/KiTTY#88 test builds */
+                AppendMenu(m, MF_SEPARATOR, 0, 0);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR1, KT_TEST_MENU_REPAIR_REDRAW);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR2, KT_TEST_MENU_REPAIR_FRAME);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR3, KT_TEST_MENU_REPAIR_BUFFERS);
+            }
+#endif
 #endif
         }
     }
@@ -7601,6 +7679,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (wgs->ldisc)
                 ldisc_echoedit_update(wgs->ldisc);
             break;
+#if defined(MOD_PERSO) && defined(KITTY_TEST_BUILD_LABEL)
+          case IDM_TEST_REPAIR1:       /* hknet/KiTTY#88 test builds */
+          case IDM_TEST_REPAIR2:
+          case IDM_TEST_REPAIR3:
+            kitty_test_repair(wgs, (int)(((wParam & ~0xF) - IDM_TEST_REPAIR1) / 0x10) + 1);
+            break;
+#endif
           case IDM_ABOUT:
             /* Unified branded About box (same one as the config dialog's About
              * button -> AboutProc); the old KiTTY-specific KittyAboutProc dialog

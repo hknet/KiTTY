@@ -1711,6 +1711,15 @@
 #define KT_D2D_OVERLAY_SCALING                       "yes, usable for the terminal's picture when scaled"
 #define KT_D2D_OVERLAY_NOT_FORMAT                    "yes, not usable for the terminal's picture"
 #define KT_D2D_OVERLAY_OTHER                         "unknown, another graphics adapter drives this monitor"
+/* hknet/KiTTY#88 test builds, KITTY_TEST_D2D_REPAIR=1 (window.c
+ * kitty_test_repair): three window-menu entries that each do one part of
+ * what a minimise and restore does, and the Event Log line each writes
+ * (%d = the entry, %s = its name, then the window's, the client area's and
+ * the visible frame's place and size on the screen) */
+#define KT_TEST_MENU_REPAIR_REDRAW                   "Test #88: redraw everything"
+#define KT_TEST_MENU_REPAIR_FRAME                    "Test #88: re-read the window frame"
+#define KT_TEST_MENU_REPAIR_BUFFERS                  "Test #88: new swap chain buffers"
+#define KT_TEST_REPAIR_EVENT                         "Test repair %d (%s): window %ld,%ld %ldx%ld, client at %ld,%ld %ldx%ld, visible frame %ld,%ld %ldx%ld"
 /* the Terminal Window's Event Log, paint-d2d.c (layer_init): whether the
  * cursor blinks on a composition layer or in frames; %08lX = the failure */
 #define KT_D2D_CURSOR_LAYER_EVENT                    "Direct2D renderer: the cursor blinks on a composition layer"

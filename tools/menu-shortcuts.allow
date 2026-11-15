@@ -8,6 +8,9 @@
 IDM_ABOUT | About: no key needed
 IDM_HELP | Help: no key needed
 IDM_QUIT | Exit: no key needed (Alt+F4 closes the window)
+IDM_TEST_REPAIR1 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
+IDM_TEST_REPAIR2 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
+IDM_TEST_REPAIR3 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
 
 # actions without a menu item
 IDM_NEWSESS | New Session: its menu line is hidden on purpose (window.c). The handler stays for the opennew key.

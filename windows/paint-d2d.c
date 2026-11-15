@@ -2912,3 +2912,21 @@ void kitty_d2d_occlusion_msg(HWND hwnd)
     (void)hwnd;
 #endif
 }
+
+/* hknet/KiTTY#88 test builds (KITTY_TEST_D2D_REPAIR, window.c): new swap
+ * chain buffers at the window's size, as a minimise and restore makes them,
+ * the window repainted whole. False when the painter cannot do it now. */
+bool kitty_d2d_test_new_buffers(KittyPainter *p)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    D2DPainter *d = (D2DPainter *)p;
+    if (!p || p->vt != &d2d_vt || !d->swap || d->in_frame || d->lost ||
+        d->width < 1 || d->height < 1)
+        return false;
+    do_resize(d, d->width, d->height);
+    return true;
+#else
+    (void)p;
+    return false;
+#endif
+}

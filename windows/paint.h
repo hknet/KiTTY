@@ -188,6 +188,10 @@ KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
  * hands the message to the painter. Test builds trace it (KITTY_TEST_D2D_TRACE). */
 #define WM_KITTY_D2D_OCCLUSION (WM_APP + 78)
 void kitty_d2d_occlusion_msg(HWND hwnd);
+/* KiTTY, hknet/KiTTY#88 test builds: new swap chain buffers at the same
+ * size, the window repainted whole (false: not now, or not Direct2D; a
+ * release build always false). */
+bool kitty_d2d_test_new_buffers(KittyPainter *p);
 
 #define kitty_painter_free(p)            ((p)->vt->destroy(p))
 
