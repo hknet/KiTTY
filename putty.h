@@ -2251,6 +2251,10 @@ void term_setup_window_titles(Terminal *term, const char *title_hostname);
 void term_set_window_only_title(Terminal *term, const char *title);
 /* KiTTY: the title the host set last, NULL when none (the launcher label). */
 const char *term_host_title(Terminal *term, int *codepage);
+/* KiTTY: Ease blinking's steps per second (0 = the default 30). */
+void term_set_fade_rate(Terminal *term, int per_second);
+/* KiTTY: the window blinks the cursor on a layer of its own. */
+void term_set_cursor_layer(Terminal *term, bool on);
 #endif
 void term_notify_minimised(Terminal *term, bool minimised);
 void term_notify_palette_changed(Terminal *term);

@@ -2640,6 +2640,9 @@ static void kitty_modal_pump_due(int ms)
 /* KiTTY scroll by moving pixels: the terminal's hook (below, beside the draw
  * context functions) */
 static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines);
+/* KiTTY cursor layer (beside wintw_draw_text) */
+static void kitty_clayer_frame_end(WinGuiSeat *wgs);
+static void kitty_clayer_blink(TermWin *tw, int half, bool ease);
 static void kitty_post_quit(HWND hwnd, int code)
 {
     if (kitty_in_menu_loop || kitty_in_move_loop || kitty_other_move_hwnd) {
@@ -3098,6 +3101,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         }
         /* rows that only scrolled keep their pixels (terminal.c) */
         kitty_term_scroll_hook = kitty_win_scroll_rows;
+        /* the cursor's blink, for the cursor layer (kitty_clayer_blink) */
+        kitty_cursor_blink_hook = kitty_clayer_blink;
 #ifdef MOD_FAR2L
         /* far2l images: the cell size and origin (kitty_far2l_image_term.c) */
         kitty_far2l_cell_hook = far2l_cell_size;
@@ -3224,6 +3229,16 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         term_set_window_only_title(wgs->term, kitty_cli_title);
         sfree(kitty_cli_title);
         kitty_cli_title = NULL;
+    }
+    /* Ease blinking: every step is a frame, a GDI frame costs the most
+     * (KiTTY.renderer 1 = the GDI painter, paint-gdi.c) */
+    if ((ULONG_PTR)GetPropA(wgs->term_hwnd, "KiTTY.renderer") == 1)
+        term_set_fade_rate(wgs->term, 15);
+    /* the cursor's blink on the painter's layer, where it has one: no
+     * frames for it (kitty_clayer_*) */
+    if (kp_layer_ok(wgs->painter)) {
+        wgs->clayer_on = true;
+        term_set_cursor_layer(wgs->term, true);
     }
     /* the fonts were measured before the terminal existed (CSI 16 t) */
     term_notify_cell_size_pixels(wgs->term, wgs->font_width, wgs->font_height);
@@ -8331,6 +8346,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
 #ifdef MOD_PERSO
         kitty_strip_paint(wgs, &p.rcPaint);   /* KiTTY: the mark strip */
+        kitty_clayer_frame_end(wgs);          /* KiTTY: the cursor layer */
 #endif
         kp_end(wgs->painter);
         SelectObject(hdc, GetStockObject(SYSTEM_FONT));
@@ -10201,6 +10217,101 @@ static void do_text_internal(
     sfree(cbuf);
 }
 
+#ifdef MOD_PERSO
+/*
+ * KiTTY: the cursor on the painter's layer (paint.h layer_*; Direct2D). The
+ * compositor blinks or fades it, so a blinking cursor costs no frames of
+ * ours. The frame draws the cursor's cell without the cursor; the cursor's
+ * own drawing goes into the layer, which stands over that cell. At the end
+ * of a frame the layer moves to where the cursor was drawn, or hides when
+ * text was drawn over its cell without one (the cursor went or turned
+ * passive). The terminal draws the cursor steady and tells the blink
+ * (kitty_cursor_blink_hook).
+ */
+static int kitty_clayer_cell_width(WinGuiSeat *wgs, unsigned long attr,
+                                   int lattr)
+{
+    int w = wgs->font_width * (1 + ((lattr & LATTR_MODE) != LATTR_NORM));
+    return (attr & ATTR_WIDE) ? 2 * w : w;
+}
+
+/* text drawn into the frame: over the shown layer's cell? */
+static void kitty_clayer_cover(WinGuiSeat *wgs, int x, int y, int len,
+                               unsigned long attr, int lattr)
+{
+    int fw = wgs->font_width * (1 + ((lattr & LATTR_MODE) != LATTR_NORM));
+    RECT r, o;
+    if (!wgs->clayer_shown || wgs->clayer_covered)
+        return;
+    r.left = col_to_px(wgs, x, fw);
+    r.right = r.left + kitty_clayer_cell_width(wgs, attr, lattr) * len;
+    r.top = row_to_px(wgs, y);
+    r.bottom = r.top + wgs->font_height;
+    if (IntersectRect(&o, &r, &wgs->clayer_at))
+        wgs->clayer_covered = true;
+}
+
+/* The cursor into the layer: false when the layer cannot be drawn. */
+static bool kitty_clayer_cursor(WinGuiSeat *wgs, TermWin *tw, int x, int y,
+                                wchar_t *text, int len, unsigned long attr,
+                                int lattr, truecolour tc)
+{
+    int ctype = term_cursor_type(wgs->term, wgs->cursor_type);
+    bool block = (ctype == CURSOR_BLOCK || wgs->term->big_cursor) &&
+                 *text != UCSWIDE;
+    int fw = wgs->font_width * (1 + ((lattr & LATTR_MODE) != LATTR_NORM));
+    RECT r;
+    r.left = col_to_px(wgs, x, fw);
+    r.right = r.left + kitty_clayer_cell_width(wgs, attr, lattr);
+    r.top = row_to_px(wgs, y);
+    r.bottom = r.top + wgs->font_height;
+    if (!kp_layer_begin(wgs->painter, &r, block))
+        return false;
+    wgs->clayer_in = true;
+    wintw_draw_cursor(tw, x, y, text, len, attr, lattr, tc);
+    wgs->clayer_in = false;
+    kp_layer_end(wgs->painter);
+    wgs->clayer_drawn = true;
+    wgs->clayer_rect = r;
+    return true;
+}
+
+/* The layer could not be drawn: the terminal blinks the cursor in frames
+ * again, everything drawn anew. */
+static void kitty_clayer_stop(WinGuiSeat *wgs)
+{
+    wgs->clayer_on = false;
+    if (wgs->clayer_shown) {
+        kp_layer_place(wgs->painter, false, &wgs->clayer_at);
+        wgs->clayer_shown = false;
+    }
+    term_set_cursor_layer(wgs->term, false);
+}
+
+static void kitty_clayer_frame_end(WinGuiSeat *wgs)
+{
+    if (!wgs->clayer_on)
+        return;
+    if (wgs->clayer_drawn) {
+        kp_layer_place(wgs->painter, true, &wgs->clayer_rect);
+        wgs->clayer_at = wgs->clayer_rect;
+        wgs->clayer_shown = true;
+    } else if (wgs->clayer_covered && wgs->clayer_shown) {
+        kp_layer_place(wgs->painter, false, &wgs->clayer_at);
+        wgs->clayer_shown = false;
+    }
+    wgs->clayer_drawn = wgs->clayer_covered = false;
+}
+
+/* kitty_cursor_blink_hook: the terminal's blink, restarted or stopped */
+static void kitty_clayer_blink(TermWin *tw, int half, bool ease)
+{
+    WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
+    if (wgs->clayer_on && wgs->painter)
+        kp_layer_blink(wgs->painter, half, ease);
+}
+#endif
+
 /*
  * Wrapper that handles combining characters.
  */
@@ -10210,6 +10321,13 @@ static void wintw_draw_text(
 {
     WinGuiSeat *wgs = container_of(tw, WinGuiSeat, termwin);
     KP_T0;
+#ifdef MOD_PERSO
+    /* KiTTY: the cursor is the layer's, the frame gets the cell without it */
+    if (wgs->clayer_on && !wgs->clayer_in) {
+        attr &= ~ATTR_ACTCURS;
+        kitty_clayer_cover(wgs, x, y, len, attr, lattr);
+    }
+#endif
     if (attr & TATTR_COMBINING) {
         unsigned long a = 0;
         int len0 = 1;
@@ -10306,6 +10424,23 @@ static void wintw_draw_cursor(
     int ctype = term_cursor_type(wgs->term, wgs->cursor_type);
 #else
     int ctype = wgs->cursor_type;
+#endif
+#ifdef MOD_PERSO
+    /* KiTTY: the active cursor goes into the cursor layer */
+    if (wgs->clayer_on && !wgs->clayer_in && (attr & ATTR_ACTCURS)) {
+        if (kitty_clayer_cursor(wgs, tw, x, y, text, len, attr, lattr,
+                                truecolour))
+            return;
+        /* a failed layer is released by the painter: once made anew
+         * (a lost composition device), else the frames blink it */
+        if (kp_layer_ok(wgs->painter)) {
+            wgs->clayer_shown = false;     /* a new visual shows nothing yet */
+            if (kitty_clayer_cursor(wgs, tw, x, y, text, len, attr, lattr,
+                                    truecolour))
+                return;
+        }
+        kitty_clayer_stop(wgs);        /* drawn into the frame below */
+    }
 #endif
     /* KITTY_PERF: a block cursor returns through win_draw_text, which counts
      * itself; only the drawing below is counted here. */
@@ -12495,6 +12630,7 @@ static void wintw_free_draw_ctx(TermWin *tw)
 #endif
 #ifdef MOD_PERSO
     kitty_overlay_frame(wgs);   /* KiTTY: images over the frame's text */
+    kitty_clayer_frame_end(wgs);   /* KiTTY: the cursor layer */
 #endif
     kp_end(wgs->painter);   /* Direct2D presents the frame here */
     KP_T1(KP_PAINT);

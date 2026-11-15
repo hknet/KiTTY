@@ -18,6 +18,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   running, or `far2l --tty --nodetect=f` in a Local session.
 - The Terminal Window's Event Log shows the time of each line with
   milliseconds, so the lines of one second keep apart.
+- A blinking cursor costs far less. With Direct2D the cursor blinks, plain
+  or eased, on a layer of its own that Windows animates: an idle window
+  draws no frames for it (Ease blinking took 23 ms of CPU a second). With
+  GDI, Ease blinking takes 15 steps a second instead of 30 and redraws only
+  the cursor's cell. Plain blinking text redraws only the rows that show it.
 
 ### Fixed
 
@@ -35,7 +40,7 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - Scrolling the Terminal Window's Event Log stopped the terminal: while its
   scroll bar was held and for every click on an arrow or the track and
   every turn of the wheel. The terminal now keeps showing output. The Event
-  Log's list moves at once, without Windows' smooth scrolling.
+  Log's list moves at once, without Windows' smooth scrolling (for now).
 
 ## 0.85.1.21-beta — 2026-11-14
 

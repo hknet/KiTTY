@@ -202,16 +202,18 @@ static const IDWriteTextAnalysisSourceVtbl src_vt = {
     src_qi, src_ref, src_ref, src_at, src_before, src_dir, src_locale, src_numsub
 };
 
-#ifdef KITTY_TEST_BUILD_LABEL
-/* Test builds, hknet/KiTTY#88: the slots of the three DirectComposition
- * interfaces the composition presentation calls (KITTY_TEST_D2D_DCOMP).
- * mingw's dcomp.h does not compile as C. The vtable order is the binary one
- * mingw's non-MSVC branch documents (an overloaded method's two slots: the
- * IDCompositionAnimation* one first, then the float one), the same layout
- * scripts/probes/dcomp_layered_probe.c runs with. */
+/* The slots of the DirectComposition interfaces the cursor layer calls, and
+ * in test builds the composition presentation of hknet/KiTTY#88
+ * (KITTY_TEST_D2D_DCOMP). mingw's dcomp.h does not compile as C. The vtable
+ * order is the binary one mingw's non-MSVC branch documents (an overloaded
+ * method's two slots: the IDCompositionAnimation* one first, then the float
+ * one). */
 typedef struct KDcDevice KDcDevice;
 typedef struct KDcTarget KDcTarget;
 typedef struct KDcVisual KDcVisual;
+typedef struct KDcSurface KDcSurface;
+typedef struct KDcEffectGroup KDcEffectGroup;
+typedef struct KDcAnimation KDcAnimation;
 typedef struct {
     HRESULT (STDMETHODCALLTYPE *QueryInterface)(KDcDevice *, REFIID, void **);
     ULONG (STDMETHODCALLTYPE *AddRef)(KDcDevice *);
@@ -221,7 +223,48 @@ typedef struct {
     HRESULT (STDMETHODCALLTYPE *GetFrameStatistics)(KDcDevice *, void *);
     HRESULT (STDMETHODCALLTYPE *CreateTargetForHwnd)(KDcDevice *, HWND, BOOL, KDcTarget **);
     HRESULT (STDMETHODCALLTYPE *CreateVisual)(KDcDevice *, KDcVisual **);
+    HRESULT (STDMETHODCALLTYPE *CreateSurface)(KDcDevice *, UINT, UINT, DXGI_FORMAT,
+                                               DXGI_ALPHA_MODE, KDcSurface **);
+    void *CreateVirtualSurface, *CreateSurfaceFromHandle, *CreateSurfaceFromHwnd;
+    void *CreateTranslateTransform, *CreateScaleTransform, *CreateRotateTransform;
+    void *CreateSkewTransform, *CreateMatrixTransform, *CreateTransformGroup;
+    void *CreateTranslateTransform3D, *CreateScaleTransform3D;
+    void *CreateRotateTransform3D, *CreateMatrixTransform3D;
+    void *CreateTransform3DGroup;
+    HRESULT (STDMETHODCALLTYPE *CreateEffectGroup)(KDcDevice *, KDcEffectGroup **);
+    void *CreateRectangleClip;
+    HRESULT (STDMETHODCALLTYPE *CreateAnimation)(KDcDevice *, KDcAnimation **);
 } KDcDeviceVtbl;
+typedef struct {
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(KDcSurface *, REFIID, void **);
+    ULONG (STDMETHODCALLTYPE *AddRef)(KDcSurface *);
+    ULONG (STDMETHODCALLTYPE *Release)(KDcSurface *);
+    HRESULT (STDMETHODCALLTYPE *BeginDraw)(KDcSurface *, const RECT *, REFIID,
+                                           void **, POINT *);
+    HRESULT (STDMETHODCALLTYPE *EndDraw)(KDcSurface *);
+} KDcSurfaceVtbl;
+struct KDcSurface { const KDcSurfaceVtbl *lpVtbl; };
+typedef struct {
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(KDcEffectGroup *, REFIID, void **);
+    ULONG (STDMETHODCALLTYPE *AddRef)(KDcEffectGroup *);
+    ULONG (STDMETHODCALLTYPE *Release)(KDcEffectGroup *);
+    HRESULT (STDMETHODCALLTYPE *SetOpacity_anim)(KDcEffectGroup *, KDcAnimation *);
+    HRESULT (STDMETHODCALLTYPE *SetOpacity_float)(KDcEffectGroup *, float);
+} KDcEffectGroupVtbl;
+struct KDcEffectGroup { const KDcEffectGroupVtbl *lpVtbl; };
+typedef struct {
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(KDcAnimation *, REFIID, void **);
+    ULONG (STDMETHODCALLTYPE *AddRef)(KDcAnimation *);
+    ULONG (STDMETHODCALLTYPE *Release)(KDcAnimation *);
+    HRESULT (STDMETHODCALLTYPE *Reset)(KDcAnimation *);
+    HRESULT (STDMETHODCALLTYPE *SetAbsoluteBeginTime)(KDcAnimation *, LARGE_INTEGER);
+    HRESULT (STDMETHODCALLTYPE *AddCubic)(KDcAnimation *, double, float, float,
+                                          float, float);
+    void *AddSinusoidal;
+    HRESULT (STDMETHODCALLTYPE *AddRepeat)(KDcAnimation *, double, double);
+    HRESULT (STDMETHODCALLTYPE *End)(KDcAnimation *, double, float);
+} KDcAnimationVtbl;
+struct KDcAnimation { const KDcAnimationVtbl *lpVtbl; };
 struct KDcDevice { const KDcDeviceVtbl *lpVtbl; };
 typedef struct {
     HRESULT (STDMETHODCALLTYPE *QueryInterface)(KDcTarget *, REFIID, void **);
@@ -234,8 +277,12 @@ typedef struct {
     HRESULT (STDMETHODCALLTYPE *QueryInterface)(KDcVisual *, REFIID, void **);
     ULONG (STDMETHODCALLTYPE *AddRef)(KDcVisual *);
     ULONG (STDMETHODCALLTYPE *Release)(KDcVisual *);
-    void *SetOffsetX_anim, *SetOffsetX_float, *SetOffsetY_anim, *SetOffsetY_float;
-    void *SetTransform_obj, *SetTransform_matrix, *SetTransformParent, *SetEffect;
+    void *SetOffsetX_anim;
+    HRESULT (STDMETHODCALLTYPE *SetOffsetX_float)(KDcVisual *, float);
+    void *SetOffsetY_anim;
+    HRESULT (STDMETHODCALLTYPE *SetOffsetY_float)(KDcVisual *, float);
+    void *SetTransform_obj, *SetTransform_matrix, *SetTransformParent;
+    HRESULT (STDMETHODCALLTYPE *SetEffect)(KDcVisual *, IUnknown *);
     void *SetBitmapInterpolationMode, *SetBorderMode, *SetClip_obj, *SetClip_rect;
     HRESULT (STDMETHODCALLTYPE *SetContent)(KDcVisual *, IUnknown *);
 } KDcVisualVtbl;
@@ -243,7 +290,6 @@ struct KDcVisual { const KDcVisualVtbl *lpVtbl; };
 static const GUID KIID_IDCompositionDevice =
     { 0xc37ea93a, 0xe7aa, 0x450d, { 0xb1, 0x6f, 0x97, 0x46, 0xcb, 0x04, 0x07, 0xf3 } };
 typedef HRESULT (WINAPI *KDcCreateDevice_t)(IDXGIDevice *, REFIID, void **);
-#endif
 
 typedef struct D2DPainter {
     KittyPainter p;
@@ -328,6 +374,27 @@ typedef struct D2DPainter {
     unsigned long ovsig, ovsig_shown;
     struct D2DOvCache { unsigned long serial; ID2D1Bitmap *bmp; bool used; } *ovc;
     int novc, ovc_cap;
+    /* KiTTY: the cursor layer (layer_*): its own DirectComposition device on
+     * our D3D device, a topmost target on the window, one visual with an
+     * effect group whose opacity the compositor animates, and the cell's
+     * surface (lsw x lsh, opaque or not). Made at the first use, released
+     * with the device (made again after it). layer_off = it cannot be made
+     * here: never tried again. The blink is kept to set it again. */
+    HMODULE dcompdll;
+    KDcDevice *ldev;
+    KDcTarget *ltarget;
+    KDcVisual *lvis;
+    KDcEffectGroup *leff;
+    KDcSurface *lsurf;
+    ID2D1Bitmap1 *lbmp;                /* the surface while it is drawn into */
+    D2D1_MATRIX_3X2_F lxform;          /* the frame's transform meanwhile */
+    int lsw, lsh;
+    bool lsopaque, lshown, lchanged, in_layer, layer_off;
+    RECT lcell;                        /* where the layer is shown */
+    int lhalf;                         /* the blink: ms per phase, 0 = steady */
+    bool lease;
+    DWORD ltick;                       /* when it was last started */
+    char *layer_note;                  /* its Event Log line, as adapter_note */
 #ifdef KITTY_TEST_BUILD_LABEL
     /* #88 probe: DXGI's occlusion notification plus what Present1 last
      * reported (each change traced) */
@@ -338,7 +405,6 @@ typedef struct D2DPainter {
     unsigned long inj_from, inj_count;
     /* #88, KITTY_TEST_D2D_DCOMP: the swap chain on a composition visual of
      * our own instead of bound to the window (dcomp_create) */
-    HMODULE dcompdll;
     KDcDevice *dcdev;
     KDcTarget *dctarget;
     KDcVisual *dcvisual;
@@ -367,7 +433,7 @@ static D2D1_RECT_F rectf(int l, int t, int r, int b)
  * to the compositor so only that much of the window is recomposed. */
 static void touch(D2DPainter *d, int l, int t, int r, int b)
 {
-    if (r <= l || b <= t)
+    if (r <= l || b <= t || d->in_layer)   /* the cursor layer is not the frame */
         return;
     if (!d->dirty_any) {
         d->dirty.left = l; d->dirty.top = t; d->dirty.right = r; d->dirty.bottom = b;
@@ -744,6 +810,11 @@ static bool d2d_begin(KittyPainter *p, HDC given)
         do_eventlog(d->adapter_note);
         sfree(d->adapter_note);
         d->adapter_note = NULL;
+    }
+    if (d->layer_note && !d->adapter_note && kitty_eventlog_ready()) {
+        do_eventlog(d->layer_note);    /* KiTTY: the cursor layer */
+        sfree(d->layer_note);
+        d->layer_note = NULL;
     }
     if (d->overlay_note && kitty_eventlog_ready()) {
         do_eventlog(d->overlay_note);
@@ -1936,6 +2007,13 @@ static bool d2d_cuts_fringes(KittyPainter *p)
     return false;                      /* no glyph is drawn again */
 }
 
+/* the cursor layer, with the device below */
+static bool d2d_layer_ok(KittyPainter *p);
+static bool d2d_layer_begin(KittyPainter *p, const RECT *cell, bool opaque);
+static void d2d_layer_end(KittyPainter *p);
+static void d2d_layer_place(KittyPainter *p, bool show, const RECT *cell);
+static void d2d_layer_blink(KittyPainter *p, int half, bool ease);
+
 static const KittyPainterVtable d2d_vt = {
     .begin = d2d_begin,
     .end = d2d_end,
@@ -1962,6 +2040,11 @@ static const KittyPainterVtable d2d_vt = {
     .overlay = d2d_overlay,
     .under = d2d_under,
     .cuts_fringes = d2d_cuts_fringes,
+    .layer_ok = d2d_layer_ok,
+    .layer_begin = d2d_layer_begin,
+    .layer_end = d2d_layer_end,
+    .layer_place = d2d_layer_place,
+    .layer_blink = d2d_layer_blink,
 };
 
 /* ---- the device ---------------------------------------------------- */
@@ -1978,12 +2061,263 @@ static void dcomp_release(D2DPainter *d)
 }
 #endif
 
+/* ---- the cursor layer ---------------------------------------------- */
+
+/* KiTTY: the cursor's blink costs no frames of ours. The cursor's cell is
+ * drawn into a small DirectComposition surface on a visual above the
+ * window's picture (a topmost target on the window), and the compositor
+ * animates the visual's opacity: on/off, or the Ease curve. The frame
+ * draws that cell without the cursor (window.c). Its own composition
+ * device on our D3D device; the swap chain stays bound to the window. */
+
+static void layer_release(D2DPainter *d)
+{
+    if (d->lbmp) { IUnknown_Release((IUnknown *)d->lbmp); d->lbmp = NULL; }
+    if (d->lsurf) { d->lsurf->lpVtbl->Release(d->lsurf); d->lsurf = NULL; }
+    if (d->leff) { d->leff->lpVtbl->Release(d->leff); d->leff = NULL; }
+    if (d->lvis) { d->lvis->lpVtbl->Release(d->lvis); d->lvis = NULL; }
+    if (d->ltarget) { d->ltarget->lpVtbl->Release(d->ltarget); d->ltarget = NULL; }
+    if (d->ldev) { d->ldev->lpVtbl->Release(d->ldev); d->ldev = NULL; }
+    d->lsw = d->lsh = 0;
+    d->lshown = d->in_layer = false;
+}
+
+static void layer_apply_blink(D2DPainter *d);
+
+/* The composition side, made once per device. False = no layer here (no
+ * dcomp.dll before Windows 8, a test presentation of #88, or a failure):
+ * the terminal fades the cursor in frames as before. A window layered from
+ * its creation (transparency allowed) takes it: the layered alpha dims a
+ * composition visual with the rest of the window (measured). */
+static bool layer_init(D2DPainter *d)
+{
+    KDcCreateDevice_t create = NULL;
+    IDXGIDevice *dx = NULL;
+    HRESULT hr;
+    if (d->ldev)
+        return true;
+    if (d->layer_off || !d->d3d)
+        return false;
+    if (d2d_blt() || d2d_dcomp()) {
+        d->layer_off = true;
+        return false;
+    }
+#ifdef KITTY_TEST_BUILD_LABEL
+    if (getenv("KITTY_TEST_NO_CURSOR_LAYER")) {   /* the frames, to compare */
+        d->layer_off = true;
+        return false;
+    }
+#endif
+    if (!d->dcompdll)
+        d->dcompdll = LoadLibraryExA("dcomp.dll", NULL,
+                                     LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (d->dcompdll)
+        create = (KDcCreateDevice_t)GetProcAddress(d->dcompdll,
+                                                   "DCompositionCreateDevice");
+    hr = create ? ID3D11Device_QueryInterface(d->d3d, &IID_IDXGIDevice,
+                                              (void **)&dx)
+                : E_NOINTERFACE;
+    if (SUCCEEDED(hr))
+        hr = create(dx, &KIID_IDCompositionDevice, (void **)&d->ldev);
+    if (dx)
+        IDXGIDevice_Release(dx);
+    if (SUCCEEDED(hr))
+        hr = d->ldev->lpVtbl->CreateTargetForHwnd(d->ldev, d->hwnd, TRUE,
+                                                  &d->ltarget);
+    if (SUCCEEDED(hr))
+        hr = d->ldev->lpVtbl->CreateVisual(d->ldev, &d->lvis);
+    if (SUCCEEDED(hr))
+        hr = d->ldev->lpVtbl->CreateEffectGroup(d->ldev, &d->leff);
+    if (SUCCEEDED(hr))
+        hr = d->lvis->lpVtbl->SetEffect(d->lvis, (IUnknown *)d->leff);
+    if (SUCCEEDED(hr))
+        hr = d->ltarget->lpVtbl->SetRoot(d->ltarget, d->lvis);
+    if (SUCCEEDED(hr))
+        hr = d->ldev->lpVtbl->Commit(d->ldev);
+    if (!d->layer_note)
+        d->layer_note = SUCCEEDED(hr) ?
+            dupstr(KT_D2D_CURSOR_LAYER_EVENT) :
+            dupprintf(KT_D2D_CURSOR_LAYER_FAIL_EVENT, (unsigned long)hr);
+    if (FAILED(hr)) {
+        layer_release(d);
+        d->layer_off = true;
+        return false;
+    }
+    layer_apply_blink(d);              /* after a lost device: as it was */
+    return true;
+}
+
+static bool d2d_layer_ok(KittyPainter *p)
+{
+    return layer_init((D2DPainter *)p);
+}
+
+/* Draw into the layer: the surface for this cell size (opaque for a block
+ * cursor, which fills its cell, so its text keeps the frame's
+ * antialiasing), its pixels as the target, the client coordinates moved
+ * onto them. Every pixel of the surface is drawn: cleared first. */
+static bool d2d_layer_begin(KittyPainter *p, const RECT *cell, bool opaque)
+{
+    D2DPainter *d = (D2DPainter *)p;
+    int w = cell->right - cell->left, h = cell->bottom - cell->top;
+    D2D1_BITMAP_PROPERTIES1 props;
+    D2D1_MATRIX_3X2_F m;
+    D2D1_RECT_F clip;
+    D2D1_COLOR_F clear = { 0, 0, 0, 0 };
+    IDXGISurface *ds = NULL;
+    POINT off;
+    HRESULT hr;
+    if (!d->in_frame || d->in_layer || w < 1 || h < 1 || !layer_init(d))
+        return false;
+    if (!d->lsurf || w != d->lsw || h != d->lsh || opaque != d->lsopaque) {
+        if (d->lsurf) { d->lsurf->lpVtbl->Release(d->lsurf); d->lsurf = NULL; }
+        hr = d->ldev->lpVtbl->CreateSurface(
+            d->ldev, w, h, DXGI_FORMAT_B8G8R8A8_UNORM,
+            opaque ? DXGI_ALPHA_MODE_IGNORE : DXGI_ALPHA_MODE_PREMULTIPLIED,
+            &d->lsurf);
+        if (FAILED(hr)) {
+            layer_release(d);          /* made again at the next call */
+            return false;
+        }
+        d->lsw = w; d->lsh = h; d->lsopaque = opaque;
+        if (d->lshown)                 /* the visual shows the new one */
+            d->lvis->lpVtbl->SetContent(d->lvis, (IUnknown *)d->lsurf);
+    }
+    hr = d->lsurf->lpVtbl->BeginDraw(d->lsurf, NULL, &IID_IDXGISurface,
+                                     (void **)&ds, &off);
+    if (FAILED(hr)) {
+        layer_release(d);              /* a lost composition device: anew */
+        return false;
+    }
+    memset(&props, 0, sizeof(props));
+    props.pixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    props.pixelFormat.alphaMode = opaque ? D2D1_ALPHA_MODE_IGNORE :
+                                           D2D1_ALPHA_MODE_PREMULTIPLIED;
+    props.dpiX = 96; props.dpiY = 96;
+    props.bitmapOptions = D2D1_BITMAP_OPTIONS_TARGET |
+        D2D1_BITMAP_OPTIONS_CANNOT_DRAW;
+    hr = ID2D1DeviceContext_CreateBitmapFromDxgiSurface(d->dc, ds, &props,
+                                                        &d->lbmp);
+    IDXGISurface_Release(ds);
+    if (FAILED(hr)) {
+        d->lsurf->lpVtbl->EndDraw(d->lsurf);
+        layer_release(d);
+        return false;
+    }
+    ID2D1RenderTarget_GetTransform((ID2D1RenderTarget *)d->dc, &d->lxform);
+    ID2D1DeviceContext_SetTarget(d->dc, (struct ID2D1Image *)d->lbmp);
+    m = d->lxform;
+    m._31 += (float)(off.x - cell->left);
+    m._32 += (float)(off.y - cell->top);
+    ID2D1RenderTarget_SetTransform((ID2D1RenderTarget *)d->dc, &m);
+    clip = rectf(cell->left, cell->top, cell->right, cell->bottom);
+    ID2D1RenderTarget_PushAxisAlignedClip((ID2D1RenderTarget *)d->dc, &clip,
+                                          D2D1_ANTIALIAS_MODE_ALIASED);
+    ID2D1RenderTarget_Clear((ID2D1RenderTarget *)d->dc, &clear);
+    d->in_layer = true;
+    return true;
+}
+
+static void d2d_layer_end(KittyPainter *p)
+{
+    D2DPainter *d = (D2DPainter *)p;
+    if (!d->in_layer)
+        return;
+    ID2D1RenderTarget_PopAxisAlignedClip((ID2D1RenderTarget *)d->dc);
+    ID2D1RenderTarget_SetTransform((ID2D1RenderTarget *)d->dc, &d->lxform);
+    ID2D1RenderTarget_Flush((ID2D1RenderTarget *)d->dc, NULL, NULL);
+    ID2D1DeviceContext_SetTarget(d->dc, (struct ID2D1Image *)d->canvas);
+    IUnknown_Release((IUnknown *)d->lbmp);
+    d->lbmp = NULL;
+    d->lsurf->lpVtbl->EndDraw(d->lsurf);
+    d->in_layer = false;
+    d->lchanged = true;                /* the new pixels need a commit */
+}
+
+/* At the end of a frame: the layer shown at `cell`, or hidden. One commit
+ * for whatever changed. */
+static void d2d_layer_place(KittyPainter *p, bool show, const RECT *cell)
+{
+    D2DPainter *d = (D2DPainter *)p;
+    if (!d->ldev || !d->lsurf)
+        return;
+    if (show) {
+        if (!d->lshown || cell->left != d->lcell.left ||
+            cell->top != d->lcell.top) {
+            d->lvis->lpVtbl->SetOffsetX_float(d->lvis, (float)cell->left);
+            d->lvis->lpVtbl->SetOffsetY_float(d->lvis, (float)cell->top);
+            d->lcell = *cell;
+            d->lchanged = true;
+        }
+        if (!d->lshown) {
+            d->lvis->lpVtbl->SetContent(d->lvis, (IUnknown *)d->lsurf);
+            d->lshown = true;
+            d->lchanged = true;
+        }
+    } else if (d->lshown) {
+        d->lvis->lpVtbl->SetContent(d->lvis, NULL);
+        d->lshown = false;
+        d->lchanged = true;
+    }
+    if (d->lchanged) {
+        d->lchanged = false;
+        d->ldev->lpVtbl->Commit(d->ldev);
+    }
+}
+
+/* The visual's opacity: steady, or a blink starting now and repeating -
+ * on for one phase and off for the next, or the Ease curve: from opaque
+ * down to nothing along 1 - (3u^2 - 2u^3), u = t / half, and back up along
+ * 3u^2 - 2u^3, as the frames' fade (terminal.c kitty_fade_level). */
+static void layer_apply_blink(D2DPainter *d)
+{
+    KDcAnimation *a = NULL;
+    double h = d->lhalf / 1000.0;
+    if (!d->ldev)
+        return;
+    if (d->lhalf <= 0 ||
+        FAILED(d->ldev->lpVtbl->CreateAnimation(d->ldev, &a))) {
+        d->leff->lpVtbl->SetOpacity_float(d->leff, 1.0f);
+    } else {
+        if (d->lease) {
+            a->lpVtbl->AddCubic(a, 0.0, 1.0f, 0.0f, (float)(-3.0 / (h * h)),
+                                (float)(2.0 / (h * h * h)));
+            a->lpVtbl->AddCubic(a, h, 0.0f, 0.0f, (float)(3.0 / (h * h)),
+                                (float)(-2.0 / (h * h * h)));
+        } else {
+            a->lpVtbl->AddCubic(a, 0.0, 1.0f, 0.0f, 0.0f, 0.0f);
+            a->lpVtbl->AddCubic(a, h, 0.0f, 0.0f, 0.0f, 0.0f);
+        }
+        a->lpVtbl->AddRepeat(a, 2.0 * h, 2.0 * h);
+        d->leff->lpVtbl->SetOpacity_anim(d->leff, a);
+        a->lpVtbl->Release(a);
+    }
+    d->ldev->lpVtbl->Commit(d->ldev);
+}
+
+/* A restart comes with every piece of output: within 100 ms of the last
+ * one the cycle has barely begun (on, or nearly opaque), so it is kept -
+ * a stream of output costs no commit per piece. */
+static void d2d_layer_blink(KittyPainter *p, int half, bool ease)
+{
+    D2DPainter *d = (D2DPainter *)p;
+    DWORD now = GetTickCount();
+    if (half > 0 && half == d->lhalf && ease == d->lease &&
+        now - d->ltick < 100)
+        return;
+    d->lhalf = half;
+    d->lease = ease;
+    d->ltick = now;
+    layer_apply_blink(d);
+}
+
 /* Everything made from the Direct3D device, released - after a loss, or
  * for good. The Direct2D factory and the DirectWrite side (factory, font
  * faces, fallback) belong to no device and are kept. */
 static void release_device(D2DPainter *d)
 {
     int i;
+    layer_release(d);                  /* KiTTY: the cursor layer, on this device */
 #ifdef KITTY_TEST_BUILD_LABEL
     dcomp_release(d);                  /* before the chain it shows */
 #endif
@@ -2449,6 +2783,8 @@ static void d2d_destroy(D2DPainter *d)
     d->adapter_note = NULL;
     sfree(d->overlay_note);
     d->overlay_note = NULL;
+    sfree(d->layer_note);
+    d->layer_note = NULL;
     badge_free(d);
     release_device(d);
     for (i = 0; i < d->nfb; i++)
@@ -2464,9 +2800,7 @@ static void d2d_destroy(D2DPainter *d)
     if (d->dwritedll) FreeLibrary(d->dwritedll);
     if (d->d2d1dll) FreeLibrary(d->d2d1dll);
     if (d->d3d11dll) FreeLibrary(d->d3d11dll);
-#ifdef KITTY_TEST_BUILD_LABEL
-    if (d->dcompdll) FreeLibrary(d->dcompdll);
-#endif
+    if (d->dcompdll) FreeLibrary(d->dcompdll);   /* the cursor layer, #88's test */
     sfree(d->ov);                      /* KiTTY: the overlay's arrays */
     sfree(d->ovc);
     sfree(d);

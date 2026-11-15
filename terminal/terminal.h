@@ -207,12 +207,21 @@ struct terminal_tag {
      * focused cursor blinks, tfade_run while the focused window shows
      * blinking text. *_t0 = where the cycle started (opaque). *_drawn = the
      * level the last paint drew, a difference forces the cells to redraw.
+     * fade_step = the ticks between two steps, the renderer's choice
+     * (term_set_fade_rate), 0 = 30 steps a second.
      * Unconditional storage, same ODR reason as the kd_* fields. */
     bool ease_blink;
     bool cfade_run, tfade_run, fade_pending;
     unsigned long cfade_t0, tfade_t0;
     long next_fade;
     int cfade, tfade, cfade_drawn, tfade_drawn;
+    int fade_step;
+    /* KiTTY: the cursor's blink on a layer of the window (Direct2D: a
+     * DirectComposition visual whose opacity the compositor animates,
+     * term_set_cursor_layer). The terminal then draws the cursor steady
+     * and runs no blink or fade timer for it; clayer_run = the layer
+     * blinks now (kitty_cursor_blink_hook told the window). */
+    bool cursor_layer, clayer_run, clayer_ease;   /* clayer_ease: as told */
 
     bool xterm_mouse_forbidden;
     int xterm_mouse;                   /* send mouse messages to host */
@@ -648,11 +657,11 @@ struct terminal_tag {
      * what else a frame depends on, as at the last paint. Unconditional
      * storage, same ODR reason as above. */
     unsigned char *kd_full;
-    unsigned char *kd_blink;   /* rows that showed eased blinking text */
+    unsigned char *kd_blink;   /* rows that showed blinking text */
     int *kd_x0, *kd_x1;
     int kd_rows, kd_quiet;
     bool kd_all, kd_valid;
-    int kd_disptop, kd_selstate, kd_seltype, kd_cursy;
+    int kd_disptop, kd_selstate, kd_seltype, kd_cursy, kd_cursx;
     pos kd_selstart, kd_selend;
     bool kd_rv, kd_tblinker, kd_focus, kd_preedit;
 
@@ -1227,6 +1236,11 @@ void term_release_line(termline *line);
  * inside the frame do_paint is drawing. Returns false when it did not move
  * them (then nothing is assumed moved). NULL = never. */
 extern bool (*kitty_term_scroll_hook)(TermWin *win, int top, int bot, int lines);
+
+/* KiTTY cursor layer (term_set_cursor_layer): set by a front end that
+ * blinks the cursor itself. half = one blink period in ms, a new cycle
+ * starting now (shown; opaque and fading when `ease`), 0 = steady. */
+extern void (*kitty_cursor_blink_hook)(TermWin *win, int half, bool ease);
 
 /* KiTTY OSC 8: the URI a cell's link handle stands for, or NULL when the
  * handle is 0 or its slot has been reused since. The string belongs to the

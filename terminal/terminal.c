@@ -1421,7 +1421,9 @@ static inline int checkscr(int y, int lineno)
  *    reconfiguration, and whatever else a frame depends on changing since
  *    the last paint (kitty_kd_frame: the view scrolled back, the selection,
  *    reverse video and the visual bell, focus, text blink, IME text);
- *  - the cursor's row and the row it was drawn on, always;
+ *  - the cursor's row and the row it was drawn on, always. A cursor that
+ *    stayed in its cell marks that cell only (kitty_kd_cols): a blink or
+ *    an Ease step then walks one cell, not the row;
  *  - term_paint (WM_PAINT): the rows of its rectangle.
  * The plain-text writer (term_text_run) knows the columns it wrote and marks
  * only those (kitty_kd_cols); do_paint then walks from the start of the run
@@ -1513,7 +1515,7 @@ static void kitty_kd_scroll(Terminal *term, int top, int bot, int n)
 
 /* do_paint, before the rows: what else the frame depends on, against the
  * last paint. Any of it changed = every row; the cursor's rows always. */
-static void kitty_kd_frame(Terminal *term, int curs_y)
+static void kitty_kd_frame(Terminal *term, int curs_y, int curs_x)
 {
     bool rv = !term->rvideo ^ !term->in_vbell;
     bool preedit = term->preedit_termline != NULL;
@@ -1525,10 +1527,20 @@ static void kitty_kd_frame(Terminal *term, int curs_y)
         term->kd_seltype != (int)term->seltype ||
         !poseq(term->kd_selstart, term->selstart) ||
         !poseq(term->kd_selend, term->selend) ||
-        term->kd_rv != rv || term->kd_tblinker != term->tblinker ||
-        term->kd_focus != term->has_focus ||
+        term->kd_rv != rv || term->kd_focus != term->has_focus ||
         preedit || term->kd_preedit != preedit)
         term->kd_all = true;
+    /* plain text blinking: the switch redraws the rows that show blinking
+     * text, not the whole screen */
+    if (term->kd_tblinker != term->tblinker && !term->kd_all) {
+        int y;
+        if (!term->kd_blink)
+            term->kd_all = true;
+        else
+            for (y = 0; y < term->kd_rows; y++)
+                if (term->kd_blink[y])
+                    kitty_kd_row(term, y);
+    }
     term->kd_disptop = term->disptop;
     term->kd_selstate = (int)term->selstate;
     term->kd_seltype = (int)term->seltype;
@@ -1546,9 +1558,15 @@ static void kitty_kd_frame(Terminal *term, int curs_y)
             if (term->kd_blink[y])
                 kitty_kd_row(term, y);
     }
-    kitty_kd_row(term, curs_y);
-    kitty_kd_row(term, term->kd_cursy);
+    /* the cursor where it stayed: its cell (two for a wide character) */
+    if (curs_y == term->kd_cursy && curs_x == term->kd_cursx && curs_x >= 0) {
+        kitty_kd_cols(term, curs_y, curs_x, curs_x + 2);
+    } else {
+        kitty_kd_row(term, curs_y);
+        kitty_kd_row(term, term->kd_cursy);
+    }
     term->kd_cursy = curs_y;
+    term->kd_cursx = curs_x;
     term->kd_valid = true;
 }
 
@@ -1744,6 +1762,7 @@ static void term_timer(void *ctx, unsigned long now)
     if (term->cblink_pending && now == term->next_cblink
 #ifdef MOD_PERSO
         && !term->cfade_run            /* KiTTY: the fade has no on/off timer */
+        && !term->clayer_run           /* nor the window's cursor layer */
 #endif
         ) {
         term->cblinker = !term->cblinker;
@@ -2232,6 +2251,21 @@ static void term_schedule_tblink(Terminal *term)
     }
 }
 
+#ifdef MOD_PERSO
+/* KiTTY: the window's cursor layer (term_set_cursor_layer): the window
+ * blinks it, half = one blink period in ms with a new cycle from now
+ * (shown, or opaque for Ease), 0 = steady. */
+void (*kitty_cursor_blink_hook)(TermWin *win, int half, bool ease);
+
+static void term_clayer_tell(Terminal *term, int half)
+{
+    term->clayer_run = half > 0;
+    term->clayer_ease = term->ease_blink;
+    if (kitty_cursor_blink_hook)
+        kitty_cursor_blink_hook(term->win, half, term->ease_blink);
+}
+#endif
+
 /*
  * Likewise with cursor blinks.
  */
@@ -2252,11 +2286,33 @@ static void term_schedule_cblink(Terminal *term)
 #ifdef MOD_PERSO
         term->cfade_run = false;
         term->cfade = 255;
+        if (term->clayer_run)
+            term_clayer_tell(term, 0);
 #endif
         return;
     }
     delay = term->cblink_delay;
 #ifdef MOD_PERSO
+    /* KiTTY: the window blinks the cursor on its layer, plain or eased:
+     * the terminal draws it steady and runs no timer. A restart
+     * (cblink_pending cleared: output, focus) begins a new cycle there. */
+    if (term->cursor_layer) {
+        term->cblinker = true;
+        term->cfade_run = false;
+        term->cfade = 255;
+        if (delay <= 0) {
+            term->cblink_pending = false;
+            if (term->clayer_run)
+                term_clayer_tell(term, 0);
+        } else if (!term->cblink_pending || !term->clayer_run ||
+                   term->clayer_ease != term->ease_blink) {   /* reconfigured */
+            term->cblink_pending = true;
+            term_clayer_tell(term, delay);
+        }
+        return;
+    }
+    if (term->clayer_run)              /* the layer went: no blink there */
+        term_clayer_tell(term, 0);
     /* KiTTY: Ease blinking - no on/off timer, the fade timer steps the
      * cursor's level. A restart (cblink_pending cleared: output, focus)
      * begins a new cycle, opaque. */
@@ -2293,11 +2349,31 @@ static void term_schedule_cblink(Terminal *term)
  * first the level falls from 255 to 0, over the second it rises back, both
  * along the smoothstep curve 3u^2 - 2u^3 (slow at the ends, fast in the
  * middle). The cursor's period is the system caret blink time, the text's
- * TBLINK_DELAY, as without easing. One timer steps both, 30 times a second,
- * and only while one of them fades: a window without focus, a steady
- * cursor, or a screen without blinking text runs no timer at all.
+ * TBLINK_DELAY, as without easing. One timer steps both, 30 times a second
+ * unless the renderer asks for fewer (term_set_fade_rate), and only while
+ * one of them fades: a window without focus, a steady cursor, or a screen
+ * without blinking text runs no timer at all.
  */
 #define KITTY_FADE_STEP (TICKSPERSEC / 30)
+
+/* Every step is a frame: GDI's frames cost the most CPU outside the
+ * terminal, so it takes 15 a second (window.c). */
+void term_set_fade_rate(Terminal *term, int per_second)
+{
+    term->fade_step = per_second > 0 ? TICKSPERSEC / per_second : 0;
+}
+
+/* The window can blink the cursor itself (kitty_cursor_blink_hook): every
+ * cell drawn again, the blink started over in the new way. */
+void term_set_cursor_layer(Terminal *term, bool on)
+{
+    if (term->cursor_layer == on)
+        return;
+    term->cursor_layer = on;
+    term->cblink_pending = false;
+    term_schedule_cblink(term);
+    term_invalidate(term);
+}
 
 static int kitty_fade_level(unsigned long elapsed, int half)
 {
@@ -2336,7 +2412,9 @@ static void term_schedule_fade(Terminal *term)
 {
     if (((term->cfade_run && term->cursor_on) || term->tfade_run) &&
         !term->fade_pending) {
-        term->next_fade = schedule_timer(KITTY_FADE_STEP, term_timer, term);
+        term->next_fade = schedule_timer(
+            term->fade_step > 0 ? term->fade_step : KITTY_FADE_STEP,
+            term_timer, term);
         term->fade_pending = true;
     }
 }
@@ -10238,7 +10316,7 @@ static void do_paint(Terminal *term)
 
 #ifdef MOD_PERSO
     /* KiTTY: which rows this frame walks (kitty_kd_*) */
-    kitty_kd_frame(term, our_curs_y);
+    kitty_kd_frame(term, our_curs_y, our_curs_x);
     /* KiTTY: rows that only moved keep their pixels (see scroll()) */
     if (term->disptop != 0)
         term->shift_state = 0;
@@ -10456,9 +10534,9 @@ static void do_paint(Terminal *term)
             /* 'Real' blinking ? */
             if (term->blink_is_real && (tattr & ATTR_BLINK)) {
 #ifdef MOD_PERSO
+                kblink = true;         /* KiTTY: a row with blinking text */
                 /* KiTTY: Ease blinking - gone at 0, part-faded between */
                 if (term->ease_blink) {
-                    kblink = true;
                     if (term->has_focus && term->tfade_run) {
                         if (term->tfade == 0)
                             tchar = term->ucsdata->unitab_line[(unsigned char)' '];
@@ -10510,8 +10588,8 @@ static void do_paint(Terminal *term)
             newline[j].cc_next = 0;
         }
 #ifdef MOD_PERSO
-        /* KiTTY: Ease blinking - remember the rows with blinking text. A
-         * row walked only in part keeps what it had. */
+        /* KiTTY: blinking text, plain or eased - remember its rows. A row
+         * walked only in part keeps what it had. */
         if (term->kd_blink && i < term->kd_rows) {
             if (kx0 == 0 && kx1 >= term->cols)
                 term->kd_blink[i] = kblink;

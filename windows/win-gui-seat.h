@@ -66,6 +66,12 @@ struct WinGuiSeat {
     bool font_dualwidth, font_varpitch;
     int offset_width, offset_height;
     bool strip_dirty;  /* KiTTY: the mark strip is drawn in the next frame */
+    /* KiTTY: the cursor on the painter's layer (kitty_clayer_*): on = the
+     * terminal knows (term_set_cursor_layer); in = drawing into it now. Per
+     * frame: drawn = the cursor was drawn at `rect`, covered = text was drawn
+     * over the shown cell. shown/at = where the layer stands. */
+    bool clayer_on, clayer_in, clayer_drawn, clayer_covered, clayer_shown;
+    RECT clayer_rect, clayer_at;
     /* KiTTY: the cell the left button went down on, for a link click: a
      * link opens only when the button goes up on that same cell (a click,
      * not a selection dragged onto a link) */

@@ -1711,6 +1711,10 @@
 #define KT_D2D_OVERLAY_SCALING                       "yes, usable for the terminal's picture when scaled"
 #define KT_D2D_OVERLAY_NOT_FORMAT                    "yes, not usable for the terminal's picture"
 #define KT_D2D_OVERLAY_OTHER                         "unknown, another graphics adapter drives this monitor"
+/* the Terminal Window's Event Log, paint-d2d.c (layer_init): whether the
+ * cursor blinks on a composition layer or in frames; %08lX = the failure */
+#define KT_D2D_CURSOR_LAYER_EVENT                    "Direct2D renderer: the cursor blinks on a composition layer"
+#define KT_D2D_CURSOR_LAYER_FAIL_EVENT               "Direct2D renderer: no composition layer for the cursor (0x%08lX), it blinks in frames"
 /* the Terminal Window's Event Log, window.c: the window's font at the start
  * and after each change - the setting, the cell, the face GDI selected */
 #define KT_FONT_EVENT                                "Font: %s, %d pt, cell %d x %d px, GDI face %s, weight %d"

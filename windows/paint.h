@@ -151,6 +151,22 @@ typedef struct KittyPainterVtable {
      * (GDI). window.c then draws that glyph again into the run
      * (wintw_draw_fringe). Direct2D: false, nothing is drawn again. */
     bool (*cuts_fringes)(KittyPainter *p);
+
+    /* KiTTY: the cursor layer - one cell's picture above the frame whose
+     * opacity the compositor animates, so a blinking cursor costs no frames
+     * of ours (Direct2D: a DirectComposition visual; GDI has none, NULL).
+     * layer_ok: the layer can be used (made on the first call).
+     * layer_begin .. layer_end, within a frame: the drawing calls between
+     * them paint the client rectangle `cell` into the layer instead of the
+     * frame (the layer is cleared to transparent first). layer_place: at
+     * the end of a frame, show the layer at `cell` or hide it.
+     * layer_blink: a blink of `half` ms per phase starting now (shown first,
+     * an eased fade when `ease`), 0 = steady. */
+    bool (*layer_ok)(KittyPainter *p);
+    bool (*layer_begin)(KittyPainter *p, const RECT *cell, bool opaque);
+    void (*layer_end)(KittyPainter *p);
+    void (*layer_place)(KittyPainter *p, bool show, const RECT *cell);
+    void (*layer_blink)(KittyPainter *p, int half, bool ease);
 } KittyPainterVtable;
 
 struct KittyPainter {
@@ -201,5 +217,11 @@ void kitty_d2d_occlusion_msg(HWND hwnd);
 #define kp_overlay(p, it, n, clip, bg)   ((p)->vt->overlay((p), (it), (n), (clip), (bg)))
 #define kp_under(p, it, part, bg)        ((p)->vt->under((p), (it), (part), (bg)))
 #define kp_cuts_fringes(p)               ((p)->vt->cuts_fringes(p))
+/* the cursor layer: a painter without one (GDI) answers no and ignores the rest */
+#define kp_layer_ok(p)                   ((p)->vt->layer_ok && (p)->vt->layer_ok(p))
+#define kp_layer_begin(p, cell, op)      ((p)->vt->layer_begin && (p)->vt->layer_begin((p), (cell), (op)))
+#define kp_layer_end(p)                  do { if ((p)->vt->layer_end) (p)->vt->layer_end(p); } while (0)
+#define kp_layer_place(p, show, cell)    do { if ((p)->vt->layer_place) (p)->vt->layer_place((p), (show), (cell)); } while (0)
+#define kp_layer_blink(p, half, ease)    do { if ((p)->vt->layer_blink) (p)->vt->layer_blink((p), (half), (ease)); } while (0)
 
 #endif /* PUTTY_WINDOWS_PAINT_H */
