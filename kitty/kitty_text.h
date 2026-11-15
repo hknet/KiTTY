@@ -1701,6 +1701,16 @@
 /* the Terminal Window's Event Log, paint-d2d.c: the graphics adapter the device runs on */
 #define KT_D2D_ADAPTER_EVENT                         "Direct2D renderer: graphics adapter %s (vendor 0x%04X, device 0x%04X)"
 #define KT_D2D_ADAPTER_SOFT_EVENT                    "Direct2D renderer: graphics adapter %s (vendor 0x%04X, device 0x%04X), software rendering"
+/* the Terminal Window's Event Log, paint-d2d.c: the hardware overlay planes
+ * of the monitor the window opens on (describe_overlays), one of the six
+ * answers in place of %s */
+#define KT_D2D_OVERLAY_EVENT_FMT                     "Direct2D renderer: hardware overlay planes on this monitor: %s"
+#define KT_D2D_OVERLAY_NONE                          "none"
+#define KT_D2D_OVERLAY_YES                           "yes"
+#define KT_D2D_OVERLAY_DIRECT                        "yes, usable for the terminal's picture"
+#define KT_D2D_OVERLAY_SCALING                       "yes, usable for the terminal's picture when scaled"
+#define KT_D2D_OVERLAY_NOT_FORMAT                    "yes, not usable for the terminal's picture"
+#define KT_D2D_OVERLAY_OTHER                         "unknown, another graphics adapter drives this monitor"
 /* the Terminal Window's Event Log, window.c: the window's font at the start
  * and after each change - the setting, the cell, the face GDI selected */
 #define KT_FONT_EVENT                                "Font: %s, %d pt, cell %d x %d px, GDI face %s, weight %d"

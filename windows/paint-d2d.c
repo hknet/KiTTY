@@ -308,6 +308,7 @@ typedef struct D2DPainter {
     D3D11CreateDevice_t create_d3d;    /* bound once, used again to re-create */
     bool force_warp;                   /* the card failed too often: WARP only */
     bool dead;                         /* WARP failed too: no more frames */
+    char *overlay_note;                /* the overlay planes' line, the same way */
     char *adapter_note;                /* the adapter's Event Log line, until the
                                         * window's log takes it (d2d_begin) */
     bool lost;                         /* no device: re-create at the next frame */
@@ -743,6 +744,11 @@ static bool d2d_begin(KittyPainter *p, HDC given)
         do_eventlog(d->adapter_note);
         sfree(d->adapter_note);
         d->adapter_note = NULL;
+    }
+    if (d->overlay_note && kitty_eventlog_ready()) {
+        do_eventlog(d->overlay_note);
+        sfree(d->overlay_note);
+        d->overlay_note = NULL;
     }
     if (d->dead)
         return false;
@@ -2066,6 +2072,61 @@ static void describe_adapter(D2DPainter *d, IDXGIAdapter *adapter)
     }
 }
 
+/* Whether the monitor the window opens on has hardware overlay planes, and
+ * whether the terminal's picture format can go onto one (DXGI 1.3, Windows
+ * 8.1). The compositor may hand a flip-model swap chain to such a plane
+ * instead of composing it, which bears on display faults that only some
+ * drivers show (hknet/KiTTY#88). One line for the Terminal Window's Event
+ * Log at each device creation. A Windows without these interfaces gets no
+ * line. */
+static void describe_overlays(D2DPainter *d, IDXGIAdapter *adapter)
+{
+    HMONITOR mon = MonitorFromWindow(d->hwnd, MONITOR_DEFAULTTONEAREST);
+    IDXGIOutput *out = NULL;
+    IDXGIOutput2 *o2 = NULL;
+    IDXGIOutput3 *o3 = NULL;
+    const char *what;
+    UINT i, flags = 0;
+
+    for (i = 0; IDXGIAdapter_EnumOutputs(adapter, i, &out) == S_OK; i++) {
+        DXGI_OUTPUT_DESC od;
+        if (SUCCEEDED(IDXGIOutput_GetDesc(out, &od)) && od.Monitor == mon)
+            break;
+        IDXGIOutput_Release(out);
+        out = NULL;
+    }
+    if (!out)
+        what = KT_D2D_OVERLAY_OTHER;   /* another adapter drives that monitor */
+    else if (FAILED(IDXGIOutput_QueryInterface(out, &IID_IDXGIOutput2,
+                                               (void **)&o2)))
+        what = NULL;                   /* older than Windows 8.1: no line */
+    else if (!IDXGIOutput2_SupportsOverlays(o2))
+        what = KT_D2D_OVERLAY_NONE;
+    else if (SUCCEEDED(IDXGIOutput_QueryInterface(out, &IID_IDXGIOutput3,
+                                                  (void **)&o3)) &&
+             SUCCEEDED(IDXGIOutput3_CheckOverlaySupport(
+                 o3, DXGI_FORMAT_B8G8R8A8_UNORM, (IUnknown *)d->d3d, &flags)))
+        what = (flags & DXGI_OVERLAY_SUPPORT_FLAG_DIRECT) ? KT_D2D_OVERLAY_DIRECT :
+               (flags & DXGI_OVERLAY_SUPPORT_FLAG_SCALING) ? KT_D2D_OVERLAY_SCALING :
+               KT_D2D_OVERLAY_NOT_FORMAT;
+    else
+        what = KT_D2D_OVERLAY_YES;     /* planes, but no answer for the format */
+    if (o3) IUnknown_Release((IUnknown *)o3);
+    if (o2) IUnknown_Release((IUnknown *)o2);
+    if (out) IDXGIOutput_Release(out);
+    D2D_TRACE("overlays: %s (flags 0x%X)", what ? what : "not reported",
+              (unsigned)flags);
+    if (!what)
+        return;
+    sfree(d->overlay_note);
+    d->overlay_note = dupprintf(KT_D2D_OVERLAY_EVENT_FMT, what);
+    if (kitty_eventlog_ready()) {      /* a re-creation: the log is there */
+        do_eventlog(d->overlay_note);
+        sfree(d->overlay_note);
+        d->overlay_note = NULL;
+    }
+}
+
 #ifdef KITTY_TEST_BUILD_LABEL
 /* #88, KITTY_TEST_D2D_DCOMP: the flip-model chain made for composition and
  * hung on the window through a DirectComposition target with one visual,
@@ -2230,6 +2291,7 @@ static int create_device(D2DPainter *d)
     }
     if (FAILED(hr))
         { failstep = 10; goto done; }
+    describe_overlays(d, adapter);
     if (sd.Flags) {
         IDXGISwapChain2 *sc2 = NULL;
         if (SUCCEEDED(IUnknown_QueryInterface((IUnknown *)d->swap,
@@ -2385,6 +2447,8 @@ static void d2d_destroy(D2DPainter *d)
 #endif
     sfree(d->adapter_note);
     d->adapter_note = NULL;
+    sfree(d->overlay_note);
+    d->overlay_note = NULL;
     badge_free(d);
     release_device(d);
     for (i = 0; i < d->nfb; i++)
