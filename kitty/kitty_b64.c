@@ -1,69 +1,68 @@
 /*
- * Base64 codec used by KiTTY's at-rest secret handling in windows/storage.c
- * (DPAPI blobs, MPW salts). Pure, self-contained functions with no shared
- * state, moved out of storage.c verbatim to shrink that file's divergence from
- * upstream PuTTY. Standard RFC 4648 alphabet, '=' padding; decode returns NULL
- * on malformed input. Callers own the returned malloc'd buffers.
+ * The base64 of KiTTY's at-rest secret handling: DPAPI blobs and
+ * master-password salts in windows/storage.c, kitty_secretstore.c, kitty.c
+ * and kitty_storemove.c.
+ *
+ * No codec of its own: both functions are PuTTY's base64 (utils/base64_*)
+ * behind the interface the callers use - a malloc'd buffer the caller frees.
+ * Encoding is PuTTY's without line breaks: standard RFC 4648 alphabet, '='
+ * padding, byte for byte what the own codec here wrote before, so every
+ * stored value reads as it did.
+ *
+ * Decoding stays strict, because a damaged stored secret must be caught,
+ * not half decoded: whole groups of four, no line breaks, nothing outside the
+ * alphabet, '=' only at the end (base64_valid). Anything else is NULL.
+ * PuTTY's own decoder alone would skip what it cannot read.
  *
  * Base64 is an ENCODING, not a secrecy layer: what protects a stored secret
- * is the DPAPI or master-password wrapping around it, never this. The tree
- * also carries libb64 under kitty/far2l/ (cdecode.c, cencode.c), vendored
- * unchanged with far2l; the two codecs are deliberately not merged, so that
- * a far2l update never touches the secret store's path.
+ * is the DPAPI or master-password wrapping around it, never this. libb64
+ * under kitty/far2l/ (cdecode.c, cencode.c) serves only the far2l
+ * extensions and is not used here, so a far2l update never touches the
+ * secret store's path.
  */
 #include <stdlib.h>
 #include <string.h>
 
+#include "misc.h"
 #include "kitty_b64.h"
 
-static const char ksec_b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 char *ksec_b64_encode(const unsigned char *in, int len)
 {
-    int olen = ((len + 2) / 3) * 4, i, o = 0;
-    char *out = malloc(olen + 1);
-    if (!out) return NULL;
-    for (i = 0; i < len; i += 3) {
-        int n = len - i;
-        unsigned a = in[i], b = n > 1 ? in[i+1] : 0, c = n > 2 ? in[i+2] : 0;
-        out[o++] = ksec_b64[a >> 2];
-        out[o++] = ksec_b64[((a & 3) << 4) | (b >> 4)];
-        out[o++] = n > 1 ? ksec_b64[((b & 15) << 2) | (c >> 6)] : '=';
-        out[o++] = n > 2 ? ksec_b64[c & 63] : '=';
+    strbuf *sb;
+    char *out;
+
+    if (!in || len < 0)
+        return NULL;
+    sb = base64_encode_sb(make_ptrlen(in, (size_t)len), 0);
+    out = malloc(sb->len + 1);
+    if (out) {
+        memcpy(out, sb->s, sb->len);
+        out[sb->len] = '\0';
     }
-    out[o] = '\0';
+    strbuf_free(sb);
     return out;
 }
-int ksec_b64_val(int c)
-{
-    if (c >= 'A' && c <= 'Z') return c - 'A';
-    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
-    if (c >= '0' && c <= '9') return c - '0' + 52;
-    if (c == '+') return 62;
-    if (c == '/') return 63;
-    return -1;
-}
+
 unsigned char *ksec_b64_decode(const char *in, int *outlen)
 {
-    int len = (int)strlen(in), pad = 0, i, o = 0, olen;
+    ptrlen pl;
+    strbuf *sb;
     unsigned char *out;
-    if (len < 4 || (len % 4) != 0) return NULL;
-    if (in[len-1] == '=') pad++;
-    if (in[len-2] == '=') pad++;
-    olen = (len / 4) * 3 - pad;
-    out = malloc(olen > 0 ? olen : 1);
-    if (!out) return NULL;
-    for (i = 0; i < len; i += 4) {
-        int v0 = ksec_b64_val(in[i]), v1 = ksec_b64_val(in[i+1]);
-        int c2 = in[i+2], c3 = in[i+3];
-        int v2 = (c2 == '=') ? 0 : ksec_b64_val(c2);
-        int v3 = (c3 == '=') ? 0 : ksec_b64_val(c3);
-        unsigned trip;
-        if (v0 < 0 || v1 < 0 || (c2 != '=' && v2 < 0) || (c3 != '=' && v3 < 0)) { free(out); return NULL; }
-        trip = ((unsigned)v0 << 18) | ((unsigned)v1 << 12) | ((unsigned)v2 << 6) | (unsigned)v3;
-        if (o < olen) out[o++] = (trip >> 16) & 0xff;
-        if (o < olen) out[o++] = (trip >>  8) & 0xff;
-        if (o < olen) out[o++] =  trip        & 0xff;
+
+    if (!in)
+        return NULL;
+    pl = ptrlen_from_asciz(in);
+    /* base64_valid skips line breaks and accepts a missing final '=';
+     * neither ever comes out of ksec_b64_encode, so neither is let in */
+    if (pl.len < 4 || pl.len % 4 != 0 || strpbrk(in, "\r\n") ||
+        !base64_valid(pl))
+        return NULL;
+    sb = base64_decode_sb(pl);        /* strbuf_new_nm: wiped when freed */
+    out = malloc(sb->len ? sb->len : 1);
+    if (out) {
+        memcpy(out, sb->u, sb->len);
+        *outlen = (int)sb->len;
     }
-    *outlen = olen;
+    strbuf_free(sb);
     return out;
 }

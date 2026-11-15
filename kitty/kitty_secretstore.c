@@ -69,8 +69,8 @@ int kitty_secret_slot(const char *key)
 
 static char *ksec_dup(const char *s) { size_t n = strlen(s) + 1; char *d = malloc(n); if (d) memcpy(d, s, n); return d; }
 
-/* Base64 codec (ksec_b64_encode / ksec_b64_val / ksec_b64_decode) moved to
- * kitty/kitty_b64.c to shrink this file's divergence from upstream. */
+/* Base64 (ksec_b64_encode / ksec_b64_decode): PuTTY's codec behind a
+ * malloc'd interface, in kitty/kitty_b64.c. */
 
 /* Portable-context write policy (kitty.ini [KiTTY] PortablePasswordProtection):
  * "master" (default) -> portable secrets are written MPW2; "dpapi" -> Windows

@@ -743,6 +743,7 @@ windows/test/test_storage_roundtrip.c | (file) | fail_kept_text | 512 | test cod
 windows/test/test_storage_roundtrip.c | (file) | dp_text | 1024 | test code: expected/actual text, size passed
 windows/test/test_storage_roundtrip.c | reg_raw() | path | 600 | test code: registry key path, not a file path: <base>\Sessions\<fixed test session>, snprintf to sizeof
 windows/test/test_storage_roundtrip.c | reg_raw() | raw | 4096 | test code: registry value read with RegGetValueA, size passed
+windows/test/test_storage_roundtrip.c | test_b64_codec() | all | 256 | test code: every byte value 0-255 once as the base64 round-trip input, so the size is the number of byte values
 
 windows/test/test_termenv_hint.c | main() | id | KITTY_TERMENV_HOST_ID_MAX | test code: host id from kitty_termenv_host_id, size passed
 

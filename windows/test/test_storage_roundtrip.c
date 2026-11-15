@@ -108,6 +108,59 @@ static void check(int cond, const char *what)
     if (!cond) failures++;
 }
 
+/* ---------- the at-rest base64 (kitty/kitty_b64.c) ---------- */
+
+/* ksec_b64_* is PuTTY's codec behind a malloc'd interface. Every stored
+ * DPAPI blob and master-password salt was written by the codec it replaced,
+ * so the encoding must be the RFC 4648 one byte for byte, with no line
+ * breaks. The decoder must still refuse what is not a whole, clean base64
+ * string: a damaged stored secret is caught, never half decoded. */
+static void test_b64_codec(void)
+{
+    static const struct { const char *raw, *b64; } v[] = {
+        { "f", "Zg==" }, { "fo", "Zm8=" }, { "foo", "Zm9v" },
+        { "foob", "Zm9vYg==" }, { "fooba", "Zm9vYmE=" }, { "foobar", "Zm9vYmFy" },
+    };
+    static const char *const bad[] = {
+        "", "Zg", "Zg=", "Zm9", "Zm9vY",         /* not whole groups of four */
+        "Zm9v\n", "Zm9v\r\nZm9v", "Zm\n9v",       /* line breaks */
+        "Zm9*", "Zm9v Zm9v", "Zm9v-_==",          /* outside the alphabet */
+        "Z===", "====", "Zg==Zg==", "Zm=v",       /* '=' where it cannot be */
+    };
+    unsigned char all[256], *d;
+    char *e, what[96];
+    int i, n;
+
+    for (i = 0; i < (int)(sizeof(v) / sizeof(v[0])); i++) {
+        e = ksec_b64_encode((const unsigned char *)v[i].raw, (int)strlen(v[i].raw));
+        snprintf(what, sizeof(what), "b64 encode \"%s\" -> %s", v[i].raw, v[i].b64);
+        check(e && !strcmp(e, v[i].b64), what);
+        free(e);
+        n = -1;
+        d = ksec_b64_decode(v[i].b64, &n);
+        snprintf(what, sizeof(what), "b64 decode %s -> \"%s\"", v[i].b64, v[i].raw);
+        check(d && n == (int)strlen(v[i].raw) && !memcmp(d, v[i].raw, n), what);
+        free(d);
+    }
+    for (i = 0; i < 256; i++)
+        all[i] = (unsigned char)i;
+    e = ksec_b64_encode(all, 256);
+    check(e && strlen(e) == 344 && !strpbrk(e, "\r\n"),
+          "b64 encode of 256 bytes: 344 characters, no line break");
+    n = -1;
+    d = e ? ksec_b64_decode(e, &n) : NULL;
+    check(d && n == 256 && !memcmp(d, all, 256), "b64 round trip of all 256 byte values");
+    free(d);
+    free(e);
+    for (i = 0; i < (int)(sizeof(bad) / sizeof(bad[0])); i++) {
+        n = -1;
+        d = ksec_b64_decode(bad[i], &n);
+        snprintf(what, sizeof(what), "b64 decode refuses \"%s\"", bad[i]);
+        check(d == NULL, what);
+        free(d);
+    }
+}
+
 /* ---------- registry backend (DPAPI) ---------- */
 
 #define RSESS   "zz-kitty-selftest-storage"
@@ -2968,6 +3021,8 @@ int main(int argc, char **argv)
     }
     kitty_inifile_pin(noini);
 
+    printf("== the at-rest base64 (PuTTY's codec) ==\n");
+    test_b64_codec();
     printf("== registry backend (DPAPI) ==\n");
     test_registry();
     printf("== portable backend (master password) ==\n");
