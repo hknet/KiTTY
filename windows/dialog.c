@@ -26,6 +26,7 @@
 #include <commdlg.h>
 #include <shellapi.h>
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
+#include "../kitty/kitty_oldwin.h"   /* kitty_api_from: AdjustWindowRectExForDpi */
 #include "../kitty/kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "../kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly, readonly=yes */
 #include "kitty_gui.h"
@@ -2638,15 +2639,57 @@ void kitty_cfgbox_apply_fixed_size(void)
      * The frame changes thickness, so the CLIENT area would change size
      * inside the same outer rectangle - and every panel is laid out to the
      * client width it was built at. Rather than lay 40-odd panels out again
-     * (the DPI change's road), keep the client exactly as it was: measure
-     * what the frame took or gave, and move the outer edge by that much.
-     * Nothing inside moves, so nothing inside needs measuring.
+     * (the DPI change's road), keep the client exactly as it was.
+     *
+     * In ONE SetWindowPos: the frame change and the outer size that keeps
+     * the client, computed from the two styles' frames at the window's DPI.
+     * The client never changes, so no WM_SIZE runs. Two steps (frame first,
+     * then the outer edge corrected by what the client gained) sent two
+     * WM_SIZEs: each moved the "saved as you change them" footer and laid
+     * the fill panels out again, and the footer's first position stayed on
+     * the screen as a second copy of its text.
      */
     GetClientRect(hwnd, &before);
     SetWindowLongPtr(hwnd, GWL_STYLE, want);
-    SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
-                 SWP_FRAMECHANGED);
+    if (GetWindowRect(hwnd, &outer)) {
+        typedef BOOL (WINAPI *awrd_t)(LPRECT, DWORD, BOOL, DWORD, UINT);
+        static awrd_t awrd;
+        static int tried;
+        DWORD ex = (DWORD)GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+        RECT fo = { 0, 0, 0, 0 }, fw = { 0, 0, 0, 0 };
+        BOOL ok;
+        if (!tried) {
+            awrd = (awrd_t)kitty_api_from(GetModuleHandleA("user32.dll"),
+                                          "user32.dll",
+                                          "AdjustWindowRectExForDpi",
+                                          KITTY_API_OPTIONAL, KT_WINFEAT_DPI);
+            tried = 1;
+        }
+        if (awrd) {
+            UINT dpi = kitty_cfg_window_dpi(hwnd);
+            ok = awrd(&fo, (DWORD)style, FALSE, ex, dpi) &&
+                 awrd(&fw, (DWORD)want, FALSE, ex, dpi);
+        } else {
+            ok = AdjustWindowRectEx(&fo, (DWORD)style, FALSE, ex) &&
+                 AdjustWindowRectEx(&fw, (DWORD)want, FALSE, ex);
+        }
+        kitty_cfg_lock_bypass = true;
+        if (ok)
+            SetWindowPos(hwnd, NULL, 0, 0,
+                         (outer.right - outer.left) +
+                         (fw.right - fw.left) - (fo.right - fo.left),
+                         (outer.bottom - outer.top) +
+                         (fw.bottom - fw.top) - (fo.bottom - fo.top),
+                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE |
+                         SWP_FRAMECHANGED);
+        else
+            SetWindowPos(hwnd, NULL, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                         SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        kitty_cfg_lock_bypass = false;
+    }
+    /* Still off (a frame the computation did not predict): the old
+     * correction, by what the client gained or lost. */
     GetClientRect(hwnd, &after);
     if ((after.right != before.right || after.bottom != before.bottom) &&
         GetWindowRect(hwnd, &outer)) {

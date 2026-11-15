@@ -7,6 +7,15 @@ Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md);
 for the full feature list see [FEATURES.md](FEATURES.md).
 
+## 0.85.1.22-beta — unreleased
+
+### Fixed
+
+- Application > Config Window: ticking or clearing **Lock window size** left
+  a second copy of the panel's "Settings here are saved as you change them."
+  line on the screen and laid the panels out again. The box now changes its
+  frame in one step.
+
 ## 0.85.1.21-beta — 2026-11-14
 
 ### New
