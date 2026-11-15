@@ -2554,16 +2554,22 @@ static int kitty_coe_pending_exit = -1;
  * So the quit is held here (the first exit code wins), the loop is asked to end
  * with WM_CANCELMODE, and the main loop posts the quit once the loop is over. */
 static bool kitty_in_menu_loop, kitty_in_move_loop;
+/* Another window of ours in Windows' move/size loop: the Event Log, a notice,
+ * any modeless box (kitty_movesize_hookproc starts the pump for it, the pump stops
+ * itself once that loop is over). NULL when there is none. */
+static HWND kitty_other_move_hwnd;
 static int kitty_quit_after_modal = -1;
 /* KiTTY scroll by moving pixels: the terminal's hook (below, beside the draw
  * context functions) */
 static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines);
 static void kitty_post_quit(HWND hwnd, int code)
 {
-    if (kitty_in_menu_loop || kitty_in_move_loop) {
+    if (kitty_in_menu_loop || kitty_in_move_loop || kitty_other_move_hwnd) {
         if (kitty_quit_after_modal < 0)
             kitty_quit_after_modal = code;
-        if (hwnd)
+        if (kitty_other_move_hwnd)     /* that window's loop must end */
+            PostMessage(kitty_other_move_hwnd, WM_CANCELMODE, 0, 0);
+        else if (hwnd)
             PostMessage(hwnd, WM_CANCELMODE, 0, 0);
         return;
     }
@@ -3782,7 +3788,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         /* a close called for inside a menu or move/size loop (see
          * kitty_post_quit): that loop is over when we are back here */
         if (kitty_quit_after_modal >= 0 &&
-            !kitty_in_menu_loop && !kitty_in_move_loop) {
+            !kitty_in_menu_loop && !kitty_in_move_loop &&
+            !kitty_other_move_hwnd) {
             int code = kitty_quit_after_modal;
             kitty_quit_after_modal = -1;
             PostQuitMessage(code);
@@ -6173,6 +6180,46 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             gui_timing_pump();
             kitty_pace_frame_pump();
             run_toplevel_callbacks();
+            {
+                /* the handle-based backends (Local, serial, a proxy
+                 * command): their data waits on the handle list, which only
+                 * the main loop served - their sessions stood still during
+                 * a move or a menu. Served here the same way, a bounded
+                 * number of handles per tick. */
+                int k;
+                for (k = 0; k < 16; k++) {
+                    HandleWaitList *hwl = get_handle_wait_list();
+                    DWORD n = hwl->nhandles ?
+                        WaitForMultipleObjects(hwl->nhandles, hwl->handles,
+                                               FALSE, 0) : WAIT_TIMEOUT;
+                    bool hit = n - WAIT_OBJECT_0 < (DWORD)hwl->nhandles;
+                    if (hit)
+                        handle_wait_activate(hwl, (int)(n - WAIT_OBJECT_0));
+                    handle_wait_list_free(hwl);
+                    if (!hit)
+                        break;
+                    run_toplevel_callbacks();
+                }
+            }
+            /* started for another window's move (kitty_movesize_hookproc): that
+             * window gets no message here when its loop ends, so the pump
+             * checks with GetGUIThreadInfo whether the thread is still in one */
+            if (kitty_other_move_hwnd && !kitty_in_menu_loop &&
+                !kitty_in_move_loop) {
+                GUITHREADINFO gti;
+#ifdef KITTY_TEST_BUILD_LABEL
+                /* for the move-loop harness: pump ticks for another window */
+                SetPropA(hwnd, "KiTTY.test.otherpump", (HANDLE)((ULONG_PTR)
+                         GetPropA(hwnd, "KiTTY.test.otherpump") + 1));
+#endif
+                memset(&gti, 0, sizeof(gti));
+                gti.cbSize = sizeof(gti);
+                if (!GetGUIThreadInfo(GetCurrentThreadId(), &gti) ||
+                    !(gti.flags & (GUI_INMOVESIZE | GUI_INMENUMODE))) {
+                    kitty_other_move_hwnd = NULL;
+                    KillTimer(hwnd, TIMER_MODALPUMP);
+                }
+            }
             return 0;
         }
         if ((UINT_PTR)wParam == TIMER_RESIZEREST) {
@@ -14061,8 +14108,49 @@ bool kitty_hk00_window(Seat *seat, HWND *hwnd, Terminal **term,
     return true;
 }
 
+/* Another window of ours starts a move or a resize by the mouse or the
+ * keyboard (the Event Log, a notice, any modeless box). Windows' move/size
+ * loop then owns the thread until it ends, and our main loop - where network
+ * data is digested and the terminal updated - is parked: the terminal stood
+ * still while the Event Log was dragged. The terminal's own pump timer
+ * (TIMER_MODALPUMP, as for its own move and its menus) does the work
+ * meanwhile. Windows sends every window WM_ENTERSIZEMOVE and WM_EXITSIZEMOVE
+ * around that loop. A WH_CALLWNDPROC hook on this thread sees them for all
+ * our windows. The CBT notification HCBT_MOVESIZE did not come for a move
+ * begun from the window's menu. The terminal window's own move is left to
+ * its WM_ENTERSIZEMOVE. */
+static HHOOK kitty_movesize_hook;
+static LRESULT CALLBACK kitty_movesize_hookproc(int code, WPARAM wp, LPARAM lp)
+{
+    const CWPSTRUCT *cwp = (const CWPSTRUCT *)lp;
+    if (code == HC_ACTION && cwp &&
+        (cwp->message == WM_ENTERSIZEMOVE || cwp->message == WM_EXITSIZEMOVE) &&
+        kitty_active_wgs && kitty_active_wgs->term_hwnd &&
+        cwp->hwnd != kitty_active_wgs->term_hwnd) {
+        HWND t = kitty_active_wgs->term_hwnd;
+        if (cwp->message == WM_ENTERSIZEMOVE) {
+            kitty_other_move_hwnd = cwp->hwnd;
+            SetTimer(t, TIMER_MODALPUMP, 16, NULL);
+#ifdef KITTY_TEST_BUILD_LABEL
+            /* for the move-loop harness: how often a move began */
+            SetPropA(t, "KiTTY.test.movesize", (HANDLE)((ULONG_PTR)
+                     GetPropA(t, "KiTTY.test.movesize") + 1));
+#endif
+        } else if (cwp->hwnd == kitty_other_move_hwnd) {
+            kitty_other_move_hwnd = NULL;
+            if (!kitty_in_menu_loop && !kitty_in_move_loop)
+                KillTimer(t, TIMER_MODALPUMP);
+        }
+    }
+    return CallNextHookEx(kitty_movesize_hook, code, wp, lp);
+}
+
 void kitty_set_active_seat(WinGuiSeat *wgs) {
     kitty_active_wgs = wgs;
+    if (!kitty_movesize_hook)          /* once per process, this thread */
+        kitty_movesize_hook = SetWindowsHookEx(WH_CALLWNDPROC,
+                                               kitty_movesize_hookproc, NULL,
+                                               GetCurrentThreadId());
     conf = wgs ? wgs->conf : NULL;
     /* Track the active terminal hwnd so KiTTY keystroke-injection paths
      * (login script, special commands, input box) have a valid target.

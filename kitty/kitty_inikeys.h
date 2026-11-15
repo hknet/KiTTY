@@ -373,6 +373,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KR_DLGPOS_CLIHELP                   "CliHelp"
 #define KR_DLGPOS_CONFIGBOX                 "ConfigBox"
 #define KR_DLGPOS_MANAGE                    "ManageSessions"
+#define KR_DLGPOS_EVENTLOG                  "EventLog"
 /* kageant's (names kept from before, so remembered places stay) */
 #define KR_DLGPOS_KA_ABOUT                  "kageantAbout"
 #define KR_DLGPOS_KA_HELLOPROTECT           "kageantHelloProtect"

@@ -27,6 +27,7 @@
 #include <shellapi.h>
 #include "../kitty/kitty_oldwin_reg.h"   /* XP: post-XP APIs via oldwin */
 #include "../kitty/kitty_oldwin.h"   /* kitty_api_from: AdjustWindowRectExForDpi */
+#include "../kitty/kitty_auxpos.h"   /* the Event Log's place and size */
 #include "../kitty/kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "../kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly, readonly=yes */
 #include "kitty_gui.h"
@@ -575,6 +576,31 @@ static void logbox_layout(HWND hwnd)
     MoveWindow(btnclear, left + 2*(bw + gap), btop, bw, bh, true);
 }
 
+/* KiTTY: the smallest Event Log window that still works: the three buttons
+ * in a row with logbox_layout's margins and gaps, and three rows of the log
+ * above them. Measured from the controls themselves, so it follows the
+ * window's DPI. In window pixels, for WM_GETMINMAXINFO and the size memory. */
+static int logbox_minw, logbox_minh;
+static void logbox_min_size(HWND hwnd)
+{
+    RECT rb, wr, cr;
+    HWND btnok = GetDlgItem(hwnd, IDOK);
+    int bw, bh, m, gap, row, cw, ch;
+    if (!btnok || !GetWindowRect(btnok, &rb) || !GetWindowRect(hwnd, &wr) ||
+        !GetClientRect(hwnd, &cr))
+        return;
+    bw = rb.right - rb.left; bh = rb.bottom - rb.top;
+    m = bh / 3; gap = bw / 4;
+    row = (int)SendDlgItemMessage(hwnd, IDN_LIST, LB_GETITEMHEIGHT, 0, 0);
+    if (row <= 0)
+        row = bh;
+    cw = 3 * bw + 2 * gap + 2 * m;
+    ch = m + 3 * row + GetSystemMetrics(SM_CYHSCROLL) + 2 * m + bh + m;
+    /* the frame and title bar, as the window has them now */
+    logbox_minw = cw + (wr.right - wr.left) - (cr.right - cr.left);
+    logbox_minh = ch + (wr.bottom - wr.top) - (cr.bottom - cr.top);
+}
+
 /* KiTTY: the Event Log's title carries the terminal window's title, so it
  * is clear which window the log belongs to. window.c hands every new
  * window title over (kitty_logbox_retitle); the log keeps a copy for when
@@ -632,17 +658,31 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
         update_logbox_horizontal_extent(hwnd);
 
         logbox_layout(hwnd);
+        /* KiTTY: where and how big it was last left on this monitor layout;
+         * the first time, the template's place and size */
+        logbox_min_size(hwnd);
+        kitty_auxpos_restore(hwnd, KR_DLGPOS_EVENTLOG, 1,
+                             logbox_minw, logbox_minh);
         return 1;
       }
+      case WM_DESTROY:
+        kitty_auxpos_save(hwnd, KR_DLGPOS_EVENTLOG);   /* KiTTY */
+        return 0;
+      case WM_DPICHANGED:
+        logbox_min_size(hwnd);         /* KiTTY: the buttons were rescaled */
+        return 0;
       case WM_SIZE:
         if (wParam != SIZE_MINIMIZED)
             logbox_layout(hwnd);
         return 0;
       case WM_GETMINMAXINFO: {
-        /* Don't let it shrink below a readable minimum. */
+        /* KiTTY: the three buttons in a row and a few rows of the log, at
+         * the window's DPI (logbox_min_size), not fixed pixels */
         MINMAXINFO *mmi = (MINMAXINFO *)lParam;
-        mmi->ptMinTrackSize.x = 320;
-        mmi->ptMinTrackSize.y = 200;
+        if (logbox_minw > 0) {
+            mmi->ptMinTrackSize.x = logbox_minw;
+            mmi->ptMinTrackSize.y = logbox_minh;
+        }
         return 0;
       }
       case WM_MEASUREITEM: {

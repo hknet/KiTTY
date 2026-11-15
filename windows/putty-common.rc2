@@ -95,7 +95,7 @@ END
 /* Accelerators used: co */
 /* KiTTY: larger default + WS_THICKFRAME/WS_MAXIMIZEBOX (resizable; LogProc
  * lays the controls out on WM_SIZE, so the coords here are only the start). */
-IDD_LOGBOX DIALOGEX DISCARDABLE 100, 20, 460, 219
+IDD_LOGBOX DIALOGEX DISCARDABLE 100, 20, 320, 140
 STYLE WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX
 CAPTION "PuTTY Event Log"
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -105,16 +105,16 @@ BEGIN
      * the arrow keys move rightwards. The coordinates below only matter until
      * WM_INITDIALOG lays them out; they are kept in step to avoid misleading
      * anyone reading the template. */
-    DEFPUSHBUTTON "&Close", IDOK, 107, 202, 44, 14
-    PUSHBUTTON "C&opy", IDN_COPY, 161, 202, 44, 14
-    PUSHBUTTON "C&lear", IDN_CLEAR, 215, 202, 44, 14
+    DEFPUSHBUTTON "&Close", IDOK, 83, 123, 44, 14
+    PUSHBUTTON "C&opy", IDN_COPY, 138, 123, 44, 14
+    PUSHBUTTON "C&lear", IDN_CLEAR, 193, 123, 44, 14
     /* KiTTY: WS_TABSTOP - without it the list is not in the tab order at all
      * (upstream's line lacks it too), so Tab cycled around the three buttons
      * and could never reach the log itself. Last in the template, so the
      * cycle reads Close, Copy, Clear, log. LBS_OWNERDRAWFIXED: LogProc draws
      * the rows itself, a notable line marked. LBS_HASSTRINGS keeps each
      * row's text readable as logged. */
-    LISTBOX IDN_LIST, 3, 3, 454, 196, LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_USETABSTOPS | WS_VSCROLL | WS_HSCROLL | LBS_EXTENDEDSEL | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT | WS_TABSTOP
+    LISTBOX IDN_LIST, 3, 3, 314, 117, LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_USETABSTOPS | WS_VSCROLL | WS_HSCROLL | LBS_EXTENDEDSEL | LBS_NOINTEGRALHEIGHT | LBS_WANTKEYBOARDINPUT | WS_TABSTOP
 END
 
 /* No accelerators used */
