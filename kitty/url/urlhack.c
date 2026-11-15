@@ -1,8 +1,25 @@
 /*
- * HACK: PuttyTray / Nutty
- * Hyperlink stuff: CORE FILE! Don't forget to COPY IT TO THE NEXT VERSION
+ * urlhack.c - the link regions of a terminal window and opening a link.
+ *
+ * kitty_url.c copies the visible text into one buffer here (urlhack_reset,
+ * urlhack_putchar). The matches of the URL expression in it become link
+ * regions in screen cells (urlhack_add_link_region). The mouse code checks
+ * against those regions whether a cell lies in a link
+ * (urlhack_is_in_link_region, urlhack_get_link_bounds). A click opens the link through the shell or the
+ * configured browser (urlhack_launch_url). A link that does not open is
+ * reported in the notice window.
+ *
+ * The expression is the session's choice: the default (kitty_url_regex.h),
+ * the looser "liberal" one below, or the user's own. A custom one that does
+ * not compile falls back to the default and reports this in a notice and in the
+ * Terminal Window's Event Log. The engine is Henry Spencer's regexp
+ * (re_lib/regexp.c), which has no {m,n} counts.
+ *
+ * Origin: the hyperlink patch of PuttyTray / Nutty, which KiTTY carried.
  */
-/* first: it pulls in putty.h, whose winsock2.h must precede windows.h */
+/* kitty_gui.h before <windows.h>: it brings in putty.h and with it
+ * winsock2.h, which has to come before windows.h (windows.h alone pulls in
+ * the old winsock.h, which clashes with it). */
 #include "kitty_gui.h"   /* do_eventlog: a custom pattern that does not compile, in the Terminal Window's Event Log */
 #include <windows.h>
 #include <string.h>

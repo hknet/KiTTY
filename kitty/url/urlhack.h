@@ -1,6 +1,8 @@
 /*
- * HACK: PuttyTray / Nutty
- * Hyperlink stuff: CORE FILE! Don't forget to COPY IT TO THE NEXT VERSION
+ * urlhack.h - the link regions of a terminal window and opening a link
+ * (urlhack.c, whose header comment describes how they work together).
+ *
+ * Origin: the hyperlink patch of PuttyTray / Nutty, which KiTTY carried.
  */
 #ifndef _URLHACK_H
 #define _URLHACK_H
