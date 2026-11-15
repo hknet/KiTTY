@@ -648,6 +648,74 @@ void kitty_logbox_retitle(const wchar_t *term_title)
         logbox_set_title(logbox);
 }
 
+/* KiTTY: the Event Log's list scrolls without Windows' smooth scrolling.
+ * That animation runs inside the list's own scroll call and hands out no
+ * message until it is over: every click on an arrow or the track and every
+ * turn of the wheel held the terminal for its length. Here the arrows, the
+ * track and the wheel move the top row at once with the list's drawing off.
+ * The thumb is left to the list. */
+static WNDPROC logbox_list_oldproc;
+static int logbox_list_wheel;          /* the wheel's rest below one notch */
+
+static int logbox_list_page(HWND lst)
+{
+    int ih = (int)SendMessage(lst, LB_GETITEMHEIGHT, 0, 0);
+    RECT rc;
+    int page;
+    GetClientRect(lst, &rc);
+    page = ih > 0 ? (rc.bottom - rc.top) / ih : 1;
+    return page < 1 ? 1 : page;
+}
+
+static void logbox_list_top(HWND lst, int top)
+{
+    int max = (int)SendMessage(lst, LB_GETCOUNT, 0, 0) - logbox_list_page(lst);
+    if (top > max)
+        top = max;
+    if (top < 0)
+        top = 0;
+    if (top == (int)SendMessage(lst, LB_GETTOPINDEX, 0, 0))
+        return;
+    SendMessage(lst, WM_SETREDRAW, FALSE, 0);
+    SendMessage(lst, LB_SETTOPINDEX, top, 0);
+    SendMessage(lst, WM_SETREDRAW, TRUE, 0);
+    RedrawWindow(lst, NULL, NULL, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME);
+}
+
+static LRESULT CALLBACK logbox_list_proc(HWND lst, UINT msg,
+                                         WPARAM wParam, LPARAM lParam)
+{
+    if (msg == WM_VSCROLL) {
+        int top = (int)SendMessage(lst, LB_GETTOPINDEX, 0, 0);
+        int page = logbox_list_page(lst);
+        switch (LOWORD(wParam)) {
+          case SB_LINEUP:   logbox_list_top(lst, top - 1); return 0;
+          case SB_LINEDOWN: logbox_list_top(lst, top + 1); return 0;
+          case SB_PAGEUP:   logbox_list_top(lst, top - page); return 0;
+          case SB_PAGEDOWN: logbox_list_top(lst, top + page); return 0;
+          case SB_TOP:      logbox_list_top(lst, 0); return 0;
+          case SB_BOTTOM:
+            logbox_list_top(lst, (int)SendMessage(lst, LB_GETCOUNT, 0, 0));
+            return 0;
+        }
+    } else if (msg == WM_MOUSEWHEEL) {
+        UINT lines = 3;
+        int notches;
+        SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines, 0);
+        logbox_list_wheel += GET_WHEEL_DELTA_WPARAM(wParam);
+        notches = logbox_list_wheel / WHEEL_DELTA;
+        logbox_list_wheel -= notches * WHEEL_DELTA;
+        if (notches) {
+            int step = lines == WHEEL_PAGESCROLL ? logbox_list_page(lst) :
+                       (int)lines;
+            logbox_list_top(lst, (int)SendMessage(lst, LB_GETTOPINDEX, 0, 0) -
+                                 notches * step);
+        }
+        return 0;
+    }
+    return CallWindowProc(logbox_list_oldproc, lst, msg, wParam, lParam);
+}
+
 static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
                                 WPARAM wParam, LPARAM lParam)
 {
@@ -657,8 +725,16 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
       case WM_INITDIALOG: {
         logbox_set_title(hwnd);           /* KiTTY: with the window's title */
         logbox_icon(hwnd);                /* KiTTY: the terminal's icon */
+        {                                 /* KiTTY: no smooth scrolling */
+            HWND lst = GetDlgItem(hwnd, IDN_LIST);
+            WNDPROC old = (WNDPROC)SetWindowLongPtr(
+                lst, GWLP_WNDPROC, (LONG_PTR)logbox_list_proc);
+            if (old != logbox_list_proc)
+                logbox_list_oldproc = old;
+            logbox_list_wheel = 0;
+        }
 
-        static int tabs[4] = { 78, 108 };
+        static int tabs[4] = { 94, 124 };   /* KiTTY: the time has milliseconds */
         SendDlgItemMessage(hwnd, IDN_LIST, LB_SETTABSTOPS, 2,
                            (LPARAM) tabs);
 
@@ -765,7 +841,7 @@ static INT_PTR CALLBACK LogProc(HWND hwnd, UINT msg,
             }
         }
         of = (HFONT)SelectObject(di->hDC, notable_row && bold ? bold : base);
-        SetRect(&tr, 78, 0, 108, 0);       /* the list's two tab stops */
+        SetRect(&tr, 94, 0, 124, 0);       /* the list's two tab stops */
         MapDialogRect(hwnd, &tr);
         tabpx[0] = tr.left;
         tabpx[1] = tr.right;
@@ -4831,11 +4907,14 @@ static void win_gui_eventlog(LogPolicy *lp, const char *string)
 {
     char timebuf[40];
     char **location;
-    struct tm tm;
+    SYSTEMTIME now;
     bool notable;
 
-    tm=ltime();
-    strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S\t", &tm);
+    /* KiTTY: with milliseconds, so the lines of one second keep apart */
+    GetLocalTime(&now);
+    snprintf(timebuf, sizeof(timebuf), "%04d-%02d-%02d %02d:%02d:%02d.%03d\t",
+             now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
+             now.wSecond, now.wMilliseconds);
 
 #ifdef MOD_NETDEBUG
     /* KiTTY network-debug build: tee every event-log line - which carries the

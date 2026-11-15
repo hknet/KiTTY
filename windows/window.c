@@ -2558,7 +2558,8 @@ static int kitty_coe_pending_exit = -1;
  * So the quit is held here (the first exit code wins), the loop is asked to end
  * with WM_CANCELMODE, and the main loop posts the quit once the loop is over. */
 static bool kitty_in_menu_loop, kitty_in_move_loop;
-/* Another window of ours in Windows' move/size loop: the Event Log, a notice,
+/* Another window of ours in Windows' move/size loop or in a scroll bar's
+ * loop: the Event Log, a notice,
  * any modeless box (kitty_movesize_hookproc starts the pump for it, the pump stops
  * itself once that loop is over). NULL when there is none. */
 static HWND kitty_other_move_hwnd;
@@ -6250,9 +6251,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
 #ifdef MOD_PERSO
         if ((UINT_PTR)wParam == TIMER_MODALPUMP) {
             kitty_modal_pump();        /* inside a modal loop */
-            /* started for another window's move (kitty_movesize_hookproc): that
-             * window gets no message here when its loop ends, so the pump
-             * checks with GetGUIThreadInfo whether the thread is still in one */
+            /* started for another window's move or scroll
+             * (kitty_movesize_hookproc): that window gets no message here
+             * when its loop ends, so the pump checks with GetGUIThreadInfo
+             * whether the thread is still in one. A scroll loop holds the
+             * mouse capture for that window or its scroll bar control. */
             if (kitty_other_move_hwnd && !kitty_in_menu_loop &&
                 !kitty_in_move_loop) {
                 GUITHREADINFO gti;
@@ -6264,7 +6267,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 memset(&gti, 0, sizeof(gti));
                 gti.cbSize = sizeof(gti);
                 if (!GetGUIThreadInfo(GetCurrentThreadId(), &gti) ||
-                    !(gti.flags & (GUI_INMOVESIZE | GUI_INMENUMODE))) {
+                    (!(gti.flags & (GUI_INMOVESIZE | GUI_INMENUMODE)) &&
+                     !(gti.hwndCapture &&
+                       (gti.hwndCapture == kitty_other_move_hwnd ||
+                        IsChild(kitty_other_move_hwnd, gti.hwndCapture))))) {
                     kitty_other_move_hwnd = NULL;
                     KillTimer(hwnd, TIMER_MODALPUMP);
                 }
@@ -14180,11 +14186,40 @@ static HHOOK kitty_movesize_hook;
 static LRESULT CALLBACK kitty_movesize_hookproc(int code, WPARAM wp, LPARAM lp)
 {
     const CWPSTRUCT *cwp = (const CWPSTRUCT *)lp;
-    /* each step of a drag, for any window of ours (the terminal's own
-     * included): the pump, as the main loop runs after every message */
+    /* A scroll bar of another window of ours held by the mouse (the Event
+     * Log's list): Windows' scroll loop owns the thread as the move loop
+     * does. A window's own scroll bar starts it with WM_SYSCOMMAND SC_VSCROLL
+     * / SC_HSCROLL (a thumb held still sends nothing else), every step sends
+     * WM_VSCROLL / WM_HSCROLL, the end SB_ENDSCROLL. The terminal's own
+     * scroll bar is left as it was: output arriving there would move the
+     * view being dragged. */
+    if (code == HC_ACTION && cwp &&
+        (cwp->message == WM_VSCROLL || cwp->message == WM_HSCROLL ||
+         (cwp->message == WM_SYSCOMMAND &&
+          ((cwp->wParam & 0xFFF0) == SC_VSCROLL ||
+           (cwp->wParam & 0xFFF0) == SC_HSCROLL))) &&
+        kitty_active_wgs && kitty_active_wgs->term_hwnd &&
+        cwp->hwnd != kitty_active_wgs->term_hwnd) {
+        HWND t = kitty_active_wgs->term_hwnd;
+        if (cwp->message != WM_SYSCOMMAND &&
+            LOWORD(cwp->wParam) == SB_ENDSCROLL) {
+            if (cwp->hwnd == kitty_other_move_hwnd) {
+                kitty_other_move_hwnd = NULL;
+                if (!kitty_in_menu_loop && !kitty_in_move_loop)
+                    KillTimer(t, TIMER_MODALPUMP);
+            }
+        } else if (!kitty_other_move_hwnd) {
+            kitty_other_move_hwnd = cwp->hwnd;
+            SetTimer(t, TIMER_MODALPUMP, KITTY_MODALPUMP_MS, NULL);
+        }
+    }
+    /* each step of a drag or a scroll, for any window of ours (the
+     * terminal's own included): the pump, as the main loop runs after every
+     * message */
     if (code == HC_ACTION && cwp &&
         (cwp->message == WM_MOVING || cwp->message == WM_SIZING ||
-         cwp->message == WM_WINDOWPOSCHANGED) &&
+         cwp->message == WM_WINDOWPOSCHANGED ||
+         cwp->message == WM_VSCROLL || cwp->message == WM_HSCROLL) &&
         (kitty_in_move_loop || kitty_other_move_hwnd))
         kitty_modal_pump_due(0);
     if (code == HC_ACTION && cwp &&

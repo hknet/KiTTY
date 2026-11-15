@@ -16,6 +16,8 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   kitty graphics and far2l's extensions are dropped, OSC 1 and OSC 2 arrive
   as OSC 0. For far2l: SSH into the WSL distribution while it is kept
   running, or `far2l --tty --nodetect=f` in a Local session.
+- The Terminal Window's Event Log shows the time of each line with
+  milliseconds, so the lines of one second keep apart.
 
 ### Fixed
 
@@ -30,6 +32,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   made much smaller than before.
 - A minimised terminal kept its cursor blinking, one frame a second that
   nobody saw. The blink now stops while the window is minimised.
+- Scrolling the Terminal Window's Event Log stopped the terminal: while its
+  scroll bar was held and for every click on an arrow or the track and
+  every turn of the wheel. The terminal now keeps showing output. The Event
+  Log's list moves at once, without Windows' smooth scrolling.
 
 ## 0.85.1.21-beta — 2026-11-14
 
