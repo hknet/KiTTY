@@ -202,6 +202,49 @@ static const IDWriteTextAnalysisSourceVtbl src_vt = {
     src_qi, src_ref, src_ref, src_at, src_before, src_dir, src_locale, src_numsub
 };
 
+#ifdef KITTY_TEST_BUILD_LABEL
+/* Test builds, hknet/KiTTY#88: the slots of the three DirectComposition
+ * interfaces the composition presentation calls (KITTY_TEST_D2D_DCOMP).
+ * mingw's dcomp.h does not compile as C. The vtable order is the binary one
+ * mingw's non-MSVC branch documents (an overloaded method's two slots: the
+ * IDCompositionAnimation* one first, then the float one), the same layout
+ * scripts/probes/dcomp_layered_probe.c runs with. */
+typedef struct KDcDevice KDcDevice;
+typedef struct KDcTarget KDcTarget;
+typedef struct KDcVisual KDcVisual;
+typedef struct {
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(KDcDevice *, REFIID, void **);
+    ULONG (STDMETHODCALLTYPE *AddRef)(KDcDevice *);
+    ULONG (STDMETHODCALLTYPE *Release)(KDcDevice *);
+    HRESULT (STDMETHODCALLTYPE *Commit)(KDcDevice *);
+    HRESULT (STDMETHODCALLTYPE *WaitForCommitCompletion)(KDcDevice *);
+    HRESULT (STDMETHODCALLTYPE *GetFrameStatistics)(KDcDevice *, void *);
+    HRESULT (STDMETHODCALLTYPE *CreateTargetForHwnd)(KDcDevice *, HWND, BOOL, KDcTarget **);
+    HRESULT (STDMETHODCALLTYPE *CreateVisual)(KDcDevice *, KDcVisual **);
+} KDcDeviceVtbl;
+struct KDcDevice { const KDcDeviceVtbl *lpVtbl; };
+typedef struct {
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(KDcTarget *, REFIID, void **);
+    ULONG (STDMETHODCALLTYPE *AddRef)(KDcTarget *);
+    ULONG (STDMETHODCALLTYPE *Release)(KDcTarget *);
+    HRESULT (STDMETHODCALLTYPE *SetRoot)(KDcTarget *, KDcVisual *);
+} KDcTargetVtbl;
+struct KDcTarget { const KDcTargetVtbl *lpVtbl; };
+typedef struct {
+    HRESULT (STDMETHODCALLTYPE *QueryInterface)(KDcVisual *, REFIID, void **);
+    ULONG (STDMETHODCALLTYPE *AddRef)(KDcVisual *);
+    ULONG (STDMETHODCALLTYPE *Release)(KDcVisual *);
+    void *SetOffsetX_anim, *SetOffsetX_float, *SetOffsetY_anim, *SetOffsetY_float;
+    void *SetTransform_obj, *SetTransform_matrix, *SetTransformParent, *SetEffect;
+    void *SetBitmapInterpolationMode, *SetBorderMode, *SetClip_obj, *SetClip_rect;
+    HRESULT (STDMETHODCALLTYPE *SetContent)(KDcVisual *, IUnknown *);
+} KDcVisualVtbl;
+struct KDcVisual { const KDcVisualVtbl *lpVtbl; };
+static const GUID KIID_IDCompositionDevice =
+    { 0xc37ea93a, 0xe7aa, 0x450d, { 0xb1, 0x6f, 0x97, 0x46, 0xcb, 0x04, 0x07, 0xf3 } };
+typedef HRESULT (WINAPI *KDcCreateDevice_t)(IDXGIDevice *, REFIID, void **);
+#endif
+
 typedef struct D2DPainter {
     KittyPainter p;
     HWND hwnd;
@@ -292,6 +335,12 @@ typedef struct D2DPainter {
     HRESULT present_status;
     unsigned long npresent;            /* presents so far, KITTY_TEST_D2D_FAIL_PRESENT */
     unsigned long inj_from, inj_count;
+    /* #88, KITTY_TEST_D2D_DCOMP: the swap chain on a composition visual of
+     * our own instead of bound to the window (dcomp_create) */
+    HMODULE dcompdll;
+    KDcDevice *dcdev;
+    KDcTarget *dctarget;
+    KDcVisual *dcvisual;
 #endif
 } D2DPainter;
 #define D2D_ICON_CACHE 4
@@ -394,6 +443,22 @@ static bool d2d_blt(void)
 #ifdef KITTY_TEST_BUILD_LABEL
     const char *p = getenv("KITTY_TEST_D2D_BLT");
     return p && *p == '1';
+#else
+    return false;
+#endif
+}
+
+/* Test builds, hknet/KiTTY#88: KITTY_TEST_D2D_DCOMP=1 keeps the flip model
+ * (two buffers, Present1 with dirty rectangles, the frame-latency signal)
+ * but puts the swap chain on a DirectComposition visual of our own at the
+ * client area's origin. Windows then shows the chain where our visual is,
+ * instead of placing a window-bound chain itself. The blt switch wins over
+ * this one. A release build has only the window-bound chain. */
+static bool d2d_dcomp(void)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    const char *p = getenv("KITTY_TEST_D2D_DCOMP");
+    return p && *p == '1' && !d2d_blt();
 #else
     return false;
 #endif
@@ -1895,12 +1960,27 @@ static const KittyPainterVtable d2d_vt = {
 
 /* ---- the device ---------------------------------------------------- */
 
+#ifdef KITTY_TEST_BUILD_LABEL
+/* #88, KITTY_TEST_D2D_DCOMP: the composition objects belong to the device
+ * and go with it. The window can take a new target only once the old one
+ * is released. */
+static void dcomp_release(D2DPainter *d)
+{
+    if (d->dcvisual) { d->dcvisual->lpVtbl->Release(d->dcvisual); d->dcvisual = NULL; }
+    if (d->dctarget) { d->dctarget->lpVtbl->Release(d->dctarget); d->dctarget = NULL; }
+    if (d->dcdev) { d->dcdev->lpVtbl->Release(d->dcdev); d->dcdev = NULL; }
+}
+#endif
+
 /* Everything made from the Direct3D device, released - after a loss, or
  * for good. The Direct2D factory and the DirectWrite side (factory, font
  * faces, fallback) belong to no device and are kept. */
 static void release_device(D2DPainter *d)
 {
     int i;
+#ifdef KITTY_TEST_BUILD_LABEL
+    dcomp_release(d);                  /* before the chain it shows */
+#endif
     if (d->dc) release_targets(d);
     for (i = 0; i < d->nicons; i++)
         if (d->icons[i].bmp) ID2D1Bitmap_Release(d->icons[i].bmp);
@@ -1971,8 +2051,9 @@ static void describe_adapter(D2DPainter *d, IDXGIAdapter *adapter)
     d->adapter_note = dupprintf(strcmp(kind, "hardware") ? KT_D2D_ADAPTER_SOFT_EVENT
                                                          : KT_D2D_ADAPTER_EVENT,
                                 name, (unsigned)desc.VendorId, (unsigned)desc.DeviceId);
-    if (d2d_blt()) {                   /* test builds, #88: which model ran */
-        char *n = dupprintf("%s, blt presentation (test build)",
+    if (d2d_blt() || d2d_dcomp()) {    /* test builds, #88: which model ran */
+        char *n = dupprintf(d2d_blt() ? "%s, blt presentation (test build)"
+                                      : "%s, composition presentation (test build)",
                             d->adapter_note);
         sfree(d->adapter_note);
         d->adapter_note = n;
@@ -1984,6 +2065,62 @@ static void describe_adapter(D2DPainter *d, IDXGIAdapter *adapter)
         d->adapter_note = NULL;
     }
 }
+
+#ifdef KITTY_TEST_BUILD_LABEL
+/* #88, KITTY_TEST_D2D_DCOMP: the flip-model chain made for composition and
+ * hung on the window through a DirectComposition target with one visual,
+ * whose content it is. The visual sits at the client area's origin, so the
+ * chain's position comes from our own visual tree. A composition chain takes
+ * DXGI_SCALING_STRETCH only. The buffers are the client size, so nothing is
+ * stretched. S_OK with d->swap made and *sd as created: its flags show
+ * create_device whether there is a frame-latency signal. Otherwise the
+ * failure, with nothing left made. */
+static HRESULT dcomp_create(D2DPainter *d, IDXGIFactory2 *fac,
+                            IDXGIDevice *dxgidev, DXGI_SWAP_CHAIN_DESC1 *sd)
+{
+    DXGI_SWAP_CHAIN_DESC1 cd = *sd;
+    KDcCreateDevice_t create = NULL;
+    HRESULT hr;
+
+    cd.Scaling = DXGI_SCALING_STRETCH;
+    hr = IDXGIFactory2_CreateSwapChainForComposition(
+        fac, (IUnknown *)d->d3d, &cd, NULL, &d->swap);
+    if (FAILED(hr) && cd.Flags) {
+        cd.Flags = 0;                  /* a runtime without it: no signal */
+        hr = IDXGIFactory2_CreateSwapChainForComposition(
+            fac, (IUnknown *)d->d3d, &cd, NULL, &d->swap);
+    }
+    if (SUCCEEDED(hr)) {
+        if (!d->dcompdll)
+            d->dcompdll = LoadLibraryA("dcomp.dll");
+        if (d->dcompdll)
+            create = (KDcCreateDevice_t)GetProcAddress(d->dcompdll,
+                                                       "DCompositionCreateDevice");
+        hr = create ? create(dxgidev, &KIID_IDCompositionDevice, (void **)&d->dcdev)
+                    : E_NOINTERFACE;
+    }
+    if (SUCCEEDED(hr))
+        hr = d->dcdev->lpVtbl->CreateTargetForHwnd(d->dcdev, d->hwnd, TRUE,
+                                                   &d->dctarget);
+    if (SUCCEEDED(hr))
+        hr = d->dcdev->lpVtbl->CreateVisual(d->dcdev, &d->dcvisual);
+    if (SUCCEEDED(hr))
+        hr = d->dcvisual->lpVtbl->SetContent(d->dcvisual, (IUnknown *)d->swap);
+    if (SUCCEEDED(hr))
+        hr = d->dctarget->lpVtbl->SetRoot(d->dctarget, d->dcvisual);
+    if (SUCCEEDED(hr))
+        hr = d->dcdev->lpVtbl->Commit(d->dcdev);
+    D2D_TRACE("composition presentation: 0x%08lX flags 0x%X",
+              (unsigned long)hr, (unsigned)cd.Flags);
+    if (FAILED(hr)) {
+        dcomp_release(d);
+        if (d->swap) { IDXGISwapChain1_Release(d->swap); d->swap = NULL; }
+        return hr;
+    }
+    *sd = cd;
+    return S_OK;
+}
+#endif
 
 /* The device and everything made from it, at the window's current size:
  * the hardware device, or WARP when there is none or the card has failed
@@ -2060,12 +2197,36 @@ static int create_device(D2DPainter *d)
      * included (measured on the composed screen). What breaks is
      * changing an open window's presentation - layered on or off, another
      * chain model - so neither is ever done to a window that has one. */
-    hr = IDXGIFactory2_CreateSwapChainForHwnd(
-        dxgifactory, (IUnknown *)d->d3d, d->hwnd, &sd, NULL, NULL, &d->swap);
-    if (FAILED(hr) && sd.Flags) {
-        sd.Flags = 0;                 /* a runtime without it: no signal */
+    hr = E_FAIL;
+#ifdef KITTY_TEST_BUILD_LABEL
+    if (d2d_dcomp()) {                 /* #88: a composition chain */
+        hr = dcomp_create(d, dxgifactory, dxgidev, &sd);
+        if (FAILED(hr)) {
+            /* the window's own chain instead, with the reason in the log */
+            char *n = dupprintf("Direct2D: composition presentation failed "
+                                "(0x%08lX), presenting to the window instead "
+                                "(test build)", (unsigned long)hr);
+            if (kitty_eventlog_ready())
+                do_eventlog(n);
+            else if (d->adapter_note) {
+                char *both = dupprintf("%s. %s", d->adapter_note, n);
+                sfree(d->adapter_note);
+                d->adapter_note = both;
+            }
+            sfree(n);
+            sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+        }
+    }
+    if (FAILED(hr))
+#endif
+    {
         hr = IDXGIFactory2_CreateSwapChainForHwnd(
             dxgifactory, (IUnknown *)d->d3d, d->hwnd, &sd, NULL, NULL, &d->swap);
+        if (FAILED(hr) && sd.Flags) {
+            sd.Flags = 0;             /* a runtime without it: no signal */
+            hr = IDXGIFactory2_CreateSwapChainForHwnd(
+                dxgifactory, (IUnknown *)d->d3d, d->hwnd, &sd, NULL, NULL, &d->swap);
+        }
     }
     if (FAILED(hr))
         { failstep = 10; goto done; }
@@ -2239,6 +2400,9 @@ static void d2d_destroy(D2DPainter *d)
     if (d->dwritedll) FreeLibrary(d->dwritedll);
     if (d->d2d1dll) FreeLibrary(d->d2d1dll);
     if (d->d3d11dll) FreeLibrary(d->d3d11dll);
+#ifdef KITTY_TEST_BUILD_LABEL
+    if (d->dcompdll) FreeLibrary(d->dcompdll);
+#endif
     sfree(d->ov);                      /* KiTTY: the overlay's arrays */
     sfree(d->ovc);
     sfree(d);
