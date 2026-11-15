@@ -9,6 +9,14 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ## 0.85.1.22-beta — unreleased
 
+### Changed
+
+- FEATURES.md lists what the pseudo-console (ConPTY) of a Local session
+  does to images and titles, measured: iTerm2 inline images pass, Sixel,
+  kitty graphics and far2l's extensions are dropped, OSC 1 and OSC 2 arrive
+  as OSC 0. For far2l: SSH into the WSL distribution while it is kept
+  running, or `far2l --tty --nodetect=f` in a Local session.
+
 ### Fixed
 
 - Application > Config Window: ticking or clearing **Lock window size** left
