@@ -9,8 +9,9 @@
  * 0 is `base`, which grows by one each time a line is dropped from the top -
  * so a hit stays on its text while output scrolls. A soft-wrapped line is
  * one logical line (a hit may span the wrap); the matcher is
- * kitty/kitty_search_match.h (smart case, unit-tested). The bar's "Case
- * sensitive" box makes the case count always (term_search_case).
+ * kitty/kitty_search_match.h (unit-tested). The bar's "Case sensitive"
+ * box alone decides whether the case counts (term_search_case). Smart case
+ * is the bar ticking that box (term_search_has_capital).
  *
  * The search runs 150 ms after the last change of the text: the rows in
  * view first (their hits are shown at once, kept apart in `vis` until the
@@ -420,6 +421,26 @@ void term_search_close(Terminal *term)
     }
 }
 
+/* Smart case for the find bar: the text holds a character that has a lower
+ * case of its own (ksm_case_sensitive, the same lower case as the search). */
+bool term_search_has_capital(const wchar_t *text)
+{
+    size_t i;
+    for (i = 0; text[i]; i++) {
+        unsigned c = text[i];
+        if (c >= 0xD800 && c < 0xDC00 && text[i + 1] >= 0xDC00 && text[i + 1] < 0xE000) {
+            c = 0x10000 + ((c - 0xD800) << 10) + (text[i + 1] - 0xDC00);
+            i++;
+        }
+        {
+            ksm_char k = c;
+            if (ksm_case_sensitive(&k, 1, ks_lower))
+                return true;
+        }
+    }
+    return false;
+}
+
 void term_search_set(Terminal *term, const wchar_t *text)
 {
     struct kitty_search *s = term->search;
@@ -446,13 +467,13 @@ void term_search_set(Terminal *term, const wchar_t *text)
     s->needle = needle;
     s->memo = false;
     s->nn = (int)n;
-    s->cs = s->always_cs || ksm_case_sensitive(s->needle, s->nn, ks_lower);
+    s->cs = s->always_cs;
     ks_restart(s, KS_DEBOUNCE_MS);
 }
 
-/* The find bar's "Case sensitive" box: on, the case always counts. Off,
- * smart case: a text with a capital letter counts the case, an all
- * lowercase text does not. A change searches the text again. */
+/* The find bar's "Case sensitive" box: on, the case counts, off, it does
+ * not. Smart case lives in the bar: a capital letter typed ticks the box
+ * (term_search_has_capital). A change searches the text again. */
 void term_search_case(Terminal *term, bool always)
 {
     struct kitty_search *s = term->search;
@@ -460,7 +481,7 @@ void term_search_case(Terminal *term, bool always)
     if (!s)
         return;
     s->always_cs = always;
-    cs = always || ksm_case_sensitive(s->needle, s->nn, ks_lower);
+    cs = always;
     if (cs == s->cs)
         return;
     s->cs = cs;

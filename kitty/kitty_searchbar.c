@@ -6,8 +6,7 @@
  * A small SOLID bar at the top right of the terminal (below the program
  * status panel when that is there): a grip, a real edit field (so IME, paste
  * and the caret work as anywhere in Windows), Up and Down, the counter, the
- * "Case sensitive" box (Alt+C; off: smart case, on: the case always counts,
- * kept for the next open while the program runs) and a close button. The
+ * "Case sensitive" box (Alt+C, see ksb_text_changed) and a close button. The
  * counter takes the box's room while the search is not available. It is
  * dragged by the grip, the counter or its background,
  * inside the terminal area; its distance from the area's top-right corner is
@@ -72,6 +71,8 @@ typedef struct ksb {
 
 static ksb *ksb_list = NULL;
 static bool ksb_case_always = false;   /* the "Case sensitive" box, every bar */
+static bool ksb_case_auto = false;     /* ...ticked by smart case, not the user */
+static bool ksb_case_cap = false;      /* the last text held a capital */
 
 static ksb *ksb_find(HWND owner)
 {
@@ -363,6 +364,27 @@ static void ksb_text_changed(ksb *b)
     int n = GetWindowTextLengthW(b->edit);
     wchar_t *t = snewn(n + 1, wchar_t);
     GetWindowTextW(b->edit, t, n + 1);
+    {   /* The "Case sensitive" box: ticked, the case counts. Smart case
+         * ticks it when a capital letter comes into a text without one.
+         * Taking the last capital out unticks it again, unless the user
+         * ticked it. Unticked by the user, capitals ignore the case. Only a
+         * change between "a capital" and "none" moves the box, so the
+         * user's own click stands while the text is edited. Kept for the
+         * next open while the program runs. */
+        bool cap = term_search_has_capital(t);
+        if (cap != ksb_case_cap) {
+            ksb_case_cap = cap;
+            if (cap && !ksb_case_always) {
+                ksb_case_always = ksb_case_auto = true;
+            } else if (!cap && ksb_case_always && ksb_case_auto) {
+                ksb_case_always = ksb_case_auto = false;
+            }
+            CheckDlgButton(b->h, IDC_SB_CASE,
+                           ksb_case_always ? BST_CHECKED : BST_UNCHECKED);
+            if (term)
+                term_search_case(term, ksb_case_always);
+        }
+    }
     if (term)
         term_search_set(term, t);
     sfree(t);
@@ -485,6 +507,7 @@ static INT_PTR CALLBACK ksb_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             if (HIWORD(wp) == BN_CLICKED) {
                 Terminal *term = kitty_searchbar_term(b->owner);
                 ksb_case_always = IsDlgButtonChecked(h, IDC_SB_CASE) == BST_CHECKED;
+                ksb_case_auto = false;
                 if (term)
                     term_search_case(term, ksb_case_always);
                 ksb_counter(b);
