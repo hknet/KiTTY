@@ -576,6 +576,15 @@
 #define KT_ICON_ICON_FROM_INTERNAL_RESOURCES         "Icon (from internal resources)"
 #define KT_ICON_EXTERNAL_ICON_FILE                   "External icon file:"
 #define KT_ICON_SELECT_ICON_FILE                     "Select icon file"
+/* hknet/KiTTY#62: the button beside the number with its picker box
+ * (kitty_iconpick.c); %s = the file the icons come from */
+#define KT_ICON_CHOOSE                               "Choose..."
+#define KT_ICONPICK_TITLE                            "Choose an icon"
+#define KT_ICONPICK_FROM_FMT                         "Icons in %s"
+#define KT_ICONPICK_THIS_PROGRAM                     "this program"
+#define KT_ICONPICK_NONE                             "No icons in this file."
+#define KT_ICONPICK_OK                               "OK"
+#define KT_ICONPICK_CANCEL                           "Cancel"
 
 /* Window/Back.&Image */
 #define KT_BACK_IMAGE_BACKGROUND_SETTINGS            "Background settings"
@@ -1751,8 +1760,11 @@
 #define KT_KSET_WD_TRAY_LAUNCHER                     "Launcher (starts one if needed)"
 #define KT_KSET_WD_ICONFILE                          "Icon library for session icons (.exe, .dll or .icl):"
 #define KT_KSET_WD_ICONFILE_NOTE                     "A session's Window > Title & Icon panel picks one of its icons for " \
-        "the terminal window. Read at the next start; blank = kitty.dll beside kitty.exe, else kitty.exe."
+        "the terminal window. Read at the next start. Blank = kitty++.dll or kitty.dll beside kitty.exe, else kitty.exe."
 #define KT_KSET_WD_ICONFILE_SELECT                   "Select the icon file"
+/* [KiTTY] sessionicons: each session's icon in front of its name in the
+ * launcher menu and Manage Sessions (hknet/KiTTY#62) */
+#define KT_KSET_WD_SESSIONICONS                      "Show session icons in KiTTY++"
 #define KT_KSET_WD_PRINTING_TITLE                    "Printing the clipboard and the whole buffer"
 #define KT_KSET_WD_PRINTING                          "Printing"
 #define KT_KSET_WD_PRINT_PITCH                       "Line pitch, printer units:"

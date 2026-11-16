@@ -636,9 +636,32 @@ On Window > Title & Icon. Gives this session its own icon, so a taskbar full of 
 distinguished at a glance - production red, staging blue, and so on.
 
 \q{Icon (from internal resources)} takes the number of one of the icons
-built into KiTTY++. \q{External icon file} takes a path to an \c{.ico}
-file, which wins over the internal number when both are set. The icon
-applies to the window, the taskbar and the tray.
+of KiTTY++: 0 and 1 are the default, 2 to 50 come from \c{kitty++.dll}
+beside \c{kitty.exe}. Most are a white symbol on a coloured tile (server,
+database, cloud, firewall, console, git and more); 3 to 9 are computers in
+seven colours, 41 to 50 the digits 0 to 9. Without \c{kitty++.dll} every
+number shows the default icon. \q{Choose...} beside the number shows the
+icons with their numbers: a double-click or OK puts that number in.
+
+\q{External icon file} takes one of two kinds of file:
+
+\b an \c{.ico} file: that picture, whatever the number. Choosing a
+number with \q{Choose...} empties this field, so the number shows.
+
+\b an icon library, a \c{.dll}, \c{.icl} or \c{.exe}: the number picks
+the icon in it, 1 for its first, in the order Windows lists them.
+\q{Choose...} then shows that file's icons. A number the file lacks
+shows the default icon.
+
+The icon applies to the window, the taskbar and the tray.
+
+The same icon stands in front of the session's name in the launcher's
+session menu and in Manage Sessions when \q{Show session icons in
+KiTTY++} is on (\k{kitty-cfg-appearance}). There, in dark mode, a
+file \c{<name>.dark.ico} beside \c{<name>.ico} is shown instead, when it
+exists: a light drawing for a dark menu (an \c{.ico} only, not a library). Without one the icon stays as it
+is. Of the built-in icons the dark tiles have a dark form with a light rim
+in \c{kitty++.dll}.
 
 \S{kitty-cfg-title-combine} \q{Combine Host-Title and Window-Title}
 
@@ -2024,8 +2047,18 @@ window's own position (\k{kitty-cfg-config-window}) are not touched.
 Window > Title & Icon panel picks one of them by number for its terminal
 window; the configuration box and the other tools keep their own. It is
 loaded when KiTTY++ starts, so a change shows in the next start. Blank
-means \c{kitty.dll} beside \c{kitty.exe} if there is one, otherwise
-\c{kitty.exe} itself, which carries the built-in set.
+means \c{kitty++.dll} beside \c{kitty.exe}, else classic KiTTY's
+\c{kitty.dll} there, otherwise \c{kitty.exe} itself, which carries the
+default icon alone. The library is read as data: no code of it runs.
+
+\b \q{Show session icons in KiTTY++} puts each session's icon in front
+of its name in the launcher's session menu and in Manage Sessions: the
+icon its terminal window shows, the default icon when the session sets
+none. In dark mode an icon file \c{<name>.dark.ico} beside it is shown
+instead, when it exists (\k{kitty-cfg-icon}). In Manage Sessions the pin
+of a session with a place of its own then follows its name, as in the
+folder tree. Off by default. Windows XP shows no icons in the launcher's
+menu.
 
 The title bar settings are on \k{kitty-cfg-kset-window}, and the fonts
 that draw a character the terminal font lacks on
@@ -2038,8 +2071,8 @@ at the top right of the terminal for a notable line of the Terminal
 Window's Event Log: a number of seconds (default 5), \c{open} until the
 Event Log is opened, or \c{0} for never. A click opens the Event Log),
 \c{ctxbreadcrumbopacity} and
-\c{ctxbreadcrumbplace} (the breadcrumb's opacity and place) and
-\c{iconfile}.
+\c{ctxbreadcrumbplace} (the breadcrumb's opacity and place),
+\c{iconfile} and \c{sessionicons}.
 
 \S{kitty-cfg-kset-terminal} The Keys & Mouse panel
 

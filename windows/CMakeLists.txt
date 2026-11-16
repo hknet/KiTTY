@@ -933,6 +933,8 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_modkeys.c      # KiTTY: xterm modifyOtherKeys encoding for window.c, no Win32 (test/test_modkeys.c)
   ${KITTY_DIR}/kitty_kittykeys.c    # KiTTY: kitty keyboard protocol encoding for window.c, no Win32 (test/test_kittykeys.c)
   ${KITTY_DIR}/kitty_specialmenu.c
+  ${KITTY_DIR}/kitty_sessicon.c    # KiTTY: session icons in the launcher menu and Manage Sessions (hknet/KiTTY#62)
+  ${KITTY_DIR}/kitty_iconpick.c    # KiTTY: the icon picker of Window > Title & Icon (hknet/KiTTY#62)
   ${KITTY_DIR}/kitty_menuslots.c    # KiTTY: the payloads behind its IDM_USERCMD+n entries, no Win32 (test/test_menuslots.c)
   ${KITTY_DIR}/kitty_shortcuts.c
   ${KITTY_DIR}/kitty_xfer.c
@@ -1098,6 +1100,14 @@ target_link_libraries(kitty
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty PROPERTIES WIN32_EXECUTABLE ON)
 
+# KiTTY (hknet/KiTTY#62): kitty++.dll, the session icons 0-49 and their dark
+# forms, resources only (windows/kittypp_icons.rc). No code of ours:
+# the terminals load it as data. Built and shipped beside kitty.exe.
+add_library(kittypp_icons SHARED kittypp_icons.rc)
+set_target_properties(kittypp_icons PROPERTIES OUTPUT_NAME "kitty++" PREFIX "" LINKER_LANGUAGE C)
+target_link_options(kittypp_icons PRIVATE -s)   # the start-up code mingw adds never runs: loaded as data
+add_dependencies(kitty kittypp_icons)
+
 # ===================== KiTTY PORTABLE target =====================
 # Identical to the kitty target above, but with MOD_PORTABLE also defined so
 # the binary defaults to file/dir storage (savemode=dir) instead of the
@@ -1180,6 +1190,7 @@ target_link_libraries(kitty_portable
   ${platform_libraries} wininet wintrust crypt32 msi version urlmon
   uuid.lib)   # KiTTY: CLSID_ShellLink GUIDs (kitty_startup_shortcut.c, launcher autostart)
 set_target_properties(kitty_portable PROPERTIES WIN32_EXECUTABLE ON)
+add_dependencies(kitty_portable kittypp_icons)   # kitty++.dll beside it (hknet/KiTTY#62)
 
 # ===================================================================
 # MOD_PERSO COVERAGE CHECK - fail the build, not the user

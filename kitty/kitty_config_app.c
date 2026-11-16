@@ -3811,6 +3811,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     s = ctrl_getset(b, KSET_PATH("Appearance"), "icons", KT_KSET_WD_ICONS);
     KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, KI_ICONFILE, kitty_appearance);
     ctrl_text(s, KT_KSET_WD_ICONFILE_NOTE, HELPCTX(kitty_appearance));
+    KSET_CHECKBOX(s, KT_KSET_WD_SESSIONICONS, KI_SESSIONICONS, kitty_appearance);
 
     /* Terminal > Font Fallback: the master switch greys the list below it.
      * Both keys live in [FontFallback] of kitty.ini in every store mode. */

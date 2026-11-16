@@ -173,6 +173,8 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) ;
  * (kitty_launcher.c), and the menu built from them (kitty_specialmenu.c).
  * folder "" is the top level. */
 struct kitty_launcher_entry { char * folder ; char * session ; } ;
+/* the launcher menu's session icons follow a theme switch (#62) */
+void kitty_launcher_menu_icons_follow( HMENU m ) ;
 int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int n,
                          const char * prefix, int * nbitem ) ;
 

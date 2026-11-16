@@ -1708,7 +1708,8 @@ static int LauncherMenuSameTopLevel( HMENU a, HMENU b ) {
 	return 1 ;
 }
 
-/* Move every submenu, id and tick of `fresh` into `shown`, then drop `fresh`. */
+/* Move every submenu, id, tick and session icon (kitty_sessicon.c) of
+ * `fresh` into `shown`, then drop `fresh`. */
 static void LauncherMenuGraft( HMENU shown, HMENU fresh ) {
 	int i ;
 	for( i = GetMenuItemCount( fresh ) - 1 ; i >= 0 ; i-- ) {
@@ -1728,7 +1729,9 @@ static void LauncherMenuGraft( HMENU shown, HMENU fresh ) {
 			UINT id = GetMenuItemID( fresh, i ) ;
 			UINT st = GetMenuState( fresh, i, MF_BYPOSITION ) ;
 			if( id == (UINT)-1 || id == 0 || st == (UINT)-1 ) continue ;   /* a separator */
-			mii.fMask = MIIM_ID | MIIM_STATE ;
+			mii.fMask = MIIM_BITMAP ;
+			if( !GetMenuItemInfoA( fresh, i, TRUE, &mii ) ) mii.hbmpItem = NULL ;
+			mii.fMask = MIIM_ID | MIIM_STATE | MIIM_BITMAP ;
 			mii.wID = id ;
 			mii.fState = st & ( MFS_CHECKED | MFS_GRAYED | MFS_DISABLED ) ;
 			SetMenuItemInfoA( shown, i, TRUE, &mii ) ;
@@ -1844,6 +1847,8 @@ static void DisplayContextMenuAt( HWND hwnd, HMENU menu, POINT pt ) {
 	 * a restart. Read again before every menu - the preference is cached for
 	 * two seconds and the call does nothing while the mode is unchanged. */
 	kitty_theme_app_mode( kitty_theme_app_pref() ) ;
+	/* the session icons too: a .dark.ico in dark mode (hknet/KiTTY#62) */
+	kitty_launcher_menu_icons_follow( hMenuPopup ) ;
 
 	SetForegroundWindow( hwnd ) ;
 	g_launcher_menu_hook = SetWindowsHookEx( WH_MSGFILTER, LauncherMenuMsgFilter,

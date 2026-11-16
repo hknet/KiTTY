@@ -37,6 +37,7 @@
 
 // KiTTY includes
 #include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: bg_trace_switch */
+#include "kitty_sessicon.h"   /* icon libraries in a session (#62) */
 #include "kitty.h"
 #include "kitty_params.h"   /* the application-wide flags, delays, paths and the parameter table */
 #include "kitty_broadcast.h"   /* the other KiTTY windows: count, broadcast, resize */
@@ -890,8 +891,17 @@ void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 	
 	HICON hIcon = NULL, hIconBig = NULL ;
 	if( (strlen(iconefile)>0) && existfile(iconefile) ) {
-		hIcon = LoadImage(NULL, iconefile, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_LOADFROMFILE|LR_SHARED) ; 
-		hIconBig = LoadImage(NULL, iconefile, IMAGE_ICON, 0, 0, LR_LOADFROMFILE|LR_SHARED|LR_DEFAULTSIZE) ; 
+		if( kitty_icon_is_library( iconefile ) ) {
+			/* hknet/KiTTY#62: a .dll, .exe or .icl - the number picks the
+			 * icon in it. One it lacks is the default icon below */
+			int idx = ( icone > 0 ) ? icone - 1 : 0 ;
+			hIcon = kitty_icon_from_library( iconefile, idx, GetSystemMetrics(SM_CXSMICON) ) ;
+			hIconBig = kitty_icon_from_library( iconefile, idx, GetSystemMetrics(SM_CXICON) ) ;
+			if( !hIcon && !hIconBig ) icone = 0 ;
+		} else {
+			hIcon = LoadImage(NULL, iconefile, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_LOADFROMFILE|LR_SHARED) ;
+			hIconBig = LoadImage(NULL, iconefile, IMAGE_ICON, 0, 0, LR_LOADFROMFILE|LR_SHARED|LR_DEFAULTSIZE) ;
+		}
 	}
 
 	if( hIcon || hIconBig ) {
@@ -900,6 +910,16 @@ void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 		SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIconBig) ; 
 		SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon) ;
 		TrayIcone.hIcon = hIcon ;
+		/* icons taken from a library are this window's own (not shared like
+		 * LoadImage's LR_SHARED ones): the pair set before goes now */
+		{
+			static HICON lib_small = NULL, lib_big = NULL ;
+			HICON os = lib_small, ob = lib_big ;
+			if( kitty_icon_is_library( iconefile ) ) { lib_small = hIcon ; lib_big = hIconBig ; }
+			else { lib_small = NULL ; lib_big = NULL ; }
+			if( os && os != hIcon && os != hIconBig ) DestroyIcon( os ) ;
+			if( ob && ob != os && ob != hIcon && ob != hIconBig ) DestroyIcon( ob ) ;
+		}
 		//DeleteObject( hIcon ) ; 
 	} else {
 		/* KiTTY: the embedded icon, indexed by the session's own CONF_icone.
@@ -909,6 +929,9 @@ void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 		int num = ( icone != 0 ) ? icone - 1 : 0 ;
 		(void)mode ;
 		hIcon = LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_MAINICON_0 + num ) ) ;
+		/* the number is not in the library (kitty++.dll missing, or an icon
+		 * library of fewer icons): the exe's own icon 0, never none */
+		if( hIcon == NULL ) hIcon = LoadIcon( GetModuleHandle( NULL ), MAKEINTRESOURCE(IDI_MAINICON_0) ) ;
 		SendMessage( hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon );
 		SendMessage( hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon );
 		TrayIcone.hIcon = hIcon ;

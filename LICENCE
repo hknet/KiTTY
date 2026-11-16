@@ -33,6 +33,12 @@ under the MIT licence; the RuTTY sources themselves carry a copyright
 notice and no licence text, so his notice is reproduced here as it
 stands rather than restated in other terms.
 
+The icons are drawn from Microsoft's Fluent UI System Icons
+<https://github.com/microsoft/fluentui-system-icons>, copyright (c) 2020
+Microsoft Corporation, released under the MIT licence (its text in
+windows/kitty_icons/FLUENT-LICENSE). They sit on tiles of their own
+colours.
+
 The base64 codec of the far2l support (kitty/far2l/cencode.c and
 cdecode.c) is from the libb64 project, which placed it in the public
 domain.

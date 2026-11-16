@@ -29,6 +29,8 @@ void RetireCountUpLeftovers( void ) ;
 /* The icon library and the icon file kitty.ini sets (kitty.c), resolved
  * by the startup sequence. */
 extern HINSTANCE hInstIcons ;
+HINSTANCE kitty_icon_library_load( const char * path ) ;   /* kitty_params.c: an icon library as data */
+const char * kitty_icon_library_path( void ) ;   /* kitty_params.c: its file, NULL = the exe */
 extern char * IconFile ;
 
 /* kitty.c helpers the startup sequence calls once. */

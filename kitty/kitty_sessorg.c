@@ -38,6 +38,7 @@
 #include "kitty_sessionpath.h"
 #include "kitty_sessionrename.h"
 #include "kitty_sessorder.h"     /* the manual order: drag between rows, the nail */
+#include "kitty_sessicon.h"      /* session icons in the list (hknet/KiTTY#62) */
 #include "kitty_regbackup.h"     /* SaveRegistryKeyNow: the regbackup before a registry move */
 #include "kitty_dlgbox.h"        /* the shared confirm / info boxes, kitty_fit_text */
 #include "kitty_theme.h"         /* button widths, ink marks, the row aligner */
@@ -836,6 +837,14 @@ struct so_state {
     int gap_after;
     int lv_gap;
     HIMAGELIST nail_list;           /* the list's nail, item image 1 of a row with a place */
+    /* [KiTTY] sessionicons (read when the window opens): the list's
+     * images are the sessions' icons, icon_px square. A row with a
+     * place carries overlay 1 in its state, its nail drawn after the
+     * name as in the tree (so_list_customdraw) */
+    int icons;
+    HIMAGELIST icon_list;
+    int icon_px;
+    int icon_dark;                  /* the theme the icons were loaded for */
     HIMAGELIST dragimg;             /* what the pointer carries */
     HTREEITEM hover;                /* the folder under the pointer, and since when */
     DWORD hover_since;
@@ -921,8 +930,18 @@ static void so_fill_list(struct so_state *st)
     }
     SendMessage(st->list, WM_SETREDRAW, FALSE, 0);
     ListView_DeleteAllItems(st->list);
+    /* the icons of the rows below, each source once (the cache hands the
+     * same HICON for the same file or number) */
+    HICON *seen = NULL;
+    int nseen = 0;
+    if (st->icons && st->icon_list) {
+        ImageList_RemoveAll(st->icon_list);
+        seen = snewn(nrows > 0 ? nrows : 1, HICON);
+    }
     memset(&it, 0, sizeof(it));
     it.mask = LVIF_TEXT | LVIF_PARAM | LVIF_IMAGE;
+    if (seen)
+        it.mask |= LVIF_STATE;
     for (k = 0; k < nrows; k++) {
         /* an old session shows where it comes from, as in the
          * configuration box's list */
@@ -932,11 +951,25 @@ static void so_fill_list(struct so_state *st)
         it.iItem = shown;
         it.pszText = disp ? disp : (char *)ksp_leaf(rows[k].id);
         it.lParam = rows[k].idx;
-        it.iImage = pin[k] ? 1 : 0;     /* the nail, or the blank image */
+        if (seen) {
+            HICON hi = kitty_session_icon(rows[k].id, st->icon_px,
+                                          st->icon_dark != 0);
+            int j;
+            for (j = 0; j < nseen && seen[j] != hi; j++);
+            if (j == nseen && hi &&
+                ImageList_ReplaceIcon(st->icon_list, -1, hi) == nseen)
+                seen[nseen++] = hi;
+            it.iImage = (hi && j < nseen) ? j : I_IMAGENONE;
+            it.stateMask = LVIS_OVERLAYMASK;
+            it.state = pin[k] ? INDEXTOOVERLAYMASK(1) : 0;
+        } else {
+            it.iImage = pin[k] ? 1 : 0;     /* the nail, or the blank image */
+        }
         if (SendMessageA(st->list, LVM_INSERTITEMA, 0, (LPARAM)&it) >= 0)
             shown++;
         sfree(disp);
     }
+    sfree(seen);
     sfree(pin);
     sfree(rows);
     ListView_SetColumnWidth(st->list, 0, LVSCW_AUTOSIZE_USEHEADER);
@@ -2913,7 +2946,26 @@ static void so_nails_make(struct so_state *st)
     COLORREF mark = kitty_theme_text_colour(dark);
     /* the tree has none: its nails are drawn after the names
      * (so_tree_customdraw) */
-    ListView_SetImageList(st->list, l, LVSIL_SMALL);
+    if (st->icons) {
+        /* the sessions' icons, as high as a row: made again for a new size
+         * or theme (a .dark.ico in dark mode), the rows then refilled */
+        if (l)
+            ImageList_Destroy(l);
+        l = NULL;
+        if (!st->icon_list || st->icon_px != s || st->icon_dark != (dark ? 1 : 0)) {
+            HIMAGELIST il = ImageList_Create(s, s, ILC_COLOR32 | ILC_MASK, 8, 8);
+            int refill = st->icon_list != NULL;
+            ListView_SetImageList(st->list, il, LVSIL_SMALL);
+            if (st->icon_list)
+                ImageList_Destroy(st->icon_list);
+            st->icon_list = il;
+            st->icon_px = s;
+            st->icon_dark = dark ? 1 : 0;
+            if (refill)
+                so_fill_list(st);
+        }
+    } else
+        ListView_SetImageList(st->list, l, LVSIL_SMALL);
     if (st->nail_list)
         ImageList_Destroy(st->nail_list);
     st->nail_list = l;
@@ -3654,11 +3706,13 @@ static char *so_lv_text_dup(HWND lv, int row)
     }
 }
 
-static LRESULT so_list_customdraw(HWND lv, LPNMLVCUSTOMDRAW cd)
+static LRESULT so_list_customdraw(HWND lv, LPNMLVCUSTOMDRAW cd, int icons)
 {
     /* Every row drawn here (the theme paints its own selection box over
      * colours a custom draw hands it): the background, the item image (the
-     * manual order's nail), the name, the focus frame. */
+     * manual order's nail), the name, the focus frame. icons: the item
+     * image is the session's icon (index 0 too) and the nail of a row with
+     * overlay 1 follows the name, as in the tree. */
     int row = (int)cd->nmcd.dwItemSpec;
     HDC dc = cd->nmcd.hdc;
     RECT rb, ri, rl;
@@ -3682,7 +3736,7 @@ static LRESULT so_list_customdraw(HWND lv, LPNMLVCUSTOMDRAW cd)
         return CDRF_DODEFAULT;
     memset(&it, 0, sizeof(it));
     it.mask = LVIF_IMAGE | LVIF_STATE;
-    it.stateMask = LVIS_SELECTED | LVIS_FOCUSED;
+    it.stateMask = LVIS_SELECTED | LVIS_FOCUSED | LVIS_OVERLAYMASK;
     it.iItem = row;
     if (!SendMessageA(lv, LVM_GETITEMA, 0, (LPARAM)&it))
         return CDRF_DODEFAULT;
@@ -3692,7 +3746,7 @@ static LRESULT so_list_customdraw(HWND lv, LPNMLVCUSTOMDRAW cd)
     FillRect(dc, &rb, br);
     DeleteObject(br);
     il = ListView_GetImageList(lv, LVSIL_SMALL);
-    if (il && it.iImage > 0) {
+    if (il && (icons ? it.iImage >= 0 : it.iImage > 0)) {
         int iw = 0, ih = 0;
         ImageList_GetIconSize(il, &iw, &ih);
         ImageList_Draw(il, it.iImage, dc, ri.left,
@@ -3704,6 +3758,21 @@ static LRESULT so_list_customdraw(HWND lv, LPNMLVCUSTOMDRAW cd)
     SetBkMode(dc, TRANSPARENT);
     SetTextColor(dc, sel ? GetSysColor(COLOR_HIGHLIGHTTEXT) : ListView_GetTextColor(lv));
     rl.left += 2 * GetSystemMetrics(SM_CXEDGE);
+    if (icons && (it.state & LVIS_OVERLAYMASK) == INDEXTOOVERLAYMASK(1)) {
+        /* the nail after the name, room kept for it at the right */
+        RECT tr = rl;
+        int s = (rb.bottom - rb.top) - 4;
+        if (s < 8)
+            s = 8;
+        rl.right -= s + s / 4;
+        DrawTextA(dc, text, -1, &tr, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX |
+                  DT_CALCRECT);
+        if (tr.right > rl.right)
+            tr.right = rl.right;
+        so_draw_nail_at(dc, tr.right + s / 4,
+                        rb.top + ((rb.bottom - rb.top) - s) / 2, s,
+                        kitty_theme_window_dark(lv));
+    }
     DrawTextA(dc, text, -1, &rl, DT_LEFT | DT_VCENTER | DT_SINGLELINE |
               DT_END_ELLIPSIS | DT_NOPREFIX);
     sfree(text);
@@ -3811,6 +3880,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         SendMessageA(st->list, LVM_INSERTCOLUMNA, 0, (LPARAM)&col);
         st->lv_gap = -1;
         st->nail_dark = -1;
+        st->icons = kitty_session_icons_on();
         so_nails_make(st);
 
         /* the tag pane, on the tag it was left on (its sessions are read
@@ -3969,7 +4039,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                     return TRUE;
             } else if (nm->code == NM_CUSTOMDRAW) {
                 SetWindowLongPtr(h, DWLP_MSGRESULT,
-                                 so_list_customdraw(st->list, (LPNMLVCUSTOMDRAW)lp));
+                                 so_list_customdraw(st->list, (LPNMLVCUSTOMDRAW)lp, st->icons));
                 return TRUE;
             } else if (nm->code == NM_DBLCLK) {
                 /* a double click starts the session clicked - only that
@@ -4034,7 +4104,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                     return TRUE;
             } else if (nm->code == NM_CUSTOMDRAW) {
                 SetWindowLongPtr(h, DWLP_MSGRESULT,
-                                 so_list_customdraw(st->taglist, (LPNMLVCUSTOMDRAW)lp));
+                                 so_list_customdraw(st->taglist, (LPNMLVCUSTOMDRAW)lp, 0));
                 return TRUE;
             } else if (nm->code == NM_DBLCLK) {
                 /* as in the folder's list: only the session clicked */
@@ -4179,6 +4249,8 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             ListView_SetImageList(st->list, NULL, LVSIL_SMALL);
             if (st->nail_list)
                 ImageList_Destroy(st->nail_list);
+            if (st->icon_list)
+                ImageList_Destroy(st->icon_list);
             sfree(st->open_saved);
             sfree(st->tag);
             sfree(st->dragfolder);

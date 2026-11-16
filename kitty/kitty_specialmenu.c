@@ -28,6 +28,7 @@
 #include "kitty_storage.h"
 #include "kitty_sessionpath.h" /* ksp_natcasecmp: the launcher's order */
 #include "kitty_sessorder.h"   /* the manual order of each level */
+#include "kitty_sessicon.h"    /* session icons in front of the names (#62) */
 
 /* Provided elsewhere in the KiTTY tree (not in kitty.h). */
 
@@ -141,10 +142,13 @@ static void sm_read_folder( HMENU menu, HMENU sub, char * key, int * nbitem, con
 /* KiTTY: the entries of one menu level, appended as numbered commands
  * (kitty_menuslots); past the ceiling an entry is only counted
  * (kitty_menuslots_cut). accel: with the Ctrl+Shift+<letter> column of the
- * first 26. Returns how many were appended. */
-static int sm_append_entries( HMENU menu, struct sm_item *items, int nitems, int accel ) {
+ * first 26. icons: each entry's data is a session name, its icon goes in
+ * front of the text (hknet/KiTTY#62, kitty_sessicon.c), for the theme
+ * sm_icons_dark records. Returns how many were appended. */
+static int sm_icons_dark = -1 ;	/* the theme the launcher menu's icons were made for */
+static int sm_append_entries( HMENU menu, struct sm_item *items, int nitems, int accel, int icons ) {
 	char * buffer ;
-	int k, nb, n = 0 ;
+	int k, nb, n = 0, px = GetSystemMetrics( SM_CXSMICON ) ;
 	for( k = 0 ; k < nitems ; k++ ) {
 		if( ( nb = kitty_menuslots_add( items[k].data ) ) < 0 ) continue ;
 		if( accel && nb < 26 )
@@ -153,6 +157,18 @@ static int sm_append_entries( HMENU menu, struct sm_item *items, int nitems, int
 			buffer = dupstr( items[k].label ) ;
 		AppendMenu( menu, MF_ENABLED, IDM_USERCMD+nb, buffer ) ;
 		sfree( buffer ) ;
+		if( icons ) {
+			/* the bitmap stays the cache's: a menu never frees hbmpItem */
+			HBITMAP bm = kitty_session_icon_bitmap( items[k].data, px, sm_icons_dark > 0 ) ;
+			if( bm ) {
+				MENUITEMINFOA mii ;
+				memset( &mii, 0, sizeof(mii) ) ;
+				mii.cbSize = sizeof(mii) ;
+				mii.fMask = MIIM_BITMAP ;
+				mii.hbmpItem = bm ;
+				SetMenuItemInfoA( menu, IDM_USERCMD+nb, FALSE, &mii ) ;
+				}
+			}
 		n++ ;
 		}
 	return n ;
@@ -250,7 +266,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
     		}
 		if( is_launcher ) sm_items_sort( items, nitems ) ;
 		sm_items_order( items, nitems, lfolder, KSP_ORDER_SESSION ) ;
-		local_nb += sm_append_entries( menu, items, nitems, ShortcutsFlag ) ;
+		local_nb += sm_append_entries( menu, items, nitems, ShortcutsFlag, 0 ) ;
 		sm_items_free( &items, &nitems ) ;
 
 		(*nbitem)=kitty_menuslots_count() ;
@@ -329,7 +345,7 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 				}
 			if( is_launcher ) sm_items_sort( items, nitems ) ;
 			sm_items_order( items, nitems, lfolder, KSP_ORDER_SESSION ) ;
-			local_nb += sm_append_entries( menu, items, nitems, 0 ) ;
+			local_nb += sm_append_entries( menu, items, nitems, 0, 0 ) ;
 			sm_items_free( &items, &nitems ) ;
 			(*nbitem)=kitty_menuslots_count() ;
 			closedir( dir ) ;
@@ -351,6 +367,8 @@ int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int 
 	struct sm_item *items = NULL ;
 	int nitems = 0, i, k, local_nb ;
 	size_t pl = strlen( prefix ) ;
+	/* the top level's call: the theme every level's icons are made for */
+	if( !pl ) sm_icons_dark = kitty_session_icons_dark() ? 1 : 0 ;
 	for( i = 0 ; i < n ; i++ ) {	/* the folders one level below prefix */
 		const char * rest = e[i].folder, * end ;
 		char * comp ;
@@ -392,11 +410,46 @@ int ReadLauncherEntries( HMENU menu, const struct kitty_launcher_entry * e, int 
 	sm_items_sort( items, nitems ) ;
 	sm_items_order( items, nitems, prefix, KSP_ORDER_SESSION ) ;
 	local_nb = sm_append_entries( menu, items, nitems,
-	                              IniFileFlag != SAVEMODE_DIR && ShortcutsFlag ) ;
+	                              IniFileFlag != SAVEMODE_DIR && ShortcutsFlag,
+	                              kitty_session_icons_on() ) ;
 	sm_items_free( &items, &nitems ) ;
 	(*nbitem) = kitty_menuslots_count() ;
 	return local_nb ;
 	}
+
+/* KiTTY (hknet/KiTTY#62): the launcher's menu is built at its start and on
+ * Refresh. It is opened many times in between: when KiTTY++'s theme switched
+ * since, each session entry (IDM_USERCMD + n, its session in the menu
+ * slots) takes the icon for the theme now in force, at every level. */
+static void sm_icons_apply( HMENU m, int dark, int px, int depth ) {
+	int i, n = GetMenuItemCount( m ) ;
+	if( depth > 32 ) return ;
+	for( i = 0 ; i < n ; i++ ) {
+		HMENU sub = GetSubMenu( m, i ) ;
+		UINT id ;
+		const char * s ;
+		if( sub ) { sm_icons_apply( sub, dark, px, depth + 1 ) ; continue ; }
+		id = GetMenuItemID( m, i ) ;
+		if( id < IDM_USERCMD || id >= IDM_USERCMD + NB_MENU_MAX ) continue ;
+		if( ( s = kitty_menuslots_get( (int)( id - IDM_USERCMD ) ) ) == NULL ) continue ;
+		{
+			MENUITEMINFOA mii ;
+			memset( &mii, 0, sizeof(mii) ) ;
+			mii.cbSize = sizeof(mii) ;
+			mii.fMask = MIIM_BITMAP ;
+			mii.hbmpItem = kitty_session_icon_bitmap( s, px, dark != 0 ) ;
+			SetMenuItemInfoA( m, i, TRUE, &mii ) ;
+		}
+	}
+}
+void kitty_launcher_menu_icons_follow( HMENU m ) {
+	int dark ;
+	if( m == NULL || sm_icons_dark < 0 || !kitty_session_icons_on() ) return ;
+	dark = kitty_session_icons_dark() ? 1 : 0 ;
+	if( dark == sm_icons_dark ) return ;
+	sm_icons_apply( m, dark, GetSystemMetrics( SM_CXSMICON ), 0 ) ;
+	sm_icons_dark = dark ;
+}
 
 void InitSpecialMenu( HMENU m, const char * folder, const char * sessionname ) {
 	char * KeyName, * mfolder, * msession ;

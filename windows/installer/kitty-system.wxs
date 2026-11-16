@@ -170,6 +170,9 @@
       <Component><File Source="kageant.exe" /></Component>
       <Component><File Source="kittygen.exe" /></Component>
       <Component><File Source="kittygen-cli.exe" /></Component>
+      <!-- the session icons 1-49 (hknet/KiTTY#62): kitty.exe loads them
+           beside itself as data -->
+      <Component><File Source="kitty++.dll" /></Component>
       <Component><File Source="kitty.ini.example" /></Component>
       <!-- the manual: windows/help.c looks for kitty.chm beside the exe -->
       <Component><File Source="kitty.chm" /></Component>

@@ -938,6 +938,9 @@ static const struct kset_key kset_keys[] = {
     { INIT_SECTION, KI_TRAYMODE,       KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
       NULL, NULL, kset_traymode_choices, lenof(kset_traymode_choices) },
     { INIT_SECTION, KI_ICONFILE,       KSET_FILE, false, NULL, NULL, NULL, 0, 0, 0, kset_get_iconfile, SetIconFile },
+    /* read when the launcher menu or Manage Sessions' list is built
+     * (kitty_session_icons_on), so a change shows in the next one */
+    { INIT_SECTION, KI_SESSIONICONS,   KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
     { KI_SECTION_PRINT, KI_PRINT_HEIGHT,              KSET_INT, true, NULL, NULL, &PrintCharSize, 1, 10000, 100 },
     { KI_SECTION_PRINT, KI_PRINT_MAXLINE,             KSET_INT, true, NULL, NULL, &PrintMaxLinePerPage, 1, 1000, 60 },
     { KI_SECTION_PRINT, KI_PRINT_MAXCHAR,             KSET_INT, true, NULL, NULL, &PrintMaxCharPerLine, 1, 1000, 85 },

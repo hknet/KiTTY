@@ -114,8 +114,9 @@ static bool do_filereq_a(
         of.lpstrDefExt = ".dll";
         break;
       case FILTER_FOLDERS:   /* KiTTY: the config box opens the folder picker itself */
-      case FILTER_ICON_FILES:
-        of.lpstrFilter = "Icon Files (*.ico)\0*.ico\0"
+      case FILTER_ICON_FILES:   /* KiTTY: icon libraries too (hknet/KiTTY#62) */
+        of.lpstrFilter = "Icons and icon libraries (*.ico;*.dll;*.icl;*.exe)\0*.ico;*.dll;*.icl;*.exe\0"
+            "Icon Files (*.ico)\0*.ico\0"
             "All Files (*.*)\0*\0\0\0";
         of.lpstrDefExt = ".ico";
         break;
@@ -197,8 +198,9 @@ static bool do_filereq_w(
         of.lpstrDefExt = L".dll";
         break;
       case FILTER_FOLDERS:
-      case FILTER_ICON_FILES:
-        of.lpstrFilter = L"Icon Files (*.ico)\0*.ico\0"
+      case FILTER_ICON_FILES:   /* KiTTY: icon libraries too (hknet/KiTTY#62) */
+        of.lpstrFilter = L"Icons and icon libraries (*.ico;*.dll;*.icl;*.exe)\0*.ico;*.dll;*.icl;*.exe\0"
+            "Icon Files (*.ico)\0*.ico\0"
             "All Files (*.*)\0*\0\0\0";
         of.lpstrDefExt = L".ico";
         break;

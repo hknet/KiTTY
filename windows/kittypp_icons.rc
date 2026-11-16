@@ -1,0 +1,78 @@
+/*
+ * kitty++.dll - the session icons, resources only (no code). kitty.exe,
+ * kitty_portable.exe and the launcher load it beside themselves as data
+ * (kitty_startup.c: [KiTTY] iconfile, else kitty++.dll, else kitty.dll, else
+ * the exe's own icon 0). Window > Title & Icon "Icon (from internal
+ * resources)" n shows resource n + 1: icon 0 is the default.
+ *
+ * Drawn from Microsoft's Fluent UI System Icons (MIT,
+ * kitty_icons/FLUENT-LICENSE). Resource n + 1001 is the dark form of
+ * icon n where it has one: the session lists take it in dark mode
+ * (kitty_sessicon.c).
+ */
+
+#include "rcstuff.h"
+
+#define APPNAME "kitty++.dll"
+#define APPDESC "KiTTY++ session icons"
+
+1 ICON "kitty_icons/icon_0.ico"
+2 ICON "kitty_icons/icon_1.ico"
+3 ICON "kitty_icons/icon_2.ico"
+4 ICON "kitty_icons/icon_3.ico"
+5 ICON "kitty_icons/icon_4.ico"
+6 ICON "kitty_icons/icon_5.ico"
+7 ICON "kitty_icons/icon_6.ico"
+8 ICON "kitty_icons/icon_7.ico"
+9 ICON "kitty_icons/icon_8.ico"
+10 ICON "kitty_icons/icon_9.ico"
+11 ICON "kitty_icons/icon_10.ico"
+12 ICON "kitty_icons/icon_11.ico"
+13 ICON "kitty_icons/icon_12.ico"
+14 ICON "kitty_icons/icon_13.ico"
+15 ICON "kitty_icons/icon_14.ico"
+16 ICON "kitty_icons/icon_15.ico"
+17 ICON "kitty_icons/icon_16.ico"
+18 ICON "kitty_icons/icon_17.ico"
+19 ICON "kitty_icons/icon_18.ico"
+20 ICON "kitty_icons/icon_19.ico"
+21 ICON "kitty_icons/icon_20.ico"
+22 ICON "kitty_icons/icon_21.ico"
+23 ICON "kitty_icons/icon_22.ico"
+24 ICON "kitty_icons/icon_23.ico"
+25 ICON "kitty_icons/icon_24.ico"
+26 ICON "kitty_icons/icon_25.ico"
+27 ICON "kitty_icons/icon_26.ico"
+28 ICON "kitty_icons/icon_27.ico"
+29 ICON "kitty_icons/icon_28.ico"
+30 ICON "kitty_icons/icon_29.ico"
+31 ICON "kitty_icons/icon_30.ico"
+32 ICON "kitty_icons/icon_31.ico"
+33 ICON "kitty_icons/icon_32.ico"
+34 ICON "kitty_icons/icon_33.ico"
+35 ICON "kitty_icons/icon_34.ico"
+36 ICON "kitty_icons/icon_35.ico"
+37 ICON "kitty_icons/icon_36.ico"
+38 ICON "kitty_icons/icon_37.ico"
+39 ICON "kitty_icons/icon_38.ico"
+40 ICON "kitty_icons/icon_39.ico"
+41 ICON "kitty_icons/icon_40.ico"
+42 ICON "kitty_icons/icon_41.ico"
+43 ICON "kitty_icons/icon_42.ico"
+44 ICON "kitty_icons/icon_43.ico"
+45 ICON "kitty_icons/icon_44.ico"
+46 ICON "kitty_icons/icon_45.ico"
+47 ICON "kitty_icons/icon_46.ico"
+48 ICON "kitty_icons/icon_47.ico"
+49 ICON "kitty_icons/icon_48.ico"
+50 ICON "kitty_icons/icon_49.ico"
+
+/* the dark forms, resource id + 1000 */
+1005 ICON "kitty_icons/icon_4_dark.ico"
+1013 ICON "kitty_icons/icon_12_dark.ico"
+1016 ICON "kitty_icons/icon_15_dark.ico"
+1022 ICON "kitty_icons/icon_21_dark.ico"
+1030 ICON "kitty_icons/icon_29_dark.ico"
+1037 ICON "kitty_icons/icon_36_dark.ico"
+
+#include "version.rc2"

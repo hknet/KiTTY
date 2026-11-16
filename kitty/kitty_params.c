@@ -205,6 +205,19 @@ void SetMouseShortcutsFlag( const int flag ) { MouseShortcutsFlag  = flag ; }
 // kitty.dll if it exists, else kitty.exe)
 HINSTANCE hInstIcons =  NULL ;
 
+/* An icon library as data (hknet/KiTTY#62): its resources are read, its code
+ * never runs. LOAD_LIBRARY_AS_IMAGE_RESOURCE is Vista's. Windows XP refuses
+ * the flag and takes the plain data file. NULL = not loaded. */
+static char * kitty_icon_lib_path = NULL ;	/* the library loaded, NULL = the exe */
+HINSTANCE kitty_icon_library_load( const char * path ) {
+	HMODULE m = LoadLibraryExA( path, NULL, LOAD_LIBRARY_AS_DATAFILE | 0x20 /* LOAD_LIBRARY_AS_IMAGE_RESOURCE */ ) ;
+	if( m == NULL ) m = LoadLibraryExA( path, NULL, LOAD_LIBRARY_AS_DATAFILE ) ;
+	if( m != NULL ) { sfree( kitty_icon_lib_path ) ; kitty_icon_lib_path = dupstr( path ) ; }
+	return (HINSTANCE)m ;
+}
+/* The icon library's file (the picker names it). NULL = the exe's own icons. */
+const char * kitty_icon_library_path( void ) { return kitty_icon_lib_path ; }
+
 // File holding the icons to load
 char * IconFile = NULL ;
 

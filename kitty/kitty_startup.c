@@ -1131,14 +1131,24 @@ void InitWinMain( void ) {
 		WriteCountUpAndPath() ;
 	}
 
-	// Set up icon loading from the kitty.dll library if it exists
-	if( IconFile != NULL )
-	if( existfile( IconFile ) ) 
-		{ HMODULE hDll ; if( ( hDll = LoadLibrary( TEXT(IconFile) ) ) != NULL ) hInstIcons = hDll ; }
-	if( hInstIcons==NULL )
-	if( existfile( "kitty.dll" ) )
-		{ HMODULE hDll ; if( ( hDll = LoadLibrary( TEXT("kitty.dll") ) ) != NULL ) hInstIcons = hDll ; }
-	// No external icon DLL: fall back to icons embedded in the executable itself
+	/* The icon library (hknet/KiTTY#62): [KiTTY] iconfile, else kitty++.dll,
+	 * else kitty.dll (classic KiTTY's name) beside the exe, else the exe,
+	 * which carries icon 0 alone. Loaded as data: no code of it runs. Only
+	 * the exe's own folder is searched (a bare LoadLibrary("kitty.dll")
+	 * ran the DLL's code and searched further). */
+	if( IconFile != NULL && existfile( IconFile ) )
+		hInstIcons = kitty_icon_library_load( IconFile ) ;
+	if( hInstIcons == NULL ) {
+		static const char * const names[] = { "kitty++.dll", "kitty.dll" } ;
+		char * dir = kitty_module_dir_dup( NULL ) ;
+		int i ;
+		for( i = 0 ; dir != NULL && hInstIcons == NULL && i < (int)lenof( names ) ; i++ ) {
+			char * p = dupprintf( "%s\\%s", dir, names[i] ) ;
+			if( existfile( p ) ) hInstIcons = kitty_icon_library_load( p ) ;
+			sfree( p ) ;
+		}
+		sfree( dir ) ;
+	}
 	if( hInstIcons==NULL ) hInstIcons = GetModuleHandle( NULL ) ;
 
 	NETDBG_TS("after icon-dll init");

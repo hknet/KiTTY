@@ -826,3 +826,13 @@
 #ifndef IDC_SB_CASE
 #define IDC_SB_CASE 1475
 #endif
+/* the icon picker of Window > Title & Icon (hknet/KiTTY#62, kitty_iconpick.c) */
+#ifndef IDD_ICONPICK
+#define IDD_ICONPICK 177
+#endif
+#ifndef IDC_IP_LIST
+#define IDC_IP_LIST 1480
+#endif
+#ifndef IDC_IP_SOURCE
+#define IDC_IP_SOURCE 1481
+#endif

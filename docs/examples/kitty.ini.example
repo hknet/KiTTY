@@ -483,8 +483,16 @@
 ;    configuration window, Application > KiTTY++ Settings > Terminal.
 ;traymode=auto
 
-; iconfile: point to a file where internal icons are located
-;iconfile=kitty.exe
+; iconfile: the file the numbered session icons come from (.exe, .dll or
+;    .icl). Blank = kitty++.dll beside kitty.exe, else kitty.dll there, else
+;    kitty.exe (the default icon alone).
+;iconfile=kitty++.dll
+
+; sessionicons: yes = each session's icon in front of its name in the
+;    launcher's session menu and in Manage Sessions (the icon its terminal
+;    window shows, the default icon when it sets none, in dark mode a
+;    <name>.dark.ico beside the icon file when there is one). Default no.
+;sessionicons=no
 
 ; initdelay: how long KiTTY++ waits after the terminal opens before it starts
 ;    typing for you - the auto-command (including a \p password step in it).

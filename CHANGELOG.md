@@ -9,7 +9,37 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ## 0.85.1.22-beta — unreleased
 
+### New
+
+- Session icons: with **Show session icons in KiTTY++** on Application >
+  KiTTY++ Settings > Appearance (off by default) the launcher's session menu and Manage
+  Sessions show each session's icon in front of its name, the default icon
+  when the session sets none. In dark mode a file `<name>.dark.ico` beside
+  the session's icon file is shown instead, when it exists. In Manage
+  Sessions the pin of a session with a place of its own then follows its
+  name, as in the folder tree (hknet/KiTTY#62).
+
 ### Changed
+
+- New icons for every program of the suite: one blue tile with `>_` and
+  the green `++`, a badge for Manage Sessions, Quick Connect, kageant,
+  kittygen, kscp/ksftp and the lost connection. kageant's tray icon comes
+  in one form for a light and one for a dark taskbar. At 16 px the `++`
+  stays readable.
+- The numbered session icons (Window > Title & Icon) are drawn anew and
+  come in `kitty++.dll` beside `kitty.exe`: symbols on coloured tiles,
+  drawn from Microsoft's Fluent UI System Icons (MIT). The cartoon
+  characters of classic KiTTY are gone: a session set to 2, 10-19, 21-35
+  or 39 shows a new picture (server, database, cloud, firewall, console,
+  git and more). The other numbers keep their meaning: computers in their
+  colours, the warning sign, the balls, the printer and the digits.
+  Without `kitty++.dll` a numbered icon shows the default icon. A classic
+  `kitty.dll` still loads when there is no `kitty++.dll`. Its code no
+  longer runs: the library is read as data, from the exe's folder only.
+- Window > Title & Icon: **Choose...** beside the icon number shows the
+  icons with their numbers. The external icon file also takes an icon
+  library (`.dll`, `.icl`, `.exe`): the number picks the icon in it.
+  **Choose...** then shows that file's icons.
 
 - FEATURES.md lists what the pseudo-console (ConPTY) of a Local session
   does to images and titles, measured: iTerm2 inline images pass, Sixel,

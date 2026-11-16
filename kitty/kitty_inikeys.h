@@ -46,6 +46,7 @@
 #define KI_FUNKEYS                          "funkeys"
 #define KI_HYPERLINK                        "hyperlink"
 #define KI_ICONFILE                         "iconfile"
+#define KI_SESSIONICONS                     "sessionicons"   /* [KiTTY] yes|no: session icons in the launcher menu and Manage Sessions (hknet/KiTTY#62) */
 #define KI_INITDELAY                        "initdelay"
 #define KI_INTERNALDELAY                    "internaldelay"
 #define KI_KICLASSNAME                      "KiClassName"

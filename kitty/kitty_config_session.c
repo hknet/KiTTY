@@ -41,6 +41,8 @@
 #include "kitty_regbackup.h"
 #include "kitty_broadcast.h"
 #include "kitty_launcher.h"
+#include "kitty_iconpick.h"   /* Choose... beside the icon number (#62) */
+#include "kitty_sessicon.h"
 #include "kitty_tools.h"
 #include "kitty_gui.h"
 #include "mini/mini.h"
@@ -71,6 +73,46 @@
     (backend_vt_from_proto(which_proto) && !midsession)
 
 /* ==== Per-session handlers: position, scripts, passwords, pins ========== */
+
+/* hknet/KiTTY#62: Choose... beside the icon number. A library in the file
+ * field (.dll, .exe, .icl) shows its icons. Otherwise the built-in set
+ * shows: a pick empties an .ico in the file field, because the file wins
+ * over the number and the pick would change nothing on screen. */
+struct icon_pick_ctrls { dlgcontrol *num, *file; };
+static void icon_pick_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    struct icon_pick_ctrls *ipc = (struct icon_pick_ctrls *)ctrl->context.p;
+    Conf *conf = (Conf *)data;
+    Filename *fn;
+    char *path, *numtxt;
+    bool lib;
+    int cur, n;
+    if (event != EVENT_ACTION)
+        return;
+    fn = dlg_filesel_get(ipc->file, dlg);
+    path = filename_expand_str(fn);
+    filename_free(fn);
+    if (!path)
+        path = dupstr("");
+    lib = *path && kitty_icon_is_library(path);
+    numtxt = dlg_editbox_get(ipc->num, dlg);
+    cur = numtxt ? atoi(numtxt) : 0;
+    sfree(numtxt);
+    n = kitty_icon_pick(GetActiveWindow(), lib ? path : NULL, cur);
+    if (n >= 0) {
+        char buf[16];
+        sprintf(buf, "%d", n);
+        dlg_editbox_set(ipc->num, dlg, buf);
+        conf_set_int(conf, CONF_icone, n);
+        if (!lib && *path) {
+            Filename *none = filename_from_str("");
+            dlg_filesel_set(ipc->file, dlg, none);
+            conf_set_filename(conf, CONF_iconefile, none);
+            filename_free(none);
+        }
+    }
+    sfree(path);
+}
 
 /* KiTTY: "Remember window position" keeps one entry per session and monitor
  * layout (kitty_winpos.c). With it on, the Position panel's Top/Left and the
@@ -7155,13 +7197,27 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
      * past the dialog's command buttons). */
     s = ctrl_getset(b, "Window/Title & Icon", "icon",
                     KT_ICON_DEFINE_THE_WINDOW_ICON);
-    ctrl_editbox(s, KT_ICON_ICON_FROM_INTERNAL_RESOURCES, NO_SHORTCUT, 40,
-                 HELPCTX(kitty_icon), conf_editbox_handler,
-                 I(CONF_icone), ED_INT);
-    ctrl_filesel(s, KT_ICON_EXTERNAL_ICON_FILE, NO_SHORTCUT,
-                 FILTER_ICON_FILES, false, KT_ICON_SELECT_ICON_FILE,
-                 HELPCTX(kitty_icon),
-                 conf_filesel_handler, I(CONF_iconefile));
+    {
+        /* the number and Choose... beside it (hknet/KiTTY#62) */
+        struct icon_pick_ctrls *ipc = (struct icon_pick_ctrls *)
+            ctrl_alloc(b, sizeof(struct icon_pick_ctrls));
+        dlgcontrol *ec, *bc;
+        ctrl_columns(s, 2, 75, 25);
+        ec = ctrl_editbox(s, KT_ICON_ICON_FROM_INTERNAL_RESOURCES, NO_SHORTCUT, 53,
+                          HELPCTX(kitty_icon), conf_editbox_handler,
+                          I(CONF_icone), ED_INT);
+        ec->column = 0;
+        bc = ctrl_pushbutton(s, KT_ICON_CHOOSE, NO_SHORTCUT, HELPCTX(kitty_icon),
+                             icon_pick_handler, P(ipc));
+        bc->column = 1;
+        bc->align_next_to = ec;
+        ctrl_columns(s, 1, 100);
+        ipc->num = ec;
+        ipc->file = ctrl_filesel(s, KT_ICON_EXTERNAL_ICON_FILE, NO_SHORTCUT,
+                                 FILTER_ICON_FILES, false, KT_ICON_SELECT_ICON_FILE,
+                                 HELPCTX(kitty_icon),
+                                 conf_filesel_handler, I(CONF_iconefile));
+    }
 
 #ifdef MOD_BACKGROUNDIMAGE
     /* The Background leaf's image groups (KiTTY). Engine: kitty_image.c. */
