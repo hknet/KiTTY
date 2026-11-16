@@ -60,7 +60,8 @@ A registry session whose name contains \c{\\} is a session in a folder:
 \c{prod\\db01} saved by an earlier version is the session \c{db01} in
 folder \c{prod}. Its \c{Folder=} value is ignored and corrected on the
 next save. Sessions filed by their \c{Folder} value only keep working by
-their bare name; \q{Arrange} (below) moves them to their folder path.
+their bare name; \q{Session Folder Alignment...} (below) moves them to
+their folder path.
 
 The list shows folders as a drop-down by default, and can show them as
 rows instead - see \k{kitty-cfg-sessionlist}. As rows, a folder's
@@ -69,27 +70,27 @@ subfolders are rows inside it and \c{..} goes up one level.
 session; as rows, the root holds the sessions in no folder.
 
 Deleting a folder does not delete the sessions in it. The box puts up
-the question where they go: \q{All sessions (root)} is preselected, any
-other folder can be picked. Subfolders move along and keep their place
+the question where they go: the root (\q{Folder root} in Manage
+Sessions) is preselected, any other folder can be picked. Subfolders move along and keep their place
 below the destination. A name that already exists there stops the delete
 before anything moves, and the box lists the sessions in the way. An
 empty folder is deleted without a question.
 
 \q{Manage...} (under \q{Del folder}, beside the comment field) and
 \q{Manage Sessions...} on \k{kitty-cfg-migration} open the
-\q{Manage Sessions} window: the folder tree on the left, the selected
-folder's sessions on the right. The window opens where it was left and
-at the size it was given, for each monitor layout, and always fully on a
-screen. Ctrl+click picks single sessions,
-Shift+click a range, Ctrl+A all of them. \q{Move to...} moves the
-selection to a folder picked in a tree, as does dragging it onto a
-folder of the tree; \q{Rename} renames the selected session, or the
-selected folder when the tree has the focus; \q{New folder} creates one
-inside the selected folder; \q{Delete folder} deletes it (see above);
-\q{Arrange...} is described below. A move takes the session's saved
-password, jump list entry and launcher entries with it, and updates the
-sessions that use it as SSH jump host, which are listed afterwards. A
-name that already exists at the destination moves nothing.
+\q{Manage Sessions} window: the folder tree on the left, \q{Folder root}
+at its top, the selected folder's sessions on the right. It has no
+buttons along its foot: its actions are on the right-click menus, F2
+renames the selected folder or session, Del deletes it (with a
+confirmation), Esc closes the window. The window opens where it was left
+and at the size it was given, for each monitor layout, and always fully
+on a screen. Ctrl+click picks single sessions, Shift+click a range,
+Ctrl+A all of them. \q{Move to...} moves the selection to a folder
+picked in a tree, as does dragging it onto a folder of the tree. A move
+takes the session's saved password, jump list entry and launcher entries
+with it, and updates the sessions that use it as SSH jump host, which
+are listed afterwards. A name that already exists at the destination
+moves nothing.
 
 While dragging, the pointer carries the session's name (or the number
 of sessions), the folder it would land in is highlighted, a closed
@@ -97,27 +98,32 @@ folder opens after a short hover, and the tree scrolls at its edges; Esc
 ends the drag. A folder dragged onto another folder (or onto the root)
 moves into it with everything in it, after a confirmation. A right
 click on the sessions offers \q{Start Sessions} (each in its own
-terminal), \q{Move to...}, \q{Copy to...} (copies in another folder,
-numbered \c{-1}, \c{-2} when the name is taken there), \q{Rename...},
-\q{Clone} (copies in the same folder named \c{name-1}, \c{name-2}, ...),
-\q{Delete} (with a confirmation) and \q{Select All}; a right click on
-the tree offers \q{New folder...}, \q{Rename...} and \q{Delete}.
+terminal), \q{Edit...} (one session), \q{Move to...}, \q{Copy to...}
+(copies in another folder, numbered \c{-1}, \c{-2} when the name is
+taken there), \q{Rename...}, \q{Clone} (copies in the same folder named
+\c{name-1}, \c{name-2}, ...), \q{Delete} (with a confirmation) and
+\q{Select All}; a right click on the tree offers \q{New folder...},
+\q{Rename...} and \q{Delete}. \q{Edit...} loads the session into the
+configuration window Manage Sessions was opened from.
+
+\q{Tag Editor...}, above the session list, shows the tag pane beside the
+list and widens the window by it; pressed again it hides the pane. The
+window remembers whether the pane was open.
 
 \c{kitty.exe -manage} opens Manage Sessions alone, without a
-configuration window behind it; closing it ends the program. Its
-\q{Edit} opens the configuration window in the same process, on the
-selected session (loaded, in its folder), else on the selected folder,
-else on the root. There \q{Open} starts the session in a new window
-and returns to Manage Sessions, and \q{Close} (in place of \q{Exit})
-closes only the configuration window.
+configuration window behind it; closing it ends the program. There
+\q{Edit...} opens the configuration window in the same process, on the
+selected session (loaded, in its folder). \q{Open} starts the session
+in a new window and returns to Manage Sessions, and \q{Close} (in place
+of \q{Exit}) closes only the configuration window.
 
-\q{Arrange} moves the sessions an older version filed by their
-\c{Folder} value only into their folder path: \c{srv01} with
-\c{Folder=Linux\\web} becomes \c{Linux\\web\\srv01}. The registry is
-backed up first; a folder store's files move into subfolders of
-Sessions. It is offered once, the first time the configuration window
-opens on a store that has such sessions; after \q{Later} it stays in
-Manage Sessions.
+\q{Session Folder Alignment...} on \k{kitty-cfg-migration} moves the
+sessions an older version filed by their \c{Folder} value only into
+their folder path: \c{srv01} with \c{Folder=Linux\\web} becomes
+\c{Linux\\web\\srv01}. The registry is backed up first; a folder
+store's files move into subfolders of Sessions. It is offered once, the
+first time the configuration window opens on a store that has such
+sessions; after \q{Later} it stays on \k{kitty-cfg-migration}.
 
 \S{kitty-cfg-proxy-override} \q{Proxy override options}
 
@@ -3662,7 +3668,9 @@ into this store. Passwords are re-protected by the store they arrive
 in.
 
 \b \q{Session folders}: \q{Manage Sessions...} opens the Manage
-Sessions window, the same as \q{Manage...} on the Session panel (see
+Sessions window, the same as \q{Manage...} on the Session panel;
+\q{Session Folder Alignment...} moves the sessions filed by their
+\c{Folder} value only into their folder path, after a question (see
 \k{kitty-cfg-folders}).
 
 The groups below them appear only on a registry-backed installation

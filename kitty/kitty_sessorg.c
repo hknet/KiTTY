@@ -813,15 +813,9 @@ static char *so_tree_folder(HWND tree, HTREEITEM it, const struct so_folders *fs
 
 static const struct kl_anchor so_anchors[] = {
     {IDC_SO_TREE,      KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_BOTTOM},
+    {IDC_SO_TAGEDIT,   KL_ANCH_LEFT | KL_ANCH_TOP},
     {IDC_SO_COUNT,     KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT},
     {IDC_SO_LIST,      KL_ANCH_LEFT | KL_ANCH_TOP | KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
-    {IDC_SO_MOVE,      KL_ANCH_LEFT | KL_ANCH_BOTTOM},
-    {IDC_SO_RENAME,    KL_ANCH_LEFT | KL_ANCH_BOTTOM},
-    {IDC_SO_NEWFOLDER, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
-    {IDC_SO_DELFOLDER, KL_ANCH_LEFT | KL_ANCH_BOTTOM},
-    {IDC_SO_ARRANGE,   KL_ANCH_LEFT | KL_ANCH_BOTTOM},
-    {IDC_SO_EDIT,      KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
-    {IDCANCEL,         KL_ANCH_RIGHT | KL_ANCH_BOTTOM},
 };
 
 struct so_state {
@@ -841,7 +835,7 @@ struct so_state {
     HTREEITEM gap_item;
     int gap_after;
     int lv_gap;
-    HIMAGELIST nail_tree, nail_list; /* the nail, item image 1 of a row with a place */
+    HIMAGELIST nail_list;           /* the list's nail, item image 1 of a row with a place */
     HIMAGELIST dragimg;             /* what the pointer carries */
     HTREEITEM hover;                /* the folder under the pointer, and since when */
     DWORD hover_since;
@@ -854,6 +848,13 @@ struct so_state {
     HWND tagcombo, taglist;
     char *tag;
     int tagdrop;
+    /* the pane on demand (Tag Editor...): shown or not, and how much wider
+     * the window is with it (the pane and the gap before it, pixels) */
+    int tags_open;
+    int pane_w;
+    /* the folders open in the tree when the window was closed last
+     * (KR_MANAGE_OPEN, | between paths): taken by the first fill */
+    char *open_saved;
 };
 
 static struct so_state *so_window = NULL;   /* one Organize window at a time */
@@ -944,7 +945,6 @@ static void so_fill_list(struct so_state *st)
     count = shown == 1 ? dupstr(KT_SP_ORG_COUNT_ONE) : dupprintf(KT_SP_ORG_COUNT, shown);
     SetDlgItemTextA(st->h, IDC_SO_COUNT, count);
     sfree(count);
-    EnableWindow(GetDlgItem(st->h, IDC_SO_DELFOLDER), *st->cur != '\0');
 }
 
 /* Everything from the store again, the same folder shown if it still is. */
@@ -973,6 +973,24 @@ static void so_reload(struct so_state *st)
     }
     /* what was open, and how far the tree was scrolled, before the re-read */
     char **open = so_tree_expanded(st->tree, &st->fs, &nopen);
+    /* the first fill: what was open when the window was closed last */
+    if (st->open_saved) {
+        char *p = st->open_saved, *bar;
+        while (*p) {
+            bar = strchr(p, '|');
+            if (bar)
+                *bar = '\0';
+            if (*p) {
+                open = sresize(open, nopen + 1, char *);
+                open[nopen++] = dupstr(p);
+            }
+            if (!bar)
+                break;
+            p = bar + 1;
+        }
+        sfree(st->open_saved);
+        st->open_saved = NULL;
+    }
     HTREEITEM top = TreeView_GetFirstVisible(st->tree);
     char *topf = so_tree_folder(st->tree, top, &st->fs);
     so_folders_free(&st->fs);
@@ -1172,7 +1190,8 @@ static void so_fill_tags(struct so_state *st)
     ListView_SetColumnWidth(st->taglist, 0, LVSCW_AUTOSIZE_USEHEADER);
     SendMessage(st->taglist, WM_SETREDRAW, TRUE, 0);
     InvalidateRect(st->taglist, NULL, TRUE);
-    EnableWindow(GetDlgItem(st->h, IDC_SO_LAUNCH), n > 0);
+    /* only with the pane shown (so_split): hidden, Alt+L must do nothing */
+    EnableWindow(GetDlgItem(st->h, IDC_SO_LAUNCH), n > 0 && st->tags_open);
 }
 
 /* The tag typed or picked: blanks around it do not count. */
@@ -1353,35 +1372,67 @@ static void so_launch(struct so_state *st)
     sfree(all);
 }
 
-/* The pane beside the folder's list: the list keeps 55% of the width right
- * of the tree; the tag row (label, field, Launch) sits on the count line,
- * the tag's sessions below it, as tall as the list. The shared anchoring
- * places the list first (it stretches with the window); this splits it. */
+/* The count row and the pane beside the folder's list. The count row: the
+ * session count at the left, Tag Editor... (as wide as its caption) ending
+ * where the list ends. With the tag pane shown it keeps its width (pane_w)
+ * right of the list; the tag row (label, field, Launch) sits on the count
+ * line, the tag's sessions below it, as tall as the list. Hidden, the list
+ * takes the whole width. The shared anchoring places the list first (it
+ * stretches with the window); this splits it. */
 static void so_split(struct so_state *st)
 {
     static const int row[] = { IDC_SO_TAGLABEL, IDC_SO_LAUNCH, 0 };
+    static const int pane[] = { IDC_SO_TAGLABEL, IDC_SO_TAGCOMBO,
+                                IDC_SO_LAUNCH, IDC_SO_TAGLIST, 0 };
     HWND h = st->h, lbl = GetDlgItem(h, IDC_SO_TAGLABEL),
-        launch = GetDlgItem(h, IDC_SO_LAUNCH);
-    RECT tr, lr, cr, cnt, cb, br;
-    int gap, left, right, wl, x2, lw, bw, ch, y;
+        launch = GetDlgItem(h, IDC_SO_LAUNCH),
+        tagedit = GetDlgItem(h, IDC_SO_TAGEDIT);
+    RECT tr, lr, cr, cb, br, te;
+    int gap, left, right, wl, x2, lw, bw, tw, ch, y, i;
     HDC dc;
     HFONT f, of = NULL;
     SIZE sz;
     char text[64];
     so_rect(h, IDC_SO_TREE, &tr);
     so_rect(h, IDC_SO_LIST, &lr);
-    so_rect(h, IDC_SO_COUNT, &cnt);
     so_rect(h, IDC_SO_TAGCOMBO, &cb);
     so_rect(h, IDC_SO_LAUNCH, &br);
+    so_rect(h, IDC_SO_TAGEDIT, &te);
     GetClientRect(h, &cr);
     gap = lr.left - tr.right;
     left = lr.left;
     right = cr.right - tr.left;
-    wl = (right - left - gap) * 55 / 100;
+    ch = cb.bottom - cb.top;            /* a closed combo: its field's height */
+    y = lr.top - ch - 2;
+    if (y < 2)
+        y = 2;
+    /* the pane keeps its width (pane_w: it and the gap before it), the list
+     * takes the rest - so the window grows and shrinks by the same amount */
+    wl = right - left;
+    if (st->tags_open && st->pane_w > 0) {
+        wl -= st->pane_w;
+        if (wl < gap * 4)
+            wl = gap * 4;
+    } else if (st->tags_open) {
+        wl = (right - left - gap) * 55 / 100;   /* the template's split, measured once */
+    }
     x2 = left + wl + gap;
     MoveWindow(st->list, left, lr.top, wl, lr.bottom - lr.top, TRUE);
-    MoveWindow(GetDlgItem(h, IDC_SO_COUNT), left, cnt.top, wl,
-               cnt.bottom - cnt.top, TRUE);
+    /* the count at the left, Tag Editor... ending where the list ends */
+    tw = kitty_theme_button_width(tagedit, te.right - te.left);
+    MoveWindow(GetDlgItem(h, IDC_SO_COUNT), left, y, wl - tw - gap / 2, ch, TRUE);
+    MoveWindow(tagedit, left + wl - tw, y, tw, ch, TRUE);
+    /* hidden, the pane is disabled too: a hidden control still answers its
+     * Alt key (Alt+L launched the tag's sessions, Alt+T took the field) */
+    for (i = 0; pane[i]; i++) {
+        HWND c = GetDlgItem(h, pane[i]);
+        ShowWindow(c, st->tags_open ? SW_SHOW : SW_HIDE);
+        EnableWindow(c, st->tags_open &&
+                     (pane[i] != IDC_SO_LAUNCH ||
+                      ListView_GetItemCount(st->taglist) > 0));
+    }
+    if (!st->tags_open)
+        return;
     /* the label as wide as its text */
     GetWindowTextA(lbl, text, sizeof(text));
     {
@@ -1401,10 +1452,6 @@ static void so_split(struct so_state *st)
     ReleaseDC(lbl, dc);
     lw = sz.cx + 2;
     bw = kitty_theme_button_width(launch, br.right - br.left);
-    ch = cb.bottom - cb.top;            /* a closed combo: its field's height */
-    y = lr.top - ch - 2;
-    if (y < 2)
-        y = 2;
     MoveWindow(lbl, x2, y, lw, ch, TRUE);
     /* a combo's height is its dropped list's: ten rows of the field */
     MoveWindow(st->tagcombo, x2 + lw + gap / 2, y,
@@ -1413,6 +1460,46 @@ static void so_split(struct so_state *st)
     kitty_theme_align_row(h, IDC_SO_TAGCOMBO, row);
     MoveWindow(st->taglist, x2, lr.top, right - x2, lr.bottom - lr.top, TRUE);
     ListView_SetColumnWidth(st->taglist, 0, LVSCW_AUTOSIZE_USEHEADER);
+}
+
+/* Tag Editor...: the tag pane shown or hidden, the window wider or narrower
+ * by it. Its left edge stays; a wider window that would leave the monitor's
+ * work area moves left. A maximised window keeps its size: only the layout
+ * changes. */
+static void so_tags_show(struct so_state *st, int open)
+{
+    RECT wr;
+    int w, x;
+    open = open ? 1 : 0;
+    CheckDlgButton(st->h, IDC_SO_TAGEDIT, open ? BST_CHECKED : BST_UNCHECKED);
+    if (open == st->tags_open)
+        return;
+    if (!open) {
+        HWND f = GetFocus();
+        if (f == st->taglist || f == st->tagcombo || GetParent(f) == st->tagcombo ||
+            f == GetDlgItem(st->h, IDC_SO_LAUNCH))
+            SetFocus(GetDlgItem(st->h, IDC_SO_TAGEDIT));
+    }
+    st->tags_open = open;
+    if (!IsZoomed(st->h)) {
+        GetWindowRect(st->h, &wr);
+        w = (wr.right - wr.left) + (open ? st->pane_w : -st->pane_w);
+        x = wr.left;
+        if (open) {
+            MONITORINFO mi;
+            memset(&mi, 0, sizeof(mi));
+            mi.cbSize = sizeof(mi);
+            if (GetMonitorInfo(MonitorFromWindow(st->h, MONITOR_DEFAULTTONEAREST), &mi) &&
+                x + w > mi.rcWork.right) {
+                x = mi.rcWork.right - w;
+                if (x < mi.rcWork.left)
+                    x = mi.rcWork.left;
+            }
+        }
+        SetWindowPos(st->h, NULL, x, wr.top, w, wr.bottom - wr.top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    so_split(st);
 }
 
 static void so_changed(struct so_state *st)
@@ -2148,6 +2235,7 @@ static void so_drop_on(struct so_state *st, HTREEITEM target)
 #define SO_CMD_TAG_REMOVE   0x7109
 #define SO_CMD_TAG_SELALL   0x710A
 #define SO_CMD_RESET_ORDER  0x710B   /* the folder menu: Reset Order */
+#define SO_CMD_EDIT         0x710C   /* the session menu: Edit... */
 
 /* Sessions in their own terminals: kitty.exe -load "<name>" each - with the
  * master key ahead of -load, so the stored password opens without a prompt.
@@ -2709,27 +2797,70 @@ static void so_list_gap_drop(struct so_state *st, int gap)
 
 /* The nail: a pushpin drawn by us (no font glyph: Segoe MDL2 Assets is
  * missing before Windows 10, and the 32-bit build runs on XP), s pixels
- * square at x0, in the theme's colours. */
-static void so_draw_nail(HDC dc, int x0, int s, bool dark)
+ * square at x0,y0. Light: the theme's red head on a black needle. Dark: a
+ * quieter red with a darker rim and a grey needle, so it does not glare on
+ * the dark background as the light-theme red and white did. */
+static void so_draw_nail_at(HDC dc, int x0, int y0, int s, bool dark)
 {
-    COLORREF head = kitty_theme_ink(dark, KITTY_INK_BAD);
-    COLORREF ink = kitty_theme_text_colour(dark);
+    COLORREF head = dark ? RGB(0xc8, 0x4c, 0x4c) : kitty_theme_ink(dark, KITTY_INK_BAD);
+    COLORREF rim = dark ? RGB(0x8a, 0x2e, 0x2e) : head;
+    COLORREF ink = dark ? RGB(0x9a, 0x9a, 0x9a) : kitty_theme_text_colour(dark);
     int w = s / 8 > 1 ? s / 8 : 1;
-    HPEN pen = CreatePen(PS_SOLID, w, ink), hp = CreatePen(PS_SOLID, 1, head);
+    HPEN pen = CreatePen(PS_SOLID, w, ink), hp = CreatePen(PS_SOLID, 1, rim);
     HBRUSH br = CreateSolidBrush(head);
     HGDIOBJ op = SelectObject(dc, pen), ob;
     /* the pin, from under the head down to the lower left */
-    MoveToEx(dc, x0 + s * 5 / 8, s * 3 / 8, NULL);
-    LineTo(dc, x0 + s / 5, s - s / 6);
+    MoveToEx(dc, x0 + s * 5 / 8, y0 + s * 3 / 8, NULL);
+    LineTo(dc, x0 + s / 5, y0 + s - s / 6);
     /* the round head at the upper right */
     SelectObject(dc, hp);
     ob = SelectObject(dc, br);
-    Ellipse(dc, x0 + s * 7 / 16, s / 8, x0 + s - s / 8, s * 9 / 16);
+    Ellipse(dc, x0 + s * 7 / 16, y0 + s / 8, x0 + s - s / 8, y0 + s * 9 / 16);
     SelectObject(dc, ob);
     SelectObject(dc, op);
     DeleteObject(br);
     DeleteObject(hp);
     DeleteObject(pen);
+}
+static void so_draw_nail(HDC dc, int x0, int s, bool dark)
+{
+    so_draw_nail_at(dc, x0, 0, s, dark);
+}
+
+/* The folder tree draws as the configuration window's tree does
+ * (kitty_theme_tree_customdraw: the selection's colours, the focus frame),
+ * with no item images - so no gap between the tree lines and the names -
+ * and the nail of a folder with a place of its own drawn AFTER its name.
+ * Item image 1 still marks such a folder (the tree has no image list, the
+ * index is only read). */
+static LRESULT so_tree_customdraw(HWND tree, LPNMTVCUSTOMDRAW cd)
+{
+    LRESULT r = kitty_theme_tree_customdraw(cd);
+    HTREEITEM item = (HTREEITEM)cd->nmcd.dwItemSpec;
+    TVITEMA tv;
+    if (cd->nmcd.dwDrawStage != CDDS_ITEMPREPAINT &&
+        cd->nmcd.dwDrawStage != CDDS_ITEMPOSTPAINT)
+        return r;
+    memset(&tv, 0, sizeof(tv));
+    tv.mask = TVIF_IMAGE;
+    tv.hItem = item;
+    if (!SendMessageA(tree, TVM_GETITEMA, 0, (LPARAM)&tv) || tv.iImage != 1)
+        return r;
+    if (cd->nmcd.dwDrawStage == CDDS_ITEMPREPAINT)
+        return r | CDRF_NOTIFYPOSTPAINT;
+    {
+        RECT tr;
+        int s;
+        if (TreeView_GetItemRect(tree, item, &tr, TRUE)) {
+            s = (tr.bottom - tr.top) - 4;
+            if (s < 8)
+                s = 8;
+            so_draw_nail_at(cd->nmcd.hdc, tr.right + s / 4,
+                            tr.top + ((tr.bottom - tr.top) - s) / 2, s,
+                            kitty_theme_window_dark(tree));
+        }
+    }
+    return r;
 }
 
 /* An image list of the nail, s pixels square: with `blank_first` image 0
@@ -2778,16 +2909,13 @@ static void so_nails_make(struct so_state *st)
 {
     bool dark = kitty_theme_window_dark(st->h);
     int s = (int)TreeView_GetItemHeight(st->tree) - 2;
-    HIMAGELIST t = so_nail_images(st->tree, s, dark, 1);
     HIMAGELIST l = so_nail_images(st->list, s, dark, 1);
     COLORREF mark = kitty_theme_text_colour(dark);
-    TreeView_SetImageList(st->tree, t, TVSIL_NORMAL);
+    /* the tree has none: its nails are drawn after the names
+     * (so_tree_customdraw) */
     ListView_SetImageList(st->list, l, LVSIL_SMALL);
-    if (st->nail_tree)
-        ImageList_Destroy(st->nail_tree);
     if (st->nail_list)
         ImageList_Destroy(st->nail_list);
-    st->nail_tree = t;
     st->nail_list = l;
     st->nail_dark = dark ? 1 : 0;
     TreeView_SetInsertMarkColor(st->tree, mark);
@@ -3070,7 +3198,6 @@ static void so_edit(struct so_state *st)
     /* afterwards the focus goes to the edited session in the list (or back
      * to the list or the tree, wherever it was when no session was chosen) */
     focus_list = name != NULL || st->pane == 1;
-    EnableWindow(GetDlgItem(st->h, IDC_SO_EDIT), FALSE);
     open = do_config(conf);             /* modal; this window keeps working */
     so_editing = 0;
     if (open && conf_launchable(conf))
@@ -3078,7 +3205,6 @@ static void so_edit(struct so_state *st)
     conf_free(conf);
     if (so_window) {
         struct so_state *w = so_window;
-        EnableWindow(GetDlgItem(w->h, IDC_SO_EDIT), TRUE);
         so_reload(w);                   /* a save or a delete there */
         if (name)
             so_select_session(w, name); /* the reload cleared the selection */
@@ -3093,6 +3219,23 @@ static void so_edit(struct so_state *st)
     if (!so_window && so_quit_after_edit) {
         PostQuitMessage(0);
     }
+}
+
+/* Edit... when this window was opened from the configuration window: the
+ * one selected session loaded there, as its Load would, and that window
+ * brought to the front. */
+static void so_edit_here(struct so_state *st)
+{
+    int n;
+    char **sel = so_selected(st, &n);
+    if (n != 1 || !kitty_config_session_load_named(sel[0])) {
+        MessageBeep(MB_ICONWARNING);
+    } else {
+        HWND owner = GetWindow(st->h, GW_OWNER);
+        if (owner)
+            SetForegroundWindow(owner);
+    }
+    sfree(sel);
 }
 
 /* kitty.exe -manage: Manage Sessions alone, without a configuration window
@@ -3135,13 +3278,20 @@ static bool so_sel_has_old(struct so_state *st)
     sfree(sel);
     return old;
 }
-/* Move and Rename act on the list's sessions while the list is the pane in
- * use: greyed then for a selection with an old session. */
-static void so_update_session_btns(struct so_state *st)
+/* F2 and Del in the tree and the list, as in Explorer: with no Ctrl, Shift
+ * or Alt held. readonly=yes: a beep, as the greyed menu items. */
+static int so_plain_key(void)
 {
-    BOOL on = !(st->pane == 1 && so_sel_has_old(st));
-    EnableWindow(GetDlgItem(st->h, IDC_SO_MOVE), on);
-    EnableWindow(GetDlgItem(st->h, IDC_SO_RENAME), on);
+    return !(GetKeyState(VK_CONTROL) & 0x8000) &&
+           !(GetKeyState(VK_SHIFT) & 0x8000) &&
+           !(GetKeyState(VK_MENU) & 0x8000);
+}
+static void so_key(struct so_state *st, int id)
+{
+    if (GetReadOnlyFlag())
+        MessageBeep(MB_ICONWARNING);
+    else
+        so_command(st, id);
 }
 
 static void so_list_menu(struct so_state *st, int x, int y)
@@ -3165,6 +3315,7 @@ static void so_list_menu(struct so_state *st, int x, int y)
         y = p.y;
     }
     so_menu_add(m, SO_CMD_START, KT_SP_ORG_M_START, nsel > 0);
+    so_menu_add(m, SO_CMD_EDIT, KT_SP_ORG_M_EDIT, nsel == 1 && !so_editing);
     AppendMenuA(m, MF_SEPARATOR, 0, NULL);
     so_menu_add(m, IDC_SO_MOVE, KT_SP_ORG_M_MOVE, nsel > 0 && rw && own);
     so_menu_add(m, SO_CMD_COPY, KT_SP_ORG_M_COPY, nsel > 0 && rw);
@@ -3459,17 +3610,109 @@ static void so_command(struct so_state *st, int id)
         }
         return;
       }
-      case IDC_SO_ARRANGE:
-        kitty_sessorg_arrange(st->h, 0);
-        return;
-      case IDC_SO_EDIT:
+      case SO_CMD_EDIT:
         if (so_manage_mode)
             so_edit(st);
+        else
+            so_edit_here(st);
+        return;
+      case IDC_SO_TAGEDIT:
+        so_tags_show(st, IsDlgButtonChecked(st->h, IDC_SO_TAGEDIT) == BST_CHECKED);
         return;
       case IDCANCEL:
         DestroyWindow(st->h);
         return;
     }
+}
+
+/* The session lists' selected rows in the system's highlight colours, as the
+ * configuration window's session list (a list box) draws its selection - in
+ * the light theme and the dark one, with the focus or without. A list view
+ * left to itself draws a grey band in the dark theme, and a grey one in both
+ * once the window loses the focus. */
+/* A list view row's text, whole, snewn'd: the control hands its text only
+ * into a buffer of a size given to it, and a reply that fills the buffer
+ * may have been cut - then again with one twice as big. */
+static char *so_lv_text_dup(HWND lv, int row)
+{
+    size_t cap = 128;
+    for (;;) {
+        char *buf = snewn(cap, char);
+        LVITEMA it;
+        int n;
+        memset(&it, 0, sizeof(it));
+        it.pszText = buf;
+        it.cchTextMax = (int)cap;
+        buf[0] = '\0';
+        n = (int)SendMessageA(lv, LVM_GETITEMTEXTA, (WPARAM)row, (LPARAM)&it);
+        if (n < 0)
+            n = 0;
+        if ((size_t)n + 1 < cap)
+            return buf;
+        sfree(buf);
+        cap *= 2;
+    }
+}
+
+static LRESULT so_list_customdraw(HWND lv, LPNMLVCUSTOMDRAW cd)
+{
+    /* Every row drawn here (the theme paints its own selection box over
+     * colours a custom draw hands it): the background, the item image (the
+     * manual order's nail), the name, the focus frame. */
+    int row = (int)cd->nmcd.dwItemSpec;
+    HDC dc = cd->nmcd.hdc;
+    RECT rb, ri, rl;
+    LVITEMA it;
+    char *text;
+    bool sel;
+    HIMAGELIST il;
+    HFONT f, of = NULL;
+    HBRUSH br;
+    switch (cd->nmcd.dwDrawStage) {
+      case CDDS_PREPAINT:
+        return CDRF_NOTIFYITEMDRAW;
+      case CDDS_ITEMPREPAINT:
+        break;
+      default:
+        return CDRF_DODEFAULT;
+    }
+    if (!ListView_GetItemRect(lv, row, &rb, LVIR_BOUNDS) ||
+        !ListView_GetItemRect(lv, row, &ri, LVIR_ICON) ||
+        !ListView_GetItemRect(lv, row, &rl, LVIR_LABEL))
+        return CDRF_DODEFAULT;
+    memset(&it, 0, sizeof(it));
+    it.mask = LVIF_IMAGE | LVIF_STATE;
+    it.stateMask = LVIS_SELECTED | LVIS_FOCUSED;
+    it.iItem = row;
+    if (!SendMessageA(lv, LVM_GETITEMA, 0, (LPARAM)&it))
+        return CDRF_DODEFAULT;
+    text = so_lv_text_dup(lv, row);     /* any length: a tag row holds a path */
+    sel = (it.state & LVIS_SELECTED) != 0;
+    br = CreateSolidBrush(sel ? GetSysColor(COLOR_HIGHLIGHT) : ListView_GetBkColor(lv));
+    FillRect(dc, &rb, br);
+    DeleteObject(br);
+    il = ListView_GetImageList(lv, LVSIL_SMALL);
+    if (il && it.iImage > 0) {
+        int iw = 0, ih = 0;
+        ImageList_GetIconSize(il, &iw, &ih);
+        ImageList_Draw(il, it.iImage, dc, ri.left,
+                       ri.top + ((ri.bottom - ri.top) - ih) / 2, ILD_TRANSPARENT);
+    }
+    f = (HFONT)SendMessage(lv, WM_GETFONT, 0, 0);
+    if (f)
+        of = (HFONT)SelectObject(dc, f);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, sel ? GetSysColor(COLOR_HIGHLIGHTTEXT) : ListView_GetTextColor(lv));
+    rl.left += 2 * GetSystemMetrics(SM_CXEDGE);
+    DrawTextA(dc, text, -1, &rl, DT_LEFT | DT_VCENTER | DT_SINGLELINE |
+              DT_END_ELLIPSIS | DT_NOPREFIX);
+    sfree(text);
+    if (of)
+        SelectObject(dc, of);
+    if ((it.state & LVIS_FOCUSED) && GetFocus() == lv &&
+        !(SendMessage(lv, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS))
+        DrawFocusRect(dc, &rb);
+    return CDRF_SKIPDEFAULT;
 }
 
 /* NM_CUSTOMDRAW of an empty list: a line stating why, and the focus frame.
@@ -3511,6 +3754,7 @@ static int so_draw_empty(HWND h, HWND lv, const char *text, LPARAM lp)
 #ifndef WM_DPICHANGED
 #define WM_DPICHANGED 0x02E0
 #endif
+UINT kitty_cfgbox_store_msg(void);          /* kitty_config_shared.c */
 static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 {
     struct so_state *st = (struct so_state *)GetWindowLongPtr(h, GWLP_USERDATA);
@@ -3519,26 +3763,30 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         (kitty_theme_is_change_message(msg) || msg == WM_THEMECHANGED ||
          msg == WM_SYSCOLORCHANGE || msg == WM_DPICHANGED))
         so_nails_make(st);
+    /* another kitty.exe changed the store (a configuration window saved or
+     * deleted a session, another Manage Sessions moved one): read it again.
+     * The sender's own windows have (wParam = its process). Nothing is told
+     * on from here - that would bounce between the processes. */
+    {
+        UINT sm = kitty_cfgbox_store_msg();
+        if (sm && msg == sm) {
+            if (st && st->ready && (DWORD)wp != GetCurrentProcessId() &&
+                !st->dragging)
+                so_reload(st);
+            return FALSE;
+        }
+    }
     switch (msg) {
       case WM_INITDIALOG: {
-        static const int btns[] = { IDC_SO_MOVE, IDC_SO_RENAME, IDC_SO_NEWFOLDER,
-                                    IDC_SO_DELFOLDER, IDC_SO_ARRANGE, 0 };
         LVCOLUMNA col;
-        RECT a, b, cr, wr, r;
-        int i, x, gap, w;
-        HDWP dwp;
+        RECT wr;
         st = (struct so_state *)lp;
         SetWindowLongPtr(h, GWLP_USERDATA, lp);
         st->h = h;
         st->tree = GetDlgItem(h, IDC_SO_TREE);
         st->list = GetDlgItem(h, IDC_SO_LIST);
         SetWindowTextA(h, KT_SP_ORG_TITLE);
-        SetDlgItemTextA(h, IDC_SO_MOVE, KT_SP_ORG_BTN_MOVE);
-        SetDlgItemTextA(h, IDC_SO_RENAME, KT_SP_ORG_BTN_RENAME);
-        SetDlgItemTextA(h, IDC_SO_NEWFOLDER, KT_SP_ORG_BTN_NEW_FOLDER);
-        SetDlgItemTextA(h, IDC_SO_DELFOLDER, KT_SP_ORG_BTN_DEL_FOLDER);
-        SetDlgItemTextA(h, IDC_SO_ARRANGE, KT_SP_ORG_BTN_ARRANGE);
-        SetDlgItemTextA(h, IDCANCEL, KT_SP_ORG_BTN_CLOSE);
+        SetDlgItemTextA(h, IDC_SO_TAGEDIT, KT_SP_ORG_BTN_TAGS);
         /* its own icon: the KiTTY++ icon with a gear in front (kitty.rc) */
         {
             HINSTANCE inst = GetModuleHandle(NULL);
@@ -3554,50 +3802,6 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             } else {
                 kitty_dialog_icon(h, NULL);
             }
-        }
-
-        /* The foot: the five actions from the left, Close at the right,
-         * every button as wide as its caption, in one transaction. */
-        so_rect(h, IDC_SO_MOVE, &a);
-        so_rect(h, IDC_SO_RENAME, &b);
-        gap = b.left - a.right;
-        GetClientRect(h, &cr);
-        dwp = BeginDeferWindowPos(6);
-        for (i = 0, x = a.left; btns[i]; i++) {
-            so_rect(h, btns[i], &r);
-            w = kitty_theme_button_width(GetDlgItem(h, btns[i]), r.right - r.left);
-            if (dwp)
-                dwp = DeferWindowPos(dwp, GetDlgItem(h, btns[i]), NULL, x, r.top,
-                                     w, r.bottom - r.top, SWP_NOZORDER | SWP_NOACTIVATE);
-            x += w + gap;
-        }
-        so_rect(h, IDCANCEL, &r);
-        w = kitty_theme_button_width(GetDlgItem(h, IDCANCEL), r.right - r.left);
-        GetWindowRect(h, &wr);
-        if (x + w + a.left > cr.right) {
-            /* wider than the template allowed for: the window grows */
-            SetWindowPos(h, NULL, 0, 0, (wr.right - wr.left) + (x + w + a.left - cr.right),
-                         wr.bottom - wr.top, SWP_NOMOVE | SWP_NOZORDER);
-            GetClientRect(h, &cr);
-        }
-        if (dwp)
-            dwp = DeferWindowPos(dwp, GetDlgItem(h, IDCANCEL), NULL,
-                                 cr.right - a.left - w, r.top, w, r.bottom - r.top,
-                                 SWP_NOZORDER | SWP_NOACTIVATE);
-        if (dwp)
-            EndDeferWindowPos(dwp);
-        /* -manage: Edit, left of Close (hidden otherwise: there the
-         * configuration window is the one this window was opened from) */
-        if (so_manage_mode) {
-            HWND eb = GetDlgItem(h, IDC_SO_EDIT);
-            RECT er;
-            int we;
-            SetWindowTextA(eb, KT_SP_ORG_BTN_EDIT);
-            so_rect(h, IDC_SO_EDIT, &er);
-            we = kitty_theme_button_width(eb, er.right - er.left);
-            MoveWindow(eb, cr.right - a.left - w - gap - we, r.top, we,
-                       r.bottom - r.top, TRUE);
-            ShowWindow(eb, SW_SHOW);
         }
 
         ListView_SetExtendedListViewStyle(st->list, LVS_EX_FULLROWSELECT);
@@ -3634,6 +3838,7 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             }
             st->cur = f ? f : dupstr("");
         }
+        st->open_saved = kitty_state_get_dup(KR_MANAGE_OPEN);   /* the open folders */
         so_reload(st);
         {
             char *sn = kitty_state_get_dup(KR_MANAGE_SESSION);
@@ -3644,19 +3849,40 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 
         {
             SIZE ignore;
+            RECT tr, cr, lr, tl;
             anchored_capture(h, so_anchors, lenof(so_anchors), st->rects,
                              &st->basesize, &ignore);
-            GetWindowRect(h, &wr);
-            st->minsize.cx = wr.right - wr.left;
-            st->minsize.cy = (wr.bottom - wr.top) * 2 / 3;
+            /* the template holds the tag pane: its width there is what the
+             * window gains with it; it opens without (so_tags_show) */
+            st->tags_open = 1;
             st->ready = 1;
             so_split(st);
+            so_rect(h, IDC_SO_LIST, &lr);
+            so_rect(h, IDC_SO_TAGLIST, &tl);
+            st->pane_w = tl.right - lr.right;
+            so_tags_show(st, 0);
+            GetWindowRect(h, &wr);
+            GetClientRect(h, &cr);
+            so_rect(h, IDC_SO_TREE, &tr);
+            st->minsize.cx = wr.right - wr.left;
+            /* at least about five rows of folders: the frame, the tree's
+             * place above and below, five of its rows and its border */
+            st->minsize.cy = (wr.bottom - wr.top) - (cr.bottom - cr.top) +
+                tr.top + (cr.bottom - tr.bottom) +
+                5 * (int)TreeView_GetItemHeight(st->tree) +
+                2 * GetSystemMetrics(SM_CYEDGE);
         }
-        /* where it was on this monitor layout, fully visible; the first
-         * time, over its owner */
+        /* where it was on this monitor layout, fully visible (its narrow
+         * size); the first time, over its owner. The pane as it was left. */
         if (!kitty_auxpos_restore(h, KR_DLGPOS_MANAGE, 1, st->minsize.cx,
                                   st->minsize.cy))
             kitty_centre_on_owner(h);
+        {
+            char *o = kitty_state_get_dup(KR_MANAGE_TAGS);
+            if (o && *o == '1')
+                so_tags_show(st, 1);
+            sfree(o);
+        }
         SetFocus(st->tree);
         return FALSE;
       }
@@ -3671,7 +3897,8 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
       case WM_GETMINMAXINFO:
         if (st && st->ready) {
             MINMAXINFO *mmi = (MINMAXINFO *)lp;
-            mmi->ptMinTrackSize.x = st->minsize.cx;
+            /* with the tag pane: the narrow minimum and the pane */
+            mmi->ptMinTrackSize.x = st->minsize.cx + (st->tags_open ? st->pane_w : 0);
             mmi->ptMinTrackSize.y = st->minsize.cy;
         }
         return TRUE;
@@ -3703,7 +3930,16 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 }
             } else if (nm->code == NM_SETFOCUS) {
                 st->pane = 0;
-                so_update_session_btns(st);
+            } else if (nm->code == NM_CUSTOMDRAW) {
+                SetWindowLongPtr(h, DWLP_MSGRESULT,
+                                 so_tree_customdraw(st->tree, (LPNMTVCUSTOMDRAW)lp));
+                return TRUE;
+            } else if (nm->code == TVN_KEYDOWN) {
+                NMTVKEYDOWN *kd = (NMTVKEYDOWN *)lp;
+                if (kd->wVKey == VK_F2 && so_plain_key())
+                    so_key(st, SO_CMD_RENAME_FOLD);    /* the root row: a beep */
+                else if (kd->wVKey == VK_DELETE && so_plain_key())
+                    so_key(st, IDC_SO_DELFOLDER);
             } else if ((nm->code == TVN_BEGINDRAGA || nm->code == TVN_BEGINDRAGW) &&
                        !GetReadOnlyFlag()) {
                 /* Drag a folder into another one (not the root row). */
@@ -3723,7 +3959,6 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                  * left Edit and the menus with nothing to act on */
                 st->pane = 1;
                 so_list_take_focus(st, 0);
-                so_update_session_btns(st);
                 InvalidateRect(st->list, NULL, TRUE);
             } else if (nm->code == NM_KILLFOCUS) {
                 if (ListView_GetItemCount(st->list) == 0)
@@ -3732,6 +3967,10 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                        ListView_GetItemCount(st->list) == 0) {
                 if (so_draw_empty(h, st->list, KT_SP_ORG_EMPTY, lp))
                     return TRUE;
+            } else if (nm->code == NM_CUSTOMDRAW) {
+                SetWindowLongPtr(h, DWLP_MSGRESULT,
+                                 so_list_customdraw(st->list, (LPNMLVCUSTOMDRAW)lp));
+                return TRUE;
             } else if (nm->code == NM_DBLCLK) {
                 /* a double click starts the session clicked - only that
                  * one, whatever else is selected, as Explorer opens the
@@ -3747,15 +3986,21 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                     char *one = st->s.names[it.lParam];
                     so_start_named(&one, 1);
                 }
-            } else if (nm->code == LVN_ITEMCHANGED) {
-                NMLISTVIEW *lv = (NMLISTVIEW *)lp;
-                if ((lv->uChanged & LVIF_STATE) &&
-                    ((lv->uOldState ^ lv->uNewState) & LVIS_SELECTED))
-                    so_update_session_btns(st);
             } else if (nm->code == LVN_KEYDOWN) {
                 NMLVKEYDOWN *kd = (NMLVKEYDOWN *)lp;
-                if (kd->wVKey == 'A' && (GetKeyState(VK_CONTROL) & 0x8000))
+                /* braces: ListView_SetItemState is a block macro */
+                if (kd->wVKey == 'A' && (GetKeyState(VK_CONTROL) & 0x8000)) {
                     ListView_SetItemState(st->list, -1, LVIS_SELECTED, LVIS_SELECTED);
+                } else if (kd->wVKey == VK_F2 && so_plain_key()) {
+                    st->pane = 1;
+                    so_key(st, SO_CMD_RENAME_SESS);    /* not one session: a beep */
+                } else if (kd->wVKey == VK_DELETE && so_plain_key()) {
+                    st->pane = 1;
+                    if (ListView_GetSelectedCount(st->list) > 0)
+                        so_key(st, SO_CMD_DELSESS);
+                    else
+                        MessageBeep(MB_ICONWARNING);
+                }
             } else if (nm->code == LVN_BEGINDRAG && !GetReadOnlyFlag() &&
                        !so_sel_has_old(st)) {
                 /* (an old session is not dragged: that would be a move) */
@@ -3787,6 +4032,10 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 if (so_draw_empty(h, st->taglist, st->tag && *st->tag ?
                                   KT_SP_ORG_TAG_EMPTY : KT_SP_ORG_TAG_NONE, lp))
                     return TRUE;
+            } else if (nm->code == NM_CUSTOMDRAW) {
+                SetWindowLongPtr(h, DWLP_MSGRESULT,
+                                 so_list_customdraw(st->taglist, (LPNMLVCUSTOMDRAW)lp));
+                return TRUE;
             } else if (nm->code == NM_DBLCLK) {
                 /* as in the folder's list: only the session clicked */
                 NMITEMACTIVATE *ia = (NMITEMACTIVATE *)lp;
@@ -3876,8 +4125,14 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         return TRUE;
       case WM_DESTROY:
         ShinyRemoveAuxDialog(h);
-        if (st && st->ready)
-            kitty_auxpos_save(h, KR_DLGPOS_MANAGE);
+        if (st && st->ready) {
+            int open = st->tags_open;
+            /* the narrow size is the one kept (the pane is added when it
+             * opens): the window less the pane */
+            kitty_auxpos_save_less(h, KR_DLGPOS_MANAGE, open ? st->pane_w : 0);
+            if (!GetReadOnlyFlag())
+                kitty_state_set_string(KR_MANAGE_TAGS, open ? "1" : "0");
+        }
         if (st) {
             if (st->dragging)
                 so_drag_end(st, 0);
@@ -3899,15 +4154,32 @@ static INT_PTR CALLBACK so_proc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
                 kitty_state_set_string(KR_MANAGE_FOLDER, st->cur ? st->cur : "");
                 kitty_state_set_string(KR_MANAGE_SESSION, sn);
                 kitty_state_set_string(KR_MANAGE_TAG, st->tag ? st->tag : "");
+                /* the folders open in the tree, | between their paths (a
+                 * name holding | itself is left out: it cannot be told
+                 * apart) */
+                {
+                    int no = 0, k;
+                    char **op = so_tree_expanded(st->tree, &st->fs, &no);
+                    strbuf *sb = strbuf_new();
+                    for (k = 0; k < no; k++) {
+                        if (!strchr(op[k], '|')) {
+                            if (sb->len)
+                                put_byte(sb, '|');
+                            put_datapl(sb, ptrlen_from_asciz(op[k]));
+                        }
+                        sfree(op[k]);
+                    }
+                    sfree(op);
+                    kitty_state_set_string(KR_MANAGE_OPEN, sb->s);
+                    strbuf_free(sb);
+                }
             }
-            /* the nails are ours: off the controls first (a list view
-             * destroys the images it holds) */
-            TreeView_SetImageList(st->tree, NULL, TVSIL_NORMAL);
+            /* the nails are ours: off the control first (a list view
+             * destroys the images it holds); the tree has none */
             ListView_SetImageList(st->list, NULL, LVSIL_SMALL);
-            if (st->nail_tree)
-                ImageList_Destroy(st->nail_tree);
             if (st->nail_list)
                 ImageList_Destroy(st->nail_list);
+            sfree(st->open_saved);
             sfree(st->tag);
             sfree(st->dragfolder);
             so_folders_free(&st->fs);

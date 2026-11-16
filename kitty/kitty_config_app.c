@@ -5036,6 +5036,16 @@ static void kitty_sessorg_handler(dlgcontrol *ctrl, dlgparam *dlg,
         kitty_sessorg_open(kitty_cfg_modal_owner());
 }
 
+/* Session Folder Alignment... (was Manage Sessions' Arrange): the question
+ * what it does to the store, then the move (kitty_sessorg_arrange). */
+static void kitty_arrange_handler(dlgcontrol *ctrl, dlgparam *dlg,
+                                  void *data, int event)
+{
+    (void)ctrl; (void)dlg; (void)data;
+    if (event == EVENT_ACTION)
+        kitty_sessorg_arrange(kitty_cfg_modal_owner(), 0);
+}
+
 static dlgcontrol *ksp_suffix_edit = NULL;
 
 /* The suffix-rename question's answer (modeless: the configuration window
@@ -6608,8 +6618,9 @@ void scb_panel_application(struct controlbox *b, bool midsession)
         ctrl_columns(s, 1, 100);
 
         /* KiTTY (hknet/KiTTY#55): the session/folder editor - moving many
-         * sessions between folders, and Arrange - lives here as well as
-         * under the session list. */
+         * sessions between folders - lives here as well as under the
+         * session list, and beside it the alignment of sessions filed by
+         * their Folder value only (Arrange, which left Manage Sessions). */
         s = ctrl_getset(b, "Application/Migration", "organize",
                         KT_SP_ORG_MIGRATION_GROUP);
         ctrl_columns(s, 2, 50, 50);
@@ -6618,6 +6629,10 @@ void scb_panel_application(struct controlbox *b, bool midsession)
                                              HELPCTX(kitty_import_sessions),
                                              kitty_sessorg_handler, P(NULL));
             c3->column = 0;
+            c3 = ctrl_pushbutton(s, KT_SP_ORG_ALIGN, NO_SHORTCUT,
+                                 HELPCTX(kitty_import_sessions),
+                                 kitty_arrange_handler, P(NULL));
+            c3->column = 1;
         }
         ctrl_columns(s, 1, 100);
 

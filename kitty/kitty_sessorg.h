@@ -24,7 +24,8 @@ int kitty_manage_editing(void);
 /* Arrange (sessions filed by their Folder value move to their folder path).
  * first_start: the one-time offer - shown only when there is something to
  * arrange, recorded as made either way, and a "Later" is answered with where
- * Arrange lives. Otherwise the on-demand form (Organize > Arrange...). */
+ * it lives. Otherwise the on-demand form (Application > Migration > Session
+ * Folder Alignment...). */
 void kitty_sessorg_arrange(HWND owner, int first_start);
 /* Is the one-time offer still to be checked in this store? */
 int kitty_sessorg_arrange_pending(void);
@@ -65,5 +66,10 @@ int kitty_sessorg_folder_move(const char *from, const char *to,
 void kitty_config_session_store_changed(void);
 void kitty_config_session_folder_moved(const char *from, const char *to,
                                        int deleted);
+/* ...and Manage Sessions' Edit... when it was opened from there: the
+ * session `name` loaded in the configuration box as its Load would (its
+ * folder shown, the panels refreshed). 0: no session panel to load into,
+ * the box opened mid-session, or no such session. */
+int kitty_config_session_load_named(const char *name);
 
 #endif

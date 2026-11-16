@@ -23,6 +23,21 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   draws no frames for it (Ease blinking took 23 ms of CPU a second). With
   GDI, Ease blinking takes 15 steps a second instead of 30 and redraws only
   the cursor's cell. Plain blinking text redraws only the rows that show it.
+- Manage Sessions has no buttons along its foot any more. Its actions are
+  on the right-click menus: F2 renames and Del deletes the selected folder
+  or sessions as in Explorer, Esc closes the window. **Edit...** on the
+  session menu loads a session into the configuration window it was opened
+  from. **Tag Editor...** shows the tag pane, the window widens by it and
+  remembers it. The tree's top row reads **Folder root**. Arrange moved to
+  Application > Migration as **Session Folder Alignment...**. The folder
+  tree looks like the configuration window's, in dark mode too. The pin of
+  a folder with a place of its own stands after its name, in a quieter red
+  in dark mode. The window remembers which folders are open. Its session
+  lists keep the configuration window's selection colour, also while the
+  window is not in front.
+- A change made in Manage Sessions or in a configuration window shows at
+  once in the configuration windows and Manage Sessions of every other
+  running KiTTY++, as it already did in the launcher.
 
 ### Fixed
 

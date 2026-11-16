@@ -45,6 +45,10 @@
 void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray);
 int kitty_auxpos_restore(HWND dlg, const char *key, int sized, int minw, int minh);
 void kitty_auxpos_save(HWND dlg, const char *key);
+/* ...as save, the width less `less_w` window pixels: a window that grows by
+ * a pane on demand keeps its size without it (Manage Sessions' tag pane; a
+ * window cannot be resized any more while WM_DESTROY runs) */
+void kitty_auxpos_save_less(HWND dlg, const char *key, int less_w);
 /* x,y,w,h in window pixels of the current display (w,h 0 = position only) */
 int kitty_auxpos_seed(const char *key, int x, int y, int w, int h);
 void kitty_auxpos_set_persist(int on);   /* default on; 0 => place only, nothing stored */

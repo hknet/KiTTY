@@ -277,11 +277,18 @@ void kitty_auxpos_apply(HWND dlg, const char *key, HWND anchor, int near_tray)
 
 void kitty_auxpos_save(HWND dlg, const char *key)
 {
+    kitty_auxpos_save_less(dlg, key, 0);
+}
+
+void kitty_auxpos_save_less(HWND dlg, const char *key, int less_w)
+{
     RECT rc;
     double s;
     if (!kitty_auxpos_persist) return;
     if (!GetWindowRect(dlg, &rc)) return;
     if (IsIconic(dlg) || IsZoomed(dlg)) return;
+    if (less_w > 0 && rc.right - less_w > rc.left)
+        rc.right -= less_w;
     s = kitty_auxpos_scale();
     kitty_auxpos_write(key, rc.left, rc.top,
                        (int)((rc.right - rc.left) / s + 0.5),

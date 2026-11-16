@@ -66,11 +66,25 @@
 
 /* ==== Helpers both tabs use ============================================= */
 
+/* The store changed: every launcher and every configuration window of
+ * another kitty.exe reads its sessions and folders again (the launcher its
+ * menu, a configuration window its lists: kitty_cfgbox_store_msg). wParam
+ * names this process, so a window of the sender does not read twice. */
 void kitty_notify_launcher_sessions_changed(void)
 {
     UINT msg = RegisterWindowMessageA(KITTY_LAUNCHER_REFRESH_MESSAGE);
     if (msg)
-        PostMessageA(HWND_BROADCAST, msg, 0, 0);
+        PostMessageA(HWND_BROADCAST, msg, (WPARAM)GetCurrentProcessId(), 0);
+}
+
+/* windows/dialog.c: the configuration window answers the message above
+ * when another process sent it (kitty_config_session_store_reread). */
+UINT kitty_cfgbox_store_msg(void)
+{
+    static UINT msg = 0;
+    if (!msg)
+        msg = RegisterWindowMessageA(KITTY_LAUNCHER_REFRESH_MESSAGE);
+    return msg;
 }
 
 /* Checkbox handler for KiTTY keys that are stored as INT (0/1) rather

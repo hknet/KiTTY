@@ -437,35 +437,35 @@ BEGIN
     DEFPUSHBUTTON   "Close", IDCANCEL, 274, 220, 52, 14
 END
 
-/* Organize sessions (kitty/kitty_sessorg.c): the folder tree left, the
- * selected folder's sessions right (multi-select), the actions along the
- * foot. Modeless and resizable; the list takes the slack, the buttons ride
- * the bottom edge (kitty_anchor.h), every button as wide as its caption.
- * 440 x 250 dialog units keeps it inside 1280 x 660 at any scale. */
+/* Manage Sessions (kitty/kitty_sessorg.c): the folder tree left, the
+ * selected folder's sessions right (multi-select), no buttons along the foot
+ * (the right-click menus, F2, Del, Esc). Modeless and resizable; the lists
+ * take the slack (kitty_anchor.h). The template holds the tag pane too: the
+ * window opens without it, narrower by the pane, and the count row's Tag
+ * Editor... toggle shows it (so_tags_show). 440 x 250 dialog units keeps it
+ * inside 1280 x 660 at any scale. */
 IDD_SESSORG DIALOGEX DISCARDABLE 0, 0, 440, 250
 STYLE DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_SIZEBOX | WS_MAXIMIZEBOX
 CAPTION KT_SP_ORG_TITLE
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     CONTROL         "", IDC_SO_TREE, "SysTreeView32", TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS | TVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
-                    7, 7, 150, 214
-    LTEXT           "", IDC_SO_COUNT, 164, 7, 150, 10
+                    7, 7, 150, 236
+    LTEXT           "", IDC_SO_COUNT, 164, 5, 91, 12, SS_CENTERIMAGE
     CONTROL         "", IDC_SO_LIST, "SysListView32", LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
-                    164, 19, 150, 202
+                    164, 19, 150, 224
+    /* after the list in the Tab order (tree, sessions, Tag Editor..., the
+     * tag pane), a group of its own: the arrow keys leave it where it is */
+    CONTROL         KT_SP_ORG_BTN_TAGS, IDC_SO_TAGEDIT, "Button", BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP | WS_GROUP,
+                    259, 4, 55, 13
     /* the tag pane (hknet/KiTTY#60): the tag, Launch, the tag's sessions;
-     * placed beside the list at run time (so_split) */
-    LTEXT           KT_SP_ORG_TAG_LABEL, IDC_SO_TAGLABEL, 320, 5, 18, 12, SS_CENTERIMAGE
+     * placed beside the list at run time (so_split). A group from its
+     * label on: up and down on Launch go to the field and the list. */
+    LTEXT           KT_SP_ORG_TAG_LABEL, IDC_SO_TAGLABEL, 320, 5, 18, 12, SS_CENTERIMAGE | WS_GROUP
     COMBOBOX        IDC_SO_TAGCOMBO, 340, 4, 55, 120, CBS_DROPDOWN | CBS_AUTOHSCROLL | CBS_SORT | WS_VSCROLL | WS_TABSTOP
     PUSHBUTTON      KT_SP_ORG_BTN_LAUNCH, IDC_SO_LAUNCH, 398, 4, 35, 13
     CONTROL         "", IDC_SO_TAGLIST, "SysListView32", LVS_REPORT | LVS_NOCOLUMNHEADER | LVS_SHOWSELALWAYS | WS_BORDER | WS_TABSTOP,
-                    320, 19, 113, 202
-    PUSHBUTTON      KT_SP_ORG_MOVE, IDC_SO_MOVE, 7, 229, 50, 14
-    PUSHBUTTON      KT_SP_ORG_RENAME, IDC_SO_RENAME, 61, 229, 50, 14
-    PUSHBUTTON      KT_SP_ORG_NEW_FOLDER, IDC_SO_NEWFOLDER, 115, 229, 50, 14
-    PUSHBUTTON      KT_SP_ORG_DEL_FOLDER, IDC_SO_DELFOLDER, 169, 229, 50, 14
-    PUSHBUTTON      KT_SP_ORG_ARRANGE, IDC_SO_ARRANGE, 223, 229, 50, 14
-    PUSHBUTTON      KT_SP_ORG_EDIT, IDC_SO_EDIT, 329, 229, 50, 14, NOT WS_VISIBLE
-    PUSHBUTTON      KT_SP_ORG_CLOSE, IDCANCEL, 383, 229, 50, 14
+                    320, 19, 113, 224
 END
 
 /* Organize sessions > Move to...: "Move %d sessions to:", the folder tree,

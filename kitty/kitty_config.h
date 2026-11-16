@@ -28,6 +28,12 @@ void kitty_cfgbox_workplace_poll(struct dlgparam *dlg);
  * Now" (kitty_config_app.c; windows/kitty_config_stubs.c: 0 = none). */
 unsigned int kitty_cfgbox_launcher_msg(void);
 void kitty_cfgbox_launcher_changed(struct dlgparam *dlg);
+/* Another kitty.exe changed the session store: the message (posted to every
+ * window, wParam = the sender's process; kitty_config_shared.c, stub 0) and
+ * what a configuration window does on it - its lists read again, nothing
+ * told on (kitty_config_session.c; stub: nothing). */
+unsigned int kitty_cfgbox_store_msg(void);
+void kitty_config_session_store_reread(void);
 void kitty_cfgtree_folds_save(void);
 int kitty_cfgtree_get_fold(const char *path);
 void kitty_cfgtree_set_fold(const char *path, int expanded, int default_expanded);

@@ -64,6 +64,9 @@ void kitty_cfgbox_workplace_poll(struct dlgparam *dp) { }
 /* No launcher here, so no start/exit notice to listen for (0 = none). */
 UINT kitty_cfgbox_launcher_msg(void) { return 0; }
 void kitty_cfgbox_launcher_changed(struct dlgparam *dp) { (void)dp; }
+/* No shared session store to follow either. */
+UINT kitty_cfgbox_store_msg(void) { return 0; }
+void kitty_config_session_store_reread(void) { }
 
 /* No settings field here holds its write back, so there is none to flush. */
 void kitty_cfgbox_flush_pending(void) { }

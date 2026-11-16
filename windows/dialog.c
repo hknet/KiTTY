@@ -2920,6 +2920,11 @@ void kitty_cfgbox_workplace_poll(dlgparam *dp);      /* kitty_config.c / stub */
  * Now" greys or comes back. 0 = no such notice in this variant. */
 UINT kitty_cfgbox_launcher_msg(void);                /* kitty_config_app.c / stub */
 void kitty_cfgbox_launcher_changed(dlgparam *dp);    /* kitty_config_app.c / stub */
+/* Another kitty.exe changed the session store (Manage Sessions on its own,
+ * another configuration window): the session list and the folders are read
+ * again. 0 = no such notice in this variant. */
+UINT kitty_cfgbox_store_msg(void);                   /* kitty_config_shared.c / stub */
+void kitty_config_session_store_reread(void);        /* kitty_config_session.c / stub */
 /* A settings field that holds its write back until the typing stops wants
  * writing before the panel changes under it, and before the box goes. */
 void kitty_cfgbox_flush_pending(void);               /* kitty_config.c / stub */
@@ -3626,8 +3631,15 @@ static INT_PTR GenericMainDlgProc(HWND hwnd, UINT msg, WPARAM wParam,
      * label. Guarded against 0: that is WM_NULL, and the stub returns it. */
     {
         UINT lm = kitty_cfgbox_launcher_msg();
+        UINT sm = kitty_cfgbox_store_msg();
         if (lm && msg == lm) {
             kitty_cfgbox_launcher_changed(pds->dp);
+            return 0;
+        }
+        /* wParam = the sender's process: this one has read its lists */
+        if (sm && msg == sm) {
+            if ((DWORD)wParam != GetCurrentProcessId())
+                kitty_config_session_store_reread();
             return 0;
         }
     }

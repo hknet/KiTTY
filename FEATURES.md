@@ -290,14 +290,13 @@ users of the same PC, not someone who holds the stick.
 **Manage Sessions.** *Manage...* (under *Del folder*, beside the comment
 field; at the list's foot when the list is tall enough) and Application >
 Migration > *Manage Sessions...* open a window of its own: the folder tree on
-the left, *All sessions (root)* at its top, and the selected folder's sessions
-on the right. It opens where it was left and at the size it was given, for
+the left, *Folder root* at its top, and the selected folder's sessions
+on the right, with no buttons along its foot. It opens where it was left and at the size it was given, for
 each monitor layout, and always fully on a screen. Ctrl+click picks single sessions, Shift+click a range, Ctrl+A the
 whole folder. *Move to...* offers the destination in a tree; dragging the
-selection onto a folder of the tree does the same. *Rename* renames the
-selected session (in the list) or folder (in the tree), *New folder* creates
-one inside the selected folder, *Delete folder* removes the selected folder.
-Every move is one step that carries the saved password, the jump list and
+selection onto a folder of the tree does the same. As in Explorer, F2 renames
+the selected session (in the list) or folder (in the tree) and Del deletes it,
+after a confirmation; Esc closes the window. Every move is one step that carries the saved password, the jump list and
 launcher entries, and the sessions that use a moved one as SSH jump host,
 which are listed afterwards. A name that already exists at the destination
 moves nothing; the box lists the clashes. The window does not hold up the
@@ -308,13 +307,14 @@ While dragging, the pointer carries the session's name (or "3 sessions"), the
 folder it would land in is highlighted, a closed folder opens after a short
 hover so you can drop into a subfolder, and the tree scrolls at its edges; Esc
 ends the drag. A folder can be dragged too - into another folder, or onto
-*All sessions (root)* - and moves with everything in it after a confirmation.
+*Folder root* - and moves with everything in it after a confirmation.
 A right click on the sessions offers *Start Sessions* (each in its own
-terminal), *Move to...*, *Copy to...* (a copy in another folder, numbered
+terminal), *Edit...* (one session: loaded into the configuration window it
+was opened from), *Move to...*, *Copy to...* (a copy in another folder, numbered
 `-1`, `-2` when the name is taken there), *Rename...*, *Clone* (a copy in the
 same folder named `name-1`, `name-2`, ...), *Delete* (with a confirmation) and
 *Select All*; a right click on the tree offers *New folder...*, *Rename...*
-and *Delete*. `kitty.exe -manage` opens Manage Sessions alone, without a configuration window behind it; its *Edit* opens the configuration window in the same process on the selected session (or folder), where *Open* starts the session in a new process and *Close* goes back to Manage Sessions. The launcher can open it on a double click of its tray icon (Application > KiTTY++ Settings > Launcher). Tab into the list shows the focus on its first session at once;
+and *Delete*. Sessions filed by their Folder value only move to their folder path with Application > Migration > *Session Folder Alignment...*. `kitty.exe -manage` opens Manage Sessions alone, without a configuration window behind it; its *Edit...* opens the configuration window in the same process on the selected session, where *Open* starts the session in a new process and *Close* goes back to Manage Sessions. The launcher can open it on a double click of its tray icon (Application > KiTTY++ Settings > Launcher). Tab into the list shows the focus on its first session at once;
 an empty folder's list reads "No sessions in this folder". Enter starts the
 selected sessions, a double click the one clicked; Enter in the tree goes to
 the folder's first session.
@@ -324,13 +324,14 @@ started together, such as `lab` or `switches`, whatever folders they are in;
 a session can carry any number of tags (`Tags=lab,switches`). Session > Startup
 > *Session Tags* lists the session's tags, each in a colour of its own, with
 *Remove* (or Del); *New tag:* offers every tag already in use, and *Add* or
-Enter puts one on. In Manage Sessions the tag pane beside the list shows every
-session carrying the tag chosen in *Tag:*. *Launch* starts them all, from ten
+Enter puts one on. In Manage Sessions *Tag Editor...* shows the tag pane beside
+the list (the window widens by it, and remembers it): every session carrying
+the tag chosen in *Tag:*. *Launch* starts them all, from ten
 sessions on after a confirmation. Sessions dragged from the list onto it take
 the tag. Del or *Remove from Tag* takes it off, after a confirmation. The
 window reopens on the last tag.
 
-<img src="docs/features/img/manage_sessions.png" width="728" height="536" alt="Manage Sessions">
+<img src="docs/features/img/manage_sessions.png" width="728" height="268" alt="Manage Sessions">
 
 **A manual order.** A folder or a session dragged between two rows keeps that place: the line between the rows shows where it lands, a pin marks every row with a place of its own, and *Reset Order* in a folder's right-click menu forgets the places of that level. The configuration window, the terminal's Saved Sessions menu, the launcher and kageant show the same order. The folder store keeps it in a `.kittyorder` file per folder, a text format a tool can write: [docs/SESSION-FOLDERS.md](docs/SESSION-FOLDERS.md).
 

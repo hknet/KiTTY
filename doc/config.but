@@ -190,27 +190,31 @@ inside a folder its subfolders are rows, \c{..} goes up one level, and
 \b \e{Manage Sessions.} \q{Manage...} (below \q{Del folder}) opens a
 window of its own for a store with many sessions and nested folders:
 the folder tree on the left, the selected folder's sessions on the
-right, several selected at once. Sessions and folders are moved by
-drag and drop - a closed folder opens while a drag hovers over it -
-or with \q{Move to...}; a right click starts, copies, clones, renames
-or deletes the selected sessions, and creates, renames or deletes
-folders. Enter starts the selected sessions, a double click the one
-clicked; Enter in the tree goes to the folder's first session. Beside
-the list, the tag pane lists every session carrying the tag chosen in
+right, several selected at once, no buttons along the foot. Sessions
+and folders are moved by drag and drop - a closed folder opens while a
+drag hovers over it - or with \q{Move to...}; a right click starts,
+edits, copies, clones, renames or deletes the selected sessions, and
+creates, renames or deletes folders. F2 renames and Del deletes the
+selected folder or sessions, Esc closes the window. Enter starts the
+selected sessions, a double click the one clicked; Enter in the tree
+goes to the folder's first session. \q{Tag Editor...} shows the tag
+pane beside the list: every session carrying the tag chosen in
 \q{Tag:}, whatever its folder; \q{Launch} starts them all (from ten on,
 after a confirmation), and sessions dragged onto that list take the tag.
 Del or the menu's \q{Remove from Tag} takes it off the selected ones,
 after a confirmation. A session's tags are set on
 \k{kitty-cfg-session-tags}. The window reopens on the folder, the
-session and the tag it was left on. \c{kitty.exe -manage} opens it alone, without
-a configuration window; its \q{Edit} then opens the configuration
-window on the selected session. See \k{kitty-cfg-folders}.
+session and the tag it was left on, with the tag pane as it was.
+\q{Edit...} loads the session into this configuration window.
+\c{kitty.exe -manage} opens it alone, without a configuration window;
+\q{Edit...} then opens the configuration window on the selected
+session. See \k{kitty-cfg-folders}.
 
 \b \e{Exit, Cancel and Close.} Before a session, the button beside
 \q{Open} reads \q{Exit} and ends the program; the Application settings
 are already saved as they change. Mid-session (\q{Change Settings}) it
 reads \q{Cancel} and drops the changes not yet applied. Opened by
-\q{Edit} in Manage Sessions (\c{kitty.exe -manage}), it reads
+\q{Edit...} in Manage Sessions (\c{kitty.exe -manage}), it reads
 \q{Close} and closes only this window, and \q{Open} starts the session
 in a new window. \q{Exit} has no Alt key, since its letters are taken
 on the panels; \q{Cancel} and \q{Close} keep Alt+C. Esc works for all

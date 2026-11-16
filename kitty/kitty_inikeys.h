@@ -353,10 +353,14 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KR_KIVERS                           "KiVers"
 #define KR_LASTFOLDER                       "LastFolder"
 #define KR_LASTSESSION                      "LastSession"
-/* Manage Sessions: the folder and the session it was left on, and the tag */
+/* Manage Sessions: the folder and the session it was left on, the tag,
+ * whether the tag pane was open (1), and the folders open in its tree
+ * (their paths, separated by |) */
 #define KR_MANAGE_FOLDER                    "ManageFolder"
 #define KR_MANAGE_SESSION                   "ManageSession"
 #define KR_MANAGE_TAG                       "ManageTag"
+#define KR_MANAGE_TAGS                      "ManageTags"
+#define KR_MANAGE_OPEN                      "ManageOpen"
 #define KR_LAUNCHERHIDE                     "LauncherHide"
 #define KR_NOTES                            "Notes"
 #define KR_PASSWORD                         "Password"

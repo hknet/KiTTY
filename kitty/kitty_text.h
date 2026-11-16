@@ -5238,6 +5238,8 @@
 #define KT_SP_ORG_BUTTON                             "Manage..."
 #define KT_SP_ORG_MIGRATION                          "Manage Sessions..."
 #define KT_SP_ORG_MIGRATION_GROUP                    "Session folders"
+/* Application > Migration: Arrange, which left Manage Sessions */
+#define KT_SP_ORG_ALIGN                              "Session Folder Alignment..."
 #define KT_SP_ORG_TITLE                              "Manage Sessions"
 /* its right-click menus, the copy box and the empty list */
 #define KT_SP_ORG_M_START                            "Start Sessions"
@@ -5248,6 +5250,7 @@
 #define KT_SP_ORG_M_DELETE                           "Delete"
 #define KT_SP_ORG_M_SELALL                           "Select All"
 #define KT_SP_ORG_M_NEWFOLDER                        "New folder..."
+#define KT_SP_ORG_M_EDIT                             "Edit..."
 /* the manual order (a drop between rows): the folder menu's entry, and the
  * status line after a drop or a reset */
 #define KT_SP_ORG_M_RESET_ORDER                      "Reset Order"
@@ -5264,22 +5267,13 @@
 #define KT_SP_ORG_COPY_FAILED                        "%s could not be copied: %s"
 #define KT_SP_ORG_FOLDER_DROP_Q                      "Move the folder \"%s\" with everything in it into \"%s\"?"
 #define KT_SP_ORG_FOLDER_DROP_BTN                    "Move"
-#define KT_SP_ORG_ROOT                               "All sessions (root)"
-#define KT_SP_ORG_MOVE                               "Move to..."
-#define KT_SP_ORG_RENAME                             "Rename"
+#define KT_SP_ORG_ROOT                               "Folder root"
+/* the New folder box's caption; the configuration window's Exit while
+ * -manage's Edit... has it open */
 #define KT_SP_ORG_NEW_FOLDER                         "New folder"
-#define KT_SP_ORG_DEL_FOLDER                         "Delete folder"
-#define KT_SP_ORG_ARRANGE                            "Arrange..."
 #define KT_SP_ORG_CLOSE                              "Close"
-#define KT_SP_ORG_EDIT                               "Edit"
-/* the Manage Sessions window's buttons, with their Alt keys */
-#define KT_SP_ORG_BTN_MOVE                           "&Move to..."
-#define KT_SP_ORG_BTN_RENAME                         "&Rename"
-#define KT_SP_ORG_BTN_NEW_FOLDER                     "&New folder"
-#define KT_SP_ORG_BTN_DEL_FOLDER                     "&Delete folder"
-#define KT_SP_ORG_BTN_ARRANGE                        "&Arrange..."
-#define KT_SP_ORG_BTN_EDIT                           "&Edit"
-#define KT_SP_ORG_BTN_CLOSE                          "&Close"
+/* the button on the count row that shows or hides the tag pane */
+#define KT_SP_ORG_BTN_TAGS                           "Tag &Editor..."
 #define KT_SP_ORG_MOVE_Q                             "Move %d sessions to:"
 #define KT_SP_ORG_MOVE_ONE_Q                         "Move one session to:"
 #define KT_SP_ORG_MOVE_BTN                           "Move"
@@ -5295,19 +5289,19 @@
 #define KT_SP_ORG_COUNT_ONE                          "1 session"
 #define KT_SP_ORG_LIST_MORE                          "\n(+%d)"
 #define KT_SP_ARRANGE_Q                              "%d sessions are in folders by their Folder value only.\n\n" \
-        "Arrange them now? Each session moves to its folder path, for example Linux\\web\\srv01. " \
+        "Align them now? Each session moves to its folder path, for example Linux\\web\\srv01. " \
         "Its saved password, jump list entry and launcher entries move with it."
 #define KT_SP_ARRANGE_Q_ONE                          "1 session is in a folder by its Folder value only.\n\n" \
-        "Arrange it now? It moves to its folder path, for example Linux\\web\\srv01. " \
+        "Align it now? It moves to its folder path, for example Linux\\web\\srv01. " \
         "Its saved password, jump list entry and launcher entries move with it."
 #define KT_SP_ARRANGE_REG                            "The registry sessions are backed up first."
 #define KT_SP_ARRANGE_DIR                            "The session files move into subfolders of Sessions."
-#define KT_SP_ARRANGE_NOW                            "Arrange now"
+#define KT_SP_ARRANGE_NOW                            "Align now"
 #define KT_SP_ARRANGE_LATER                          "Later"
-#define KT_SP_ARRANGE_LATER_NOTE                     "Arrange is in Manage Sessions."
+#define KT_SP_ARRANGE_LATER_NOTE                     "Session Folder Alignment is in Application > Migration."
 #define KT_SP_ARRANGE_NONE                           "No session is in a folder by its Folder value only."
-#define KT_SP_ARRANGE_DONE                           "%d sessions arranged."
-#define KT_SP_ARRANGE_DONE_ONE                       "1 session arranged."
+#define KT_SP_ARRANGE_DONE                           "%d sessions aligned."
+#define KT_SP_ARRANGE_DONE_ONE                       "1 session aligned."
 #define KT_SP_ARRANGE_CLASH                          "Nothing was moved. These folder paths are already taken:\n%s"
 /* Follows KT_SP_ARRANGE_DONE / _DONE_ONE when some paths were taken. */
 #define KT_SP_ARRANGE_LEFT                           " These were left as they are because the folder path is already taken:\n%s"

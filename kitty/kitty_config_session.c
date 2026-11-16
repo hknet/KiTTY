@@ -1326,6 +1326,16 @@ void kitty_config_end_folder_rename(dlgparam *dp)
  */
 void kitty_config_session_store_changed(void)
 {
+    kitty_config_session_store_reread();
+    kitty_notify_launcher_sessions_changed();
+}
+
+/* ...the same lists read again, nothing told to the others: what a
+ * configuration window does when ANOTHER process changed the store
+ * (windows/dialog.c, kitty_cfgbox_store_msg) - telling the others from
+ * there would bounce the message between the processes. */
+void kitty_config_session_store_reread(void)
+{
     struct sessionsaver_data *ssd = session_filter_ssd;
     dlgparam *dlg = kcs_dlg;
     InitFolderList();
@@ -1339,7 +1349,6 @@ void kitty_config_session_store_changed(void)
             dlg_refresh(ssd->folderlist, dlg);
         dlg_refresh(ssd->listbox, dlg);
     }
-    kitty_notify_launcher_sessions_changed();
 }
 
 /*
@@ -1662,13 +1671,15 @@ static int sessionsaver_folder_visible_position(struct sessionsaver_data *ssd,
 static void sessionsaver_switch_folder(struct sessionsaver_data *ssd,
                                        dlgparam *dlg, const char *folder);
 
+static bool load_session_at(struct sessionsaver_data *ssd, dlgparam *dlg,
+                            Conf *conf, int i, bool *maybe_launch);
+
 static bool load_selected_session(
     struct sessionsaver_data *ssd,
     dlgparam *dlg, Conf *conf, bool *maybe_launch)
 {
     int i = dlg_listbox_index(ssd->listbox, dlg);
     int selid = i;
-    bool isdef;
     if (i < 0) {
         dlg_beep(dlg);
         return false;
@@ -1678,7 +1689,31 @@ static bool load_selected_session(
         dlg_beep(dlg);
         return false;
     }
-    i = selid;
+    return load_session_at(ssd, dlg, conf, selid, maybe_launch);
+}
+
+/* KiTTY: Manage Sessions' Edit... when it was opened from this box (see
+ * kitty_sessorg.h): the session found by name in the store's list (not only
+ * the folder shown), loaded as Load does. */
+int kitty_config_session_load_named(const char *name)
+{
+    struct sessionsaver_data *ssd = session_filter_ssd;
+    int i;
+    if (!name || !ssd || !kcs_dlg || !kcs_conf || !ssd->listbox ||
+        ssd->midsession)
+        return 0;
+    for (i = 0; i < ssd->sesslist.nsessions; i++)
+        if (!strcmp(ssd->sesslist.sessions[i], name))
+            return load_session_at(ssd, kcs_dlg, kcs_conf, i, NULL) ? 1 : 0;
+    return 0;
+}
+
+/* Load the store's session number `i` (an index of ssd->sesslist) into the
+ * box: the body Load, a double click and Enter share. */
+static bool load_session_at(struct sessionsaver_data *ssd, dlgparam *dlg,
+                            Conf *conf, int i, bool *maybe_launch)
+{
+    bool isdef;
     isdef = !strcmp(ssd->sesslist.sessions[i], KITTY_DEFAULT_SESSION);
     load_settings(ssd->sesslist.sessions[i], conf);
     /* KiTTY: what is genuinely in the box now, for the Save guard. */

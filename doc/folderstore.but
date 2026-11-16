@@ -326,7 +326,9 @@ a session value, written anew on each save, with \c{Key=value} lines
 
 \c{KiTTYState}, in session file format, read at each use:
 \c{LastSession}, \c{LastFolder} (\c{Default} is the root),
-\c{ManageFolder}, \c{ManageSession}, \c{ManageTag},
+\c{ManageFolder}, \c{ManageSession}, \c{ManageTag}, \c{ManageTags}
+(\c{1}: Manage Sessions' tag pane was open), \c{ManageOpen} (the folders
+open in its tree, their paths separated by \c{|}),
 \c{ShowForeignSessions} (\c{1} lists the old KiTTY and PuTTY registry
 sessions), \c{ForeignSessionsNotice} (bits: \c{1} at start, \c{2} under
 the list), \c{SessionArrangeOffered}, \c{UpdateLatest},

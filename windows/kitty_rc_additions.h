@@ -708,6 +708,8 @@
 #ifndef IDC_SO_COUNT
 #define IDC_SO_COUNT 1402
 #endif
+/* Manage Sessions' commands: once buttons, now sent by its right-click
+ * menus and keys (1407 and 1408, Arrange and Edit, are retired) */
 #ifndef IDC_SO_MOVE
 #define IDC_SO_MOVE 1403
 #endif
@@ -719,12 +721,6 @@
 #endif
 #ifndef IDC_SO_DELFOLDER
 #define IDC_SO_DELFOLDER 1406
-#endif
-#ifndef IDC_SO_EDIT
-#define IDC_SO_EDIT 1408     /* kitty.exe -manage only: the configuration window */
-#endif
-#ifndef IDC_SO_ARRANGE
-#define IDC_SO_ARRANGE 1407
 #endif
 #ifndef IDC_SOM_TEXT
 #define IDC_SOM_TEXT 1410
@@ -771,6 +767,10 @@
 #endif
 #ifndef IDC_SO_TAGLIST
 #define IDC_SO_TAGLIST 1443
+#endif
+/* the count row's Tag Editor... toggle (the tag pane on demand) */
+#ifndef IDC_SO_TAGEDIT
+#define IDC_SO_TAGEDIT 1444
 #endif
 /* the chooser of a link several saved sessions match (kitty_urlsession.c) */
 #ifndef IDD_URLCHOOSE

@@ -290,6 +290,7 @@ void kitty_sp_endings_offer(HWND owner);
 /* The store changed outside the session panel's handlers: the open box's
  * folder and session lists follow (hknet/KiTTY#55). kitty_config_session.c */
 void kitty_config_session_store_changed(void);
+void kitty_config_session_store_reread(void);   /* the same, no broadcast */
 extern struct sessionsaver_data *session_filter_ssd;   /* kitty_config_session.c */
 void scb_panel_session(struct controlbox *b, bool midsession);   /* kitty_config_session.c */
 void scb_panel_logging(struct controlbox *b, bool midsession, int protocol);   /* kitty_config_session.c */
