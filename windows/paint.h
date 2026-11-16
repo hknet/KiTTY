@@ -192,6 +192,13 @@ void kitty_d2d_occlusion_msg(HWND hwnd);
  * size, the window repainted whole (false: not now, or not Direct2D; a
  * release build always false). */
 bool kitty_d2d_test_new_buffers(KittyPainter *p);
+/* hknet/KiTTY#88 test builds: drop the device and its swap chain, the next
+ * frame makes both new (not counted as a failure). False: not Direct2D. */
+bool kitty_d2d_test_new_device(KittyPainter *p);
+/* hknet/KiTTY#88 test builds: the monitor and graphics card DXGI puts the
+ * swap chain on (IDXGISwapChain::GetContainingOutput), "-" without one.
+ * In full (sfree it). */
+char *kitty_d2d_test_output_dup(KittyPainter *p);
 
 #define kitty_painter_free(p)            ((p)->vt->destroy(p))
 

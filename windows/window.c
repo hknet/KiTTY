@@ -131,6 +131,9 @@ static int kitty_scriptbridge_armed( WinGuiSeat *wgs )
 #define IDM_TEST_REPAIR1 0xB300
 #define IDM_TEST_REPAIR2 0xB310
 #define IDM_TEST_REPAIR3 0xB320
+#define IDM_TEST_REPAIR4 0xB330
+#define IDM_TEST_REPAIR5 0xB340
+#define IDM_TEST_REPAIR6 0xB350
 #define IDM_SPECIALSEP 0x0200
 
 #define IDM_SPECIAL_MIN 0x0400
@@ -2657,23 +2660,63 @@ static void kitty_clayer_blink(TermWin *tw, int half, bool ease);
  *   2  re-read the window frame: SetWindowPos SWP_FRAMECHANGED, Windows
  *      computes the frame and the client area again (nothing else moves)
  *   3  new swap chain buffers at the same size, then a full repaint
+ * Repairs 1-3 leave the picture shifted while
+ * Windows reports the window, the client area and the frame in place. So
+ * the compositor holds a wrong place for the client area. Three more, each
+ * acting on the window or the whole device:
+ *   4  a new device and swap chain (release_device, made again at once)
+ *   5  hide and show the window (SW_HIDE, SW_SHOWNA)
+ *   6  minimise and restore by program (the manual repair, as one step)
  * Each writes the window's, the client area's and the visible frame's place
- * on the screen to the Terminal Window's Event Log. */
+ * on the screen to the Terminal Window's Event Log. With the same switch the
+ * window also logs every display, power, session and window event that
+ * could move the compositor's picture (kitty_test88_event). */
 static bool kitty_test_repair_on(void)
 {
     const char *p = getenv("KITTY_TEST_D2D_REPAIR");
     return p && *p == '1';
 }
 
-static void kitty_test_repair(WinGuiSeat *wgs, int which)
+/* The window's, the client area's and the visible frame's place on the
+ * screen, with the monitor's device name. */
+/* mon: MONITORINFOEX.szDevice, CCHDEVICENAME (32) characters at most */
+struct kitty_test_geom { RECT wr, cr, fr; POINT o; char mon[40]; };
+static void kitty_test_geometry(HWND h, struct kitty_test_geom *g)
 {
     typedef HRESULT (WINAPI *dwmattr_t)(HWND, DWORD, PVOID, DWORD);
     static dwmattr_t dwmattr;
     static bool dwmtried;
+    MONITORINFOEXA mi;
+    HMONITOR hm;
+    if (!dwmtried) {
+        HMODULE dwm = LoadLibraryExA("dwmapi.dll", NULL,
+                                     LOAD_LIBRARY_SEARCH_SYSTEM32);
+        dwmtried = true;
+        dwmattr = dwm ? (dwmattr_t)(void *)GetProcAddress(
+                            dwm, "DwmGetWindowAttribute") : NULL;
+    }
+    memset(g, 0, sizeof(*g));
+    GetWindowRect(h, &g->wr);
+    GetClientRect(h, &g->cr);
+    ClientToScreen(h, &g->o);
+    g->fr = g->wr;
+    if (dwmattr)                       /* DWMWA_EXTENDED_FRAME_BOUNDS */
+        dwmattr(h, 9, &g->fr, sizeof(g->fr));
+    strcpy(g->mon, "?");
+    hm = MonitorFromWindow(h, MONITOR_DEFAULTTONULL);
+    memset(&mi, 0, sizeof(mi));
+    mi.cbSize = sizeof(mi);
+    if (hm && GetMonitorInfoA(hm, (MONITORINFO *)&mi))
+        memcpy(g->mon, mi.szDevice, sizeof(mi.szDevice));   /* NUL-terminated, 32 at most */
+}
+
+static void kitty_test_repair(WinGuiSeat *wgs, int which)
+{
+    static const char *const names[] = { "", "redraw", "frame", "buffers",
+        "new device", "hide and show", "minimise and restore" };
     HWND h = wgs->term_hwnd;
-    const char *name = which == 1 ? "redraw" : which == 2 ? "frame" : "buffers";
-    RECT wr, cr, fr;
-    POINT o = { 0, 0 };
+    const char *name = (which >= 1 && which <= 6) ? names[which] : "?";
+    struct kitty_test_geom g;
     char *line;
     switch (which) {
       case 1:
@@ -2685,32 +2728,314 @@ static void kitty_test_repair(WinGuiSeat *wgs, int which)
                      SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                      SWP_NOOWNERZORDER);
         break;
-      default:
+      case 3:
         if (!kitty_d2d_test_new_buffers(wgs->painter))
             name = "buffers, not done: not Direct2D or not now";
         break;
+      case 4:
+        if (!kitty_d2d_test_new_device(wgs->painter))
+            name = "new device, not done: not Direct2D or not now";
+        break;
+      case 5:
+        ShowWindow(h, SW_HIDE);
+        ShowWindow(h, SW_SHOWNA);
+        break;
+      default:
+        ShowWindow(h, SW_MINIMIZE);
+        ShowWindow(h, SW_RESTORE);
+        break;
     }
-    if (!dwmtried) {
-        HMODULE dwm = LoadLibraryExA("dwmapi.dll", NULL,
-                                     LOAD_LIBRARY_SEARCH_SYSTEM32);
-        dwmtried = true;
-        dwmattr = dwm ? (dwmattr_t)(void *)GetProcAddress(
-                            dwm, "DwmGetWindowAttribute") : NULL;
-    }
-    GetWindowRect(h, &wr);
-    GetClientRect(h, &cr);
-    ClientToScreen(h, &o);
-    fr = wr;
-    if (dwmattr)                       /* DWMWA_EXTENDED_FRAME_BOUNDS */
-        dwmattr(h, 9, &fr, sizeof(fr));
+    kitty_test_geometry(h, &g);
     line = dupprintf(KT_TEST_REPAIR_EVENT, which, name,
-                     (long)wr.left, (long)wr.top, (long)(wr.right - wr.left),
-                     (long)(wr.bottom - wr.top), (long)o.x, (long)o.y,
-                     (long)cr.right, (long)cr.bottom, (long)fr.left,
-                     (long)fr.top, (long)(fr.right - fr.left),
-                     (long)(fr.bottom - fr.top));
+                     (long)g.wr.left, (long)g.wr.top, (long)(g.wr.right - g.wr.left),
+                     (long)(g.wr.bottom - g.wr.top), (long)g.o.x, (long)g.o.y,
+                     (long)g.cr.right, (long)g.cr.bottom, (long)g.fr.left,
+                     (long)g.fr.top, (long)(g.fr.right - g.fr.left),
+                     (long)(g.fr.bottom - g.fr.top));
     logevent(wgs->logctx, line);
     sfree(line);
+}
+
+/* hknet/KiTTY#88 test builds, KITTY_TEST_D2D_REPAIR=1: one Event Log line
+ * per display, power, session or window event that could move the
+ * compositor's picture, with the window's place at that moment. The display
+ * state and the session events are registered for at the first event. */
+/* the power-saving settings logged beside the display state: their value
+ * as Windows hands it over (1/0, or the plan's GUID for the plan) */
+static const struct { GUID guid; const char *name; } kitty_test88_power[] = {
+    { { 0xe00958c0, 0xc213, 0x4ace, { 0xac, 0x77, 0xfe, 0xcc, 0xed, 0x2e, 0xee, 0xa5 } },
+      "battery saver (1 = on)" },                          /* GUID_POWER_SAVING_STATUS */
+    { { 0x02731015, 0x4510, 0x4526, { 0x99, 0xe6, 0xe5, 0xa1, 0x7e, 0xbd, 0x1a, 0xea } },
+      "monitor power (1 = on)" },                          /* GUID_MONITOR_POWER_ON */
+    { { 0x2b84c20e, 0xad23, 0x4ddf, { 0x93, 0xdb, 0x05, 0xff, 0xbd, 0x7e, 0xfc, 0xa5 } },
+      "session display (0 off, 1 on, 2 dimmed)" },          /* GUID_SESSION_DISPLAY_STATUS */
+    { { 0x98a7f580, 0x01f7, 0x48aa, { 0x9c, 0x0f, 0x44, 0x35, 0x2c, 0x29, 0xe5, 0xc0 } },
+      "away mode (1 = on)" },                              /* GUID_SYSTEM_AWAYMODE */
+    { { 0x245d8541, 0x3943, 0x4422, { 0xb0, 0x25, 0x13, 0xa7, 0x84, 0xf6, 0x79, 0xb7 } },
+      "power plan" },                                      /* GUID_POWERSCHEME_PERSONALITY */
+    { { 0x5d3e9a59, 0xe9d5, 0x4b00, { 0xa6, 0xbd, 0xff, 0x34, 0xff, 0x51, 0x65, 0x48 } },
+      "power source (0 mains, 1 battery, 2 UPS)" },        /* GUID_ACDC_POWER_SOURCE */
+};
+
+/* How much of the window other windows cover: its visible frame minus every
+ * visible, not minimised, not cloaked window above it in the z-order (our
+ * own Event Log included). DXGI reports none of this for a flip-model
+ * window: the compositor keeps composing a covered window. Returns the
+ * visible share in percent. *top: the window covering the most of it, in
+ * full (sfree it). */
+#define TIMER_TEST88_COVER 8788        /* free across window.c + kitty.c timer ids */
+static int kitty_test88_cover(HWND h, char **top)
+{
+    typedef HRESULT (WINAPI *dwmattr_t)(HWND, DWORD, PVOID, DWORD);
+    static dwmattr_t dwmattr;
+    static bool dwmtried;
+    RECT fr, r, x;
+    HRGN vis;
+    HWND w;
+    long full, left = 0, best = 0;
+    DWORD sz;
+    RGNDATA *rd;
+    *top = dupstr("-");
+    if (!dwmtried) {
+        HMODULE dwm = LoadLibraryExA("dwmapi.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        dwmtried = true;
+        dwmattr = dwm ? (dwmattr_t)(void *)GetProcAddress(dwm, "DwmGetWindowAttribute") : NULL;
+    }
+    if (!dwmattr || FAILED(dwmattr(h, 9, &fr, sizeof(fr))))   /* DWMWA_EXTENDED_FRAME_BOUNDS */
+        GetWindowRect(h, &fr);
+    full = (long)(fr.right - fr.left) * (fr.bottom - fr.top);
+    if (full <= 0)
+        return 0;
+    vis = CreateRectRgnIndirect(&fr);
+    for (w = GetWindow(h, GW_HWNDPREV); w; w = GetWindow(w, GW_HWNDPREV)) {
+        DWORD cl = 0;
+        HRGN o;
+        long a;
+        if (!IsWindowVisible(w) || IsIconic(w) ||
+            (GetWindowLongA(w, GWL_EXSTYLE) & WS_EX_TRANSPARENT))
+            continue;
+        if (dwmattr && SUCCEEDED(dwmattr(w, 14 /* DWMWA_CLOAKED */, &cl, sizeof(cl))) && cl)
+            continue;
+        if (!dwmattr || FAILED(dwmattr(w, 9, &r, sizeof(r))))
+            GetWindowRect(w, &r);
+        if (!IntersectRect(&x, &r, &fr))
+            continue;
+        o = CreateRectRgnIndirect(&r);
+        CombineRgn(vis, vis, o, RGN_DIFF);
+        DeleteObject(o);
+        a = (long)(x.right - x.left) * (x.bottom - x.top);
+        if (a > best) {
+            /* the title in full, the class at Windows' longest (256) */
+            int tl = GetWindowTextLengthA(w);
+            char *t = snewn(tl + 2, char), *c = snewn(258, char);
+            DWORD pid = 0;
+            t[0] = c[0] = '\0';
+            GetWindowTextA(w, t, tl + 2);
+            GetClassNameA(w, c, 258);
+            GetWindowThreadProcessId(w, &pid);
+            best = a;
+            sfree(*top);
+            *top = dupprintf("\"%s\" (%s, %s)", t, c,
+                             pid == GetCurrentProcessId() ? "this program" : "another program");
+            sfree(t);
+            sfree(c);
+        }
+    }
+    sz = GetRegionData(vis, 0, NULL);
+    rd = sz ? (RGNDATA *)malloc(sz) : NULL;
+    if (rd && GetRegionData(vis, sz, rd)) {
+        const RECT *rr = (const RECT *)rd->Buffer;
+        DWORD i;
+        for (i = 0; i < rd->rdh.nCount; i++)
+            left += (long)(rr[i].right - rr[i].left) * (rr[i].bottom - rr[i].top);
+    }
+    free(rd);
+    DeleteObject(vis);
+    return (int)((left * 100 + full / 2) / full);
+}
+
+static void kitty_test88_event(WinGuiSeat *wgs, HWND h, UINT msg, WPARAM wp, LPARAM lp)
+{
+    static bool registered;
+    /* a monitor's device name: CCHDEVICENAME (32) at most, see kitty_test_geom */
+    static char lastmon[40];
+    static int winstate;              /* 0 normal, 1 minimised, 2 maximised */
+    static int monitors = -1, cloaked = -1;
+    static long offx = -99999, offy = -99999;
+    char *what = NULL, *dxgi, *line;  /* each line in full */
+    struct kitty_test_geom g;
+    if (!wgs || !wgs->logctx || h != wgs->term_hwnd)
+        return;
+    if (!registered) {
+        typedef HANDLE (WINAPI *rpsn_t)(HANDLE, LPCGUID, DWORD);
+        typedef BOOL (WINAPI *wtsreg_t)(HWND, DWORD);
+        /* GUID_CONSOLE_DISPLAY_STATE: the display goes off, on or dim */
+        static const GUID display_state = { 0x6fe69556, 0x704a, 0x47a0,
+            { 0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47 } };
+        HMODULE u32 = GetModuleHandleA("user32.dll");
+        HMODULE wts = LoadLibraryExA("wtsapi32.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        rpsn_t rpsn = u32 ? (rpsn_t)(void *)GetProcAddress(u32, "RegisterPowerSettingNotification") : NULL;
+        wtsreg_t wtsreg = wts ? (wtsreg_t)(void *)GetProcAddress(wts, "WTSRegisterSessionNotification") : NULL;
+        registered = true;
+        if (rpsn) {
+            size_t i;
+            rpsn(h, &display_state, 0 /* DEVICE_NOTIFY_WINDOW_HANDLE */);
+            for (i = 0; i < lenof(kitty_test88_power); i++)
+                rpsn(h, &kitty_test88_power[i].guid, 0);
+        }
+        if (wtsreg)
+            wtsreg(h, 0 /* NOTIFY_FOR_THIS_SESSION */);
+        SetTimer(h, TIMER_TEST88_COVER, 2000, NULL);
+    }
+    switch (msg) {
+      case WM_DISPLAYCHANGE:
+        what = dupprintf("display mode %ux%u, %u bits",
+                         (unsigned)LOWORD(lp), (unsigned)HIWORD(lp), (unsigned)wp);
+        break;
+      case WM_DPICHANGED: {
+        const RECT *r = (const RECT *)lp;
+        what = dupprintf("DPI change to %u, proposed %ld,%ld %ldx%ld",
+                         (unsigned)LOWORD(wp), (long)r->left, (long)r->top,
+                         (long)(r->right - r->left), (long)(r->bottom - r->top));
+        break;
+      }
+      case WM_POWERBROADCAST:
+        if (wp == 0x8013 /* PBT_POWERSETTINGCHANGE */ && lp) {
+            const POWERBROADCAST_SETTING *ps = (const POWERBROADCAST_SETTING *)lp;
+            DWORD v = ps->DataLength >= sizeof(DWORD) ? *(const DWORD *)ps->Data : 99;
+            size_t i;
+            const char *pname = NULL;
+            for (i = 0; i < lenof(kitty_test88_power); i++)
+                if (IsEqualGUID(&ps->PowerSetting, &kitty_test88_power[i].guid))
+                    pname = kitty_test88_power[i].name;
+            if (pname && ps->DataLength >= sizeof(DWORD))
+                what = dupprintf("power: %s %lu", pname, (unsigned long)v);
+            else if (pname)
+                what = dupprintf("power: %s changed", pname);
+            else
+                what = dupprintf("display %s",
+                                 v == 0 ? "off" : v == 1 ? "on" : v == 2 ? "dimmed" : "state unknown");
+        } else if (wp == 0x000A /* PBT_APMPOWERSTATUSCHANGE */) {
+            SYSTEM_POWER_STATUS sps;
+            if (GetSystemPowerStatus(&sps))
+                what = dupprintf("power source: %s, battery saver %s",
+                                 sps.ACLineStatus == 1 ? "mains" : sps.ACLineStatus == 0 ? "battery" : "unknown",
+                                 sps.SystemStatusFlag ? "on" : "off");
+            else
+                what = dupstr("power source changed");
+        } else if (wp == PBT_APMSUSPEND) {
+            what = dupstr("sleep");
+        } else if (wp == PBT_APMRESUMEAUTOMATIC || wp == PBT_APMRESUMESUSPEND) {
+            what = dupstr("resume from sleep");
+        }
+        break;
+      case 0x02B1:                     /* WM_WTSSESSION_CHANGE */
+        what = dupprintf("session %s",
+                         wp == 1 ? "console connect" : wp == 2 ? "console disconnect" :
+                         wp == 3 ? "remote connect" : wp == 4 ? "remote disconnect" :
+                         wp == 7 ? "lock" : wp == 8 ? "unlock" : "change");
+        break;
+      case 0x031E:                     /* WM_DWMCOMPOSITIONCHANGED */
+        what = dupstr("compositor change");
+        break;
+      case WM_ACTIVATEAPP:
+        what = dupstr(wp ? "the program is active again" : "another program is active");
+        break;
+      case WM_TIMER:
+        if (wp == TIMER_TEST88_COVER && !IsIconic(h)) {
+            /* shown, partly covered or covered: a line at each change of
+             * these three, none while the share moves within one */
+            static int lastcover = -1;
+            char *top;
+            int pct = kitty_test88_cover(h, &top);
+            int state = pct >= 100 ? 0 : pct <= 0 ? 2 : 1;
+            if (state != lastcover) {
+                if (state == 0)
+                    what = dupstr("shown, no other window over it");
+                else
+                    what = dupprintf("%s (%d %% visible), the most by %s",
+                                     state == 2 ? "covered" : "partly covered", pct, top);
+                lastcover = state;
+            }
+            sfree(top);
+        }
+        break;
+      case WM_SIZE: {
+        /* each step of the manual repairs (minimise, maximise, restore)
+         * with the place it leaves the window in */
+        int now = wp == SIZE_MINIMIZED ? 1 : wp == SIZE_MAXIMIZED ? 2 :
+                  wp == SIZE_RESTORED ? 0 : -1;
+        if (now >= 0 && now != winstate) {
+            static const char *const from[] = { "normal", "minimised", "maximised" };
+            what = dupprintf("%s (was %s)",
+                             now == 1 ? "minimised" : now == 2 ? "maximised" : "restored",
+                             from[winstate]);
+            winstate = now;
+        }
+        break;
+      }
+      case WM_WINDOWPOSCHANGED: {
+        /* another monitor, a new offset of the client area in the window,
+         * a change of the compositor's cloak (each one line) */
+        typedef HRESULT (WINAPI *dwmattr_t)(HWND, DWORD, PVOID, DWORD);
+        static dwmattr_t dwmattr;
+        static bool dwmtried;
+        DWORD cl = 0;
+        long ox, oy;
+        kitty_test_geometry(h, &g);
+        ox = g.o.x - g.wr.left;
+        oy = g.o.y - g.wr.top;
+        if (lastmon[0] && strcmp(lastmon, g.mon))
+            what = dupprintf("moved to another monitor (was %s)", lastmon);
+        else if (offx != -99999 && !IsIconic(h) && (ox != offx || oy != offy))
+            what = dupprintf("client area offset in the window now %ld,%ld (was %ld,%ld)",
+                             ox, oy, offx, offy);
+        strcpy(lastmon, g.mon);       /* both sized past CCHDEVICENAME */
+        if (!IsIconic(h)) { offx = ox; offy = oy; }
+        if (!dwmtried) {
+            HMODULE dwm = LoadLibraryExA("dwmapi.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            dwmtried = true;
+            dwmattr = dwm ? (dwmattr_t)(void *)GetProcAddress(dwm, "DwmGetWindowAttribute") : NULL;
+        }
+        if (!what && dwmattr &&
+            SUCCEEDED(dwmattr(h, 14 /* DWMWA_CLOAKED */, &cl, sizeof(cl)))) {
+            int c = cl ? 1 : 0;
+            if (cloaked >= 0 && c != cloaked)
+                what = dupprintf("%s by the compositor (0x%lx)",
+                                 c ? "cloaked" : "no longer cloaked", (unsigned long)cl);
+            cloaked = c;
+        }
+        break;
+      }
+      case 0x0219:                     /* WM_DEVICECHANGE */
+        if (wp == 0x0007)              /* DBT_DEVNODES_CHANGED */
+            what = dupstr("devices changed (a monitor plugged in or out, among others)");
+        break;
+      case WM_SETTINGCHANGE:
+        if (wp == SPI_SETWORKAREA)
+            what = dupstr("the work area changed");
+        break;
+    }
+    {
+        int mc = GetSystemMetrics(SM_CMONITORS);
+        if (monitors >= 0 && mc != monitors && !what)
+            what = dupprintf("%d monitors now (were %d)", mc, monitors);
+        monitors = mc;
+    }
+    if (!what)
+        return;
+    kitty_test_geometry(h, &g);
+    dxgi = kitty_d2d_test_output_dup(wgs->painter);
+    line = dupprintf(KT_TEST_EVENT_FMT, what,
+                     (long)g.wr.left, (long)g.wr.top, (long)(g.wr.right - g.wr.left),
+                     (long)(g.wr.bottom - g.wr.top), (long)g.o.x, (long)g.o.y,
+                     (long)g.cr.right, (long)g.cr.bottom, (long)g.fr.left,
+                     (long)g.fr.top, (long)(g.fr.right - g.fr.left),
+                     (long)(g.fr.bottom - g.fr.top), g.mon, dxgi);
+    logevent(wgs->logctx, line);
+    sfree(line);
+    sfree(dxgi);
+    sfree(what);
 }
 #endif
 static void kitty_post_quit(HWND hwnd, int code)
@@ -3755,6 +4080,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR1, KT_TEST_MENU_REPAIR_REDRAW);
                 AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR2, KT_TEST_MENU_REPAIR_FRAME);
                 AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR3, KT_TEST_MENU_REPAIR_BUFFERS);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR4, KT_TEST_MENU_REPAIR_DEVICE);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR5, KT_TEST_MENU_REPAIR_HIDESHOW);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR6, KT_TEST_MENU_REPAIR_MINRESTORE);
             }
 #endif
 #endif
@@ -6318,6 +6646,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
     int resize_action;
     WinGuiSeat *wgs = (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 
+#if defined(MOD_PERSO) && defined(KITTY_TEST_BUILD_LABEL)
+    {
+        static int on = -1;            /* hknet/KiTTY#88: KITTY_TEST_D2D_REPAIR=1 */
+        if (on < 0)
+            on = kitty_test_repair_on() ? 1 : 0;
+        if (on)
+            kitty_test88_event(wgs, hwnd, message, wParam, lParam);
+    }
+#endif
 #ifdef MOD_PERSO
     /* KiTTY: the taskbar button was (re)created - Explorer restarted - so a
      * host's taskbar progress (OSC 9;4) goes back on it. A registered
@@ -7683,6 +8020,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_TEST_REPAIR1:       /* hknet/KiTTY#88 test builds */
           case IDM_TEST_REPAIR2:
           case IDM_TEST_REPAIR3:
+          case IDM_TEST_REPAIR4:
+          case IDM_TEST_REPAIR5:
+          case IDM_TEST_REPAIR6:
             kitty_test_repair(wgs, (int)(((wParam & ~0xF) - IDM_TEST_REPAIR1) / 0x10) + 1);
             break;
 #endif

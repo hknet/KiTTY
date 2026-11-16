@@ -1728,6 +1728,12 @@
 #define KT_TEST_MENU_REPAIR_REDRAW                   "Test #88: redraw everything"
 #define KT_TEST_MENU_REPAIR_FRAME                    "Test #88: re-read the window frame"
 #define KT_TEST_MENU_REPAIR_BUFFERS                  "Test #88: new swap chain buffers"
+#define KT_TEST_MENU_REPAIR_DEVICE                   "Test #88: new device and swap chain"
+#define KT_TEST_MENU_REPAIR_HIDESHOW                 "Test #88: hide and show the window"
+#define KT_TEST_MENU_REPAIR_MINRESTORE               "Test #88: minimise and restore"
+/* hknet/KiTTY#88 test builds: a window, display, power or session event and
+ * where the window is then (%s = the event, then the monitor's device name) */
+#define KT_TEST_EVENT_FMT                            "Test event: %s. Window %ld,%ld %ldx%ld, client at %ld,%ld %ldx%ld, visible frame %ld,%ld %ldx%ld, monitor %s, DXGI %s"
 #define KT_TEST_REPAIR_EVENT                         "Test repair %d (%s): window %ld,%ld %ldx%ld, client at %ld,%ld %ldx%ld, visible frame %ld,%ld %ldx%ld"
 /* the Terminal Window's Event Log, paint-d2d.c (layer_init): whether the
  * cursor blinks on a composition layer or in frames; %08lX = the failure */

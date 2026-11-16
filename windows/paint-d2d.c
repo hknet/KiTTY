@@ -549,6 +549,7 @@ static bool hr_is_loss(D2DPainter *d, HRESULT hr)
 }
 
 static void device_lost(D2DPainter *d, HRESULT hr, const char *where);
+static bool d2d_test88(void);          /* hknet/KiTTY#88 test builds */
 
 /* ---- the swap chain's two bitmaps ---------------------------------- */
 
@@ -1157,10 +1158,19 @@ static void d2d_end(KittyPainter *p)
         kitty_present_wait_ms += (b.QuadPart - a.QuadPart) * 1000.0 / f.QuadPart;
 #ifdef KITTY_TEST_BUILD_LABEL
         if ((hr == DXGI_STATUS_OCCLUDED) !=
-            (d->present_status == DXGI_STATUS_OCCLUDED))
+            (d->present_status == DXGI_STATUS_OCCLUDED)) {
             D2D_TRACE("present: %s (0x%08lX)",
                       hr == DXGI_STATUS_OCCLUDED ? "occluded" : "visible",
                       (unsigned long)hr);
+            if (d2d_test88() && kitty_eventlog_ready()) {
+                char *m = dupprintf("Test event: the compositor %s the window "
+                                    "(Present 0x%08lX)",
+                                    hr == DXGI_STATUS_OCCLUDED ? "covers" : "shows",
+                                    (unsigned long)hr);
+                do_eventlog(m);
+                sfree(m);
+            }
+        }
         d->present_status = hr;
         if (getenv("KITTY_TEST_D2D_TRACE_PRESENT"))   /* every present */
             D2D_TRACE("present 0x%08lX iconic %d", (unsigned long)hr,
@@ -2732,6 +2742,14 @@ static bool count_failure(D2DPainter *d)
 static void device_lost(D2DPainter *d, HRESULT hr, const char *where)
 {
     D2D_TRACE("device lost hr=0x%08lx at %s", (unsigned long)(DWORD)hr, where);
+    if (d2d_test88() && kitty_eventlog_ready()) {
+        HRESULT why = d->d3d ? ID3D11Device_GetDeviceRemovedReason(d->d3d) : S_OK;
+        char *m = dupprintf("Test event: the graphics device was lost at %s "
+                            "(0x%08lX, Windows' reason 0x%08lX)", where,
+                            (unsigned long)(DWORD)hr, (unsigned long)(DWORD)why);
+        do_eventlog(m);
+        sfree(m);
+    }
     SetPropA(d->hwnd, "KiTTY.renderer.hr", (HANDLE)(ULONG_PTR)(DWORD)hr);
     d->last_hr = hr;
     release_device(d);
@@ -2908,6 +2926,14 @@ void kitty_d2d_occlusion_msg(HWND hwnd)
               hr == DXGI_STATUS_OCCLUDED ? "occluded" :
               SUCCEEDED(hr) ? "visible" : "failed",
               IsIconic(hwnd) ? 1 : 0, GetForegroundWindow() == hwnd ? 1 : 0);
+    if (d2d_test88() && kitty_eventlog_ready()) {
+        char *m = dupprintf("Test event: DXGI occlusion notice, a test present "
+                            "reads %s (0x%08lX)", hr == DXGI_STATUS_OCCLUDED ?
+                            "covered" : SUCCEEDED(hr) ? "shown" : "failed",
+                            (unsigned long)hr);
+        do_eventlog(m);
+        sfree(m);
+    }
 #else
     (void)hwnd;
 #endif
@@ -2916,6 +2942,72 @@ void kitty_d2d_occlusion_msg(HWND hwnd)
 /* hknet/KiTTY#88 test builds (KITTY_TEST_D2D_REPAIR, window.c): new swap
  * chain buffers at the window's size, as a minimise and restore makes them,
  * the window repainted whole. False when the painter cannot do it now. */
+/* hknet/KiTTY#88 test builds: KITTY_TEST_D2D_REPAIR=1 also writes the
+ * compositor's changes between covering and showing the window to the
+ * Terminal Window's Event Log. Every lost device goes there too. */
+static bool d2d_test88(void)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("KITTY_TEST_D2D_REPAIR");
+        on = (e && *e == '1') ? 1 : 0;
+    }
+    return on == 1;
+#else
+    return false;
+#endif
+}
+
+char *kitty_d2d_test_output_dup(KittyPainter *p)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    D2DPainter *d = (D2DPainter *)p;
+    IDXGIOutput *out = NULL;
+    char *dev = NULL, *card = NULL, *r;
+    if (!p || p->vt != &d2d_vt || !d->swap ||
+        FAILED(IDXGISwapChain1_GetContainingOutput(d->swap, &out)) || !out)
+        return dupstr("-");
+    {
+        DXGI_OUTPUT_DESC od;
+        IDXGIAdapter *ad = NULL;
+        DXGI_ADAPTER_DESC adesc;
+        if (SUCCEEDED(IDXGIOutput_GetDesc(out, &od)))
+            dev = kitty_wide_to_acp_dup(od.DeviceName);
+        if (SUCCEEDED(IDXGIOutput_GetParent(out, &IID_IDXGIAdapter, (void **)&ad)) && ad) {
+            if (SUCCEEDED(IDXGIAdapter_GetDesc(ad, &adesc)))
+                card = kitty_wide_to_acp_dup(adesc.Description);
+            IDXGIAdapter_Release(ad);
+        }
+        IDXGIOutput_Release(out);
+    }
+    r = dupprintf("%s on %s", dev ? dev : "?", card ? card : "?");
+    sfree(dev);
+    sfree(card);
+    return r;
+#else
+    (void)p;
+    return dupstr("-");
+#endif
+}
+
+bool kitty_d2d_test_new_device(KittyPainter *p)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    D2DPainter *d = (D2DPainter *)p;
+    if (!p || p->vt != &d2d_vt || d->in_frame || d->dead)
+        return false;
+    release_device(d);
+    d->lost = true;
+    d->retry_at = GetTickCount();
+    InvalidateRect(d->hwnd, NULL, FALSE);
+    return true;
+#else
+    (void)p;
+    return false;
+#endif
+}
+
 bool kitty_d2d_test_new_buffers(KittyPainter *p)
 {
 #ifdef KITTY_TEST_BUILD_LABEL
