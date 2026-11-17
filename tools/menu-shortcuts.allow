@@ -14,6 +14,10 @@ IDM_TEST_REPAIR3 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no k
 IDM_TEST_REPAIR4 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
 IDM_TEST_REPAIR5 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
 IDM_TEST_REPAIR6 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
+IDM_TEST_REPAIR7 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
+IDM_TEST_REPAIR8 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
+IDM_TEST_REPAIR9 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
+IDM_TEST_REPAIR10 | hknet/KiTTY#88 test builds only (KITTY_TEST_D2D_REPAIR): no key
 
 # actions without a menu item
 IDM_NEWSESS | New Session: its menu line is hidden on purpose (window.c). The handler stays for the opennew key.

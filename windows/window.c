@@ -134,6 +134,10 @@ static int kitty_scriptbridge_armed( WinGuiSeat *wgs )
 #define IDM_TEST_REPAIR4 0xB330
 #define IDM_TEST_REPAIR5 0xB340
 #define IDM_TEST_REPAIR6 0xB350
+#define IDM_TEST_REPAIR7 0xB360
+#define IDM_TEST_REPAIR8 0xB370
+#define IDM_TEST_REPAIR9 0xB380
+#define IDM_TEST_REPAIR10 0xB390
 #define IDM_SPECIALSEP 0x0200
 
 #define IDM_SPECIAL_MIN 0x0400
@@ -2667,6 +2671,18 @@ static void kitty_clayer_blink(TermWin *tw, int half, bool ease);
  *   4  a new device and swap chain (release_device, made again at once)
  *   5  hide and show the window (SW_HIDE, SW_SHOWNA)
  *   6  minimise and restore by program (the manual repair, as one step)
+ * Round 2 showed 4 fails and 5 repairs, after two display mode changes
+ * while the window was covered. Round 3:
+ *   7  cloak and uncloak (DWMWA_CLOAK): the compositor hides and shows the
+ *      window's picture, the taskbar button stays where it is
+ *   8  the frame extended one pixel into the client area and back
+ *      (DwmExtendFrameIntoClientArea): the compositor fits frame and
+ *      client area together again
+ *   9  one pixel right and back (SetWindowPos)
+ *  10  one pixel wider and back: a real size change like a minimise and
+ *      restore, without the taskbar or the focus
+ *   and 5 by itself, 1.5 s after the last display mode or work area change,
+ *   on a Direct2D window that is not minimised (kitty_test88_event).
  * Each writes the window's, the client area's and the visible frame's place
  * on the screen to the Terminal Window's Event Log. With the same switch the
  * window also logs every display, power, session and window event that
@@ -2710,15 +2726,31 @@ static void kitty_test_geometry(HWND h, struct kitty_test_geom *g)
         memcpy(g->mon, mi.szDevice, sizeof(mi.szDevice));   /* NUL-terminated, 32 at most */
 }
 
-static void kitty_test_repair(WinGuiSeat *wgs, int which)
+/* automatic: repair 5 after a display change, from kitty_test88_event */
+static void kitty_test_repair_ex(WinGuiSeat *wgs, int which, bool automatic)
 {
     static const char *const names[] = { "", "redraw", "frame", "buffers",
-        "new device", "hide and show", "minimise and restore" };
+        "new device", "hide and show", "minimise and restore",
+        "cloak and uncloak", "frame extension", "move one pixel",
+        "resize one pixel" };
     HWND h = wgs->term_hwnd;
-    const char *name = (which >= 1 && which <= 6) ? names[which] : "?";
+    const char *name = (which >= 1 && which <= 10) ? names[which] : "?";
     struct kitty_test_geom g;
     char *line;
+    if (automatic && which == 5) {
+        /* the window may be the active one: show and activate it again,
+         * else SW_HIDE leaves another window active */
+        bool fg = GetForegroundWindow() == h;
+        ShowWindow(h, SW_HIDE);
+        ShowWindow(h, fg ? SW_SHOW : SW_SHOWNA);
+        if (fg)
+            SetForegroundWindow(h);
+        name = "hide and show, automatic after a display change";
+        which = 0;
+    }
     switch (which) {
+      case 0:
+        break;
       case 1:
         term_invalidate(wgs->term);
         InvalidateRect(h, NULL, FALSE);
@@ -2740,13 +2772,60 @@ static void kitty_test_repair(WinGuiSeat *wgs, int which)
         ShowWindow(h, SW_HIDE);
         ShowWindow(h, SW_SHOWNA);
         break;
+      case 7: {
+        typedef HRESULT (WINAPI *dwmset_t)(HWND, DWORD, LPCVOID, DWORD);
+        HMODULE dwm = LoadLibraryExA("dwmapi.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        dwmset_t dwmset = dwm ? (dwmset_t)(void *)GetProcAddress(
+                              dwm, "DwmSetWindowAttribute") : NULL;
+        BOOL on = TRUE, off = FALSE;
+        if (!dwmset || FAILED(dwmset(h, 13 /* DWMWA_CLOAK */, &on, sizeof(on))))
+            name = "cloak and uncloak, not done: the compositor refused";
+        else
+            dwmset(h, 13, &off, sizeof(off));
+        break;
+      }
+      case 8: {
+        /* the margins of DwmExtendFrameIntoClientArea (MARGINS) */
+        typedef struct { int l, r, t, b; } test_margins;
+        typedef HRESULT (WINAPI *dwmext_t)(HWND, const test_margins *);
+        HMODULE dwm = LoadLibraryExA("dwmapi.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+        dwmext_t dwmext = dwm ? (dwmext_t)(void *)GetProcAddress(
+                              dwm, "DwmExtendFrameIntoClientArea") : NULL;
+        test_margins one = { 1, 1, 1, 1 }, none = { 0, 0, 0, 0 };
+        if (!dwmext || FAILED(dwmext(h, &one)))
+            name = "frame extension, not done: the compositor refused";
+        else
+            dwmext(h, &none);          /* the terminal window extends none */
+        break;
+      }
+      case 9:
+      case 10: {
+        /* 9 one pixel right and back, 10 one pixel wider and back (wider:
+         * a narrower window could lose a column and with it text) */
+        RECT r;
+        UINT f = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+        GetWindowRect(h, &r);
+        if (IsIconic(h) || IsZoomed(h)) {
+            name = which == 9 ? "move, not done: minimised or maximised" :
+                                "resize, not done: minimised or maximised";
+            break;
+        }
+        if (which == 9) {
+            SetWindowPos(h, NULL, r.left + 1, r.top, 0, 0, f | SWP_NOSIZE);
+            SetWindowPos(h, NULL, r.left, r.top, 0, 0, f | SWP_NOSIZE);
+        } else {
+            SetWindowPos(h, NULL, 0, 0, r.right - r.left + 1, r.bottom - r.top, f | SWP_NOMOVE);
+            SetWindowPos(h, NULL, 0, 0, r.right - r.left, r.bottom - r.top, f | SWP_NOMOVE);
+        }
+        break;
+      }
       default:
         ShowWindow(h, SW_MINIMIZE);
         ShowWindow(h, SW_RESTORE);
         break;
     }
     kitty_test_geometry(h, &g);
-    line = dupprintf(KT_TEST_REPAIR_EVENT, which, name,
+    line = dupprintf(KT_TEST_REPAIR_EVENT, automatic ? 5 : which, name,
                      (long)g.wr.left, (long)g.wr.top, (long)(g.wr.right - g.wr.left),
                      (long)(g.wr.bottom - g.wr.top), (long)g.o.x, (long)g.o.y,
                      (long)g.cr.right, (long)g.cr.bottom, (long)g.fr.left,
@@ -2754,6 +2833,11 @@ static void kitty_test_repair(WinGuiSeat *wgs, int which)
                      (long)(g.fr.bottom - g.fr.top));
     logevent(wgs->logctx, line);
     sfree(line);
+}
+
+static void kitty_test_repair(WinGuiSeat *wgs, int which)
+{
+    kitty_test_repair_ex(wgs, which, false);
 }
 
 /* hknet/KiTTY#88 test builds, KITTY_TEST_D2D_REPAIR=1: one Event Log line
@@ -2784,6 +2868,7 @@ static const struct { GUID guid; const char *name; } kitty_test88_power[] = {
  * visible share in percent. *top: the window covering the most of it, in
  * full (sfree it). */
 #define TIMER_TEST88_COVER 8788        /* free across window.c + kitty.c timer ids */
+#define TIMER_TEST88_AUTO  8789        /* the automatic repair 5, 1.5 s after the last display change */
 static int kitty_test88_cover(HWND h, char **top)
 {
     typedef HRESULT (WINAPI *dwmattr_t)(HWND, DWORD, PVOID, DWORD);
@@ -2891,6 +2976,7 @@ static void kitty_test88_event(WinGuiSeat *wgs, HWND h, UINT msg, WPARAM wp, LPA
       case WM_DISPLAYCHANGE:
         what = dupprintf("display mode %ux%u, %u bits",
                          (unsigned)LOWORD(lp), (unsigned)HIWORD(lp), (unsigned)wp);
+        SetTimer(h, TIMER_TEST88_AUTO, 1500, NULL);   /* again at each one */
         break;
       case WM_DPICHANGED: {
         const RECT *r = (const RECT *)lp;
@@ -2942,6 +3028,14 @@ static void kitty_test88_event(WinGuiSeat *wgs, HWND h, UINT msg, WPARAM wp, LPA
         what = dupstr(wp ? "the program is active again" : "another program is active");
         break;
       case WM_TIMER:
+        if (wp == TIMER_TEST88_AUTO) {
+            KillTimer(h, TIMER_TEST88_AUTO);
+            /* minimised: the restore rebuilds the picture anyway */
+            if (!IsIconic(h) && IsWindowVisible(h) &&
+                (ULONG_PTR)GetPropA(h, "KiTTY.renderer") >= 2)
+                kitty_test_repair_ex(wgs, 5, true);
+            break;
+        }
         if (wp == TIMER_TEST88_COVER && !IsIconic(h)) {
             /* shown, partly covered or covered: a line at each change of
              * these three, none while the share moves within one */
@@ -3012,8 +3106,10 @@ static void kitty_test88_event(WinGuiSeat *wgs, HWND h, UINT msg, WPARAM wp, LPA
             what = dupstr("devices changed (a monitor plugged in or out, among others)");
         break;
       case WM_SETTINGCHANGE:
-        if (wp == SPI_SETWORKAREA)
+        if (wp == SPI_SETWORKAREA) {
             what = dupstr("the work area changed");
+            SetTimer(h, TIMER_TEST88_AUTO, 1500, NULL);
+        }
         break;
     }
     {
@@ -4083,6 +4179,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
                 AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR4, KT_TEST_MENU_REPAIR_DEVICE);
                 AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR5, KT_TEST_MENU_REPAIR_HIDESHOW);
                 AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR6, KT_TEST_MENU_REPAIR_MINRESTORE);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR7, KT_TEST_MENU_REPAIR_CLOAK);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR8, KT_TEST_MENU_REPAIR_FRAMEEXT);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR9, KT_TEST_MENU_REPAIR_MOVE);
+                AppendMenu(m, MF_ENABLED, IDM_TEST_REPAIR10, KT_TEST_MENU_REPAIR_RESIZE);
             }
 #endif
 #endif
@@ -8023,6 +8123,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
           case IDM_TEST_REPAIR4:
           case IDM_TEST_REPAIR5:
           case IDM_TEST_REPAIR6:
+          case IDM_TEST_REPAIR7:
+          case IDM_TEST_REPAIR8:
+          case IDM_TEST_REPAIR9:
+          case IDM_TEST_REPAIR10:
             kitty_test_repair(wgs, (int)(((wParam & ~0xF) - IDM_TEST_REPAIR1) / 0x10) + 1);
             break;
 #endif

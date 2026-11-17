@@ -1731,6 +1731,10 @@
 #define KT_TEST_MENU_REPAIR_DEVICE                   "Test #88: new device and swap chain"
 #define KT_TEST_MENU_REPAIR_HIDESHOW                 "Test #88: hide and show the window"
 #define KT_TEST_MENU_REPAIR_MINRESTORE               "Test #88: minimise and restore"
+#define KT_TEST_MENU_REPAIR_CLOAK                    "Test #88: cloak and uncloak"
+#define KT_TEST_MENU_REPAIR_FRAMEEXT                 "Test #88: extend the frame and back"
+#define KT_TEST_MENU_REPAIR_MOVE                     "Test #88: move one pixel and back"
+#define KT_TEST_MENU_REPAIR_RESIZE                   "Test #88: one pixel wider and back"
 /* hknet/KiTTY#88 test builds: a window, display, power or session event and
  * where the window is then (%s = the event, then the monitor's device name) */
 #define KT_TEST_EVENT_FMT                            "Test event: %s. Window %ld,%ld %ldx%ld, client at %ld,%ld %ldx%ld, visible frame %ld,%ld %ldx%ld, monitor %s, DXGI %s"
