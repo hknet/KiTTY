@@ -639,10 +639,11 @@ The group starts with the icon the window gets from the values below,
 as they stand now: it follows each change before the session is saved.
 
 \q{Icon (from internal resources)} takes the number of one of the icons
-of KiTTY++: 0 and 1 are the default, 2 to 50 come from \c{kitty++.dll}
+of KiTTY++: 0 and 1 are the default, 2 to 52 come from \c{kitty++.dll}
 beside \c{kitty.exe}. Most are a white symbol on a coloured tile (server,
 database, cloud, firewall, console, git and more); 3 to 9 are computers in
-seven colours, 41 to 50 the digits 0 to 9. Without \c{kitty++.dll} every
+seven colours, 41 to 50 the digits 0 to 9. 51 and 52 are two earlier
+designs of the program icon. Without \c{kitty++.dll} every
 number shows the default icon. \q{Choose...} beside the number shows the
 icons with their numbers: a double-click or OK puts that number in.
 

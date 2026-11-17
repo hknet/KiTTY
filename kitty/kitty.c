@@ -943,7 +943,9 @@ void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 void SetConnBreakIcon( HWND hwnd ) {
 #ifdef MOD_PERSO
 	HICON hIcon = NULL ;
-	hIcon = LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_NOCON) ) ;
+	/* the icon is the exe's own (kitty.rc): hInstIcons is kitty++.dll when
+	 * that sits beside the exe, which holds the numbered icons only */
+	hIcon = LoadIcon( GetModuleHandle( NULL ), MAKEINTRESOURCE(IDI_NOCON) ) ;
 	SendMessage( hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon );	
 	SendMessage( hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIcon );
 	TrayIcone.hIcon = hIcon ;

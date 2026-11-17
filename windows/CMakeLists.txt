@@ -1286,3 +1286,28 @@ target_compile_definitions(test_hello_gui PRIVATE KITTY_HELLO_DIAG)
 set_target_properties(test_hello_gui PROPERTIES WIN32_EXECUTABLE ON)
 target_link_libraries(test_hello_gui
   eventloop crypto utils ${platform_libraries})
+
+# KiTTY: a changed .ico rebuilds every resource script that embeds it.
+# CMake finds no .ico in an .rc by itself: an incremental build kept the old
+# pictures in plink, pscp and psftp. Each .rc here gets the .ico files it
+# names as OBJECT_DEPENDS, in this directory and in the top one (plink, pscp
+# and psftp are defined there). An edit of an .rc reads its list again.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.18)
+  file(GLOB kitty_rc_files ${CMAKE_CURRENT_SOURCE_DIR}/*.rc)
+  foreach(rc ${kitty_rc_files})
+    file(STRINGS ${rc} rc_lines REGEX "\"[^\"]+\\.ico\"")
+    set(rc_icons)
+    foreach(line ${rc_lines})
+      string(REGEX REPLACE ".*\"([^\"]+\\.ico)\".*" "\\1" ico "${line}")
+      if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${ico})
+        list(APPEND rc_icons ${CMAKE_CURRENT_SOURCE_DIR}/${ico})
+      endif()
+    endforeach()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${rc})
+    if(rc_icons)
+      set_source_files_properties(${rc}
+        DIRECTORY ${CMAKE_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}
+        PROPERTIES OBJECT_DEPENDS "${rc_icons}")
+    endif()
+  endforeach()
+endif()

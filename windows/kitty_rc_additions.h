@@ -2,7 +2,7 @@
 #ifndef KITTY_RC_ADDITIONS_H
 #define KITTY_RC_ADDITIONS_H
 #ifndef NB_ICONES
-#define NB_ICONES 50
+#define NB_ICONES 52
 #endif
 #ifndef IDM_RESTARTSESSION
 #define IDM_RESTARTSESSION 0xB110

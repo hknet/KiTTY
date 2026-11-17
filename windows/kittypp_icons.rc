@@ -66,6 +66,8 @@
 48 ICON "kitty_icons/icon_47.ico"
 49 ICON "kitty_icons/icon_48.ico"
 50 ICON "kitty_icons/icon_49.ico"
+51 ICON "kitty_icons/icon_50.ico"
+52 ICON "kitty_icons/icon_51.ico"
 
 /* the dark forms, resource id + 1000 */
 1005 ICON "kitty_icons/icon_4_dark.ico"

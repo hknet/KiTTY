@@ -22,18 +22,19 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
-- New icons for every program of the suite: one blue tile with `>_` and
-  the green `++`, a badge for Manage Sessions, Quick Connect, kageant,
-  kittygen, kscp/ksftp and the lost connection. kageant's tray icon comes
-  in one form for a light and one for a dark taskbar. At 16 px the `++`
-  stays readable.
+- New icons for every program of the suite: one blue tile with two
+  computers and the green `++`, a badge for Manage Sessions, Quick
+  Connect, kageant, kittygen, kscp/ksftp and the lost connection. kageant's
+  tray icon comes in one form for a light and one for a dark taskbar. 16
+  to 24 px are drawn pixel by pixel.
 - The numbered session icons (Window > Title & Icon) are drawn anew and
   come in `kitty++.dll` beside `kitty.exe`: symbols on coloured tiles,
   drawn from Microsoft's Fluent UI System Icons (MIT). The cartoon
   characters of classic KiTTY are gone: a session set to 2, 10-19, 21-35
   or 39 shows a new picture (server, database, cloud, firewall, console,
   git and more). The other numbers keep their meaning: computers in their
-  colours, the warning sign, the balls, the printer and the digits.
+  colours, the warning sign, the balls, the printer and the digits. 51
+  and 52 are two earlier designs of the program icon.
   Without `kitty++.dll` a numbered icon shows the default icon. A classic
   `kitty.dll` still loads when there is no `kitty++.dll`. Its code no
   longer runs: the library is read as data, from the exe's folder only.

@@ -46,9 +46,7 @@ static void ip_fill(HWND dlg, struct ip_ctx *c)
     int px = GetSystemMetrics(SM_CXICON), i, sel = -1;
     HINSTANCE lib = hInstIcons ? hInstIcons : GetModuleHandle(NULL);
     int want = c->cur > 0 ? c->cur : 1;
-    /* the built-in set is ids 1-50 (its dark forms, 1001 and up, are no
-     * choice of their own) */
-    int cap = c->lib ? kitty_icon_library_count(c->lib) : 50;
+    int cap = c->lib ? kitty_icon_library_count(c->lib) : KITTY_BUILTIN_ICONS;
     char *src;
     c->il = ImageList_Create(px, px, ILC_COLOR32 | ILC_MASK, 16, 16);
     ListView_SetImageList(lv, c->il, LVSIL_NORMAL);
