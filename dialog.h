@@ -390,6 +390,12 @@ struct dlgcontrol {
              * NULL for the default. Set on a plain list, it makes that list
              * owner-drawn too (Windows). */
             bool (*rowink)(dlgcontrol *ctrl, int id, bool dark, unsigned long *rgb);
+            /* KiTTY: a row's icon, drawn before its text, px pixels square
+             * (id = the row's addwithid value). NULL from it = no icon, the
+             * text keeps its place. The icon stays the caller's. Set on a
+             * list, it makes that list owner-drawn with rows at least as
+             * high as a small icon (Windows). */
+            HICON (*rowicon)(dlgcontrol *ctrl, int id, int px, bool dark);
             /* KiTTY: a row's own tooltip, shown while the mouse is over it
              * (NULL = none, then only a cut row shows its text). */
             const char *(*rowtip)(dlgcontrol *ctrl, int id);
@@ -494,6 +500,14 @@ struct dlgcontrol {
              * many lines as the build text needs.
              */
             int lines;
+            /*
+             * KiTTY: a picture instead of the text (ctrl_image): the
+             * control is `lines` text lines high and shows image()'s icon,
+             * px pixels square, at its left. data = the dialog's data (the
+             * Conf). The icon stays the caller's. NULL = a text control.
+             * Windows only. dlg_image_redraw draws it again.
+             */
+            HICON (*image)(dlgcontrol *ctrl, void *data, int px, bool dark);
         } text;
     };
 };
@@ -627,6 +641,10 @@ dlgcontrol *ctrl_fontsel(struct controlset *, const char *label,
                          handler_fn handler, intorptr context);
 dlgcontrol *ctrl_text(struct controlset *, const char *text,
                       HelpCtx helpctx);
+/* KiTTY: a picture, `lines` text lines high (see text.image). */
+dlgcontrol *ctrl_image(struct controlset *s, int lines, HelpCtx helpctx,
+                       HICON (*image)(dlgcontrol *ctrl, void *data, int px,
+                                      bool dark));
 dlgcontrol *ctrl_checkbox(struct controlset *, const char *label,
                           char shortcut, HelpCtx helpctx,
                           handler_fn handler, intorptr context);
@@ -696,6 +714,8 @@ void dlg_editbox_set_updown_target(dlgcontrol *editctrl, dlgcontrol *target,
  * Change the label text on a control.
  */
 void dlg_label_change(dlgcontrol *ctrl, dlgparam *dp, char const *text);
+/* KiTTY: an image control (ctrl_image) is drawn again with a new picture. */
+void dlg_image_redraw(dlgcontrol *ctrl, dlgparam *dp);
 /*
  * Return the `ctrl' structure for the most recent control that had
  * the input focus apart from the one mentioned. This is NOT

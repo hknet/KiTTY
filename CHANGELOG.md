@@ -12,12 +12,13 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 ### New
 
 - Session icons: with **Show session icons in KiTTY++** on Application >
-  KiTTY++ Settings > Appearance (off by default) the launcher's session menu and Manage
-  Sessions show each session's icon in front of its name, the default icon
-  when the session sets none. In dark mode a file `<name>.dark.ico` beside
-  the session's icon file is shown instead, when it exists. In Manage
-  Sessions the pin of a session with a place of its own then follows its
-  name, as in the folder tree (hknet/KiTTY#62).
+  KiTTY++ Settings > Appearance (off by default) the launcher's session menu,
+  Manage Sessions and the Session panel's list show each session's icon in
+  front of its name, the default icon when the session sets none.
+  In dark mode a file `<name>.dark.ico` beside the session's icon file is
+  shown instead, when it exists. In Manage Sessions the pin of a session
+  with a place of its own then follows its name, as in the folder tree
+  (hknet/KiTTY#62).
 
 ### Changed
 

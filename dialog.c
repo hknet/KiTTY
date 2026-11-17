@@ -400,6 +400,7 @@ dlgcontrol *ctrl_listbox(struct controlset *s, const char *label,
     c->listbox.percentages = NULL;
     c->listbox.headerrow = false;      /* KiTTY: never inherit heap garbage */
     c->listbox.rowink = NULL;
+    c->listbox.rowicon = NULL;
     c->listbox.rowtip = NULL;
     c->listbox.rowmenu = NULL;
     c->listbox.rowkey = NULL;
@@ -423,6 +424,7 @@ dlgcontrol *ctrl_droplist(struct controlset *s, const char *label,
     c->listbox.percentages = NULL;
     c->listbox.headerrow = false;      /* KiTTY: never inherit heap garbage */
     c->listbox.rowink = NULL;
+    c->listbox.rowicon = NULL;
     c->listbox.rowtip = NULL;
     c->listbox.rowmenu = NULL;
     c->listbox.rowkey = NULL;
@@ -446,6 +448,7 @@ dlgcontrol *ctrl_draglist(struct controlset *s, const char *label,
     c->listbox.percentages = NULL;
     c->listbox.headerrow = false;      /* KiTTY: never inherit heap garbage */
     c->listbox.rowink = NULL;
+    c->listbox.rowicon = NULL;
     c->listbox.rowtip = NULL;
     c->listbox.rowmenu = NULL;
     c->listbox.rowkey = NULL;
@@ -493,6 +496,19 @@ dlgcontrol *ctrl_text(struct controlset *s, const char *text,
     c->label = dupstr(text);
     c->text.wrap = true;
     c->text.lines = 0;
+    c->text.image = NULL;
+    return c;
+}
+
+dlgcontrol *ctrl_image(struct controlset *s, int lines, HelpCtx helpctx,
+                       HICON (*image)(dlgcontrol *ctrl, void *data, int px,
+                                      bool dark))
+{
+    dlgcontrol *c = ctrl_new(s, CTRL_TEXT, helpctx, NULL, P(NULL));
+    c->label = dupstr("");
+    c->text.wrap = true;
+    c->text.lines = lines > 0 ? lines : 1;
+    c->text.image = image;
     return c;
 }
 

@@ -635,6 +635,9 @@ image instead (\k{kitty-cfg-bgimage}).
 On Window > Title & Icon. Gives this session its own icon, so a taskbar full of terminals can be
 distinguished at a glance - production red, staging blue, and so on.
 
+The group starts with the icon the window gets from the values below,
+as they stand now: it follows each change before the session is saved.
+
 \q{Icon (from internal resources)} takes the number of one of the icons
 of KiTTY++: 0 and 1 are the default, 2 to 50 come from \c{kitty++.dll}
 beside \c{kitty.exe}. Most are a white symbol on a coloured tile (server,
@@ -656,7 +659,7 @@ shows the default icon.
 The icon applies to the window, the taskbar and the tray.
 
 The same icon stands in front of the session's name in the launcher's
-session menu and in Manage Sessions when \q{Show session icons in
+session menu, in Manage Sessions and in the Session panel's list when \q{Show session icons in
 KiTTY++} is on (\k{kitty-cfg-appearance}). There, in dark mode, a
 file \c{<name>.dark.ico} beside \c{<name>.ico} is shown instead, when it
 exists: a light drawing for a dark menu (an \c{.ico} only, not a library). Without one the icon stays as it
@@ -2052,7 +2055,8 @@ means \c{kitty++.dll} beside \c{kitty.exe}, else classic KiTTY's
 default icon alone. The library is read as data: no code of it runs.
 
 \b \q{Show session icons in KiTTY++} puts each session's icon in front
-of its name in the launcher's session menu and in Manage Sessions: the
+of its name in the launcher's session menu, in Manage Sessions and in
+the Session panel's list: the
 icon its terminal window shows, the default icon when the session sets
 none. In dark mode an icon file \c{<name>.dark.ico} beside it is shown
 instead, when it exists (\k{kitty-cfg-icon}). In Manage Sessions the pin

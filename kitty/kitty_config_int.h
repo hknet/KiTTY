@@ -283,6 +283,8 @@ struct sessionsaver_data {
 };
 extern struct sessionsaver_data *kitty_session_ssd;   /* kitty_config_session.c */
 int kitty_config_session_rows(void);   /* kitty_config_session.c */
+/* kitty_config_session.c: the session icons switch ticked or unticked */
+void kitty_config_session_icons_changed(int on);
 /* The start-up question when kitty.ini's file-name endings were edited by
  * hand (hknet/KiTTY#56): the cheap check, and the question. kitty_config_app.c */
 int kitty_sp_endings_changed(void);

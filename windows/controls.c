@@ -731,6 +731,23 @@ void statictext(struct ctlpos *cp, const char *text, int lines, int id)
 }
 
 /*
+ * KiTTY: an owner-drawn static for a picture (ctrl_image), `lines` text
+ * lines high.
+ */
+static void kitty_imagebox(struct ctlpos *cp, int lines, int id)
+{
+    RECT r;
+
+    r.left = GAPBETWEEN;
+    r.top = cp->ypos;
+    r.right = cp->width;
+    r.bottom = STATICHEIGHT * lines;
+    cp->ypos += r.bottom + GAPBETWEEN;
+    doctl(cp, r, "STATIC", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW,
+          0, NULL, id);
+}
+
+/*
  * An owner-drawn static text control for a panel title.
  */
 void paneltitle(struct ctlpos *cp, int id)
@@ -1591,6 +1608,12 @@ static void kt_hl_hover(HWND list, struct kt_hl *st, int x, int y)
         p[strcspn(p, "\t")] = '\0';
     left = col ? st->edge[col - 1] : 0;
     avail = own ? -1 : st->edge[col] - left - 2 * KT_HL_PAD;
+    if (!own && st->ctrl->listbox.rowicon) {
+        /* the row's icon takes the row height plus 2 before the text */
+        LRESULT ih = SendMessage(list, LB_GETITEMHEIGHT, 0, 0);
+        if (ih != LB_ERR && ih > 0)
+            avail -= (int)ih + 2;
+    }
     sz.cx = 0;
     hdc = GetDC(list);
     if (hdc) {
@@ -1945,6 +1968,20 @@ static void kitty_draw_header_list_item(struct dlgparam *dp, dlgcontrol *ctrl,
         FillRect(hdc, &r, b);
         DeleteObject(b);
     }
+    if (ctrl->listbox.rowicon && !header) {
+        /* the icon as high as the row less a pixel above and below, the
+         * text after it (a row without an icon keeps the same place, so
+         * the names line up) */
+        int px = r.bottom - r.top - 2;
+        HICON icon;
+        if (px < 1)
+            px = 1;
+        icon = ctrl->listbox.rowicon(ctrl, (int)di->itemData, px, dark);
+        if (icon)
+            DrawIconEx(hdc, r.left + 2, r.top + 1, icon, px, px, 0, NULL,
+                       DI_NORMAL);
+        r.left += px + 6;
+    }
     len = (int)SendMessage(di->hwndItem, LB_GETTEXTLEN, di->itemID, 0);
     if (len < 0)
         return;
@@ -1994,11 +2031,18 @@ static void kitty_draw_header_list_item(struct dlgparam *dp, dlgcontrol *ctrl,
             x = right;
             p = tab ? tab + 1 : NULL;
         }
+    } else if (ctrl->listbox.rowicon) {
+        /* a row as high as the icon: the text in its middle */
+        TEXTMETRIC tm;
+        int y = r.top + 1;
+        if (GetTextMetrics(hdc, &tm))
+            y = r.top + (r.bottom - r.top - tm.tmHeight) / 2;
+        ExtTextOut(hdc, r.left, y, ETO_CLIPPED, &r, text, len, NULL);
     } else {
         ExtTextOut(hdc, r.left + 2, r.top + 1, ETO_CLIPPED, &r, text, len, NULL);
     }
     if (!header && (di->itemState & ODS_FOCUS))
-        DrawFocusRect(hdc, &r);
+        DrawFocusRect(hdc, &di->rcItem);
     (void)ntabs; (void)tabs;
     sfree(text);
 }
@@ -2819,7 +2863,11 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
          */
         switch (ctrl->type) {
           case CTRL_TEXT:
-            if (ctrl->text.wrap) {
+            if (ctrl->text.image) {
+                /* KiTTY: a picture (ctrl_image) */
+                num_ids = 1;
+                kitty_imagebox(&pos, ctrl->text.lines, base_id);
+            } else if (ctrl->text.wrap) {
                 char *wrapped, *escaped;
                 int lines;
                 num_ids = 1;
@@ -2948,8 +2996,17 @@ void winctrl_layout(struct dlgparam *dp, struct winctrls *wc,
                 listbox(&pos, escaped, base_id, base_id+1,
                         ctrl->listbox.height,
                         ctrl->listbox.viewonly ? -1 : ctrl->listbox.multisel,
-                        ctrl->listbox.headerrow || ctrl->listbox.rowink);
+                        ctrl->listbox.headerrow || ctrl->listbox.rowink ||
+                        ctrl->listbox.rowicon);
                 kt_hl_attach(GetDlgItem(cp->hwnd, base_id+1), ctrl);
+                if (ctrl->listbox.rowicon) {
+                    /* KiTTY: rows at least as high as a small icon */
+                    HWND lh = GetDlgItem(cp->hwnd, base_id+1);
+                    int want = GetSystemMetrics(SM_CYSMICON) + 2;
+                    LRESULT have = lh ? SendMessage(lh, LB_GETITEMHEIGHT, 0, 0) : 0;
+                    if (lh && have != LB_ERR && have < want)
+                        SendMessage(lh, LB_SETITEMHEIGHT, 0, want);
+                }
             }
             if (ctrl->listbox.ncols) {
                 /*
@@ -3186,9 +3243,37 @@ bool winctrl_handle_command(struct dlgparam *dp, UINT msg,
         return false;                  /* we have nothing to do */
 
     if (msg == WM_DRAWITEM && c->ctrl && c->ctrl->type == CTRL_LISTBOX &&
-        (c->ctrl->listbox.headerrow || c->ctrl->listbox.rowink)) {
-        /* KiTTY: a row of a header-row list, or of a list with row inks. */
+        (c->ctrl->listbox.headerrow || c->ctrl->listbox.rowink ||
+         c->ctrl->listbox.rowicon)) {
+        /* KiTTY: a row of a header-row list, or of a list with row inks or
+         * row icons. */
         kitty_draw_header_list_item(dp, c->ctrl, (LPDRAWITEMSTRUCT)lParam);
+        return true;
+    }
+
+    if (msg == WM_DRAWITEM && c->ctrl && c->ctrl->type == CTRL_TEXT &&
+        c->ctrl->text.image) {
+        /* KiTTY: a picture (ctrl_image) on the panel's own background, as
+         * high as the control and at most 48 pixels at 96 dpi, at its left */
+        LPDRAWITEMSTRUCT di = (LPDRAWITEMSTRUCT) lParam;
+        RECT r = di->rcItem;
+        HWND parent = GetParent(di->hwndItem);
+        HBRUSH back = parent ? (HBRUSH)SendMessage(parent, WM_CTLCOLORSTATIC,
+                                                   (WPARAM)di->hDC,
+                                                   (LPARAM)di->hwndItem) : NULL;
+        int px = r.bottom - r.top;
+        int most = MulDiv(48, GetDeviceCaps(di->hDC, LOGPIXELSY), 96);
+        HICON icon;
+        FillRect(di->hDC, &r, back ? back : GetSysColorBrush(COLOR_BTNFACE));
+        if (px > most)
+            px = most;
+        if (px > 0) {
+            icon = c->ctrl->text.image(c->ctrl, dp->data, px,
+                                       kitty_theme_window_dark(dp->hwnd));
+            if (icon)
+                DrawIconEx(di->hDC, r.left, r.top + (r.bottom - r.top - px) / 2,
+                           icon, px, px, 0, NULL, DI_NORMAL);
+        }
         return true;
     }
 
@@ -3950,6 +4035,17 @@ void kitty_dlg_combobox_select_all(dlgcontrol *ctrl, dlgparam *dp)
     assert(c && c->ctrl->type == CTRL_EDITBOX && c->ctrl->editbox.has_list);
     SendMessage(kitty_cfg_item(dp->hwnd, c->base_id+1), CB_SETEDITSEL, 0,
                        MAKELPARAM(0, -1));
+}
+
+void dlg_image_redraw(dlgcontrol *ctrl, dlgparam *dp)
+{
+    struct winctrl *c = dlg_findbyctrl(dp, ctrl);
+    HWND h;
+    if (!c || c->ctrl->type != CTRL_TEXT || !c->ctrl->text.image)
+        return;                         /* its panel not built yet */
+    h = kitty_cfg_item(dp->hwnd, c->base_id);
+    if (h)
+        InvalidateRect(h, NULL, TRUE);
 }
 
 void dlg_label_change(dlgcontrol *ctrl, dlgparam *dp, char const *text)

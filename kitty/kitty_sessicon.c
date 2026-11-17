@@ -138,16 +138,15 @@ static HICON sic_load_builtin(int num, int px, bool dark)
     return h;
 }
 
+static struct sic_entry *sic_entry_src(int num, char *file, int px, bool dark);
+
 /* The entry for a session's icon source, loaded on first use. */
 static struct sic_entry *sic_entry_for(const char *session, int px, bool dark)
 {
     settings_r *r;
     int num = 0;
-    char *file = NULL, *key;
-    struct sic_entry *e;
+    char *file = NULL;
 
-    if (px < 8)
-        px = 8;
     r = open_settings_r(session);
     if (r) {
         Filename *fn;
@@ -160,6 +159,19 @@ static struct sic_entry *sic_entry_for(const char *session, int px, bool dark)
         }
         close_settings_r(r);
     }
+    return sic_entry_src(num, file, px, dark);
+}
+
+/* The entry for an icon source: the number as the panel shows it (0 and 1 =
+ * the default) and the expanded file (owned, freed here, NULL or empty =
+ * none). */
+static struct sic_entry *sic_entry_src(int num, char *file, int px, bool dark)
+{
+    char *key;
+    struct sic_entry *e;
+
+    if (px < 8)
+        px = 8;
     /* as the terminal window: the file when it is there, else the number */
     if (file && (!*file || !existfile(file))) {
         sfree(file);
@@ -211,6 +223,12 @@ static struct sic_entry *sic_entry_for(const char *session, int px, bool dark)
 HICON kitty_session_icon(const char *session, int px, bool dark)
 {
     return sic_entry_for(session, px, dark)->icon;
+}
+
+HICON kitty_icon_for(int num, const char *file, int px, bool dark)
+{
+    return sic_entry_src(num, file && *file ? dupstr(file) : NULL, px,
+                         dark)->icon;
 }
 
 /* A 32-bit top-down DIB section, px square, zeroed. */

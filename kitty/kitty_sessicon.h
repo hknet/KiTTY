@@ -27,6 +27,11 @@ bool kitty_session_icons_dark(void);
  * NULL only when not even the default icon loads. */
 HICON kitty_session_icon(const char *session, int px, bool dark);
 
+/* The same for a number and a file not stored yet (the Title & Icon panel's
+ * preview): num as the panel shows it (0 and 1 = the default), file the
+ * expanded path (NULL or empty = none). Owned by the cache. */
+HICON kitty_icon_for(int num, const char *file, int px, bool dark);
+
 /* The same icon as a 32-bit premultiplied ARGB bitmap for a menu item
  * (MENUITEMINFO.hbmpItem). NULL before Vista (a menu there draws no alpha)
  * or when nothing loads. */

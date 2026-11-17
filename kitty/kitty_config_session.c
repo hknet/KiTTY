@@ -78,7 +78,43 @@
  * field (.dll, .exe, .icl) shows its icons. Otherwise the built-in set
  * shows: a pick empties an .ico in the file field, because the file wins
  * over the number and the pick would change nothing on screen. */
-struct icon_pick_ctrls { dlgcontrol *num, *file; };
+struct icon_pick_ctrls { dlgcontrol *num, *file, *preview; };
+
+/* The preview above them: the icon the window gets from what the panel
+ * holds now (saved or not), drawn again at each change of the number, the
+ * file or a pick. */
+static HICON icon_preview_image(dlgcontrol *ctrl, void *data, int px, bool dark)
+{
+    Conf *conf = (Conf *)data;
+    Filename *fn;
+    char *file;
+    HICON h;
+    (void)ctrl;
+    if (!conf)
+        return NULL;
+    fn = conf_get_filename(conf, CONF_iconefile);
+    file = fn ? filename_expand_str(fn) : NULL;
+    h = kitty_icon_for(conf_get_int(conf, CONF_icone), file, px, dark);
+    sfree(file);
+    return h;
+}
+static struct icon_pick_ctrls *g_icon_pick = NULL;
+static void icon_preview_follow(dlgparam *dlg, int event)
+{
+    if ((event == EVENT_VALCHANGE || event == EVENT_REFRESH) &&
+        g_icon_pick && g_icon_pick->preview)
+        dlg_image_redraw(g_icon_pick->preview, dlg);
+}
+static void icon_num_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    conf_editbox_handler(ctrl, dlg, data, event);
+    icon_preview_follow(dlg, event);
+}
+static void icon_file_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
+{
+    conf_filesel_handler(ctrl, dlg, data, event);
+    icon_preview_follow(dlg, event);
+}
 static void icon_pick_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
 {
     struct icon_pick_ctrls *ipc = (struct icon_pick_ctrls *)ctrl->context.p;
@@ -110,6 +146,7 @@ static void icon_pick_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int e
             conf_set_filename(conf, CONF_iconefile, none);
             filename_free(none);
         }
+        icon_preview_follow(dlg, EVENT_VALCHANGE);
     }
     sfree(path);
 }
@@ -951,6 +988,29 @@ static void kitty_pxload_inline_handler(dlgcontrol *ctrl, dlgparam *dlg,
  * the placement has to be redone whenever the list's row count changes.
  */
 struct sessionsaver_data *kitty_session_ssd = NULL;
+
+/* hknet/KiTTY#62: a session row's icon (Application > KiTTY++ Settings >
+ * Appearance, "Show session icons in KiTTY++"). Folder rows and ".." have
+ * none: their names keep the place after the icons. */
+static HICON kitty_session_row_icon(dlgcontrol *ctrl, int id, int px, bool dark)
+{
+    struct sessionsaver_data *ssd =
+        (struct sessionsaver_data *)ctrl->context.p;
+    if (!ssd || id < 0 || id >= ssd->sesslist.nsessions)
+        return NULL;
+    return kitty_session_icon(ssd->sesslist.sessions[id], px, dark);
+}
+
+/* The switch ticked or unticked: the Session panel is laid out again with
+ * the list owner-drawn (icons) or plain. */
+void kitty_config_session_icons_changed(int on)
+{
+    if (!kitty_session_ssd || !kitty_session_ssd->listbox)
+        return;
+    kitty_session_ssd->listbox->listbox.rowicon =
+        on ? kitty_session_row_icon : NULL;
+    kitty_cfgbox_relayout_panel("Session");
+}
 
 /* ==== The Session panel's list, folders, Load/Save/Delete =============== */
 
@@ -5532,6 +5592,8 @@ void scb_panel_session(struct controlbox *b, bool midsession)
      */
     kitty_session_ssd = ssd;
     ssd->listbox->listbox.height = kitty_config_session_rows();
+    ssd->listbox->listbox.rowicon =
+        kitty_session_icons_on() ? kitty_session_row_icon : NULL;
     if (!midsession) {
         ssd->loadbutton = ctrl_pushbutton(s, KT_SESSION_LOAD, 'l',       /* top */
                                           HELPCTX(session_saved),
@@ -7202,9 +7264,12 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
         struct icon_pick_ctrls *ipc = (struct icon_pick_ctrls *)
             ctrl_alloc(b, sizeof(struct icon_pick_ctrls));
         dlgcontrol *ec, *bc;
+        g_icon_pick = ipc;
+        /* first the icon itself, bigger than in the lists */
+        ipc->preview = ctrl_image(s, 3, HELPCTX(kitty_icon), icon_preview_image);
         ctrl_columns(s, 2, 75, 25);
         ec = ctrl_editbox(s, KT_ICON_ICON_FROM_INTERNAL_RESOURCES, NO_SHORTCUT, 53,
-                          HELPCTX(kitty_icon), conf_editbox_handler,
+                          HELPCTX(kitty_icon), icon_num_handler,
                           I(CONF_icone), ED_INT);
         ec->column = 0;
         bc = ctrl_pushbutton(s, KT_ICON_CHOOSE, NO_SHORTCUT, HELPCTX(kitty_icon),
@@ -7216,7 +7281,7 @@ void scb_panel_window(struct controlbox *b, bool midsession, int protocol)
         ipc->file = ctrl_filesel(s, KT_ICON_EXTERNAL_ICON_FILE, NO_SHORTCUT,
                                  FILTER_ICON_FILES, false, KT_ICON_SELECT_ICON_FILE,
                                  HELPCTX(kitty_icon),
-                                 conf_filesel_handler, I(CONF_iconefile));
+                                 icon_file_handler, I(CONF_iconefile));
     }
 
 #ifdef MOD_BACKGROUNDIMAGE
