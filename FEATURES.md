@@ -1789,7 +1789,7 @@ A session can be a stub: write a session file - or a registry key - with only wh
 
 It applies to stored sessions in both stores, to session files opened directly (`-kload`, a double-click) and to klink, kscp and ksftp. **Saving such a session writes every field**, so it becomes a full session and the inheritance is gone: a later change to Default Settings no longer reaches it - unless **Save only non-default settings** is on.
 
-**Save only non-default settings** (only with Inherit Default Settings; `[KiTTY] saveonlynondefaultsettings=yes`): a session save writes only what differs from Default Settings; a value set back to the default is commented out (`# TermWidth=80`). Default Settings and exports stay whole. **Comment out defaults** applies this once to every session (registry store: deletes the default values). A line starting with `#` or `;` is never a setting. Old KiTTY, PuTTY or a copy with Inherit off read missing keys with their own defaults.
+**Save only non-default settings** (only with Inherit Default Settings; `[KiTTY] saveonlynondefaultsettings=yes`): a session save writes only what differs from Default Settings; a value set back to the default is commented out (`# TermWidth=80`). Default Settings and exports stay whole. **Comment out defaults** applies this once to every session (registry store: deletes the default values) after a question with the number of sessions it changes. Locked sessions stay as they are. A line starting with `#` or `;` is never a setting. Old KiTTY, PuTTY or a copy with Inherit off read missing keys with their own defaults.
 
 Every session key with its type, values and default, and the changes since the previous release: [docs/SESSION-FILES.md](docs/SESSION-FILES.md).
 

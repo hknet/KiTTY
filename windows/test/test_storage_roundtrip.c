@@ -1277,7 +1277,11 @@ static void test_nondefault_file(void)
           "nondefault: Default Settings stays whole");
 
     /* Comment out defaults: every session once, Default Settings and a
-     * locked session left, idempotent */
+     * locked session left, idempotent. The count for the question first:
+     * the same two sessions, nothing written (the pass below still finds
+     * both). */
+    check(kitty_store_count_defaults("Default Settings") == 2,
+          "nondefault: the question counts nd-gate and nd-old");
     n = kitty_store_comment_out_defaults("Default Settings", &failed);
     check(n == 2 && failed == 0,
           "nondefault: Comment out defaults changed nd-gate and nd-old");
@@ -1294,6 +1298,8 @@ static void test_nondefault_file(void)
           "nondefault: Default Settings and a locked session untouched");
     n = kitty_store_comment_out_defaults("Default Settings", &failed);
     check(n == 0 && failed == 0, "nondefault: Comment out defaults is idempotent");
+    check(kitty_store_count_defaults("Default Settings") == 0,
+          "nondefault: the question counts none after the pass");
 
     kitty_set_save_only_nondefault(0);
     kitty_set_inherit_default_settings(0);

@@ -900,8 +900,9 @@ static BYTE *kitty_reg_value_get(HKEY k, const char *name, DWORD *type,
 }
 
 /* One registry session: each value equal to defkey's (type and data) is
- * deleted. The values deleted, or -1 when one could not be. */
-int kitty_reg_delete_defaults(HKEY k, HKEY defkey)
+ * deleted, or with dry only counted. The values deleted (counted), or -1
+ * when one could not be deleted. */
+static int kitty_reg_defaults_pass(HKEY k, HKEY defkey, bool dry)
 {
     char name[16384];
     char **names = NULL;
@@ -927,7 +928,7 @@ int kitty_reg_delete_defaults(HKEY k, HKEY defkey)
         sfree(b);
     }
     for (i = 0; i < n; i++) {
-        if (RegDeleteValueA(k, names[i]) == ERROR_SUCCESS)
+        if (dry || RegDeleteValueA(k, names[i]) == ERROR_SUCCESS)
             done++;
         else
             bad = 1;
@@ -937,11 +938,18 @@ int kitty_reg_delete_defaults(HKEY k, HKEY defkey)
     return bad ? -1 : done;
 }
 
+int kitty_reg_delete_defaults(HKEY k, HKEY defkey)
+{
+    return kitty_reg_defaults_pass(k, defkey, false);
+}
+
 /* Every session of the store but defsession, once: a folder-store line
  * equal to Default Settings becomes "# <line>", a registry value equal to it
  * is deleted. A locked session is left (Session Lockdown). Returns the
- * sessions changed; *nfailed those that could not be written. */
-int kitty_store_comment_out_defaults(const char *defsession, int *nfailed)
+ * sessions changed, *nfailed those that could not be written. With dry
+ * nothing is written: the sessions that would change are counted. */
+static int kitty_store_defaults_pass(const char *defsession, int *nfailed,
+                                     bool dry)
 {
     int changed = 0, failed = 0;
     if (kitty_store_readonly()) {       /* readonly=yes: no session changed */
@@ -965,7 +973,7 @@ int kitty_store_comment_out_defaults(const char *defsession, int *nfailed)
                     (path = ksf_session_find(sb->s)) != NULL &&
                     (items = ksf_load(path)) != NULL &&
                     ksf_list_comment_defaults(items, defs, kitty_cod_skip) > 0) {
-                    if (ksf_save(path, items))
+                    if (dry || ksf_save(path, items))
                         changed++;
                     else
                         failed++;
@@ -992,8 +1000,9 @@ int kitty_store_comment_out_defaults(const char *defsession, int *nfailed)
                 HKEY k;
                 unescape_registry_key(name, un);
                 if (strcmp(un->s, defsession) && !kitty_session_locked(un->s) &&
-                    (k = open_regkey_rw(root, name)) != NULL) {
-                    int r = kitty_reg_delete_defaults(k, defkey);
+                    (k = dry ? open_regkey_ro(root, name) :
+                               open_regkey_rw(root, name)) != NULL) {
+                    int r = kitty_reg_defaults_pass(k, defkey, dry);
                     if (r > 0)
                         changed++;
                     else if (r < 0)
@@ -1009,11 +1018,21 @@ int kitty_store_comment_out_defaults(const char *defsession, int *nfailed)
         if (root)
             close_regkey(root);
     }
-    if (changed)
+    if (changed && !dry)
         kitty_store_mark_dirty();
     if (nfailed)
         *nfailed = failed;
     return changed;
+}
+
+int kitty_store_comment_out_defaults(const char *defsession, int *nfailed)
+{
+    return kitty_store_defaults_pass(defsession, nfailed, false);
+}
+
+int kitty_store_count_defaults(const char *defsession)
+{
+    return kitty_store_defaults_pass(defsession, NULL, true);
 }
 
 static settings_r *open_settings_r_own(const char *sessionname)

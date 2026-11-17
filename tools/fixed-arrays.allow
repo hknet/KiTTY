@@ -723,7 +723,7 @@ windows/puttygen.c | MainDlgProc() | buf | 512 | key comment for the passphrase 
 windows/puttygen.c | MainDlgProc() | msg | 256 | upstream: fixed message with two small numbers, sprintf
 
 windows/storage.c | write_setting_s() | plain | KITTY_PW_MAX + 1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
-windows/storage.c | kitty_reg_delete_defaults() | name | 16384 | registry value name (16383-character limit)
+windows/storage.c | kitty_reg_defaults_pass() | name | 16384 | registry value name (16383-character limit)
 windows/storage.c | access_random_seed() | profile | MAX_PATH + 1 | upstream: SHGetFolderPath result + \PUTTY.RND (dupcat)
 windows/storage.c | access_random_seed() | drv | MAX_PATH | upstream: HOMEDRIVE, GetEnvironmentVariable result checked
 windows/storage.c | access_random_seed() | path | MAX_PATH | upstream: HOMEPATH, GetEnvironmentVariable result checked

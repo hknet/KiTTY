@@ -5180,6 +5180,24 @@ static void kitty_sp_comment_defaults_handler(dlgcontrol *ctrl, dlgparam *dlg,
         GetReadOnlyFlag())
         return;
     owner = kitty_cfg_modal_owner();
+    /* hknet/KiTTY#61: it rewrites every session, so a question first with
+     * the sessions it would change (none: no question) */
+    {
+        int would = kitty_store_count_defaults(KITTY_DEFAULT_SESSION);
+        int answer;
+        if (would <= 0) {
+            kitty_info_modeless(owner, KT_CAP_KITTYPP,
+                                KT_SP_COMMENT_DEFAULTS_NONE, NULL, NULL);
+            return;
+        }
+        msg = dupprintf(store_is_file() ? KT_SP_COMMENT_DEFAULTS_Q_FMT :
+                        KT_SP_COMMENT_DEFAULTS_REG_Q_FMT, would);
+        answer = MessageBoxA(owner, msg, KT_CAP_KITTYPP,
+                             MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2);
+        sfree(msg);
+        if (answer != IDYES)
+            return;
+    }
     if (!kitty_backup_before(owner, 1)) {
         msg = kitty_backup_not_done();
     } else {

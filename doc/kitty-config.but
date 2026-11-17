@@ -3240,7 +3240,8 @@ Settings}): a session save writes only what differs from Default
 Settings; a value set back to the default is commented out
 (\c{# TermWidth=80}). Default Settings and exports stay whole.
 \q{Comment out defaults} applies this once to every session (registry
-store: deletes the default values). Old KiTTY, PuTTY or a copy with
+store: deletes the default values) after a question with the number
+of sessions it changes. Locked sessions stay as they are. Old KiTTY, PuTTY or a copy with
 Inherit off read missing keys with their own defaults. A line starting
 with \c{#} or \c{;} is never a setting. \c{kitty.ini}: \c{[KiTTY]
 saveonlynondefaultsettings}.

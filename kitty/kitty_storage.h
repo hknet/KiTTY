@@ -152,6 +152,8 @@ void kitty_settings_w_save_rules(settings_w *handle, const char *section);
  * (save_settings): its close stores the protected settings protected */
 void kitty_settings_w_whole(settings_w *handle);
 int kitty_store_comment_out_defaults(const char *defsession, int *nfailed);
+/* The sessions kitty_store_comment_out_defaults would change, nothing written. */
+int kitty_store_count_defaults(const char *defsession);
 /* Session Lockdown: the session's own switch, and writing it alone. */
 int kitty_session_locked(const char *sessionname);
 int kitty_session_set_lockdown(const char *sessionname, int on);
