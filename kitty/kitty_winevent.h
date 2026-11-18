@@ -93,6 +93,14 @@ void kitty_wev_auth_failed_for(const char *host, int port, const char *user,
 void kitty_wev_proxy_used(const char *proxy, const char *host, int port,
                           const char *user, int credentials,
                           const char *purpose);
+/* Events 226/326 and 227/327: the agent check ([KiTTY] verifyagent,
+ * kitty_agentcheck.c) found the program answering the agent requests
+ * unverified (agent = its full path) or could not inspect it (agentpid,
+ * err = Windows' error number). window: 0 the named pipe, 1 the window
+ * messages. */
+void kitty_wev_agent_unverified(const char *agent, int window);
+void kitty_wev_agent_uninspected(unsigned long agentpid, unsigned long err,
+                                 int window);
 /* A port forwarding (forward) or X11 forwarding (x11) is about to open a
  * connection that may go through a proxy: the proxy code takes the value
  * once (kitty_wev_take_conn_for) for its records' `for` field. */

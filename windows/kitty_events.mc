@@ -253,6 +253,18 @@ Language=English
 %1%nproxy: %2%nhost: %3%nport: %4%nuser: %5%ncredentials: %6%npid: %7%nfor: %8%0
 .
 
+MessageId=226
+SymbolicName=KITTY_SESSION_AGENT_UNVERIFIED
+Language=English
+%1%nagent: %2%ntransport: %3%npid: %4%0
+.
+
+MessageId=227
+SymbolicName=KITTY_SESSION_AGENT_UNINSPECTED
+Language=English
+%1%nagentpid: %2%nerr: %3%ntransport: %4%npid: %5%0
+.
+
 MessageId=230
 SymbolicName=KITTY_SESSION_FAREND_REFUSED
 Language=English
@@ -327,6 +339,18 @@ MessageId=325
 SymbolicName=KITTY_CLI_PROXY_USED
 Language=English
 %1%nproxy: %2%nhost: %3%nport: %4%nuser: %5%ncredentials: %6%npid: %7%nfor: %8%0
+.
+
+MessageId=326
+SymbolicName=KITTY_CLI_AGENT_UNVERIFIED
+Language=English
+%1%nagent: %2%ntransport: %3%npid: %4%0
+.
+
+MessageId=327
+SymbolicName=KITTY_CLI_AGENT_UNINSPECTED
+Language=English
+%1%nagentpid: %2%nerr: %3%ntransport: %4%npid: %5%0
 .
 
 MessageId=330

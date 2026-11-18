@@ -52,6 +52,15 @@ static void wm_copydata_agent_query(strbuf *query, void **out, int *outlen)
     hwnd = FindWindow("Pageant", "Pageant");
     if (!hwnd)
         return;                        /* *out == NULL, so failure */
+    /* KiTTY: who will answer? The window's owner, known before the request
+     * leaves: the check warns before the answer is in. */
+    if (agent_serving_check_hook && !agent_serving_checked) {
+        DWORD spid = 0;
+        GetWindowThreadProcessId(hwnd, &spid);
+        agent_serving_checked = true;
+        agent_serving_check_hook((unsigned long)spid,
+                                 KITTY_AGENT_TRANSPORT_WMCOPYDATA);
+    }
     mapname = dupprintf("PageantRequest%08x", (unsigned)GetCurrentThreadId());
 
     psa = NULL;
@@ -106,14 +115,6 @@ static void wm_copydata_agent_query(strbuf *query, void **out, int *outlen)
      */
     id = SendMessage(hwnd, WM_COPYDATA, (WPARAM) NULL, (LPARAM) &cds);
     if (id > 0) {
-        /* KiTTY: who answered? (best effort - the sending window's process) */
-        if (agent_serving_check_hook && !agent_serving_checked) {
-            DWORD spid = 0;
-            GetWindowThreadProcessId(hwnd, &spid);
-            agent_serving_checked = true;
-            agent_serving_check_hook((unsigned long)spid,
-                                     KITTY_AGENT_TRANSPORT_WMCOPYDATA);
-        }
         uint32_t length_field = GET_32BIT_MSB_FIRST(p);
         if (length_field > 0 && length_field <= AGENT_MAX_MSGLEN - 4) {
             retlen = length_field + 4;
@@ -183,7 +184,8 @@ struct agent_connection {
     bool dead;
 };
 
-/* KiTTY: which process is serving this pipe? Observational only. */
+/* KiTTY: which process is serving this pipe? Called before the request is
+ * written: the check warns before the answer is in. */
 static void agent_serving_check_pipe(HANDLE pipehandle)
 {
     if (agent_serving_check_hook && !agent_serving_checked) {

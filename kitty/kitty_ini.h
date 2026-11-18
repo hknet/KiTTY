@@ -607,9 +607,10 @@ char default_init_file_content[] =
 ;    and every modern host expect.\n\
 ;funkeys=xterm216\n\
 \n\
-; verifyagent: a signed KiTTY++ checks, once per terminal window, whether the\n\
-;    program answering its SSH agent requests is a verified KiTTY++/kageant\n\
-;    build, and warns when it is not. Set no if you deliberately run stock\n\
+; verifyagent: a signed KiTTY++ checks, before the first agent request of a\n\
+;    terminal window or of klink/kscp/ksftp, whether the program answering it\n\
+;    is a verified KiTTY++/kageant build. It warns when it is not, or when it\n\
+;    cannot check that program. Set no if you deliberately run stock\n\
 ;    Pageant, the Windows OpenSSH agent or another agent. Also a checkbox:\n\
 ;    Connection -> SSH -> Auth (an application-wide setting, not per session).\n\
 ;verifyagent=yes\n\
@@ -1655,7 +1656,7 @@ char default_init_file_content[] =
 ;blockforwardedchanges=yes\n\
 ; allowwmcopydata: accept requests by window messages (WM_COPYDATA), the\n\
 ; agent connection of programs built on PuTTY before 0.75. A legacy option:\n\
-; kageant cannot identify the program that sends one. KiTTY++'s own\n\
+; kageant does not identify the program that sends one. KiTTY++'s own\n\
 ; programs use it only when the named pipe cannot be opened. A notice once\n\
 ; per run. Default no: they are refused, the agent log records it (reason\n\
 ; window-messages).\n\

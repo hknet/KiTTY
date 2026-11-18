@@ -25,6 +25,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
+- The SSH agent check (`[KiTTY] verifyagent`) runs before the first
+  request leaves, on the named pipe and through the old Pageant window. It
+  also warns when it cannot check the program that answers. klink, kscp and
+  ksftp make the same check: one line on standard error. Refs
+  hknet/KiTTY#29
 - A new folder store (its session folder made at the first start of
   `kitty_portable.exe`) gets `.ktx` as session file extension. It gets `.khk`
   as host-key file extension when its host-key folder holds no file yet.

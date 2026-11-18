@@ -56,6 +56,8 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | `220` | `KiTTY++_kitty` | `auth-ok` | Information | `host`, `port`, `user`, `method`, `fp`, `pid`, `proxy`, `for` |
 | `221` | `KiTTY++_kitty` | `auth-failed` | Warning | `host`, `port`, `user`, `method`, `reason`, `methods`, `pid`, `proxy`, `for` |
 | `225` | `KiTTY++_kitty` | `proxy-used` | Information | `proxy`, `host`, `port`, `user`, `credentials`, `pid`, `for` |
+| `226` | `KiTTY++_kitty` | `agent-unverified` | Warning | `agent`, `transport`, `pid` |
+| `227` | `KiTTY++_kitty` | `agent-uninspected` | Warning | `agentpid`, `err`, `transport`, `pid` |
 | `230` | `KiTTY++_kitty` | `farend-refused` | Warning | `session`, `host`, `request`, `reason`, `detail`, `pid` |
 | `240` | `KiTTY++_kitty` | `transfer-done` | Information | `session`, `host`, `port`, `user`, `method`, `direction`, `local`, `remote`, `bytes`, `pid` |
 | `241` | `KiTTY++_kitty` | `transfer-failed` | Warning | `session`, `host`, `port`, `user`, `method`, `direction`, `local`, `remote`, `bytes`, `pid`, `reason` |
@@ -68,6 +70,8 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | `320` | `KiTTY++_cli` | `auth-ok` | Information | `host`, `port`, `user`, `method`, `fp`, `pid`, `proxy`, `for` |
 | `321` | `KiTTY++_cli` | `auth-failed` | Warning | `host`, `port`, `user`, `method`, `reason`, `methods`, `pid`, `proxy`, `for` |
 | `325` | `KiTTY++_cli` | `proxy-used` | Information | `proxy`, `host`, `port`, `user`, `credentials`, `pid`, `for` |
+| `326` | `KiTTY++_cli` | `agent-unverified` | Warning | `agent`, `transport`, `pid` |
+| `327` | `KiTTY++_cli` | `agent-uninspected` | Warning | `agentpid`, `err`, `transport`, `pid` |
 | `330` | `KiTTY++_cli` | `transfer-done` | Information | `session`, `host`, `user`, `direction`, `local`, `remote`, `bytes`, `pid` |
 | `331` | `KiTTY++_cli` | `transfer-failed` | Warning | `session`, `host`, `user`, `direction`, `local`, `remote`, `bytes`, `pid`, `reason` |
 | `400` | `KiTTY++_kittygen` | `key-generated` | Information | `tool`, `keytype`, `bits`, `fp`, `comment`, `pid` |
@@ -87,6 +91,8 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 
 - `absent` - 113: startup keys whose file was not there.
 - `addr` - 200, 300: the address connected to (a proxy's when one is used); a serial line's name; a Local session's program.
+- `agent` - 226, 326: the full path of the program that answers the SSH agent requests, not signed by KiTTY++'s publisher ([KiTTY] verifyagent).
+- `agentpid` - 227, 327: the process id of the program that answers the SSH agent requests, which could not be inspected.
 - `basis` - 210, 310: how the host key was known; values: cache, manual, ca.
 - `bits` - 400: the key size in bits (255 for Ed25519, the curve size for ECDSA).
 - `broken` - 113: startup keys whose file could not be read.
@@ -100,7 +106,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `detail` - 130, 132: the detail Windows Hello reported; 230: the refusals the rate limit merged into this record (a number), open (a far2l clipboard open), the transfer id or the file name.
 - `direction` - 240, 241, 330, 331: put (upload, to the server) or get (download, from it).
 - `enc` - 111: whether the key file has a passphrase; values: password, blank.
-- `err` - 131: the error text when the protection failed.
+- `err` - 131: the error text when the protection failed; 227, 327: the Windows error number that refused inspecting the agent's process.
 - `exitcode` - 201: the remote command's exit code; 301: the tool's own exit code; empty when there is none.
 - `expired` - 171 rotate: the rotated generations the age rule (agentlogexpiredays) deleted at this rotation, empty for none.
 - `features` - 902: the features this Windows lacks, comma-separated.
@@ -153,6 +159,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `session` - the saved session's name, empty when none was loaded.
 - `sig` - 100-172: the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev.
 - `tool` - 400-403: kittygen or kittygen-cli.
+- `transport` - 226, 227, 326, 327: how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75).
 - `trigger` - 113: what started the retry; values: button, device-arrival; 117: what brought the key back, the same values; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).
 - `ts` - 100-172: the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone.
 - `user` - 220, 221, 320, 321, 240, 241, 330, 331: the user name of the login (a proxy's: the name sent to it); 225, 325: the user name sent to the proxy, empty when none.

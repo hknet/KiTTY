@@ -47,7 +47,7 @@ int kitty_verify_sibling(const char *path);
  * this hook (when installed) with the serving agent's process id, once per
  * process; kitty.exe installs an implementation that verifies the server
  * binary against our publisher and warns if it is not a genuine
- * KiTTY/kageant. Console tools (plink/pscp/psftp) leave it NULL. */
+ * KiTTY/kageant. klink/kscp/ksftp install a console one (kitty_agentcheck.h). */
 enum { KITTY_AGENT_TRANSPORT_PIPE, KITTY_AGENT_TRANSPORT_WMCOPYDATA };
 extern void (*agent_serving_check_hook)(unsigned long server_pid,
                                         int transport);

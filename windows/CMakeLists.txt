@@ -330,10 +330,14 @@ add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_winevent_cfg.c    # KiTTY: [KiTTY] clieventlog, the Event Log records' switch
+  ../kitty/kitty_agentcheck.c      # KiTTY: [KiTTY] verifyagent, which program answers our agent requests
+  ../kitty/kitty_agentcheck_console.c  # KiTTY: its line on standard error
+  ../kitty/kitty_authenticode.c    # KiTTY: its signature check
   ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
   ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(plink generated_licence_h)
+target_link_libraries(plink wintrust crypt32 version)   # KiTTY: kitty_authenticode.c (the agent check)
 kitty_selfcheck_target(plink)
 
 add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
@@ -346,10 +350,14 @@ add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_winevent_cfg.c    # KiTTY: [KiTTY] clieventlog, the Event Log records' switch
+  ../kitty/kitty_agentcheck.c      # KiTTY: [KiTTY] verifyagent, which program answers our agent requests
+  ../kitty/kitty_agentcheck_console.c  # KiTTY: its line on standard error
+  ../kitty/kitty_authenticode.c    # KiTTY: its signature check
   ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
   ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(pscp generated_licence_h)
+target_link_libraries(pscp wintrust crypt32 version)   # KiTTY: kitty_authenticode.c (the agent check)
 kitty_selfcheck_target(pscp)
 
 add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
@@ -362,10 +370,14 @@ add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_winevent_cfg.c    # KiTTY: [KiTTY] clieventlog, the Event Log records' switch
+  ../kitty/kitty_agentcheck.c      # KiTTY: [KiTTY] verifyagent, which program answers our agent requests
+  ../kitty/kitty_agentcheck_console.c  # KiTTY: its line on standard error
+  ../kitty/kitty_authenticode.c    # KiTTY: its signature check
   ../kitty/kitty_console_mpw.c     # KiTTY: the master-password prompt on the console
   ../kitty/kitty_mpw.c             # KiTTY: the master-password crypto (registers itself)
   ../kitty/kitty_showforeign_ini.c) # KiTTY: -load follows "show foreign sessions" like the GUI
 add_dependencies(psftp generated_licence_h)
+target_link_libraries(psftp wintrust crypt32 version)   # KiTTY: kitty_authenticode.c (the agent check)
 kitty_selfcheck_target(psftp)
 
 
@@ -871,6 +883,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_dlgbox.c
   ${KITTY_DIR}/kitty_crashlog.c   # KiTTY: crash log; per-target on purpose, see the other listings
   ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
+  ${KITTY_DIR}/kitty_agentcheck.c     # KiTTY: [KiTTY] verifyagent, which program answers our agent requests
   ${KITTY_DIR}/winfont_fallback.c
   ${KITTY_DIR}/url/urlhack.c
   ${KITTY_DIR}/url/re_lib/regexp.c

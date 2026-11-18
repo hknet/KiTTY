@@ -12,6 +12,7 @@
  */
 #include "kitty_win.h"
 #include "kitty_authenticode.h"   /* shared Authenticode trust + CN gate */
+#include "kitty_agentcheck.h"     /* which program answers our agent requests */
 #include "kitty_notice.h"          /* near-the-clock warning window */
 #include "kitty_rc_additions.h"   /* IDD_UPDATEBOX, IDC_UPD_TEXT, IDC_UPD_UPDATE */
 #include "kitty_theme.h"           /* the app-wide colour theme */
@@ -493,64 +494,11 @@ void kitty_report_missing_features(Terminal *term)
     sfree(brief);
 }
 
-/*
- * The agent check's work, on a worker thread: two signature verifications
- * (this binary, then the program serving the agent pipe), each a
- * WinVerifyTrust call. They used to run inside the first agent query, on the
- * UI thread, with an online revocation check, so a machine without a route
- * to the CRL servers sat in that call for seconds before its first key
- * login could continue. Verification is cache-only here
- * (kitty_authenticode_verify_offline): the publisher-CN pin is the gate for
- * this notice, and a revoked certificate of ours is a release matter, not
- * something a client's agent check can settle. The verdict travels back as
- * WM_KITTY_AGENT_CHECKED; the notice itself is shown by the UI thread.
- */
-struct agent_check_job { unsigned long server_pid; };
-
-static DWORD WINAPI kitty_agent_check_thread(LPVOID arg)
-{
-    struct agent_check_job *job = (struct agent_check_job *)arg;
-    unsigned long pid = job->server_pid;
-    char *self, *srv;
-    HANDLE h;
-    int own_signed;
-    HWND GetMainHwnd(void);
-
-    sfree(job);
-    /* Both paths whole: an image path that did not fit 260 bytes used to
-     * end the check with no notice for an agent nobody verified. */
-    if ((self = kitty_module_path_dup(NULL)) == NULL)
-        return 0;
-    /* An unsigned build cannot honestly insist the agent be signed. */
-    own_signed = kitty_authenticode_verify_offline(self);
-    sfree(self);
-    if (!own_signed)
-        return 0;
-    h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)pid);
-    if (!h)
-        return 0;                      /* cannot inspect: stay quiet */
-    srv = kitty_process_image_path_dup(h);
-    CloseHandle(h);
-    if (!srv)
-        return 0;
-    if (kitty_authenticode_verify_offline(srv)) {
-        sfree(srv);
-        return 0;                      /* genuine KiTTY/kageant - all good */
-    }
-    {
-        const char *base = strrchr(srv, '\\');
-        char *name = dupstr(base ? base + 1 : srv);
-        HWND main = GetMainHwnd();
-        if (!main || !PostMessage(main, WM_KITTY_AGENT_CHECKED, 0, (LPARAM)name))
-            sfree(name);
-    }
-    sfree(srv);
-    return 0;
-}
-
-/* WM_KITTY_AGENT_CHECKED, on the UI thread. `name` is the serving program's
- * file name from the worker (freed here). */
-void kitty_agent_unverified_notice(char *name)
+/* The agent check's notice, on the UI thread (directly from the check, or
+ * through WM_KITTY_AGENT_CHECKED). `verdict` is KITTY_AGENT_UNVERIFIED with
+ * the program's full path, or KITTY_AGENT_UNINSPECTED with the process and
+ * Windows' error. `what` is freed here. */
+void kitty_agent_unverified_notice(int verdict, char *what)
 {
     /* Show WHO reports it (this terminal, not the agent) before showing
      * what was found - an anonymous amber box reads as "my key is
@@ -561,42 +509,60 @@ void kitty_agent_unverified_notice(char *name)
      * notice lands on the setting that turns the warning off, for
      * people who run another agent on purpose. */
     HWND GetMainHwnd(void);
-    char *msg = dupprintf(KT_WIN_AGENT_UNVERIFIED, name);
+    char *msg = dupprintf(verdict == KITTY_AGENT_UNINSPECTED ?
+                          KT_WIN_AGENT_UNINSPECTED : KT_WIN_AGENT_UNVERIFIED,
+                          what);
     kitty_notice_show(KT_CAP_AGENT_UNVERIFIED, msg,
                       RGB(190, 110, 0), GetNoticeSeconds(),
                       GetMainHwnd(), WM_KITTY_AGENT_UNVERIFIED);
     sfree(msg);
-    sfree(name);
+    sfree(what);
 }
 
+/*
+ * The agent check ([KiTTY] verifyagent), BEFORE the first request leaves:
+ * agent-client.c calls the hook with the answering process's id, on the pipe
+ * and on window messages alike. kitty_agentcheck_judge verifies that
+ * program's signature cache-only (kitty_authenticode_verify_offline: no
+ * revocation lookup, so no machine waits on a CRL server here) - a few tens
+ * of milliseconds once per process. A worker thread used to do this after the
+ * answer was in. The verdict is a notice, never a refusal: the request goes
+ * on. On the window's own thread the notice is shown at once, so it stands
+ * before a window-message request (SendMessage waits) gets its answer.
+ */
 static void kitty_agent_serving_check(unsigned long server_pid, int transport)
 {
     static int done = 0;
     char cfg[16];
-    struct agent_check_job *job;
-    HANDLE t;
-    (void)transport;
+    char *what = NULL;
+    unsigned long err;
+    int verdict;
+    HWND GetMainHwnd(void);
+    HWND main;
 
     if (done)
         return;
+    done = 1;
 
     /* Opt-out. */
-    if (ReadParameterN(KI_SECTION_KITTY, KI_VERIFYAGENT, cfg, sizeof(cfg)) && !stricmp(cfg, "no")) {
-        done = 1;
+    if (ReadParameterN(KI_SECTION_KITTY, KI_VERIFYAGENT, cfg, sizeof(cfg)) && !stricmp(cfg, "no"))
         return;
-    }
 
-    if (server_pid == 0)
-        return;                        /* unknown this time; retry later */
-
-    done = 1;
-    job = snew(struct agent_check_job);
-    job->server_pid = server_pid;
-    t = CreateThread(NULL, 0, kitty_agent_check_thread, job, 0, NULL);
-    if (t)
-        CloseHandle(t);
-    else
-        sfree(job);
+    verdict = kitty_agentcheck_judge(server_pid, transport, &what, &err);
+    if (verdict == KITTY_AGENT_VERIFIED)
+        return;
+    /* the Terminal Window's Event Log here. The judge writes the Windows
+     * Event Log record (226, 227). */
+    debug_logevent(verdict == KITTY_AGENT_UNINSPECTED ?
+                   KT_WIN_AGENT_LOG_UNINSPECTED : KT_WIN_AGENT_LOG_UNVERIFIED,
+                   what, transport == KITTY_AGENT_TRANSPORT_WMCOPYDATA ?
+                   "window" : "pipe");
+    main = GetMainHwnd();
+    if (main && GetWindowThreadProcessId(main, NULL) == GetCurrentThreadId())
+        kitty_agent_unverified_notice(verdict, what);
+    else if (!main || !PostMessage(main, WM_KITTY_AGENT_CHECKED,
+                                   (WPARAM)verdict, (LPARAM)what))
+        sfree(what);
 }
 
 void kitty_install_agent_check(void)

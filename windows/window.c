@@ -9817,10 +9817,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         return 0;
       }
       case WM_KITTY_AGENT_CHECKED:
-        /* The agent check's worker thread (kitty_win.c) found that the
-         * program serving the agent pipe is not ours: show the notice from
-         * the UI thread. lParam is the file name, ours to free (it does). */
-        kitty_agent_unverified_notice((char *)lParam);
+        /* The agent check (kitty_win.c), called off the UI thread, found
+         * that the program answering our agent requests is not ours, or
+         * could not inspect it: show the notice here. wParam is the
+         * verdict, lParam the text, ours to free (the notice does). */
+        kitty_agent_unverified_notice((int)wParam, (char *)lParam);
         return 0;
       case WM_KITTY_AGENT_UNVERIFIED:
         /*

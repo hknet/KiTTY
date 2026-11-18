@@ -523,6 +523,30 @@ void kitty_wev_proxy_used(const char *proxy, const char *host, int port,
               "proxy host port user credentials for", v, 6);
 }
 
+void kitty_wev_agent_unverified(const char *agent, int window)
+{
+    const char *v[2];
+    if (!wev_session_block())
+        return;
+    v[0] = agent; v[1] = window ? "window" : "pipe";
+    wev_write(g_block + KITTY_EVO_AGENT_UNVERIFIED, EVENTLOG_WARNING_TYPE,
+              "agent transport", v, 2);
+}
+
+void kitty_wev_agent_uninspected(unsigned long agentpid, unsigned long err,
+                                 int window)
+{
+    char p[16], e[16];
+    const char *v[3];
+    if (!wev_session_block())
+        return;
+    snprintf(p, sizeof(p), "%lu", agentpid);
+    snprintf(e, sizeof(e), "%lu", err);
+    v[0] = p; v[1] = e; v[2] = window ? "window" : "pipe";
+    wev_write(g_block + KITTY_EVO_AGENT_UNINSPECTED, EVENTLOG_WARNING_TYPE,
+              "agentpid err transport", v, 3);
+}
+
 void kitty_wev_auth_failed_for(const char *host, int port, const char *user,
                                const char *method, const char *reason,
                                const char *methods, const char *proxy,

@@ -40,32 +40,6 @@ int console_hk00_confirm(struct Seat *seat, const struct kitty_hk00_question *q,
                          void (*done)(void *ctx, int answer), void *ctx,
                          void **handle);
 
-/* A [KiTTY] switch read where kitty.exe's configuration box writes it
- * (WriteParameter): the hive in use first in registry mode, kitty.ini
- * otherwise and as the registry's fallback (ReadParameterN). v[0] = '\0'
- * when neither has it. */
-static void console_read_switch(bool registry_authoritative, const char *key,
-                                char *v, DWORD vsize)
-{
-    v[0] = '\0';
-    if (registry_authoritative) {
-        HKEY k;
-        extern const char *kitty_registry_base(void);
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_registry_base(), 0,
-                          KEY_QUERY_VALUE, &k) == ERROR_SUCCESS) {
-            DWORD type = 0, n = vsize - 1;
-            if (RegQueryValueExA(k, key, NULL, &type, (LPBYTE)v, &n) !=
-                ERROR_SUCCESS || type != REG_SZ)
-                v[0] = '\0';
-            else
-                v[n < vsize ? n : vsize - 1] = '\0';
-            RegCloseKey(k);
-        }
-    }
-    if (!v[0])
-        kitty_inifile_read(KI_SECTION_KITTY, key, v, vsize);
-}
-
 /* accept-new's record on standard error. Under -v the Event Log line is
  * printed there already (console_eventlog). */
 static void console_accept_new_report(const char *line)
@@ -158,8 +132,7 @@ void kitty_console_store_init(void)
      * kitty.exe reads it (kitty_params.c, Security > Host keys). */
     {
         char v[16] = "";
-        console_read_switch(ini.registry_authoritative, KI_AUTOSTORESSHKEY,
-                            v, sizeof(v));
+        kitty_console_global_read(KI_AUTOSTORESSHKEY, v, sizeof(v));
         kitty_hostkey_accept_new_set_all(!stricmp(v, "yes"));
     }
     kitty_hostkey_accept_new_set_report(console_accept_new_report);
@@ -171,11 +144,9 @@ void kitty_console_store_init(void)
      * accept-new's goes. */
     {
         char v[16] = "";
-        console_read_switch(ini.registry_authoritative, KI_UPDATEHOSTKEYS,
-                            v, sizeof(v));
+        kitty_console_global_read(KI_UPDATEHOSTKEYS, v, sizeof(v));
         kitty_hk00_set_mode(kitty_hk00_mode_from_word(v));
-        console_read_switch(ini.registry_authoritative, KI_HOSTKEYSPERTYPE,
-                            v, sizeof(v));
+        kitty_console_global_read(KI_HOSTKEYSPERTYPE, v, sizeof(v));
         if (v[0])
             kitty_hk00_set_pertype(atoi(v));
     }

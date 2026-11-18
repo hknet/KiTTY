@@ -133,8 +133,8 @@ FUNCS = {
 # Functions that take a key and read or write one store of one section:
 # name: (op, store, section, key arg, reason)
 WRAPPERS = {
-    "console_read_switch": (R, PARAM, "KiTTY", 1,
-        "the console tools' [KiTTY] switch: the hive first, kitty.ini as fallback"),
+    "kitty_console_global_read": (R, PARAM, "KiTTY", 0,
+        "the console tools' one reader of a global [KiTTY] key: the hive first, kitty.ini as fallback"),
     "kitty_wev_switch_on": (R, PARAM, "KiTTY", 0,
         "the Event Log switches of the satellites: the hive first, kitty.ini as fallback"),
     "kitty_switchnotice_seconds": (R, PARAM, "KiTTY", 0,
@@ -219,10 +219,8 @@ GENERIC = {
         "the wrapper ShortcutsIniDup itself",
     ("kitty/kitty_reconnect.c", "kr_action", "ReadParameterN"):
         "the kr_rules rows",
-    ("kitty/kitty_console_store.c", "console_read_switch", "kitty_inifile_read"):
-        "the wrapper console_read_switch itself",
-    ("kitty/kitty_winevent_cfg.c", "kitty_wev_switch_on", "kitty_inifile_read"):
-        "the wrapper kitty_wev_switch_on itself",
+    ("kitty/kitty_winevent_cfg.c", "kitty_console_global_read", "kitty_inifile_read"):
+        "the wrapper kitty_console_global_read itself",
     ("kitty/kitty_switchnotice.c", "kitty_switchnotice_seconds", "ReadParameterN"):
         "the wrapper kitty_switchnotice_seconds itself",
     ("kitty/kitty_transfer.c", "kt_global_int", "ReadParameterN"):

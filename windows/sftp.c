@@ -16,6 +16,7 @@
 #include "../kitty/kitty_selfcheck.h"     /* KiTTY: refuse a file changed after release */
 #include "../kitty/kitty_termenv.h"       /* KiTTY: the refused-variables NOTE */
 #include "../kitty/kitty_console_store.h" /* KiTTY: the folder store, KITTYPP_DIR */
+#include "../kitty/kitty_agentcheck.h"     /* KiTTY: which program answers our agent requests */
 #include "../kitty/kitty_winevent.h"      /* KiTTY: event 301 at the end */
 
 SeatPromptResult filexfer_get_userpass_input(Seat *seat, prompts_t *p)
@@ -684,6 +685,9 @@ int main(int argc, char *argv[])
     /* KiTTY: the store kitty.exe uses (a folder store from kitty.ini), and
      * KITTYPP_DIR - before the first setting is read */
     kitty_console_store_init();
+    /* KiTTY: [KiTTY] verifyagent - a line on standard error when the agent
+     * that is about to get our requests is not ours */
+    kitty_agentcheck_install_console(!strcmp(appname, "PSCP") ? "kscp" : "ksftp");
 
     CmdlineArgList *arglist = cmdline_arg_list_from_GetCommandLineW();
     ret = psftp_main(arglist);

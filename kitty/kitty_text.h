@@ -2453,13 +2453,34 @@
 #define KT_TERMENV_REFUSED_OWN_MID                   "; its sshd_config needs \"AcceptEnv "
 #define KT_TERMENV_REFUSED_OWN_TAIL                  "\".\r\n"
 #define KT_WIN_AGENT_UNVERIFIED                      "This KiTTY++ terminal window checked which program answers its " \
-        "SSH agent requests. The answer came from an unverified " \
-        "program:\n\n%s\n\nThat program sees, and can sign with, every " \
-        "key this session uses. That is expected if you chose to run " \
+        "SSH agent requests. It is an unverified " \
+        "program:\n\n%s\n\nThat program sees every key this session " \
+        "uses and can sign with them. That is expected if you chose to run " \
         "stock Pageant, the Windows OpenSSH agent or another agent - " \
         "click this notice to open the setting that turns the warning " \
         "off. If you did not choose that agent, find out what that " \
         "program is before trusting this session."
+/* the agent check could not inspect the program (kitty_agentcheck.c);
+ * %s = KT_AGENT_PROCESS_ERROR_FMT */
+#define KT_WIN_AGENT_UNINSPECTED                     "This KiTTY++ terminal window could not check which program " \
+        "answers its SSH agent requests (%s). That program sees every key " \
+        "this session uses and can sign with them. Click this notice to " \
+        "open the setting that turns the warning off. If you did not " \
+        "choose another agent, find out which program serves the agent " \
+        "before trusting this session."
+#define KT_AGENT_PROCESS_ERROR_FMT                   "process %lu, Windows error %lu"
+/* the Terminal Window's Event Log: the path or KT_AGENT_PROCESS_ERROR_FMT,
+ * then pipe or window */
+#define KT_WIN_AGENT_LOG_UNVERIFIED                  "SSH agent not verified: %s (over the %s)"
+#define KT_WIN_AGENT_LOG_UNINSPECTED                 "SSH agent could not be checked: %s (over the %s)"
+/* klink/kscp/ksftp on standard error: program name, then the path or
+ * KT_AGENT_PROCESS_ERROR_FMT */
+#define KT_CON_AGENT_UNVERIFIED_FMT                  "%s: the SSH agent is not verified: %s. It sees every key of " \
+        "this connection and can sign with them (the setting verifyagent=no " \
+        "turns this warning off).\n"
+#define KT_CON_AGENT_UNINSPECTED_FMT                 "%s: the SSH agent could not be checked (%s). It sees every key " \
+        "of this connection and can sign with them (the setting verifyagent=no " \
+        "turns this warning off).\n"
 #define KT_WIN_TITLEVAR_H                            "Hostname (the configured host if none is known yet)"
 #define KT_WIN_TITLEVAR_S                            "Saved session name"
 #define KT_WIN_TITLEVAR_U                            "Username configured for the session"

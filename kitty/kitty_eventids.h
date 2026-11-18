@@ -64,6 +64,8 @@
 #define KITTY_EVO_AUTH_OK           20
 #define KITTY_EVO_AUTH_FAILED       21
 #define KITTY_EVO_PROXY_USED        25
+#define KITTY_EVO_AGENT_UNVERIFIED  26   /* [KiTTY] verifyagent */
+#define KITTY_EVO_AGENT_UNINSPECTED 27
 #define KITTY_EVO_FAREND_REFUSED    30   /* kitty.exe only */
 #define KITTY_EVO_TRANSFER_DONE     30   /* command-line tools only */
 #define KITTY_EVO_TRANSFER_FAILED   31   /* command-line tools only */
@@ -219,6 +221,12 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 225, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "proxy-used",
       "proxy host port user credentials pid for",
       "Information" },
+    { 226, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "agent-unverified",
+      "agent transport pid",
+      "Warning" },
+    { 227, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "agent-uninspected",
+      "agentpid err transport pid",
+      "Warning" },
     { 230, KITTY_EVB_KITTY, KITTY_EVSRC_KITTY, "farend-refused",
       "session host request reason detail pid",
       "Warning" },
@@ -258,6 +266,12 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 325, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "proxy-used",
       "proxy host port user credentials pid for",
       "Information" },
+    { 326, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "agent-unverified",
+      "agent transport pid",
+      "Warning" },
+    { 327, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "agent-uninspected",
+      "agentpid err transport pid",
+      "Warning" },
     { 330, KITTY_EVB_CLI, KITTY_EVSRC_CLI, "transfer-done",
       "session host user direction local remote bytes pid",
       "Information" },
@@ -327,6 +341,12 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "addr",
       "200, 300: the address connected to (a proxy's when one is used); a "
       "serial line's name; a Local session's program" },
+    { "agent",
+      "226, 326: the full path of the program that answers the SSH agent "
+      "requests, not signed by KiTTY++'s publisher ([KiTTY] verifyagent)" },
+    { "agentpid",
+      "227, 327: the process id of the program that answers the SSH agent "
+      "requests, which could not be inspected" },
     { "basis",
       "210, 310: how the host key was known; values: cache, manual,"
       " ca" },
@@ -374,7 +394,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "111: whether the key file has a passphrase; values: "
       "password, blank" },
     { "err",
-      "131: the error text when the protection failed" },
+      "131: the error text when the protection failed; 227, 327: the "
+      "Windows error number that refused inspecting the agent's process" },
     { "exitcode",
       "201: the remote command's exit code; 301: the tool's own "
       "exit code; empty when there is none" },
@@ -609,6 +630,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "then seq and prev" },
     { "tool",
       "400-403: kittygen or kittygen-cli" },
+    { "transport",
+      "226, 227, 326, 327: how the agent is reached, pipe (its named "
+      "pipe) or window (the window messages of PuTTY before 0.75)" },
     { "trigger",
       "113: what started the retry; values: button, device-arrival; 117: "
       "what brought the key back, the same values; 152: "

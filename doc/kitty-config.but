@@ -3329,8 +3329,10 @@ and any program can offer to be that agent: it is a named pipe, and
 whoever gets there first answers. A program in that position sees every
 key request KiTTY++ makes.
 
-A signed KiTTY++ checks who is answering and warns when the agent is not
-a signed build it recognises. That is not a claim that the agent is
+A signed KiTTY++ checks who is answering before its first request
+leaves. It warns when the agent is not a signed build it recognises, or
+when it cannot check that program. klink, kscp and ksftp write the same
+warning to standard error. That is not a claim that the agent is
 malicious - a self-built \c{kageant}, or another agent you chose, is
 unverified too - it is KiTTY++ showing you \e{who} it is about to hand a
 signing request to, at the moment it matters.
@@ -3411,12 +3413,13 @@ records of earlier versions.
 200 session opened, 201 closed, 210 host key known, 211 new host key,
 212 host key mismatch (also a jump host's, marked in \c{proxy}), 213
 host key update, 220 login succeeded, 221 login failed (also a jump host's or a proxy's,
-marked in \c{proxy}), 225 proxy used, 230 far-end request refused,
+marked in \c{proxy}), 225 proxy used, 226 SSH agent not verified, 227
+SSH agent not checkable, 230 far-end request refused,
 240 file transferred, 241 file transfer failed (ZModem, kitten
 transfer; one record per file).
 
-\b 300-399 - klink, kscp, ksftp (source \c{KiTTY++_cli}): 300-325 as
-200-225, 330 file transferred, 331 file transfer failed (one record
+\b 300-399 - klink, kscp, ksftp (source \c{KiTTY++_cli}): 300-327 as
+200-227, 330 file transferred, 331 file transfer failed (one record
 per file).
 
 \b 400-499 - kittygen and kittygen-cli (source \c{KiTTY++_kittygen}):

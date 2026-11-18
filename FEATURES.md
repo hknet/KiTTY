@@ -757,7 +757,7 @@ The tray menu's **Lock agent** keeps the keys loaded but neither offers nor uses
 
 **Key changes from a forwarded agent.** A program on a server the agent is forwarded to may list the keys and log in with them, but by default it cannot add a key, remove one, or lock or unlock the agent: **Settings > Security > Refuse key changes from a forwarded agent (add, remove, lock)**, `[Agent] blockforwardedchanges=yes` (the default). A refused request is recorded with reason `forwarded`. kageant knows a forwarded agent by the binding its forwarding client sends (session-bind marked for forwarding: KiTTY++'s kitty.exe and klink, OpenSSH's ssh from 8.9). A client without it is not recognised.
 
-**Programs built on PuTTY before 0.75.** They reach the agent through window messages (WM_COPYDATA) instead of the named pipe. kageant cannot identify the program that sends such a request: the sender passes a window of its choice. **Accept requests by window messages (PuTTY before 0.75)** on **Settings > Security** (`[Agent] allowwmcopydata`) is a legacy option and off by default. Such a request counts as coming from an unknown program: it never gets a key unlocked for another program. A notice appears once per run. A click on it opens that page. KiTTY++'s own programs use window messages only when the named pipe cannot be opened.
+**Programs built on PuTTY before 0.75.** They reach the agent through window messages (WM_COPYDATA) instead of the named pipe. kageant does not identify the program that sends such a request: any program can hand the request's file mapping to another program and pose as it. **Accept requests by window messages (PuTTY before 0.75)** on **Settings > Security** (`[Agent] allowwmcopydata`) is a legacy option and off by default. Such a request counts as coming from an unknown program: it never gets a key unlocked for another program. A notice appears once per run. A click on it opens that page. KiTTY++'s own programs use window messages only when the named pipe cannot be opened.
 
 (no screenshot)
 
@@ -999,7 +999,7 @@ A **portable** KiTTY++ puts up a question before writing anything: a registratio
 
 An SSH agent holds your private keys and signs with them on request, and any program can offer to be that agent: it is a named pipe, and whoever gets there first answers. A program that puts itself in that position sees every key request KiTTY++ makes.
 
-A signed KiTTY++ checks who is answering, and warns you when the agent is not a signed build it recognises. That is not a claim that the agent is malicious — a self-built kageant, or another agent you chose, is unverified too — it is KiTTY++ showing you *who* it is about to hand a signing request to, at the moment it matters.
+A signed KiTTY++ checks who is answering before its first request leaves, on the named pipe and through the old Pageant window alike. It warns you when the agent is not a signed build it recognises. It also warns when it cannot check that program at all. klink, kscp and ksftp make the same check and write the warning to standard error. That is not a claim that the agent is malicious — a self-built kageant, or another agent you chose, is unverified too — it is KiTTY++ showing you *who* it is about to hand a signing request to, at the moment it matters.
 
 Turn the warning off if you deliberately use an agent that cannot be verified and are tired of the warning; leave it on otherwise.
 

@@ -98,6 +98,6 @@ void kitty_notice_close_ctx(void *ctx);
  * window.c answers with a configuration window on Application/Security/Host
  * Keys, filtered to that host with the new key selected. */
 #define WM_KITTY_HOSTKEY_STORED (WM_APP + 76)
-void kitty_agent_unverified_notice(char *name);   /* kitty/kitty_win.c */
+void kitty_agent_unverified_notice(int verdict, char *what);   /* kitty/kitty_win.c */
 
 #endif

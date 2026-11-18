@@ -166,8 +166,8 @@ The IDs:
 |---|---|---|
 | 0 | `KiTTY++` | text only, no longer written: listed for the records of earlier versions |
 | 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), refused request (103), refused by a key's destination rules (104), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), rules changed in the rule editor (116), a startup key back on a drive (117), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), a certificate expiring, expired or not yet valid (141), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), log rotation (170), log chain anchor (171), a record repeated (172) |
-| 200-299 | `KiTTY++_kitty` | session opened (200) and closed (201), host key known (210), new (211), mismatch (212), host key update (213), login succeeded (220) and failed (221), proxy used (225), far-end request refused (230), file transferred (240) and failed (241) - ZModem and kitten transfers |
-| 300-399 | `KiTTY++_cli` | 300-325 as 200-225; file transferred (330) and failed (331) |
+| 200-299 | `KiTTY++_kitty` | session opened (200) and closed (201), host key known (210), new (211), mismatch (212), host key update (213), login succeeded (220) and failed (221), proxy used (225), SSH agent not verified (226) or not checkable (227), far-end request refused (230), file transferred (240) and failed (241) - ZModem and kitten transfers |
+| 300-399 | `KiTTY++_cli` | 300-327 as 200-227; file transferred (330) and failed (331) |
 | 400-499 | `KiTTY++_kittygen` | key generated (400), private key saved (401), public key saved (402), passphrase changed (403) |
 | 900-999 | `KiTTY++` | program file refused (900), log retention (901), missing Windows features (902), session not saved (903), store access rights not set (904), program file marked red on the Applications panel (905), helper program refused, allowed or declined (906), session log not written without a desktop (907) |
 
@@ -187,6 +187,12 @@ Warning, 900 is Error, the rest are classified as Information.
   login; `session` for a jump host's login and for a proxy the session went
   through; `forward` for a port forwarding's connection, `x11` for an X11
   forwarding's.
+- **SSH agent check (`[KiTTY] verifyagent`):** 226/326 when the program
+  answering the agent requests is not signed by KiTTY++'s publisher, with
+  its full path in `agent`. 227/327 when that program could not be
+  inspected, with its process id in `agentpid` and Windows' error number in
+  `err`. `transport` is `pipe` or `window`. Written before the first agent
+  request of the program, once per process.
 - **SSH-1:** `keytype` `rsa1`; `fp` the MD5 hash (`aa:bb:...`).
 - **Destination (kageant):** 100, 101, 103 and 104 carry `dest`, the server of
   the client's verified session-bind (`SHA256:...`, then a host name when one
@@ -1458,6 +1464,27 @@ Source `KiTTY++_kitty`, `%1` = `proxy-used`.
 | `%7` | `pid` | the process writing the record |
 | `%8` | `for` | what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's |
 
+### 226 agent-unverified
+
+Source `KiTTY++_kitty`, `%1` = `agent-unverified`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `agent` | the full path of the program that answers the SSH agent requests, not signed by KiTTY++'s publisher ([KiTTY] verifyagent) |
+| `%3` | `transport` | how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75) |
+| `%4` | `pid` | the process writing the record |
+
+### 227 agent-uninspected
+
+Source `KiTTY++_kitty`, `%1` = `agent-uninspected`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `agentpid` | the process id of the program that answers the SSH agent requests, which could not be inspected |
+| `%3` | `err` | the Windows error number that refused inspecting the agent's process |
+| `%4` | `transport` | how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75) |
+| `%5` | `pid` | the process writing the record |
+
 ### 230 farend-refused
 
 Source `KiTTY++_kitty`, `%1` = `farend-refused`.
@@ -1635,6 +1662,27 @@ Source `KiTTY++_cli`, `%1` = `proxy-used`.
 | `%6` | `credentials` | yes when a user name or password went to the proxy, else no |
 | `%7` | `pid` | the process writing the record |
 | `%8` | `for` | what the connection served; empty for the connection's own login; session for a jump host's login and for a proxy the session went through; forward for a port forwarding's connection, x11 for an X11 forwarding's |
+
+### 326 agent-unverified
+
+Source `KiTTY++_cli`, `%1` = `agent-unverified`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `agent` | the full path of the program that answers the SSH agent requests, not signed by KiTTY++'s publisher ([KiTTY] verifyagent) |
+| `%3` | `transport` | how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75) |
+| `%4` | `pid` | the process writing the record |
+
+### 327 agent-uninspected
+
+Source `KiTTY++_cli`, `%1` = `agent-uninspected`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `agentpid` | the process id of the program that answers the SSH agent requests, which could not be inspected |
+| `%3` | `err` | the Windows error number that refused inspecting the agent's process |
+| `%4` | `transport` | how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75) |
+| `%5` | `pid` | the process writing the record |
 
 ### 330 transfer-done
 

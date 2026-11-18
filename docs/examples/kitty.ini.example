@@ -604,9 +604,10 @@
 ;    and every modern host expect.
 ;funkeys=xterm216
 
-; verifyagent: a signed KiTTY++ checks, once per terminal window, whether the
-;    program answering its SSH agent requests is a verified KiTTY++/kageant
-;    build, and warns when it is not. Set no if you deliberately run stock
+; verifyagent: a signed KiTTY++ checks, before the first agent request of a
+;    terminal window or of klink/kscp/ksftp, whether the program answering it
+;    is a verified KiTTY++/kageant build. It warns when it is not, or when it
+;    cannot check that program. Set no if you deliberately run stock
 ;    Pageant, the Windows OpenSSH agent or another agent. Also a checkbox:
 ;    Connection -> SSH -> Auth (an application-wide setting, not per session).
 ;verifyagent=yes
@@ -1652,7 +1653,7 @@
 ;blockforwardedchanges=yes
 ; allowwmcopydata: accept requests by window messages (WM_COPYDATA), the
 ; agent connection of programs built on PuTTY before 0.75. A legacy option:
-; kageant cannot identify the program that sends one. KiTTY++'s own
+; kageant does not identify the program that sends one. KiTTY++'s own
 ; programs use it only when the named pipe cannot be opened. A notice once
 ; per run. Default no: they are refused, the agent log records it (reason
 ; window-messages).

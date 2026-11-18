@@ -825,9 +825,9 @@ option and off by default: \q{Accept requests by window messages
 \c{allowwmcopydata} in the \c{[Agent]} section of kitty.ini (default
 \c{no}).
 
-kageant cannot identify the program that sends a request by window
-messages. The sender passes a window of its choice, so any program could
-pose as another. Over the named pipe Windows itself reports the program. A
+kageant does not identify the program that sends a request by window
+messages: any program can hand the request's file mapping to another
+program and pose as it. Over the named pipe Windows itself reports the program. A
 request by window messages is therefore served for an unknown program:
 it never uses a key unlocked for another program, and neither the notices
 nor the agent log show a program. A \c{session-bind@openssh.com} over

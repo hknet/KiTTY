@@ -17,6 +17,10 @@ The fields, by name:
 
 \b \c{addr} - 200, 300: the address connected to (a proxy's when one is used); a serial line's name; a Local session's program.
 
+\b \c{agent} - 226, 326: the full path of the program that answers the SSH agent requests, not signed by KiTTY++'s publisher ([KiTTY] verifyagent).
+
+\b \c{agentpid} - 227, 327: the process id of the program that answers the SSH agent requests, which could not be inspected.
+
 \b \c{basis} - 210, 310: how the host key was known; values: cache, manual, ca.
 
 \b \c{bits} - 400: the key size in bits (255 for Ed25519, the curve size for ECDSA).
@@ -43,7 +47,7 @@ The fields, by name:
 
 \b \c{enc} - 111: whether the key file has a passphrase; values: password, blank.
 
-\b \c{err} - 131: the error text when the protection failed.
+\b \c{err} - 131: the error text when the protection failed; 227, 327: the Windows error number that refused inspecting the agent's process.
 
 \b \c{exitcode} - 201: the remote command's exit code; 301: the tool's own exit code; empty when there is none.
 
@@ -149,6 +153,8 @@ The fields, by name:
 
 \b \c{tool} - 400-403: kittygen or kittygen-cli.
 
+\b \c{transport} - 226, 227, 326, 327: how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75).
+
 \b \c{trigger} - 113: what started the retry; values: button, device-arrival; 117: what brought the key back, the same values; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).
 
 \b \c{ts} - 100-172: the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone.
@@ -241,6 +247,10 @@ The event IDs:
 
 \b \c{225} \c{KiTTY++_kitty} (Information): \c{proxy-used}, then \c{proxy}, \c{host}, \c{port}, \c{user}, \c{credentials}, \c{pid}, \c{for}.
 
+\b \c{226} \c{KiTTY++_kitty} (Warning): \c{agent-unverified}, then \c{agent}, \c{transport}, \c{pid}.
+
+\b \c{227} \c{KiTTY++_kitty} (Warning): \c{agent-uninspected}, then \c{agentpid}, \c{err}, \c{transport}, \c{pid}.
+
 \b \c{230} \c{KiTTY++_kitty} (Warning): \c{farend-refused}, then \c{session}, \c{host}, \c{request}, \c{reason}, \c{detail}, \c{pid}.
 
 \b \c{240} \c{KiTTY++_kitty} (Information): \c{transfer-done}, then \c{session}, \c{host}, \c{port}, \c{user}, \c{method}, \c{direction}, \c{local}, \c{remote}, \c{bytes}, \c{pid}.
@@ -264,6 +274,10 @@ The event IDs:
 \b \c{321} \c{KiTTY++_cli} (Warning): \c{auth-failed}, then \c{host}, \c{port}, \c{user}, \c{method}, \c{reason}, \c{methods}, \c{pid}, \c{proxy}, \c{for}.
 
 \b \c{325} \c{KiTTY++_cli} (Information): \c{proxy-used}, then \c{proxy}, \c{host}, \c{port}, \c{user}, \c{credentials}, \c{pid}, \c{for}.
+
+\b \c{326} \c{KiTTY++_cli} (Warning): \c{agent-unverified}, then \c{agent}, \c{transport}, \c{pid}.
+
+\b \c{327} \c{KiTTY++_cli} (Warning): \c{agent-uninspected}, then \c{agentpid}, \c{err}, \c{transport}, \c{pid}.
 
 \b \c{330} \c{KiTTY++_cli} (Information): \c{transfer-done}, then \c{session}, \c{host}, \c{user}, \c{direction}, \c{local}, \c{remote}, \c{bytes}, \c{pid}.
 

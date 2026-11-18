@@ -19,6 +19,10 @@ const char *kitty_inifile_registry_base(void);
 char *kitty_inifile_state_file_dup(void);  /* <store root>\KiTTYState; NULL = none; free() it */
 int kitty_inifile_read(const char *section, const char *key,
                         char *value, int len);
+/* klink/kscp/ksftp/kittygen: a global [KiTTY] key where kitty.exe keeps it
+ * (the registry when authoritative, else kitty.ini); "" = set nowhere.
+ * kitty_winevent_cfg.c. */
+void kitty_console_global_read(const char *key, char *value, int len);
 char *kitty_inifile_read_dup(const char *section, const char *key); /* NULL = absent or empty; free() it */
 int kitty_inifile_write(const char *section, const char *key,
                          const char *value);   /* readonly=yes: skipped, 1 */
