@@ -192,7 +192,8 @@ Warning, 900 is Error, the rest are classified as Information.
   its full path in `agent`. 227/327 when that program could not be
   inspected, with its process id in `agentpid` and Windows' error number in
   `err`. `transport` is `pipe` or `window`. Written before the first agent
-  request of the program, once per process.
+  request of the program, again for each other program that answers later
+  (an agent replaced during a session, a forwarded request).
 - **SSH-1:** `keytype` `rsa1`; `fp` the MD5 hash (`aa:bb:...`).
 - **Destination (kageant):** 100, 101, 103 and 104 carry `dest`, the server of
   the client's verified session-bind (`SHA256:...`, then a host name when one

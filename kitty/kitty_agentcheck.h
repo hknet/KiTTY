@@ -3,7 +3,9 @@
  * ([KiTTY] verifyagent). Shared by kitty.exe and klink/kscp/ksftp.
  *
  * windows/agent-client.c calls agent_serving_check_hook with the answering
- * process's id BEFORE the first request leaves: on the pipe from
+ * process's id BEFORE the first request leaves. It calls it again for each
+ * other process that serves a later connection (agent forwarding
+ * included): on the pipe from
  * GetNamedPipeServerProcessId, on window messages from the owner of the
  * "Pageant" window. The hook judges that program here and warns: kitty.exe
  * with a notice, the console tools with a line on standard error. A warning,

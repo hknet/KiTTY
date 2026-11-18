@@ -609,8 +609,9 @@ char default_init_file_content[] =
 \n\
 ; verifyagent: a signed KiTTY++ checks, before the first agent request of a\n\
 ;    terminal window or of klink/kscp/ksftp, whether the program answering it\n\
-;    is a verified KiTTY++/kageant build. It warns when it is not, or when it\n\
-;    cannot check that program. Set no if you deliberately run stock\n\
+;    is a verified KiTTY++/kageant build. It checks again when another program\n\
+;    answers later. It warns when it is not, or when it cannot check that\n\
+;    program. Set no if you deliberately run stock\n\
 ;    Pageant, the Windows OpenSSH agent or another agent. Also a checkbox:\n\
 ;    Connection -> SSH -> Auth (an application-wide setting, not per session).\n\
 ;verifyagent=yes\n\

@@ -27,6 +27,8 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 - The SSH agent check (`[KiTTY] verifyagent`) runs before the first
   request leaves, on the named pipe and through the old Pageant window. It
+  runs again for each other program that answers later (agent forwarding
+  included). It
   also warns when it cannot check the program that answers. klink, kscp and
   ksftp make the same check: one line on standard error. Refs
   hknet/KiTTY#29

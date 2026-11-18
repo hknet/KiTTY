@@ -525,14 +525,13 @@ void kitty_agent_unverified_notice(int verdict, char *what)
  * and on window messages alike. kitty_agentcheck_judge verifies that
  * program's signature cache-only (kitty_authenticode_verify_offline: no
  * revocation lookup, so no machine waits on a CRL server here) - a few tens
- * of milliseconds once per process. A worker thread used to do this after the
+ * of milliseconds once per agent process. A worker thread used to do this after the
  * answer was in. The verdict is a notice, never a refusal: the request goes
  * on. On the window's own thread the notice is shown at once, so it stands
  * before a window-message request (SendMessage waits) gets its answer.
  */
 static void kitty_agent_serving_check(unsigned long server_pid, int transport)
 {
-    static int done = 0;
     char cfg[16];
     char *what = NULL;
     unsigned long err;
@@ -540,11 +539,8 @@ static void kitty_agent_serving_check(unsigned long server_pid, int transport)
     HWND GetMainHwnd(void);
     HWND main;
 
-    if (done)
-        return;
-    done = 1;
-
-    /* Opt-out. */
+    /* Called once per agent process (agent-client.c): again when another
+     * process serves the agent later in this run. Opt-out: */
     if (ReadParameterN(KI_SECTION_KITTY, KI_VERIFYAGENT, cfg, sizeof(cfg)) && !stricmp(cfg, "no"))
         return;
 

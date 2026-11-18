@@ -606,8 +606,9 @@
 
 ; verifyagent: a signed KiTTY++ checks, before the first agent request of a
 ;    terminal window or of klink/kscp/ksftp, whether the program answering it
-;    is a verified KiTTY++/kageant build. It warns when it is not, or when it
-;    cannot check that program. Set no if you deliberately run stock
+;    is a verified KiTTY++/kageant build. It checks again when another program
+;    answers later. It warns when it is not, or when it cannot check that
+;    program. Set no if you deliberately run stock
 ;    Pageant, the Windows OpenSSH agent or another agent. Also a checkbox:
 ;    Connection -> SSH -> Auth (an application-wide setting, not per session).
 ;verifyagent=yes

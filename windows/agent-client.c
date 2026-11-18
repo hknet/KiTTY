@@ -19,7 +19,17 @@
  * serving agent's pid after a query is answered - observational, never gates
  * the query. The static below keeps it to one real check per process. */
 void (*agent_serving_check_hook)(unsigned long server_pid, int transport) = NULL;
-static bool agent_serving_checked = false;
+/* KiTTY: the process the check last judged. Every connection reads who
+ * serves it (one call). The hook runs again only for another process - an
+ * agent replaced during a long session is judged anew. */
+static unsigned long agent_serving_last_pid = 0;
+static void agent_serving_report(unsigned long spid, int transport)
+{
+    if (agent_serving_check_hook && spid && spid != agent_serving_last_pid) {
+        agent_serving_last_pid = spid;
+        agent_serving_check_hook(spid, transport);
+    }
+}
 
 static bool wm_copydata_agent_exists(void)
 {
@@ -54,12 +64,11 @@ static void wm_copydata_agent_query(strbuf *query, void **out, int *outlen)
         return;                        /* *out == NULL, so failure */
     /* KiTTY: who will answer? The window's owner, known before the request
      * leaves: the check warns before the answer is in. */
-    if (agent_serving_check_hook && !agent_serving_checked) {
+    {
         DWORD spid = 0;
         GetWindowThreadProcessId(hwnd, &spid);
-        agent_serving_checked = true;
-        agent_serving_check_hook((unsigned long)spid,
-                                 KITTY_AGENT_TRANSPORT_WMCOPYDATA);
+        agent_serving_report((unsigned long)spid,
+                             KITTY_AGENT_TRANSPORT_WMCOPYDATA);
     }
     mapname = dupprintf("PageantRequest%08x", (unsigned)GetCurrentThreadId());
 
@@ -141,12 +150,22 @@ static void wm_copydata_agent_query(strbuf *query, void **out, int *outlen)
         LocalFree(psd);
 }
 
+static void agent_serving_check_pipe(HANDLE pipehandle);   /* KiTTY */
+
+/* KiTTY: new_named_pipe_client's two steps, so the agent check sees this
+ * connection too (agent forwarding: every request the server sends opens
+ * one). */
 Socket *agent_connect(Plug *plug)
 {
     char *pipename = agent_named_pipe_name();
-    Socket *s = new_named_pipe_client(pipename, plug);
+    char *err = NULL;
+    HANDLE pipehandle = connect_to_named_pipe(pipename, &err);
     sfree(pipename);
-    return s;
+    if (pipehandle == INVALID_HANDLE_VALUE)
+        return new_error_socket_consume_string(plug, err);
+    agent_serving_check_pipe(pipehandle);
+    return make_handle_socket(pipehandle, pipehandle, NULL, NULL, 0, plug,
+                              true);
 }
 
 static bool named_pipe_agent_exists(void)
@@ -188,14 +207,10 @@ struct agent_connection {
  * written: the check warns before the answer is in. */
 static void agent_serving_check_pipe(HANDLE pipehandle)
 {
-    if (agent_serving_check_hook && !agent_serving_checked) {
-        ULONG spid = 0;
-        if (GetNamedPipeServerProcessId(pipehandle, &spid)) {
-            agent_serving_checked = true;
-            agent_serving_check_hook((unsigned long)spid,
-                                     KITTY_AGENT_TRANSPORT_PIPE);
-        }
-    }
+    ULONG spid = 0;
+    if (agent_serving_check_hook &&
+        GetNamedPipeServerProcessId(pipehandle, &spid))
+        agent_serving_report((unsigned long)spid, KITTY_AGENT_TRANSPORT_PIPE);
 }
 
 static int named_pipe_agent_accumulate_response(

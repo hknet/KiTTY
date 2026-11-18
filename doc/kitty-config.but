@@ -3330,7 +3330,8 @@ whoever gets there first answers. A program in that position sees every
 key request KiTTY++ makes.
 
 A signed KiTTY++ checks who is answering before its first request
-leaves. It warns when the agent is not a signed build it recognises, or
+leaves. It checks again whenever another program answers later, also
+for the requests a server sends through agent forwarding. It warns when the agent is not a signed build it recognises, or
 when it cannot check that program. klink, kscp and ksftp write the same
 warning to standard error. That is not a claim that the agent is
 malicious - a self-built \c{kageant}, or another agent you chose, is
