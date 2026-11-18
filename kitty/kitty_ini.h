@@ -304,7 +304,10 @@ char default_init_file_content[] =
 ;    question at the next start: rename the session files to it? (Yes\n\
 ;    renames, No keeps the names and the question does not come back.) Also the\n\
 ;    file type registered for double-clicked session files (.ktx when empty).\n\
-;    Folder store only. Default: none.\n\
+;    Folder store only. Written once at the first start of a folder store\n\
+;    without it: .ktx for a new store (its session folder made at that\n\
+;    start), empty (none) for an existing one. From then on this key alone\n\
+;    decides.\n\
 ;fileextension=\n\
 \n\
 ; fileextensionapplied: written by KiTTY++ - the ending the session files were\n\
@@ -341,7 +344,9 @@ char default_init_file_content[] =
 ;    next start: rename the host-key files to it? (one question with the\n\
 ;    session files'). After No, host keys under an old ending are not read.\n\
 ;    A file arriving later without it is renamed when its host is first\n\
-;    used. Default: none.\n\
+;    used. Written once at the first start of a folder store without it:\n\
+;    .khk for a new store whose host-key folder holds no file yet, empty\n\
+;    (none) otherwise. From then on this key alone decides.\n\
 ;hostkeyextension=\n\
 \n\
 ; hostkeyextensionapplied: written by KiTTY++ - the ending the host-key files\n\

@@ -87,6 +87,8 @@ static char kstore_pc_sessionsuffix[64] = "";
 static char kstore_pc_keysuffix[64] = "";
 static char *kstore_basepath = NULL;
 static char *kstore_default_sesspath = NULL;
+/* the session folder loadPath() created at this start: it was not there */
+static char *kstore_sess_made = NULL;
 static void kstore_pc_keep(char *dst, size_t len, const char *raw, int bit)
 {
 	snprintf(dst, len, "%s", raw);
@@ -338,7 +340,8 @@ int loadPath(void) {
 	if( !existdirectory(sesspath) ) {
 		if( !kitty_store_acl_mkdir(sesspath) && !MakeDir(sesspath) ) {
 			MessageBox( NULL, KT_STORE_SESSDIR_FAILED, KT_CAP_ERROR, MB_OK|MB_ICONERROR ) ;
-		}
+		} else
+			kstore_set(&kstore_sess_made, dupstr(sesspath));   /* a new store (kstore_store_endings) */
 	}
 
 	/* JK: now we can pre-clean-up */
@@ -465,6 +468,84 @@ static char *kstore_ini_dup( const char *ini, const char *key ) {
 	return v ;
 }
 
+/* 1 when `dir` holds no file (missing, or folders only) */
+static int kstore_dir_has_no_file( const char *dir ) {
+	WIN32_FIND_DATAA fd ;
+	HANDLE h ;
+	char *pat ;
+	int none = 1 ;
+	if( !dir || !dir[0] ) return 1 ;
+	pat = dupprintf( "%s\\*", dir ) ;
+	h = FindFirstFileA( pat, &fd ) ;
+	sfree( pat ) ;
+	if( h == INVALID_HANDLE_VALUE ) return 1 ;
+	do {
+		if( !( fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) ) { none = 0 ; break ; }
+	} while( FindNextFileA( h, &fd ) ) ;
+	FindClose( h ) ;
+	return none ;
+}
+
+/*
+ * KiTTY (hknet/KiTTY#56): every folder store has both endings written in
+ * kitty.ini, decided ONCE - at the first start that finds a key missing.
+ * From then on kitty.ini alone decides. The configuration window shows
+ * what it holds: a deleted Sessions folder changes nothing.
+ *
+ *   a NEW store (`is_new`: the session folder in force did not exist and was
+ *   made at this start, loadPath() or the takeover - a missing kitty.ini alone
+ *   does not count): fileextension=.ktx plus hostkeyextension=.khk when the
+ *   host-key folder holds no file (copied-in host keys keep their names).
+ *   an EXISTING store: both keys empty, which is none - no file renamed.
+ *
+ * A key that is there, also empty, is a choice and is left as it is ("none"
+ * picked in Storage & Backup writes an empty key). So is an ending a
+ * 0.85.1.13 name or a putty.conf not taken over yet still gives. The
+ * host-key folder is found as the readers find it (portable_subdir_path):
+ * sshhostkeys, else putty.conf's SshHostKeys, else SshHostKeys beside a
+ * folder called Sessions or inside any other. The caller writes nothing where
+ * kitty.ini cannot be written: a missing key then means none.
+ */
+static void kstore_store_endings( const char *ini, int ini_only, int is_new ) {
+	char *pv, *hk ;
+	/* store-pairs: read file KiTTY KI_FILEEXTENSION,KI_SESSIONSUFFIX - an ending set already */
+	if( ( pv = kitty_read_ini_dup( ini, INIT_SECTION, KI_FILEEXTENSION ) ) == NULL &&
+	    ( pv = kitty_read_ini_dup( ini, INIT_SECTION, KI_SESSIONSUFFIX ) ) == NULL &&
+	    ( ini_only || !kstore_pc_sessionsuffix[0] ) )
+		/* store-pairs: write file KiTTY KI_FILEEXTENSION - the store's ending, decided once */
+		writeINI( ini, INIT_SECTION, KI_FILEEXTENSION, is_new ? ".ktx" : "" ) ;
+	sfree( pv ) ;
+
+	/* store-pairs: read file KiTTY KI_HOSTKEYEXTENSION,KI_KEYSUFFIX - an ending set already */
+	if( ( pv = kitty_read_ini_dup( ini, INIT_SECTION, KI_HOSTKEYEXTENSION ) ) != NULL ||
+	    ( pv = kitty_read_ini_dup( ini, INIT_SECTION, KI_KEYSUFFIX ) ) != NULL ||
+	    ( !ini_only && kstore_pc_keysuffix[0] ) ) {
+		sfree( pv ) ;
+		return ;
+	}
+	if( !is_new ) {
+		/* store-pairs: write file KiTTY KI_HOSTKEYEXTENSION - the store's ending, decided once */
+		writeINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSION, "" ) ;
+		return ;
+	}
+	if( ( pv = kstore_ini_dup( ini, KI_SSHHOSTKEYS ) ) != NULL ) {
+		hk = joinPath( kstore_basepath ? kstore_basepath : "", pv ) ;
+		sfree( pv ) ;
+		str_rtrim( hk, " \n\r\t\\" ) ;
+	} else if( !ini_only && (kstore_pc_found & KSTORE_PC_SSHHOSTKEYS) && sshkpath ) {
+		hk = dupstr( sshkpath ) ;
+	} else {
+		/* portable_root_dir(): the parent of a folder called Sessions */
+		char *root = dupstr( sesspath ), *bs = strrchr( root, '\\' ) ;
+		if( bs && !stricmp( bs + 1, "Sessions" ) ) *bs = '\0' ;
+		hk = dupprintf( "%s\\SshHostKeys", root ) ;
+		sfree( root ) ;
+	}
+	/* store-pairs: write file KiTTY KI_HOSTKEYEXTENSION - the store's ending, decided once */
+	writeINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSION, kstore_dir_has_no_file( hk ) ? ".khk" : "" ) ;
+	sfree( hk ) ;
+}
+
 int kitty_store_ini_takeover(void) {
 	const char *ini = GetKittyIniFile() ;
 	char v[64], *pv ;
@@ -545,8 +626,15 @@ int kitty_store_ini_takeover(void) {
 		kstore_set( &sesspath, dupstr( kstore_default_sesspath ) ) ;
 		kstore_set( &initialsesspath, dupstr( sesspath ) ) ;
 	}
-	if( !GetReadOnlyFlag() && sesspath && sesspath[0] && !existdirectory( sesspath ) )
-		if( !kitty_store_acl_mkdir( sesspath ) ) MakeDir( sesspath ) ;
+	if( !GetReadOnlyFlag() && sesspath && sesspath[0] && !existdirectory( sesspath ) ) {
+		if( kitty_store_acl_mkdir( sesspath ) || MakeDir( sesspath ) )
+			kstore_set( &kstore_sess_made, dupstr( sesspath ) ) ;
+	}
+	/* both endings into kitty.ini once: a new store (the session folder in
+	 * force made at this start) gets .ktx/.khk, an existing one none */
+	if( can_write && sesspath && sesspath[0] )
+		kstore_store_endings( ini, ini_only,
+		                      kstore_sess_made && !stricmp( sesspath, kstore_sess_made ) ) ;
 
 	/* the endings read as old KiTTY read them: a dot in front if missing.
 	 * Where kitty.ini could not be written, a 0.85.1.13 name still counts. */

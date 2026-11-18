@@ -128,7 +128,8 @@ space before it, no byte-order mark before the first line. Other files
 fit it is marked in the session list, with a rename offered; such a
 folder is not looked into.
 
-\b \c{fileextension} (\q{Session File Extension}): none by default, a
+\b \c{fileextension} (\q{Session File Extension}): none by default (\c{.ktx} in a
+store whose session folder KiTTY++ made at its first start), a
 dot put in front when missing; ends every session file name and is not
 shown in the list. A value holding a control character or one of
 \c{\\ / : * ? " < > |} is not used.
@@ -310,7 +311,8 @@ when identical to the key presented. Two more files, \c{%3Afirst}
 \c ssh-ed25519@22%3Aweb01.example.com%3Afirst
 \c ssh-ed25519@22%3Aweb01.example.com%3Awhen
 
-\c{hostkeyextension} (\q{Host Key File Extension}): none by default, a
+\c{hostkeyextension} (\q{Host Key File Extension}): none by default (\c{.khk} in a
+new store whose host-key folder holds no file yet), a
 dot put in front when missing. A file without it is renamed at its
 first lookup; when both exist, the one with it is read.
 \c{hostkeyextensionapplied} records the ending last applied.

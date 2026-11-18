@@ -25,6 +25,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Changed
 
+- A new folder store (its session folder made at the first start of
+  `kitty_portable.exe`) gets `.ktx` as session file extension. It gets `.khk`
+  as host-key file extension when its host-key folder holds no file yet.
+  An existing store gets both keys empty (none) without a file renamed. From
+  then on kitty.ini alone decides (hknet/KiTTY#56).
 - New icons for every program of the suite: one blue tile with two
   computers and the green `++`, a badge for Manage Sessions, Quick
   Connect, kageant, kittygen, kscp/ksftp and the lost connection. kageant's

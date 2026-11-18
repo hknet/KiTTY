@@ -256,7 +256,7 @@ it and saved in place under its old file name.
 `[KiTTY] fileextension` - old KiTTY's key, read the same way - adds an ending
 such as `.ktx` to every session file, which keeps them apart from other files
 in the folder (Application > KiTTY++ Settings > Storage & Backup, *Session
-File Extension*; none by default, as in old KiTTY); the list shows the names without it, a file without it is still
+File Extension*; none by default, as in old KiTTY, `.ktx` in a new store); the list shows the names without it, a file without it is still
 listed and gets it on its next save, and changing it offers to rename the
 existing files once. It is also the file type registered for double-clicked
 session files. For tools that generate a session folder themselves,
@@ -267,7 +267,7 @@ escaping, the file format and the registry counterpart.
 putty.conf is taken over.** Storage & Backup, group "This KiTTY++", has a
 **Host Keys Folder** field with a folder picker (`[KiTTY] sshhostkeys`; in the
 registry store it shows the registry key, read-only). Below it, **Host Key
-File Extension** (`hostkeyextension`, old KiTTY's key too; none by default)
+File Extension** (`hostkeyextension`, old KiTTY's key too; none by default, `.khk` in a new store with no host keys yet)
 adds an ending such as `.khk` to host-key file names: its Apply renames the
 existing host-key files at once. Either ending changed in kitty.ini by hand is
 offered as a rename at the next start of the configuration window, one

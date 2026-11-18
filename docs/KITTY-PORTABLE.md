@@ -37,7 +37,7 @@ folder store lists a file only when it holds a `HostName` or `Protocol`
 setting, in either file format; dot-files and dot-folders (`.git`,
 `.gitignore`) are never looked at, so a README or a log beside the sessions
 stays out of the list. `[KiTTY] fileextension` - old KiTTY's key, a dot put in
-front if missing, none by default - (Application > KiTTY++ Settings > Storage &
+front if missing, none by default, `.ktx` in a new store - (Application > KiTTY++ Settings > Storage &
 Backup, "Session File Extension") adds an ending such as `.ktx` to every session file name, which keeps
 session files apart from other files in the folder; the list shows the names
 without it. It is also the file type registered for double-clicked session
@@ -53,7 +53,8 @@ has the layout, the name escaping and the file format.
 over.** Application > KiTTY++ Settings > Storage & Backup, group "This
 KiTTY++", has a "Host Keys Folder" field with a folder picker
 (`[KiTTY] sshhostkeys`), and below it "Host Key File Extension"
-(`hostkeyextension`, old KiTTY's key too; none by default), which adds an
+(`hostkeyextension`, old KiTTY's key too; none by default, `.khk` in a new store with no host keys
+yet), which adds an
 ending such as `.khk` to host-key file names. Its Apply renames the existing
 host-key files at once. Either ending changed in kitty.ini by hand is offered
 as a rename at the next start of the configuration window (Yes / No /

@@ -5390,10 +5390,9 @@ static void kitty_sp_keyext_apply_handler(dlgcontrol *ctrl, dlgparam *dlg,
         return;
     }
     sfree(nw);
-    if (buf[0])
-        writeINI(GetKittyIniFile(), INIT_SECTION, KI_HOSTKEYEXTENSION, buf);
-    else
-        delINI(GetKittyIniFile(), INIT_SECTION, KI_HOSTKEYEXTENSION);
+    /* "none" stays in kitty.ini as an empty key, as fileextension does: the
+     * key is always there once the store has started (kstore_store_endings) */
+    writeINI(GetKittyIniFile(), INIT_SECTION, KI_HOSTKEYEXTENSION, buf);
     kitty_set_hostkey_suffix(buf);
     clashes = strbuf_new();             /* every name: the list was cut at 4 KB */
     done = kitty_store_hostkey_rename(0, clashes);

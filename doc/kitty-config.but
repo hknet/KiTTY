@@ -3189,7 +3189,8 @@ In the registry store the field shows the registry key, read-only, and
 \q{Browse...} is greyed.
 
 \b \q{Host Key File Extension} (folder store only): an ending on every
-host-key file name, for example \c{.khk}; none by default. \q{Apply}
+host-key file name, for example \c{.khk}; none by default, \c{.khk} in a new store with
+no host keys yet. \q{Apply}
 puts it in force and renames the host-key files to carry it at once,
 then reports how many; a file whose new name exists already is left as
 it is and listed. A file arriving later without it is renamed when its
@@ -3197,7 +3198,7 @@ host is first used, and where both names exist the one with the ending
 is read. \c{kitty.ini}: \c{[KiTTY] hostkeyextension}, old KiTTY's key.
 
 \b \q{Session File Extension} (folder store only): an ending on every
-session file name, for example \c{.ktx}; none by default. The list
+session file name, for example \c{.ktx}; none by default, \c{.ktx} in a new store. The list
 shows the names without it. \q{Apply} puts it in force and offers to
 rename the existing files. A session file without it is still listed
 and gets it on its next save. \c{kitty.ini}: \c{[KiTTY] fileextension},
