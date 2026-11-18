@@ -4561,6 +4561,17 @@
 #define KT_CLIP_FAR2L_LOG_READ                       "far2l read the clipboard (%d bytes)."
 #define KT_CLIP_FAR2L_LOG_REFUSED                    "far2l clipboard read refused: no paste sent in the last 5 seconds."
 #define KT_CLIP_FAR2L_LOG_DATAID                     "far2l checked the clipboard by its data ID."
+/* the Terminal Window's Event Log, terminal.c (term_update): a program in the
+ * terminal takes the mouse (DECSET 1000/1002/1003) or the mouse comes back.
+ * %d = the mode, %s = the sequence or event that changed it ("CSI ?1002 h",
+ * "Reset terminal in the menu" ...), then the coordinates (taken only).
+ * _SHIFT while "Shift overrides application's use of mouse" is on. */
+#define KT_TERM_LOG_MOUSE_TAKEN_SHIFT                "The program in the terminal now gets the mouse (mode %d by %s, %s). Selecting and pasting with the mouse need Shift."
+#define KT_TERM_LOG_MOUSE_TAKEN                      "The program in the terminal now gets the mouse (mode %d by %s, %s). Selecting and pasting with the mouse go to the program."
+#define KT_TERM_LOG_MOUSE_RELEASED                   "The mouse is back with the terminal (%s). Selecting and pasting with the mouse work as usual."
+#define KT_TERM_LOG_MOUSE_SGR                        "SGR coordinates"
+#define KT_TERM_LOG_MOUSE_URXVT                      "urxvt coordinates"
+#define KT_TERM_LOG_MOUSE_CLASSIC                    "classic coordinates"
 /* far2l key events: the title suffix while they are on (window.c, wide: it
  * goes on after the codepage conversion) and the notices when they turn on
  * and off (kitty/kitty_hostnotify.c, titled with the session name). */

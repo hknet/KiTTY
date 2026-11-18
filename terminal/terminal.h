@@ -473,6 +473,12 @@ struct terminal_tag {
     unsigned long far2l_id_logged;
     /* KiTTY: DECSET 1004, focus in/out reports (ESC [ I / ESC [ O). */
     bool focus_reports;
+    /* KiTTY: the mouse mode (xterm_mouse, 0 = KiTTY's own) the Event Log
+     * last showed, so a program taking or releasing the mouse gets one line
+     * (term_update) */
+    int mouse_mode_logged;
+    /* what last changed the mouse mode: "CSI ?1002 h", "ESC c", ... */
+    char mouse_cause[40];
     /* KiTTY OSC 52 permission, seeded from CONF_osc52_clipboard whenever config
      * is copied in: 0=deny, 1=allow, 2=ask-then-latch (OSC52_CLIPBOARD_*).
      * Latching matters: OSC 52 has no handshake, so a per-payload prompt would

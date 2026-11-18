@@ -2511,6 +2511,11 @@ static void power_on(Terminal *term, bool clear)
     term->erase_char = term->basic_erase_char;
     term->alt_which = 0;
     term_print_finish(term);
+#ifdef MOD_PERSO
+    /* KiTTY: the Event Log's cause, term_pwron sets it for its two callers */
+    if (term->xterm_mouse)
+        strcpy(term->mouse_cause, "ESC c, a reset from the host");
+#endif
     term->xterm_mouse = 0;
     term->xterm_extended_mouse = false;
     term->urxvt_extended_mouse = false;
@@ -2634,6 +2639,35 @@ void term_update(Terminal *term)
     if (term->win_pointer_shape_pending) {
         win_set_raw_mouse_mode_pointer(term->win, term->win_pointer_shape_raw);
         term->win_pointer_shape_pending = false;
+#ifdef MOD_PERSO
+        {
+            /* KiTTY: one Event Log line when a program takes the mouse or
+             * gives it back. Here, after the whole output chunk: tmux clears
+             * every mode and sets one again, which nets no change. */
+            static const int modes[] = { 0, 1000, 1002, 1003 };
+            int now = term->xterm_mouse_forbidden ? 0 : term->xterm_mouse;
+            if (now < 0 || now > 3)
+                now = 0;
+            if (now != term->mouse_mode_logged) {
+                char *msg;
+                const char *cause = term->mouse_cause[0] ?
+                    term->mouse_cause : "?";
+                const char *coords = term->xterm_extended_mouse ?
+                    KT_TERM_LOG_MOUSE_SGR : term->urxvt_extended_mouse ?
+                    KT_TERM_LOG_MOUSE_URXVT : KT_TERM_LOG_MOUSE_CLASSIC;
+                if (now == 0)
+                    msg = dupprintf(KT_TERM_LOG_MOUSE_RELEASED, cause);
+                else
+                    msg = dupprintf(term->mouse_override ?
+                                    KT_TERM_LOG_MOUSE_TAKEN_SHIFT :
+                                    KT_TERM_LOG_MOUSE_TAKEN, modes[now],
+                                    cause, coords);
+                logevent(term->logctx, msg);
+                sfree(msg);
+                term->mouse_mode_logged = now;
+            }
+        }
+#endif
     }
     if (term->win_refresh_pending) {
         win_refresh(term->win);
@@ -2732,9 +2766,17 @@ static void kitty_below_drop(Terminal *term)
 void term_pwron(Terminal *term, bool clear)
 {
 #ifdef MOD_PERSO
+    bool had_mouse = term->xterm_mouse != 0;
     kitty_below_drop(term);            /* KiTTY: a reset forgets them */
 #endif
     power_on(term, clear);
+#ifdef MOD_PERSO
+    /* KiTTY: window.c calls this for Reset terminal (clear) and for a
+     * session restart (no clear) */
+    if (had_mouse)
+        strcpy(term->mouse_cause, clear ? "Reset terminal in the menu" :
+                                          "the session restarted");
+#endif
     if (term->ldisc)                   /* cause ldisc to notice changes */
         ldisc_echoedit_update(term->ldisc);
     term->disptop = 0;
@@ -4904,16 +4946,19 @@ static void toggle_mode(Terminal *term, int mode, int query, bool state)
                 term->disptop = 0;
             break;
           case 1000:                   /* xterm mouse 1 (normal) */
-            term->xterm_mouse = state ? 1 : 0;
-            term_update_raw_mouse_mode(term);
-            break;
           case 1002:                   /* xterm mouse 2 (inc. button drags) */
-            term->xterm_mouse = state ? 2 : 0;
-            term_update_raw_mouse_mode(term);
-            break;
           case 1003:                   /* xterm mouse any-event tracking */
-            term->xterm_mouse = state ? 3 : 0;
-            term_update_raw_mouse_mode(term);
+            {
+                int m = !state ? 0 : mode == 1000 ? 1 : mode == 1002 ? 2 : 3;
+#ifdef MOD_PERSO
+                /* KiTTY: the sequence the Event Log shows (term_update) */
+                if (m != term->xterm_mouse)
+                    snprintf(term->mouse_cause, sizeof(term->mouse_cause),
+                             "CSI ?%d %c", mode, state ? 'h' : 'l');
+#endif
+                term->xterm_mouse = m;
+                term_update_raw_mouse_mode(term);
+            }
             break;
           case 1006:                   /* xterm extended mouse */
             term->xterm_extended_mouse = state;

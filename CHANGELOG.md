@@ -19,6 +19,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   shown instead, when it exists. In Manage Sessions the pin of a session
   with a place of its own then follows its name, as in the folder tree
   (hknet/KiTTY#62).
+- The Terminal Window's Event Log shows when a program in the terminal takes
+  the mouse and when the mouse comes back, with the sequence or event that
+  did it (hknet/KiTTY#93).
 
 ### Changed
 
