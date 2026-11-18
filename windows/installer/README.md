@@ -1,9 +1,9 @@
-# KiTTY MSI installers
+# KiTTY++ MSI installers
 
-Two MSI installers are produced from this directory, both embedding the packaged
-binaries from `release-084/` (kitty.exe + the k* command-line tools; the
-portable and `_nocompress` variants are intentionally **not** installed — the
-portable build is the no-install story).
+Two MSI installers are produced from this directory. Both embed the packaged
+binaries of a release directory: kitty.exe with the k* command-line tools. The
+portable and `_nocompress` variants are not installed. The portable build is
+the no-install form.
 
 | File | Scope | Location | Admin / UAC |
 |------|-------|----------|-------------|
@@ -27,17 +27,19 @@ it, so an autostart that was turned off stays off.
 
 ## Building
 
+WiX 5 (`dotnet tool install --global wix --version 5.0.2`), once for each
+scope (`system`, `peruser`). `<rel>` holds the packaged binaries. `windows`
+is this repository's `windows\` directory, for the shortcut icons.
+
 ```powershell
-dotnet tool install --global wix --version 5.0.2   # one-time
-# (ensure release-084\ holds the freshly packaged binaries)
-pwsh -File build.ps1 -Ver <version> -Rel <release-084 path>
-# -> release-084\KiTTY-<version>-x64-{system,peruser}.msi
+wix build -arch x64 -ext WixToolset.Util.wixext -bindpath <rel> -bindpath windows `
+  -o <rel>\KiTTY-<version>-x64-<scope>.msi windows\installer\kitty-<scope>.wxs
 ```
 
-## Upgrades: what happens to running KiTTY windows
+## Upgrades: what happens to running KiTTY++ windows
 
 An in-place upgrade has to replace `kitty.exe` while sessions may be open, so
-both packages take part in the **Restart Manager (RM)** protocol. Every KiTTY
+both packages take part in the **Restart Manager (RM)** protocol. Every KiTTY++
 window registers itself with `RegisterApplicationRestart` — terminals register
 their own `-load "SESSION"`, so RM reopens *the session*, not a dead command
 line. Config-box-spawned children (launched internally as `putty &<handle>`)
