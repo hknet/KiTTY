@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 # This script generates licence.h (containing the PuTTY licence in the
-# form of macros expanding to C string literals) from the LICENCE
+# form of macros expanding to C string literals) from the NOTICE
 # master file. It also regenerates the licence-related Halibut input
 # files.
 
@@ -22,7 +22,7 @@ GetOptions("--header" => sub {$mode = "header"},
 
 # Read the input file. It lives in the repository root, one level above
 # this script.
-my $infile = (dirname __FILE__) . "/../LICENCE";
+my $infile = (dirname __FILE__) . "/../NOTICE";
 open my $in, $infile or die "$infile: open: $!\n";
 my @lines = ();
 while (<$in>) {
@@ -76,7 +76,7 @@ if ($mode eq "header") {
         &stringlit($shortdetails);
     # KiTTY: upstream's notice, for the "Based on PuTTY" lines (as licence.cmake)
     my ($puttydetails) = grep { defined } map { /^PuTTY is copyright ([^\.]*)\./ ? $1 : undef } @paras;
-    die "LICENCE has no 'PuTTY is copyright ...' line\n" unless defined $puttydetails;
+    die "NOTICE has no 'PuTTY is copyright ...' line\n" unless defined $puttydetails;
     $out .= sprintf "#define PUTTY_COPYRIGHT_DETAILS \"%s\"\n",
         &stringlit($puttydetails);
 } elsif ($mode eq "licencedoc") {

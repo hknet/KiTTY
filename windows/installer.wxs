@@ -268,7 +268,7 @@ https://msdn.microsoft.com/en-us/library/windows/desktop/dd391569(v=vs.85).aspx
           <Component Id="LICENCE_Component"
                      Guid="$(var.LICENCE_Component_GUID)">
             <File Id="LICENCE_File"
-                  Source="../LICENCE" KeyPath="yes" />
+                  Source="../NOTICE" KeyPath="yes" />
           </Component>
           <Component Id="README_Component"
                      Guid="$(var.README_Component_GUID)">

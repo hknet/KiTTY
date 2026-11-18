@@ -51,12 +51,12 @@ if(HALIBUT AND PERL_EXECUTABLE)
     BYPRODUCTS copy.but
     COMMAND ${PERL_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl
       --copyrightdoc -o copy.but
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl ${CMAKE_CURRENT_SOURCE_DIR}/../LICENCE)
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl ${CMAKE_CURRENT_SOURCE_DIR}/../NOTICE)
   add_custom_target(licence_but
     BYPRODUCTS licence.but
     COMMAND ${PERL_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl
       --licencedoc -o licence.but
-    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl ${CMAKE_CURRENT_SOURCE_DIR}/../LICENCE)
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/licence.pl ${CMAKE_CURRENT_SOURCE_DIR}/../NOTICE)
   set(manual_dependencies ${manual_dependencies} copy_but licence_but)
 
   # KiTTY: the "KiTTY additions" chapter is GENERATED from FEATURES.md, so the

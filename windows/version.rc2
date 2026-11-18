@@ -97,15 +97,15 @@ BEGIN
 	     * All three layers, because all three hold copyright in what ships:
 	     * PuTTY upstream, the original KiTTY features, and this port. The
 	     * PUTTY_COPYRIGHT_DETAILS macro is derived by cmake/licence.cmake from
-	     * the "PuTTY is copyright ..." line of LICENCE only, so the
+	     * the "PuTTY is copyright ..." line of NOTICE only, so the
 	     * other two have to be named here or the binary credits upstream alone
-	     * while LICENCE credits all three.
+	     * while NOTICE credits all three.
 	     *
 	     * ORDER: this port first, then the earlier KiTTY features, then PuTTY.
 	     * The MIT licence requires upstream's notice to be RETAINED and travel
 	     * with the software - it does not require it to come first - and the
 	     * publisher of THIS binary is who a user checking its properties is
-	     * looking for. All three are still named, and LICENCE (which is what
+	     * looking for. All three are still named, and NOTICE (which is what
 	     * the licence text itself requires) is unchanged.
 	     */
 	    VALUE "LegalCopyright",	"Copyright \251 " SHORT_COPYRIGHT_DETAILS \

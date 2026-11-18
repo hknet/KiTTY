@@ -159,8 +159,8 @@ in putty do cmake . -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw.cmake -DSTRICT=
 in putty do make -j$(nproc) VERBOSE=1
 enddelegate
 
-# Windowsify LICENCE, since it's going in the Windows installers.
-in putty do perl -i~ -pe 'y/\015//d;s/$$/\015/' LICENCE
+# Windowsify NOTICE, since it's going in the Windows installers.
+in putty do perl -i~ -pe 'y/\015//d;s/$$/\015/' NOTICE
 
 # Some gratuitous theming for the MSI installer UI.
 in putty/icons do make -j$(nproc)

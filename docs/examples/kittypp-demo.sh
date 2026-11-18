@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright 2026 KAPPER NETWORK-COMMUNICATIONS GmbH <https://github.com/hknet/KiTTY>
-# Released under the MIT licence, as KiTTY++ (see LICENCE in the repository).
+# Released under the MIT licence, as KiTTY++ (see LICENSE in the repository).
 #
 # kittypp-demo.sh - the new terminal features of KiTTY++ 0.85.1.15, one step
 # at a time, to look at by hand. NOT a test with a verdict: each step shows

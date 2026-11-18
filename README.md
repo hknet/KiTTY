@@ -209,6 +209,6 @@ If you got a related project to this KiTTY++ please notify the repo and will lin
   **Ivan Shatsky**; the [far2l](https://github.com/elfmz/far2l) file manager by **elfmz** and contributors.
 - **RuTTY** © 2013-2014 Ernst Dijk — the scripting patch behind *Session → Scripting*
   (`kitty/kitty_rutty.c`).
-- This port keeps PuTTY's **MIT licence** — see [`LICENCE`](LICENCE).
+- This port keeps PuTTY's **MIT licence**: see [`LICENSE`](LICENSE). [`NOTICE`](NOTICE) holds the credits and the one part under its own terms.
 
 The original PuTTY source README is preserved as [`README`](README).
