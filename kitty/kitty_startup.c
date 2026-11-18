@@ -1131,23 +1131,21 @@ void InitWinMain( void ) {
 		WriteCountUpAndPath() ;
 	}
 
-	/* The icon library (hknet/KiTTY#62): [KiTTY] iconfile, else kitty++.dll,
-	 * else kitty.dll (classic KiTTY's name) beside the exe, else the exe,
-	 * which carries icon 0 alone. Loaded as data: no code of it runs. Only
-	 * the exe's own folder is searched (a bare LoadLibrary("kitty.dll")
-	 * ran the DLL's code and searched further). */
+	/* The icon library (hknet/KiTTY#62): [KiTTY] iconfile, else kitty++.icl
+	 * beside the exe, else the exe, which carries icon 0 alone. Loaded as
+	 * data: no code of it runs. Classic KiTTY's kitty.dll is not looked for:
+	 * iconfile takes it. Only the exe's own folder is searched (a bare
+	 * LoadLibrary("kitty.dll") ran the DLL's code and searched further). */
 	if( IconFile != NULL && existfile( IconFile ) )
 		hInstIcons = kitty_icon_library_load( IconFile ) ;
 	if( hInstIcons == NULL ) {
-		static const char * const names[] = { "kitty++.dll", "kitty.dll" } ;
 		char * dir = kitty_module_dir_dup( NULL ) ;
-		int i ;
-		for( i = 0 ; dir != NULL && hInstIcons == NULL && i < (int)lenof( names ) ; i++ ) {
-			char * p = dupprintf( "%s\\%s", dir, names[i] ) ;
+		if( dir != NULL ) {
+			char * p = dupprintf( "%s\\kitty++.icl", dir ) ;
 			if( existfile( p ) ) hInstIcons = kitty_icon_library_load( p ) ;
 			sfree( p ) ;
+			sfree( dir ) ;
 		}
-		sfree( dir ) ;
 	}
 	if( hInstIcons==NULL ) hInstIcons = GetModuleHandle( NULL ) ;
 

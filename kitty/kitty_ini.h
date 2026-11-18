@@ -492,9 +492,9 @@ char default_init_file_content[] =
 ;traymode=auto\n\
 \n\
 ; iconfile: the file the numbered session icons come from (.exe, .dll or\n\
-;    .icl). Blank = kitty++.dll beside kitty.exe, else kitty.dll there, else\n\
-;    kitty.exe (the default icon alone).\n\
-;iconfile=kitty++.dll\n\
+;    .icl). Blank = kitty++.icl beside kitty.exe, else kitty.exe (the\n\
+;    default icon alone). Classic KiTTY's kitty.dll only when set here.\n\
+;iconfile=kitty++.icl\n\
 \n\
 ; sessionicons: yes = each session's icon in front of its name in the\n\
 ;    launcher's session menu and in Manage Sessions (the icon its terminal\n\

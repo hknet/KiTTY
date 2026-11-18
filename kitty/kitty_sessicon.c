@@ -6,7 +6,7 @@
  * The source of a session's icon is the one its terminal window uses
  * (SetNewIcon, kitty/kitty.c): IconeFile, %VAR% expanded, when that file
  * exists, otherwise the built-in icon number Icone of the icon library
- * (hInstIcons, kitty++.dll). In dark mode <name>.dark.ico beside the file
+ * (hInstIcons, kitty++.icl). In dark mode <name>.dark.ico beside the file
  * wins when it exists. So does a built-in icon's dark form (resource id +
  * 1000) where the library has one. A .dll, .exe or .icl in IconeFile is a
  * library: the number picks the icon in it (kitty_icon_from_library). Single-threaded: the launcher
@@ -117,7 +117,7 @@ static struct sic_entry *sic_find(const char *key, int px)
 }
 
 /* A built-in icon: in dark mode its dark form (resource id + 1000, where the
- * library has one: kitty++.dll), else the icon. A number the library lacks
+ * library has one: kitty++.icl), else the icon. A number the library lacks
  * is icon 0, the library's, else the exe's own. */
 static HICON sic_load_builtin(int num, int px, bool dark)
 {

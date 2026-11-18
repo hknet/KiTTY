@@ -48,7 +48,7 @@ HICON kitty_icon_from_library(const char *path, int index, int px);
 /* How many icons a library holds (0 = none or not readable). */
 int kitty_icon_library_count(const char *path);
 
-/* The built-in set: resource ids 1 to this in kitty++.dll (icon_0.ico to
+/* The built-in set: resource ids 1 to this in kitty++.icl (icon_0.ico to
  * icon_51.ico). Their dark forms, 1001 and up, are no choice of their own. */
 #define KITTY_BUILTIN_ICONS 52
 

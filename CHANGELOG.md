@@ -36,16 +36,18 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   tray icon comes in one form for a light and one for a dark taskbar. 16
   to 24 px are drawn pixel by pixel.
 - The numbered session icons (Window > Title & Icon) are drawn anew and
-  come in `kitty++.dll` beside `kitty.exe`: symbols on coloured tiles,
+  come in `kitty++.icl` beside `kitty.exe`: symbols on coloured tiles,
   drawn from Microsoft's Fluent UI System Icons (MIT). The cartoon
   characters of classic KiTTY are gone: a session set to 2, 10-19, 21-35
   or 39 shows a new picture (server, database, cloud, firewall, console,
   git and more). The other numbers keep their meaning: computers in their
   colours, the warning sign, the balls, the printer and the digits. 51
   and 52 are two earlier designs of the program icon.
-  Without `kitty++.dll` a numbered icon shows the default icon. A classic
-  `kitty.dll` still loads when there is no `kitty++.dll`. Its code no
-  longer runs: the library is read as data, from the exe's folder only.
+  Without `kitty++.icl` a numbered icon shows the default icon. Classic
+  KiTTY's `kitty.dll` no longer loads by itself: `iconfile` in `kitty.ini`
+  set to its full path takes its icons. Renaming `kitty.dll` to
+  `kitty++.icl` works too, until an update replaces it. An icon library is
+  read as data: no code of it runs.
 - Window > Title & Icon: **Choose...** beside the icon number shows the
   icons with their numbers. The external icon file also takes an icon
   library (`.dll`, `.icl`, `.exe`): the number picks the icon in it.

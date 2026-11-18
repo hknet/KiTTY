@@ -1770,7 +1770,7 @@
 #define KT_KSET_WD_TRAY_LAUNCHER                     "Launcher (starts one if needed)"
 #define KT_KSET_WD_ICONFILE                          "Icon library for session icons (.exe, .dll or .icl):"
 #define KT_KSET_WD_ICONFILE_NOTE                     "A session's Window > Title & Icon panel picks one of its icons for " \
-        "the terminal window. Read at the next start. Blank = kitty++.dll or kitty.dll beside kitty.exe, else kitty.exe."
+        "the terminal window. Read at the next start. Blank = kitty++.icl beside kitty.exe, else kitty.exe."
 #define KT_KSET_WD_ICONFILE_SELECT                   "Select the icon file"
 /* [KiTTY] sessionicons: each session's icon in front of its name in the
  * launcher menu and Manage Sessions (hknet/KiTTY#62) */

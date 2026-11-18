@@ -20,8 +20,8 @@
  *
  * Only the files we KNOW are verified (the ship list below); any other .exe
  * in the folder is counted and listed, never judged - a stranger is never
- * silent, and we make no claim about it. DLLs are left out: kitty.dll is the
- * optional icon library, and a verdict on an unknown DLL means nothing.
+ * silent, and we make no claim about it. DLLs are left out: classic KiTTY's
+ * kitty.dll is an icon library. A verdict on an unknown DLL means nothing.
  *
  * The check runs one file per tick of a zero-delay timer on the panel's first
  * refresh, so the rows appear as they are judged and the box never freezes

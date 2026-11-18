@@ -202,7 +202,7 @@ void SetMouseShortcutsFlag( const int flag ) { MouseShortcutsFlag  = flag ; }
 #endif
 
 // The library to look the icons up in (the file set in kitty.ini, else
-// kitty.dll if it exists, else kitty.exe)
+// kitty++.icl if it exists, else kitty.exe)
 HINSTANCE hInstIcons =  NULL ;
 
 /* An icon library as data (hknet/KiTTY#62): its resources are read, its code

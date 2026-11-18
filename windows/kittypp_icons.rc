@@ -1,8 +1,8 @@
 /*
- * kitty++.dll - the session icons, resources only (no code). kitty.exe,
+ * kitty++.icl - the session icons, resources only (no code). kitty.exe,
  * kitty_portable.exe and the launcher load it beside themselves as data
- * (kitty_startup.c: [KiTTY] iconfile, else kitty++.dll, else kitty.dll, else
- * the exe's own icon 0). Window > Title & Icon "Icon (from internal
+ * (kitty_startup.c: [KiTTY] iconfile, else kitty++.icl, else the exe's own
+ * icon 0). Window > Title & Icon "Icon (from internal
  * resources)" n shows resource n + 1: icon 0 is the default.
  *
  * Drawn from Microsoft's Fluent UI System Icons (MIT,
@@ -13,7 +13,7 @@
 
 #include "rcstuff.h"
 
-#define APPNAME "kitty++.dll"
+#define APPNAME "kitty++.icl"
 #define APPDESC "KiTTY++ session icons"
 
 1 ICON "kitty_icons/icon_0.ico"

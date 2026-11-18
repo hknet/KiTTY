@@ -107,7 +107,7 @@ extern NOTIFYICONDATA TrayIcone ;   /* defined in kitty.c */
 #endif
 
 // The library to look the icons up in (the file set in kitty.ini, else
-// kitty.dll if it exists, else kitty.exe)
+// kitty++.icl if it exists, else kitty.exe)
 // extern HINSTANCE hInstIcons ;
 
 extern int debug_flag ;

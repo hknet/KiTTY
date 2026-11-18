@@ -3807,7 +3807,7 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     ctrl_droplist(s, KT_KSET_WD_TRAYMODE, NO_SHORTCUT, 100, HELPCTX(kitty_kset_window),
                   kitty_kset_handler, KSET(KI_TRAYMODE));
     /* Not a feature: the library the per-session icon numbers index into
-     * (kitty_startup.c loads it at startup, kitty.dll or the exe when unset). */
+     * (kitty_startup.c loads it at startup, kitty++.icl or the exe when unset). */
     s = ctrl_getset(b, KSET_PATH("Appearance"), "icons", KT_KSET_WD_ICONS);
     KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, KI_ICONFILE, kitty_appearance);
     ctrl_text(s, KT_KSET_WD_ICONFILE_NOTE, HELPCTX(kitty_appearance));

@@ -639,11 +639,11 @@ The group starts with the icon the window gets from the values below,
 as they stand now: it follows each change before the session is saved.
 
 \q{Icon (from internal resources)} takes the number of one of the icons
-of KiTTY++: 0 and 1 are the default, 2 to 52 come from \c{kitty++.dll}
+of KiTTY++: 0 and 1 are the default, 2 to 52 come from \c{kitty++.icl}
 beside \c{kitty.exe}. Most are a white symbol on a coloured tile (server,
 database, cloud, firewall, console, git and more); 3 to 9 are computers in
 seven colours, 41 to 50 the digits 0 to 9. 51 and 52 are two earlier
-designs of the program icon. Without \c{kitty++.dll} every
+designs of the program icon. Without \c{kitty++.icl} every
 number shows the default icon. \q{Choose...} beside the number shows the
 icons with their numbers: a double-click or OK puts that number in.
 
@@ -665,7 +665,7 @@ KiTTY++} is on (\k{kitty-cfg-appearance}). There, in dark mode, a
 file \c{<name>.dark.ico} beside \c{<name>.ico} is shown instead, when it
 exists: a light drawing for a dark menu (an \c{.ico} only, not a library). Without one the icon stays as it
 is. Of the built-in icons the dark tiles have a dark form with a light rim
-in \c{kitty++.dll}.
+in \c{kitty++.icl}.
 
 \S{kitty-cfg-title-combine} \q{Combine Host-Title and Window-Title}
 
@@ -2051,9 +2051,10 @@ window's own position (\k{kitty-cfg-config-window}) are not touched.
 Window > Title & Icon panel picks one of them by number for its terminal
 window; the configuration box and the other tools keep their own. It is
 loaded when KiTTY++ starts, so a change shows in the next start. Blank
-means \c{kitty++.dll} beside \c{kitty.exe}, else classic KiTTY's
-\c{kitty.dll} there, otherwise \c{kitty.exe} itself, which carries the
-default icon alone. The library is read as data: no code of it runs.
+means \c{kitty++.icl} beside \c{kitty.exe}, otherwise \c{kitty.exe}
+itself, which carries the default icon alone. Classic KiTTY's
+\c{kitty.dll} is used only when set here. The library is read as data:
+no code of it runs.
 
 \b \q{Show session icons in KiTTY++} puts each session's icon in front
 of its name in the launcher's session menu, in Manage Sessions and in

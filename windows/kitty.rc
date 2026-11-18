@@ -2,7 +2,7 @@
  * kitty.rc - resource script for the KiTTY target.
  * Mirrors putty.rc but additionally embeds icon 0 of the per-session set
  * and IDI_NOCON, used by SetNewIcon(). Icons 1-51 and their dark forms are
- * in kitty++.dll beside the exe (kittypp_icons.rc).
+ * in kitty++.icl beside the exe (kittypp_icons.rc).
  */
 #include "rcstuff.h"
 #include "putty-rc.h"
@@ -18,12 +18,12 @@
  * the exe's resource section. IDI_CFGICON is not embedded: dialog.c falls
  * back to IDI_MAINICON when it is missing. 9901/9902 are aliases of
  * IDI_MAINICON in kitty_rc_additions.h. IDI_MAINICON_0 stays a separate
- * copy because the per-session set 1..52 must keep its numbering (kitty++.dll
+ * copy because the per-session set 1..52 must keep its numbering (kitty++.icl
  * supplies 1..52, an icon library of the user's may too) and id 1 is also the
  * icon Explorer shows. Without a library the exe answers icon 0 alone. */
 IDI_MAINICON ICON "kitty_pp_windows.ico"
 
-/* KiTTY per-session icon set: icon 0 here, 1-51 in kitty++.dll */
+/* KiTTY per-session icon set: icon 0 here, 1-51 in kitty++.icl */
 IDI_MAINICON_0 ICON "kitty_icons/icon_0.ico"
 IDI_NOCON ICON "kitty_icons/nocon.ico"
 IDI_MANAGEICON ICON "kitty_pp_manage.ico"

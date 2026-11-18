@@ -6,7 +6,7 @@
  *
  * Two sources:
  *  - the built-in set (lib NULL): the icon library KiTTY++ loaded at its
- *    start (kitty++.dll, else kitty.dll, else the exe), resource ids 1-999 -
+ *    start (kitty++.icl, else the exe), resource ids 1-999 -
  *    number n shows resource n, as SetNewIcon does;
  *  - a library in the session's IconeFile (.dll, .exe, .icl): its icons in
  *    the order Windows lists them, number n = icon n - 1

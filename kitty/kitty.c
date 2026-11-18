@@ -929,7 +929,7 @@ void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 		int num = ( icone != 0 ) ? icone - 1 : 0 ;
 		(void)mode ;
 		hIcon = LoadIcon( hInstIcons, MAKEINTRESOURCE(IDI_MAINICON_0 + num ) ) ;
-		/* the number is not in the library (kitty++.dll missing, or an icon
+		/* the number is not in the library (kitty++.icl missing, or an icon
 		 * library of fewer icons): the exe's own icon 0, never none */
 		if( hIcon == NULL ) hIcon = LoadIcon( GetModuleHandle( NULL ), MAKEINTRESOURCE(IDI_MAINICON_0) ) ;
 		SendMessage( hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon );
@@ -943,7 +943,7 @@ void SetNewIcon( HWND hwnd, char * iconefile, int icone, const int mode ) {
 void SetConnBreakIcon( HWND hwnd ) {
 #ifdef MOD_PERSO
 	HICON hIcon = NULL ;
-	/* the icon is the exe's own (kitty.rc): hInstIcons is kitty++.dll when
+	/* the icon is the exe's own (kitty.rc): hInstIcons is kitty++.icl when
 	 * that sits beside the exe, which holds the numbered icons only */
 	hIcon = LoadIcon( GetModuleHandle( NULL ), MAKEINTRESOURCE(IDI_NOCON) ) ;
 	SendMessage( hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon );	
