@@ -48,7 +48,10 @@ int kitty_verify_sibling(const char *path);
  * process; kitty.exe installs an implementation that verifies the server
  * binary against our publisher and warns if it is not a genuine
  * KiTTY/kageant. klink/kscp/ksftp install a console one (kitty_agentcheck.h). */
-enum { KITTY_AGENT_TRANSPORT_PIPE, KITTY_AGENT_TRANSPORT_WMCOPYDATA };
+enum { KITTY_AGENT_TRANSPORT_PIPE, KITTY_AGENT_TRANSPORT_WMCOPYDATA,
+       /* the pipe on a Windows without GetNamedPipeServerProcessId (XP):
+        * the process judged is the owner of the "Pageant" window */
+       KITTY_AGENT_TRANSPORT_PIPE_WINDOWOWNER };
 extern void (*agent_serving_check_hook)(unsigned long server_pid,
                                         int transport);
 void kitty_install_agent_check(void);   /* kitty.exe: install the hook */

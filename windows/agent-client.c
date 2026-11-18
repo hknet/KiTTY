@@ -208,9 +208,29 @@ struct agent_connection {
 static void agent_serving_check_pipe(HANDLE pipehandle)
 {
     ULONG spid = 0;
-    if (agent_serving_check_hook &&
-        GetNamedPipeServerProcessId(pipehandle, &spid))
+    if (!agent_serving_check_hook)
+        return;
+    if (GetNamedPipeServerProcessId(pipehandle, &spid)) {
         agent_serving_report((unsigned long)spid, KITTY_AGENT_TRANSPORT_PIPE);
+    } else if (GetLastError() == ERROR_PROC_NOT_FOUND) {
+        /* Windows XP has no GetNamedPipeServerProcessId. kageant creates
+         * its "Pageant" window beside its pipe and refuses to start where
+         * either exists: the window's owner stands for the pipe's server.
+         * No window: the hook gets pid 0 once (judged "could not be
+         * checked"). */
+        static bool reported_none = false;
+        HWND hwnd = FindWindow("Pageant", "Pageant");
+        DWORD wpid = 0;
+        if (hwnd)
+            GetWindowThreadProcessId(hwnd, &wpid);
+        if (wpid)
+            agent_serving_report((unsigned long)wpid,
+                                 KITTY_AGENT_TRANSPORT_PIPE_WINDOWOWNER);
+        else if (!reported_none) {
+            reported_none = true;
+            agent_serving_check_hook(0, KITTY_AGENT_TRANSPORT_PIPE_WINDOWOWNER);
+        }
+    }
 }
 
 static int named_pipe_agent_accumulate_response(

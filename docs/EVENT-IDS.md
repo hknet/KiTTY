@@ -159,7 +159,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `session` - the saved session's name, empty when none was loaded.
 - `sig` - 100-172: the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev.
 - `tool` - 400-403: kittygen or kittygen-cli.
-- `transport` - 226, 227, 326, 327: how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75).
+- `transport` - 226, 227, 326, 327: how the agent is reached, pipe (its named pipe), window (the window messages of PuTTY before 0.75) or pipe-windowowner (the pipe on Windows XP, which cannot read the pipe's server: the owner of the Pageant window is judged).
 - `trigger` - 113: what started the retry; values: button, device-arrival; 117: what brought the key back, the same values; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).
 - `ts` - 100-172: the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone.
 - `user` - 220, 221, 320, 321, 240, 241, 330, 331: the user name of the login (a proxy's: the name sent to it); 225, 325: the user name sent to the proxy, empty when none.

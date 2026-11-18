@@ -552,7 +552,9 @@ static void kitty_agent_serving_check(unsigned long server_pid, int transport)
     debug_logevent(verdict == KITTY_AGENT_UNINSPECTED ?
                    KT_WIN_AGENT_LOG_UNINSPECTED : KT_WIN_AGENT_LOG_UNVERIFIED,
                    what, transport == KITTY_AGENT_TRANSPORT_WMCOPYDATA ?
-                   "window" : "pipe");
+                   KT_AGENT_OVER_WINDOW : transport ==
+                   KITTY_AGENT_TRANSPORT_PIPE_WINDOWOWNER ?
+                   KT_AGENT_OVER_PIPE_WINDOWOWNER : KT_AGENT_OVER_PIPE);
     main = GetMainHwnd();
     if (main && GetWindowThreadProcessId(main, NULL) == GetCurrentThreadId())
         kitty_agent_unverified_notice(verdict, what);

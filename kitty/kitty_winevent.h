@@ -96,8 +96,9 @@ void kitty_wev_proxy_used(const char *proxy, const char *host, int port,
 /* Events 226/326 and 227/327: the agent check ([KiTTY] verifyagent,
  * kitty_agentcheck.c) found the program answering the agent requests
  * unverified (agent = its full path) or could not inspect it (agentpid,
- * err = Windows' error number). window: 0 the named pipe, 1 the window
- * messages. */
+ * err = Windows' error number). window: the KITTY_AGENT_TRANSPORT_* -
+ * 0 the named pipe, 1 the window messages, 2 the pipe judged by the
+ * window's owner (XP). */
 void kitty_wev_agent_unverified(const char *agent, int window);
 void kitty_wev_agent_uninspected(unsigned long agentpid, unsigned long err,
                                  int window);

@@ -632,7 +632,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "400-403: kittygen or kittygen-cli" },
     { "transport",
       "226, 227, 326, 327: how the agent is reached, pipe (its named "
-      "pipe) or window (the window messages of PuTTY before 0.75)" },
+      "pipe), window (the window messages of PuTTY before 0.75) or "
+      "pipe-windowowner (the pipe on Windows XP, which cannot read the "
+      "pipe's server: the owner of the Pageant window is judged)" },
     { "trigger",
       "113: what started the retry; values: button, device-arrival; 117: "
       "what brought the key back, the same values; 152: "

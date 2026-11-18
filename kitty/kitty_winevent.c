@@ -523,12 +523,18 @@ void kitty_wev_proxy_used(const char *proxy, const char *host, int port,
               "proxy host port user credentials for", v, 6);
 }
 
+/* KITTY_AGENT_TRANSPORT_* (kitty_authenticode.h) as the record's word */
+static const char *wev_agent_transport(int t)
+{
+    return t == 1 ? "window" : t == 2 ? "pipe-windowowner" : "pipe";
+}
+
 void kitty_wev_agent_unverified(const char *agent, int window)
 {
     const char *v[2];
     if (!wev_session_block())
         return;
-    v[0] = agent; v[1] = window ? "window" : "pipe";
+    v[0] = agent; v[1] = wev_agent_transport(window);
     wev_write(g_block + KITTY_EVO_AGENT_UNVERIFIED, EVENTLOG_WARNING_TYPE,
               "agent transport", v, 2);
 }
@@ -542,7 +548,7 @@ void kitty_wev_agent_uninspected(unsigned long agentpid, unsigned long err,
         return;
     snprintf(p, sizeof(p), "%lu", agentpid);
     snprintf(e, sizeof(e), "%lu", err);
-    v[0] = p; v[1] = e; v[2] = window ? "window" : "pipe";
+    v[0] = p; v[1] = e; v[2] = wev_agent_transport(window);
     wev_write(g_block + KITTY_EVO_AGENT_UNINSPECTED, EVENTLOG_WARNING_TYPE,
               "agentpid err transport", v, 3);
 }

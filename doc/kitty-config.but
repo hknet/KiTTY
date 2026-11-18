@@ -3333,7 +3333,9 @@ A signed KiTTY++ checks who is answering before its first request
 leaves. It checks again whenever another program answers later, also
 for the requests a server sends through agent forwarding. It warns when the agent is not a signed build it recognises, or
 when it cannot check that program. klink, kscp and ksftp write the same
-warning to standard error. That is not a claim that the agent is
+warning to standard error. Windows XP cannot verify the SHA-256
+signature: there the integrity stamp of the release decides. The owner
+of the Pageant window stands for the pipe's server there. That is not a claim that the agent is
 malicious - a self-built \c{kageant}, or another agent you chose, is
 unverified too - it is KiTTY++ showing you \e{who} it is about to hand a
 signing request to, at the moment it matters.

@@ -2471,8 +2471,11 @@
 #define KT_AGENT_PROCESS_ERROR_FMT                   "process %lu, Windows error %lu"
 /* the Terminal Window's Event Log: the path or KT_AGENT_PROCESS_ERROR_FMT,
  * then pipe or window */
-#define KT_WIN_AGENT_LOG_UNVERIFIED                  "SSH agent not verified: %s (over the %s)"
-#define KT_WIN_AGENT_LOG_UNINSPECTED                 "SSH agent could not be checked: %s (over the %s)"
+#define KT_WIN_AGENT_LOG_UNVERIFIED                  "SSH agent not verified: %s (%s)"
+#define KT_WIN_AGENT_LOG_UNINSPECTED                 "SSH agent could not be checked: %s (%s)"
+#define KT_AGENT_OVER_PIPE                           "over the pipe"
+#define KT_AGENT_OVER_WINDOW                         "over the Pageant window"
+#define KT_AGENT_OVER_PIPE_WINDOWOWNER               "over the pipe, judged by the Pageant window's owner"
 /* klink/kscp/ksftp on standard error: program name, then the path or
  * KT_AGENT_PROCESS_ERROR_FMT */
 #define KT_CON_AGENT_UNVERIFIED_FMT                  "%s: the SSH agent is not verified: %s. It sees every key of " \

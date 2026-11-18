@@ -191,7 +191,8 @@ Warning, 900 is Error, the rest are classified as Information.
   answering the agent requests is not signed by KiTTY++'s publisher, with
   its full path in `agent`. 227/327 when that program could not be
   inspected, with its process id in `agentpid` and Windows' error number in
-  `err`. `transport` is `pipe` or `window`. Written before the first agent
+  `err`. `transport` is `pipe`, `window` or `pipe-windowowner` (Windows XP
+  cannot read a pipe's server: the owner of the Pageant window is judged). Written before the first agent
   request of the program, again for each other program that answers later
   (an agent replaced during a session, a forwarded request).
 - **SSH-1:** `keytype` `rsa1`; `fp` the MD5 hash (`aa:bb:...`).
@@ -1472,7 +1473,7 @@ Source `KiTTY++_kitty`, `%1` = `agent-unverified`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `agent` | the full path of the program that answers the SSH agent requests, not signed by KiTTY++'s publisher ([KiTTY] verifyagent) |
-| `%3` | `transport` | how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75) |
+| `%3` | `transport` | how the agent is reached, pipe (its named pipe), window (the window messages of PuTTY before 0.75) or pipe-windowowner (the pipe on Windows XP, which cannot read the pipe's server: the owner of the Pageant window is judged) |
 | `%4` | `pid` | the process writing the record |
 
 ### 227 agent-uninspected
@@ -1483,7 +1484,7 @@ Source `KiTTY++_kitty`, `%1` = `agent-uninspected`.
 |---:|---|---|
 | `%2` | `agentpid` | the process id of the program that answers the SSH agent requests, which could not be inspected |
 | `%3` | `err` | the Windows error number that refused inspecting the agent's process |
-| `%4` | `transport` | how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75) |
+| `%4` | `transport` | how the agent is reached, pipe (its named pipe), window (the window messages of PuTTY before 0.75) or pipe-windowowner (the pipe on Windows XP, which cannot read the pipe's server: the owner of the Pageant window is judged) |
 | `%5` | `pid` | the process writing the record |
 
 ### 230 farend-refused
@@ -1671,7 +1672,7 @@ Source `KiTTY++_cli`, `%1` = `agent-unverified`.
 | Position | Label | Meaning |
 |---:|---|---|
 | `%2` | `agent` | the full path of the program that answers the SSH agent requests, not signed by KiTTY++'s publisher ([KiTTY] verifyagent) |
-| `%3` | `transport` | how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75) |
+| `%3` | `transport` | how the agent is reached, pipe (its named pipe), window (the window messages of PuTTY before 0.75) or pipe-windowowner (the pipe on Windows XP, which cannot read the pipe's server: the owner of the Pageant window is judged) |
 | `%4` | `pid` | the process writing the record |
 
 ### 327 agent-uninspected
@@ -1682,7 +1683,7 @@ Source `KiTTY++_cli`, `%1` = `agent-uninspected`.
 |---:|---|---|
 | `%2` | `agentpid` | the process id of the program that answers the SSH agent requests, which could not be inspected |
 | `%3` | `err` | the Windows error number that refused inspecting the agent's process |
-| `%4` | `transport` | how the agent is reached, pipe (its named pipe) or window (the window messages of PuTTY before 0.75) |
+| `%4` | `transport` | how the agent is reached, pipe (its named pipe), window (the window messages of PuTTY before 0.75) or pipe-windowowner (the pipe on Windows XP, which cannot read the pipe's server: the owner of the Pageant window is judged) |
 | `%5` | `pid` | the process writing the record |
 
 ### 330 transfer-done
