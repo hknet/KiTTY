@@ -3030,6 +3030,62 @@
 #define KT_KA_FOREIGN_XP_FMT                         "%s holds the Pageant window. On Windows XP kageant cannot run beside " \
         "it: close %s, or start kageant first."
 #define KT_KA_FOREIGN_PROCESS_FMT                    "process %lu"
+/* [Agent] opensshpipe: another program holds \\.\pipe\openssh-ssh-agent
+ * (pageant.c). HELD_FMT: the program's file name, its path, its file name */
+#define KT_KA_OSSHPIPE_TITLE                         "kageant: the OpenSSH agent pipe is in use"
+/* the Windows OpenSSH agent service box (pageant.c, kageant_ossh_box):
+ * STATE_FMT: running/stopped, the start type, who serves the pipe, the
+ * question. The commands stand in the box's read-only field */
+#define KT_KA_OSSH_TITLE                             "kageant: Windows OpenSSH agent service"
+/* [Agent] extrapipe and setsshauthsock (pageant.c) */
+#define KT_KA_EXTRAPIPE_BAD                          "The pipe name may hold letters, digits, '.', '_' and '-' (up to 200). " \
+        "openssh-ssh-agent has its own checkbox. A pipe beginning with pageant. is PuTTY's."
+#define KT_KA_EXTRAPIPE_TITLE                        "kageant: the pipe is in use"
+#define KT_KA_EXTRAPIPE_HELD_FMT                     "%s serves %s. kageant serves its own pipe only."
+#define KT_KA_EXTRAPIPE_HELD_UNKNOWN_FMT             "A service or another user serves %s. kageant serves its own pipe only."
+#define KT_KA_SSHAUTHSOCK_TITLE                      "kageant: SSH_AUTH_SOCK kept"
+#define KT_KA_SSHAUTHSOCK_KEPT_FMT                   "SSH_AUTH_SOCK of this Windows user is %s, set by someone else. kageant " \
+        "leaves it. Remove it to let kageant set %s."
+#define KT_KA_OSSH_STATE_FMT                         "The Windows service OpenSSH Authentication Agent is %s, start type %s.\n" \
+        "The OpenSSH agent pipe: %s.\n\n%s"
+#define KT_KA_OSSH_ABSENT_FMT                        "The Windows service OpenSSH Authentication Agent is not installed.\n" \
+        "The OpenSSH agent pipe: %s."
+#define KT_KA_OSSH_RUNNING                           "running"
+#define KT_KA_OSSH_STOPPED                           "stopped"
+#define KT_KA_OSSH_START_AUTO                        "automatic"
+#define KT_KA_OSSH_START_MANUAL                      "manual"
+#define KT_KA_OSSH_START_DISABLED                    "disabled"
+#define KT_KA_OSSH_START_OTHER                       "unknown"
+#define KT_KA_OSSH_PIPE_KAGEANT                      "served by kageant"
+#define KT_KA_OSSH_PIPE_SERVICE                      "served by the service"
+#define KT_KA_OSSH_PIPE_FREE                         "free"
+#define KT_KA_OSSH_Q_STOP                            "Stop the service, so kageant can serve the pipe? Windows requests " \
+        "administrator rights. To run them yourself, copy the commands into a PowerShell started as administrator."
+#define KT_KA_OSSH_Q_DISABLE                         "The service starts again at the next boot unless it is disabled. kageant " \
+        "starts at login, so the service has to stay off. Stop and disable it? Windows requests administrator " \
+        "rights. To run them yourself, copy the commands into a PowerShell started as administrator."
+#define KT_KA_OSSH_Q_BACK                            "Turn the service back on? kageant stops serving the pipe first, so the " \
+        "service can take it. Windows requests administrator rights. To run them yourself, copy the commands " \
+        "into a PowerShell started as administrator."
+#define KT_KA_OSSH_B_RUN                             "Run as administrator"
+#define KT_KA_OSSH_B_COPY                            "Copy commands"
+#define KT_KA_OSSH_B_CLOSE                           "Close"
+#define KT_KA_OSSH_COPIED                            "The commands are on the clipboard."
+#define KT_KA_OSSH_DONE_OPENED                       "kageant now serves the Windows OpenSSH agent pipe."
+#define KT_KA_OSSH_DONE_ON                           "The service OpenSSH Authentication Agent runs again and serves the pipe."
+#define KT_KA_OSSH_DONE_FAILED_FMT                   "The commands did not end as expected (exit code %lu). The service is %s, " \
+        "start type %s."
+#define KT_KA_OSSHPIPE_HELD_FMT                      "%s (%s) serves the Windows OpenSSH agent pipe. kageant serves its own pipe only. " \
+        "ssh.exe, ssh-add and KeePassXC reach %s, not kageant."
+#define KT_KA_OSSHPIPE_HELD_UNKNOWN                  "A service or another user serves the Windows OpenSSH agent pipe. kageant serves " \
+        "its own pipe only. ssh.exe, ssh-add and KeePassXC reach that program, not kageant."
+#define KT_KA_OSSHPIPE_SERVICE_STOP                  "The Windows service OpenSSH Authentication Agent serves the OpenSSH agent pipe. " \
+        "kageant serves its own pipe only. To give kageant that pipe, stop the service " \
+        "in PowerShell as an administrator:\n\nStop-Service ssh-agent"
+#define KT_KA_OSSHPIPE_SERVICE_DISABLE               "The Windows service OpenSSH Authentication Agent serves the OpenSSH agent pipe. " \
+        "kageant serves its own pipe only. kageant starts at login, so the service has " \
+        "to stay off: stop and disable it in PowerShell as an administrator:\n\n" \
+        "Stop-Service ssh-agent\nSet-Service ssh-agent -StartupType Disabled"
 #define KT_KA_NOTICE_RULES_APPLY                     "kageant: destination rules apply"
 #define KT_KA_NOTICE_RULES_KEPT                      "kageant: destination rules kept"
 /* the hints of the add and removal notices (kitty_pageant.c) */
@@ -5540,6 +5596,10 @@
 #define KT_RC_KEYSETTINGS_KNOWNHOSTS                 "Use OpenSSH's known_hosts as a host-key source"
 #define KT_RC_KEYSETTINGS_BLOCKFWD                   "Refuse key changes from a forwarded agent (add, remove, lock)"
 #define KT_RC_KEYSETTINGS_ALLOWWMCD                  "Accept requests by window messages (PuTTY before 0.75)"
+#define KT_RC_KEYSETTINGS_OPENSSHPIPE                "Serve the Windows OpenSSH agent pipe (ssh.exe, ssh-add, KeePassXC)"
+#define KT_RC_KEYSETTINGS_OSSHSERVICE                "Windows OpenSSH service..."
+#define KT_RC_KEYSETTINGS_EXTRAPIPE                  "Also serve the pipe \\\\.\\pipe\\"
+#define KT_RC_KEYSETTINGS_SSHAUTHSOCK                "Set SSH_AUTH_SOCK of this Windows user to that pipe"
 /* kageant -h and a startup entry's destinations (kitty_kageant_dest.c) */
 #define KT_KA_DEST_REFUSED_FMT                       "Destination '%s': %s."
 #define KT_KA_DEST_NO_KEY_FMT                        "No host key found for %s in the KiTTY++ host-key store."

@@ -932,7 +932,7 @@ static int kageant_policy_read(const char *inikey, const char *regname,
  * queried on every external add/remove (and lock) request. One slot per
  * policy - a sixth policy needs a sixth slot, or it is re-read every time.
  * A write through kageant_policy_set forgets them all at once. */
-#define KAGEANT_POLICY_SLOTS 7
+#define KAGEANT_POLICY_SLOTS 9
 static struct { const char *inikey; int value; DWORD stamp; } kageant_policy_cache[KAGEANT_POLICY_SLOTS];
 
 static int kageant_policy_get_def(const char *inikey, const char *regname,
@@ -1054,6 +1054,65 @@ int kageant_allowwmcopydata_set(int on)
     return kageant_policy_set(KI_AGENT_ALLOWWMCOPYDATA, "AllowWmCopyData",
                               on);
 }
+/* "Serve the Windows OpenSSH agent pipe" - default OFF: kageant serves
+ * \\.\pipe\openssh-ssh-agent beside its own pipe, for ssh.exe, ssh-add and
+ * KeePassXC's "Use OpenSSH" (pageant.c, kageant_opensshpipe_apply). */
+int  kageant_opensshpipe_get(void)
+{
+    return kageant_policy_get_def(KI_AGENT_OPENSSHPIPE, "OpenSSHPipe", 0);
+}
+int kageant_opensshpipe_set(int on)
+{
+    return kageant_policy_set(KI_AGENT_OPENSSHPIPE, "OpenSSHPipe", on);
+}
+/* [Agent] extrapipe: a pipe of the user's naming that kageant serves too
+ * (\\.\pipe\<name>), for clients that take SSH_AUTH_SOCK - kageant's own
+ * pipe name changes with every boot. NULL or "" = none. */
+char *kageant_extrapipe_dup(void)
+{
+    return kageant_setting_str_dup(KI_AGENT_EXTRAPIPE, "ExtraPipe");
+}
+int kageant_extrapipe_set(const char *name)
+{
+    return kageant_setting_str_set(KI_AGENT_EXTRAPIPE, "ExtraPipe",
+                                   name ? name : "");
+}
+/* A name kageant accepts: 1-200 of A-Z a-z 0-9 . _ -, not the OpenSSH
+ * pipe's (its own checkbox) and not PuTTY's pageant.* names. */
+int kageant_extrapipe_valid(const char *name)
+{
+    size_t i, n = name ? strlen(name) : 0;
+    if (n == 0 || n > 200)
+        return 0;
+    for (i = 0; i < n; i++) {
+        char c = name[i];
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-'))
+            return 0;
+    }
+    return stricmp(name, "openssh-ssh-agent") != 0 && strnicmp(name, "pageant.", 8) != 0;
+}
+/* [Agent] setsshauthsock: SSH_AUTH_SOCK of the Windows user (HKCU\Environment)
+ * points at the extra pipe while kageant serves it. Default off. */
+int  kageant_setsshauthsock_get(void)
+{
+    return kageant_policy_get_def(KI_AGENT_SETSSHAUTHSOCK, "SetSshAuthSock", 0);
+}
+int kageant_setsshauthsock_set(int on)
+{
+    return kageant_policy_set(KI_AGENT_SETSSHAUTHSOCK, "SetSshAuthSock", on);
+}
+/* The SSH_AUTH_SOCK value kageant wrote: only that one is ever changed or
+ * removed again - a value someone else set stays. */
+char *kageant_sshauthsock_value_dup(void)
+{
+    return kageant_setting_str_dup(KI_AGENT_SSHAUTHSOCKVALUE, "SshAuthSockValue");
+}
+int kageant_sshauthsock_value_set(const char *v)
+{
+    return kageant_setting_str_set(KI_AGENT_SSHAUTHSOCKVALUE, "SshAuthSockValue",
+                                   v ? v : "");
+}
 
 /* "When Windows locks": 0 keep the agent working (default), 1 lock the
  * agent, 2 re-encrypt the keys. [Agent] lockwithwindows=keep|lock|reencrypt,
@@ -1081,6 +1140,33 @@ int kageant_winlock_mode_set(int mode)
     if (mode < 0 || mode > 2) mode = 0;
     return kageant_setting_write(KI_AGENT_LOCKWITHWINDOWS, words[mode],
                                  "LockWithWindows", mode);
+}
+
+/* The start type the Windows OpenSSH agent service had before kageant
+ * disabled it (pageant.c, the service box): 2 automatic, 3 manual, 0 none
+ * recorded. [Agent] opensshservicestart=auto|manual, registry
+ * OpenSSHServiceStart (DWORD). Turning the service back on restores it. */
+int kageant_opensshservice_start_get(void)
+{
+    char buf[16];
+    int ini_v = -1, reg_v;
+    if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_OPENSSHSERVICESTART, buf, sizeof(buf))) {
+        if (!stricmp(buf, "auto")) ini_v = 2;
+        else if (!stricmp(buf, "manual")) ini_v = 3;
+    }
+    if (kitty_inifile_registry_authoritative())
+        return kageant_reg_read_dword("OpenSSHServiceStart", &reg_v) &&
+               (reg_v == 2 || reg_v == 3) ? reg_v : (ini_v >= 0 ? ini_v : 0);
+    if (ini_v >= 0) return ini_v;
+    return kageant_reg_read_dword("OpenSSHServiceStart", &reg_v) &&
+           (reg_v == 2 || reg_v == 3) ? reg_v : 0;
+}
+int kageant_opensshservice_start_set(int start)
+{
+    if (start != 2 && start != 3) start = 3;
+    return kageant_setting_write(KI_AGENT_OPENSSHSERVICESTART,
+                                 start == 2 ? "auto" : "manual",
+                                 "OpenSSHServiceStart", start);
 }
 
 /* The raw configured notice display time (0 = unset = per-notice default). */

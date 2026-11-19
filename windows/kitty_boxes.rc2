@@ -1,0 +1,53 @@
+/*
+ * kitty_boxes.rc2 - the templates of the suite's shared boxes (the notice
+ * box and the confirmation box, kitty/kitty_dlgbox.c), included by
+ * kitty.rc and pageant.rc. Ids in kitty_boxes-rc.h.
+ */
+
+/* Generic notice: a caption, a block of text, OK. A real dialog rather than a
+ * MessageBox because it must GROW TO FIT its text - the height here is only a
+ * starting point, kitty_notice_box() expands it at the dialog's font. NOT a DPI
+ * matter: a MessageBox is drawn by Windows and scales correctly (see the corrected
+ * note in kitty_dlgbox.c). */
+IDD_NOTICEBOX DIALOGEX DISCARDABLE 0, 0, 260, 90
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION KT_CAP_KITTY
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "", IDC_NOTICE_TEXT, 10, 9, 240, 56
+    DEFPUSHBUTTON   KT_WIN_OK, IDOK, 206, 70, 44, 14
+END
+
+/* Yes/No confirmation, with an optional second line drawn in RED. Heights here are
+ * a starting point: kitty_confirm_box() grows both text controls to fit and moves
+ * the buttons down. "No" is the DEFAULT - the box comes when something is about to
+ * be overwritten, so a reflex Return must not confirm it. */
+IDD_CONFIRMBOX DIALOGEX DISCARDABLE 0, 0, 280, 111
+STYLE DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION KT_CAP_KITTY
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LTEXT           "", IDC_CONFIRM_TEXT, 10, 9, 260, 56
+    LTEXT           "", IDC_CONFIRM_WARN, 10, 68, 260, 16
+    PUSHBUTTON      "&Yes", IDYES, 166, 89, 50, 14
+    DEFPUSHBUTTON   "&No", IDNO, 220, 89, 50, 14
+    /* The optional third button: hidden by the dlgproc in Yes/No and info
+     * modes (so those boxes are unchanged), shown and laid out only in 3-way
+     * mode (Get File "files already exist"). */
+    PUSHBUTTON      "", IDC_CONFIRM_THIRD, 112, 89, 50, 14
+    /* The optional detail field: a read-only text the user can select and
+     * scroll (the target of an OSC 8 link). Hidden unless a box carries a
+     * detail. The dlgproc places it under the question, sizes it to the text
+     * up to a few lines, with a scroll bar beyond that. */
+    EDITTEXT        IDC_CONFIRM_DETAIL, 10, 68, 260, 14,
+                    ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | NOT WS_VISIBLE | WS_TABSTOP
+    /* The optional checkbox (kitty_confirm_modeless_check, the far2l
+     * clipboard box): hidden unless a box carries one. The dlgproc puts it
+     * where the buttons were and moves them down. */
+    AUTOCHECKBOX    "", IDC_CONFIRM_CHECK, 10, 89, 260, 10, NOT WS_VISIBLE | WS_TABSTOP
+    /* The optional Help button (the _help variants of kitty_confirm_modeless*,
+     * the host key box): hidden unless a box carries a help topic. The dlgproc
+     * puts it at the left end of the button row. Made with the window, so the
+     * theme's first pass reaches it. */
+    PUSHBUTTON      KT_HKD_HELP, IDHELP, 10, 89, 50, 14, NOT WS_VISIBLE | WS_TABSTOP
+END

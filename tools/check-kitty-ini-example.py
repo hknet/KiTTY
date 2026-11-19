@@ -108,6 +108,10 @@ ALLOW_TEMPLATE_UNREAD = {
     ("Agent", "agentlogexpiredays"),
     #   kageant_setting_str_get(KI_AGENT_AGENTLOGSINK, ...)  kitty/kitty_kageant_audit.c
     ("Agent", "agentlogsink"),
+    #   kageant_setting_str_dup(KI_AGENT_EXTRAPIPE / KI_AGENT_SSHAUTHSOCKVALUE, ...)
+    #   kitty/kitty_kageant_settings.c
+    ("Agent", "extrapipe"),
+    ("Agent", "sshauthsockvalue"),
     #   kitty_store_ending_applied(KI_FILEEXTENSIONAPPLIED, ...)  kitty/kitty_store.c
     ("KiTTY", "fileextensionapplied"),
     #   kitty_wev_switch_on(KI_CLIEVENTLOG / KI_KITTYGENEVENTLOG)

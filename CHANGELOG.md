@@ -11,6 +11,13 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### New
 
+- kageant can serve the Windows OpenSSH agent pipe beside its own
+  (Settings > Agent, `[Agent] opensshpipe`, off by default): ssh.exe,
+  ssh-add and KeePassXC's "Use OpenSSH" reach kageant with nothing else
+  set. When the Windows service OpenSSH Authentication Agent holds the
+  pipe, kageant's service box stops it, disables it when kageant starts at
+  login, or turns it back on, with Windows' administrator prompt, or shows
+  the commands to copy. Refs hknet/KiTTY#29
 - Session icons: with **Show session icons in KiTTY++** on Application >
   KiTTY++ Settings > Appearance (off by default) the launcher's session menu,
   Manage Sessions and the Session panel's list show each session's icon in

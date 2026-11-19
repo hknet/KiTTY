@@ -279,6 +279,11 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_AGENT_AGENTLOGSINK               "agentlogsink"
 #define KI_AGENT_ALLOWIPCLOCK               "allowipclock"
 #define KI_AGENT_ALLOWWMCOPYDATA            "allowwmcopydata"
+#define KI_AGENT_OPENSSHSERVICESTART        "opensshservicestart"   /* [Agent] auto|manual: the Windows OpenSSH agent service's start type before kageant disabled it */
+#define KI_AGENT_EXTRAPIPE                  "extrapipe"   /* [Agent] a pipe name: kageant serves \\.\pipe\<name> too */
+#define KI_AGENT_SETSSHAUTHSOCK             "setsshauthsock"   /* [Agent] yes|no: SSH_AUTH_SOCK of the Windows user = that pipe */
+#define KI_AGENT_SSHAUTHSOCKVALUE           "sshauthsockvalue"   /* [Agent] the SSH_AUTH_SOCK value kageant wrote (written by kageant) */
+#define KI_AGENT_OPENSSHPIPE                "opensshpipe"   /* [Agent] yes|no: kageant serves \\.\pipe\openssh-ssh-agent too */
 #define KI_AGENT_ASKCONFIRMATION            "askconfirmation"
 #define KI_AGENT_AUTOENCRYPTMODE            "autoencryptmode"
 #define KI_AGENT_AUTOENCRYPTSECONDS         "autoencryptseconds"

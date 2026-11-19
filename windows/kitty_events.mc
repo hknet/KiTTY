@@ -182,6 +182,12 @@ Language=English
 %1%nprogram: %2%nownerpid: %3%nstate: %4%nseq: %5%nsig: %6%nts: %7%nprev: %8%0
 .
 
+MessageId=162
+SymbolicName=KITTY_AGENT_PIPE
+Language=English
+%1%npipe: %2%nprogram: %3%nstate: %4%nseq: %5%nsig: %6%nts: %7%nprev: %8%0
+.
+
 MessageId=170
 SymbolicName=KITTY_AGENT_LOGROTATE
 Language=English

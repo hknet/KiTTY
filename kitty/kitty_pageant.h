@@ -312,6 +312,21 @@ int  kageant_fwd_blocked(int op, const char *fp);
 /* requests by window messages (WM_COPYDATA) accepted (default yes) */
 int  kageant_allowwmcopydata_get(void);
 int  kageant_allowwmcopydata_set(int on);
+int  kageant_opensshpipe_get(void);   /* [Agent] opensshpipe */
+int  kageant_opensshpipe_set(int on);
+char *kageant_extrapipe_dup(void);   /* [Agent] extrapipe, NULL/"" = none */
+int  kageant_extrapipe_set(const char *name);
+int  kageant_extrapipe_valid(const char *name);
+int  kageant_setsshauthsock_get(void);   /* [Agent] setsshauthsock */
+int  kageant_setsshauthsock_set(int on);
+char *kageant_sshauthsock_value_dup(void);   /* [Agent] sshauthsockvalue */
+int  kageant_sshauthsock_value_set(const char *v);
+int  kageant_opensshservice_start_get(void);   /* [Agent] opensshservicestart: 2, 3 or 0 */
+int  kageant_opensshservice_start_set(int start);
+/* a click on the OpenSSH pipe notice: the service box */
+#define KAGEANT_WM_NOTICE_OSSH (WM_APP + 16)
+/* the elevated service commands ended (wParam: their exit code) */
+#define KAGEANT_WM_OSSH_DONE (WM_APP + 17)
 /* A WM_COPYDATA request (its sender cannot be identified): 1 serve it, 0 refuse
  * it (the setting is off, the default: a refused-request record, reason
  * window-messages). A notice once per run, under the key-use notice

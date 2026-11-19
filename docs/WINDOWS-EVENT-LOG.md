@@ -165,7 +165,7 @@ The IDs:
 | Range | Source | Records |
 |---|---|---|
 | 0 | `KiTTY++` | text only, no longer written: listed for the records of earlier versions |
-| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), refused request (103), refused by a key's destination rules (104), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), rules changed in the rule editor (116), a startup key back on a drive (117), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), a certificate expiring, expired or not yet valid (141), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), another program holds the Pageant window (161), log rotation (170), log chain anchor (171), a record repeated (172) |
+| 100-199 | `KiTTY++_agent` | sign (100), confirm (101), session-bind (102), refused request (103), refused by a key's destination rules (104), add (110), load at startup (111), forget a path (112), retry (113), remove (114), remove all (115), rules changed in the rule editor (116), a startup key back on a drive (117), lock (120), unlock (121), Windows Hello enrol/protect/unlock (130-132), key file warning (140), a certificate expiring, expired or not yet valid (141), re-encrypt all (150), re-encrypt one key (151), decrypt a key (152), agent start/stop (160), another program holds the Pageant window (161), a further agent pipe (162), log rotation (170), log chain anchor (171), a record repeated (172) |
 | 200-299 | `KiTTY++_kitty` | session opened (200) and closed (201), host key known (210), new (211), mismatch (212), host key update (213), login succeeded (220) and failed (221), proxy used (225), SSH agent not verified (226) or not checkable (227), far-end request refused (230), file transferred (240) and failed (241) - ZModem and kitten transfers |
 | 300-399 | `KiTTY++_cli` | 300-327 as 200-227; file transferred (330) and failed (331) |
 | 400-499 | `KiTTY++_kittygen` | key generated (400), private key saved (401), public key saved (402), passphrase changed (403) |
@@ -1295,9 +1295,23 @@ Source `KiTTY++_agent`, `%1` = `foreign-window`.
 
 | Position | Label | Meaning |
 |---:|---|---|
-| `%2` | `program` | 900: the refused program file's path. 161: the program that holds the Pageant window |
+| `%2` | `program` | 900: the refused program file's path. 161: the program that holds the Pageant window. 162 held: the program that serves the pipe, empty for a service or another user |
 | `%3` | `ownerpid` | the process id of the program that holds the Pageant window |
-| `%4` | `state` | started-beside (kageant runs beside it on its own pipe) or not-started (Windows XP, which cannot read a pipe's server) |
+| `%4` | `state` | started-beside (kageant runs beside it on its own pipe) or not-started (Windows XP, which cannot read a pipe's server). 162: opened, closed, held (another program serves the pipe), service-off (the Windows service stopped through kageant's box), service-on (turned back on there), sshauthsock-set, sshauthsock-removed, sshauthsock-kept (a value someone else set) |
+| `%5` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
+| `%6` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
+| `%7` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
+| `%8` | `prev` | the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written |
+
+### 162 agent-pipe
+
+Source `KiTTY++_agent`, `%1` = `agent-pipe`.
+
+| Position | Label | Meaning |
+|---:|---|---|
+| `%2` | `pipe` | the further pipe kageant serves: openssh-ssh-agent, or the name of [Agent] extrapipe |
+| `%3` | `program` | 900: the refused program file's path. 161: the program that holds the Pageant window. 162 held: the program that serves the pipe, empty for a service or another user |
+| `%4` | `state` | 161: started-beside (kageant runs beside it on its own pipe) or not-started (Windows XP, which cannot read a pipe's server). 162: opened, closed, held (another program serves the pipe), service-off (the Windows service stopped through kageant's box), service-on (turned back on there), sshauthsock-set, sshauthsock-removed, sshauthsock-kept (a value someone else set) |
 | `%5` | `seq` | the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written |
 | `%6` | `sig` | the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev |
 | `%7` | `ts` | the time of the record as its file line carries it (UTC), empty when the file is not written. With prev it lets the signature be checked from the event alone |
@@ -1794,7 +1808,7 @@ Source `KiTTY++`, `%1` = `program-refused`.
 |---:|---|---|
 | `%2` | `check` | the check that refused the program file; values: rename, signature, integrity |
 | `%3` | `found` | what the check found; rename: the program's file name; signature: bad digest, not signed, or signer: followed by the signer name; integrity: no stamp, truncated, bad stamp, modified or cannot check |
-| `%4` | `program` | the refused program file's path. 161: the program that holds the Pageant window |
+| `%4` | `program` | the refused program file's path. 161: the program that holds the Pageant window. 162 held: the program that serves the pipe, empty for a service or another user |
 
 ### 901 log-retention
 

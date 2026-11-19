@@ -113,11 +113,13 @@ The fields, by name:
 
 \b \c{pid} - 100-170: the process that asked the agent, empty when none did; 200-403: the process writing the record.
 
+\b \c{pipe} - 162: the further pipe kageant serves: openssh-ssh-agent, or the name of [Agent] extrapipe.
+
 \b \c{port} - the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
 
 \b \c{prev} - 100-172: the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written; 171: the head the anchor pins.
 
-\b \c{program} - 900: the refused program file's path. 161: the program that holds the Pageant window.
+\b \c{program} - 900: the refused program file's path. 161: the program that holds the Pageant window. 162 held: the program that serves the pipe, empty for a service or another user.
 
 \b \c{protection} - 401, 403: none, passphrase or hello.
 
@@ -153,7 +155,7 @@ The fields, by name:
 
 \b \c{sig} - 100-172: the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev.
 
-\b \c{state} - 161: started-beside (kageant runs beside it on its own pipe) or not-started (Windows XP, which cannot read a pipe's server).
+\b \c{state} - 161: started-beside (kageant runs beside it on its own pipe) or not-started (Windows XP, which cannot read a pipe's server). 162: opened, closed, held (another program serves the pipe), service-off (the Windows service stopped through kageant's box), service-on (turned back on there), sshauthsock-set, sshauthsock-removed, sshauthsock-kept (a value someone else set).
 
 \b \c{tool} - 400-403: kittygen or kittygen-cli.
 
@@ -228,6 +230,8 @@ The event IDs:
 \b \c{160} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{agent}, then \c{result}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
 
 \b \c{161} \c{KiTTY++_agent} (Warning): \c{foreign-window}, then \c{program}, \c{ownerpid}, \c{state}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
+
+\b \c{162} \c{KiTTY++_agent} (Information (Warning for held)): \c{agent-pipe}, then \c{pipe}, \c{program}, \c{state}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
 
 \b \c{170} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{logrotate}, then \c{result}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
 

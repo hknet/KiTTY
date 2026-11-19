@@ -100,6 +100,7 @@ int kitty_audit_result_is_warning(const char *result)
         "not-verified", "waiting", "shut", "unlock-shut", "no-door-here",
         "sign-refused", "remove-refused", "store-damaged",
         "expired", "not-yet-valid",   /* 141: a certificate servers refuse */
+        "held",                       /* 162: another program holds the OpenSSH pipe */
     };
     size_t i;
     if (!result || !*result)
@@ -322,6 +323,8 @@ static const char *const af_decrypt[] = {
 };
 static const char *const af_result[] = { "result", "seq", "sig", "ts", "prev", NULL };
 /* 161: another program holds the "Pageant" window at kageant's start */
+/* 162: kageant's further pipes (the Windows OpenSSH agent pipe, [Agent] extrapipe) */
+static const char *const af_agentpipe[] = { "pipe", "program", "state", "seq", "sig", "ts", "prev", NULL };
 static const char *const af_foreign[] = { "program", "ownerpid", "state", "seq", "sig", "ts", "prev", NULL };
 /* a refused request (kageant_refused_hook): the agent's reason, the
  * requester, and the server of a verified session-bind */
@@ -369,6 +372,7 @@ static const struct audit_kind {
     { "decrypt",         152, af_decrypt },
     { "agent",           160, af_result },
     { "foreign-window",  161, af_foreign },
+    { "agent-pipe",      162, af_agentpipe },
     { "logrotate",       170, af_result },
     { "logchain",        171, af_logchain },
     { "repeated",        172, af_repeated },

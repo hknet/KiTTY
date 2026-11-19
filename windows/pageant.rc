@@ -8,6 +8,7 @@
 #define APPDESC "kageant (KiTTY++ SSH authentication agent)"
 
 #include "pageant-rc.h"
+#include "kitty_boxes-rc.h"   /* KiTTY: the shared boxes (kitty/kitty_dlgbox.c) */
 #include "../kitty/kitty_text.h"
 
 #include "help.rc2"
@@ -412,31 +413,44 @@ BEGIN
     /* ---- page 0: Agent ---- */
     AUTOCHECKBOX KT_KA_MENU_OPENSSH, IDC_SET_OPENSSH,
         16, 28, 268, 10
+    /* [Agent] opensshpipe (default no): no accelerator, every letter of it
+     * is taken here */
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_OPENSSHPIPE, IDC_SET_OPENSSHPIPE,
+        16, 39, 268, 10
+    /* the service box: its state, stop and disable it or turn it back on */
+    PUSHBUTTON KT_RC_KEYSETTINGS_OSSHSERVICE, IDC_SET_OSSHSERVICE,
+        28, 51, 110, 13
+    /* [Agent] extrapipe: a pipe of the user's naming. SSH_AUTH_SOCK below it */
+    LTEXT KT_RC_KEYSETTINGS_EXTRAPIPE, IDC_SET_L_EXTRAPIPE,
+        16, 69, 112, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_EXTRAPIPE, 130, 69, 154, 11, ES_AUTOHSCROLL
+    AUTOCHECKBOX KT_RC_KEYSETTINGS_SSHAUTHSOCK, IDC_SET_SSHAUTHSOCK,
+        28, 83, 256, 10
     /* OpenSSH's known_hosts as a host-key source ([Agent] readknownhosts,
      * default off): no accelerator, every letter of it is taken here */
     AUTOCHECKBOX KT_RC_KEYSETTINGS_KNOWNHOSTS, IDC_SET_KNOWNHOSTS,
-        16, 39, 268, 10
+        16, 97, 268, 10
     AUTOCHECKBOX KT_KA_MENU_START_AT_LOGIN, IDC_SET_STARTUP,
-        16, 50, 268, 10
+        16, 108, 268, 10
     AUTOCHECKBOX "Load remembered &keys at startup", IDC_SET_LOADKEYS,
-        16, 61, 268, 10
+        16, 119, 268, 10
     AUTOCHECKBOX KT_KA_MENU_NOTIFY, IDC_SET_NOTIFY,
-        16, 72, 268, 10
+        16, 130, 268, 10
     /* [Agent] messageonkeyarrival (default yes): no accelerator, every
      * letter of it is taken on this page */
     AUTOCHECKBOX KT_RC_KEYSETTINGS_ARRIVAL, IDC_SET_ARRIVAL,
-        16, 83, 268, 10
+        16, 141, 268, 10
     LTEXT KT_RC_KEYSETTINGS_NOTICE_LABEL, IDC_SET_L_NOTICE,
-        16, 98, 86, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_NOTICESECS, 106, 98, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+        16, 156, 86, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_NOTICESECS, 106, 156, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT KT_RC_KEYSETTINGS_NOTICE_HINT, IDC_SET_L_NOTICEHINT,
-        146, 98, 138, 11, SS_CENTERIMAGE
+        146, 156, 138, 11, SS_CENTERIMAGE
     LTEXT KT_RC_KEYSETTINGS_THEME_LABEL, IDC_SET_L_THEME,
-        16, 113, 50, 14, SS_CENTERIMAGE
-    COMBOBOX IDC_SET_THEME, 70, 113, 100, 80,
+        16, 171, 50, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_THEME, 70, 171, 100, 80,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT KT_RC_KEYSETTINGS_THEME_HINT,
-        IDC_SET_L_THEMEHINT, 16, 131, 268, 10
+        IDC_SET_L_THEMEHINT, 16, 189, 268, 10
 
     /* ---- page 1: Security ---- */
     AUTOCHECKBOX KT_RC_KEYSETTINGS_LOCKDOWN,
@@ -652,6 +666,7 @@ BEGIN
         ES_READONLY | ES_MULTILINE | ES_LEFT | WS_VSCROLL, WS_EX_STATICEDGE
 END
 
+#include "kitty_boxes.rc2"   /* KiTTY: the shared notice and confirmation boxes */
 #include "version.rc2"
 
 #ifndef NO_MANIFESTS

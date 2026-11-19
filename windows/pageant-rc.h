@@ -91,6 +91,11 @@
 #define IDC_SET_ALLOWWMCD 360     /* requests by window messages (WM_COPYDATA) */
 #define IDC_SET_L_LOGCHAINHINT 361  /* the anchors go to the Windows Event Log */
 #define IDC_SET_ARRIVAL 362       /* the notice when startup keys arrive */
+#define IDC_SET_OPENSSHPIPE 363   /* serve \\.\pipe\openssh-ssh-agent too */
+#define IDC_SET_OSSHSERVICE 364   /* the Windows OpenSSH agent service box */
+#define IDC_SET_L_EXTRAPIPE 365   /* "Also serve the pipe" */
+#define IDC_SET_EXTRAPIPE 366     /* [Agent] extrapipe */
+#define IDC_SET_SSHAUTHSOCK 367   /* [Agent] setsshauthsock */
 
 /* KiTTY: the key-details dialog */
 #define IDC_KEYDETAIL_KEY 100

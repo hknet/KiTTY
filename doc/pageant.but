@@ -328,7 +328,7 @@ back on a drive, 120 lock, 121 unlock, 130 Hello enrol, 131 Hello protect,
 132 Hello unlock, 140 key file warning, 141 a certificate expiring,
 expired or not yet valid, 150 re-encrypt all, 151
 re-encrypt one key, 152 decrypt a key, 160 agent start/stop, 161 another program holds
-the Pageant window, 170 log
+the Pageant window, 162 a further agent pipe, 170 log
 rotation, 171 log chain anchor, 172 a record repeated
 (\k{pageant-logchain}). Refusals,
 failures, key file warnings and a certificate that is expired or not
@@ -626,9 +626,8 @@ variable in the PowerShell window that runs \c{ssh-add}:
 \c $env:SSH_AUTH_SOCK = $pipe -replace '/','\'
 
 The pipe name changes with each Windows start, so set it again in each
-new window. kageant does not set \cw{SSH_AUTH_SOCK} for the user
-account: Git for Windows' own \c{ssh} reads the same variable and
-cannot use a named pipe.
+new window. A pipe of a fixed name, with \cw{SSH_AUTH_SOCK} set for the
+user account, is described below (\q{Also serve the pipe}).
 
 \s{Note}: this technique only works with \e{Windows's} port of
 OpenSSH, which lives at \cw{C:\\Windows\\System32\\OpenSSH\\ssh.exe}
@@ -835,6 +834,36 @@ nor the agent log show a program. A \c{session-bind@openssh.com} over
 window messages is refused (\c{SSH_AGENT_EXTENSION_FAILURE}): every such request
 reaches the agent as the same client, so a binding would apply to the
 requests of other programs.
+
+\q{Serve the Windows OpenSSH agent pipe} on the Agent page of the
+settings (\c{opensshpipe} in the \c{[Agent]} section of kitty.ini,
+default \c{no}) makes kageant serve \c{\\\\.\\pipe\\openssh-ssh-agent}
+beside its own pipe. Windows' ssh.exe and ssh-add reach kageant with
+nothing else set. KeePassXC with \q{Use OpenSSH} hands its keys to
+kageant over that pipe, as a known program under kageant's normal
+rules. When another program holds the pipe (the Windows service
+OpenSSH Authentication Agent, Bitwarden, gpg-agent), a notice shows it
+and kageant serves its own pipe only. A click on that notice, or
+\q{Windows OpenSSH service...} under the checkbox, opens the service
+box: the service's state, then \q{Run as administrator} to stop it
+(and to disable it when kageant starts at login) or to turn it back on
+with its former start type. \q{Copy commands} puts the commands on the
+clipboard for a PowerShell started as administrator. The agent log
+records it (\c{agent-pipe}, event ID 162).
+
+\q{Also serve the pipe} (\c{extrapipe}, empty by default) makes kageant
+serve a pipe of a fixed name beside its own: \c{\\\\.\\pipe\\} followed
+by that name. The name stays across Windows starts, so a client is set
+to it once. \q{Set SSH_AUTH_SOCK of this Windows user to that pipe}
+(\c{setsshauthsock}, default \c{no}) writes that pipe into the user's
+environment variable \cw{SSH_AUTH_SOCK}. Programs started afterwards
+see it. Programs that already run, such as an open terminal or editor,
+keep their old environment: restart them once. The value stays when
+kageant exits, so \c{ssh} then finds no agent there. A value another
+program set stays, with a notice. Unticked, kageant removes the value at
+its next start if it is still the one kageant wrote. Git for Windows'
+own \c{ssh} reads the same variable and cannot use a named pipe: with
+the value set, it finds no agent.
 
 A window-only agent (Pageant before 0.75, KeePass with KeeAgent) can
 hold the window of the window messages without a pipe. kageant then

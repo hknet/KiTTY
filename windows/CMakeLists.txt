@@ -284,6 +284,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_authenticode.c  # KiTTY: shared verify for the New key launcher
   ${CMAKE_SOURCE_DIR}/kitty/kitty_update_state.c  # KiTTY: the STORED update answer - kageant asks no network (no wininet here, on purpose)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_notice.c    # KiTTY: shared near-the-clock notice window (replaces tray balloons)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_dlgbox.c  # KiTTY: the shared notice and confirmation boxes
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c  # KiTTY: kitty.ini resolver for satellite binaries
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c  # KiTTY: session paths + the folder-store walk (no settings library needed)
@@ -875,6 +876,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_win.c
   ${KITTY_DIR}/kitty_winutil.c
   ${KITTY_DIR}/kitty_dlgbox.c
+  ${KITTY_DIR}/kitty_demotpl.c   # KiTTY: the -demo-templates walk (kitty.exe only)
   ${KITTY_DIR}/kitty_crashlog.c   # KiTTY: crash log; per-target on purpose, see the other listings
   ${KITTY_DIR}/kitty_authenticode.c   # KiTTY: shared Authenticode trust + CN gate
   ${KITTY_DIR}/kitty_agentcheck.c     # KiTTY: [KiTTY] verifyagent, which program answers our agent requests

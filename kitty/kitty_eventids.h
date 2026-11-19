@@ -182,6 +182,9 @@ static const struct kitty_eventid kitty_eventids[] = {
     { 161, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "foreign-window",
       "program ownerpid state seq sig ts prev",
       "Warning" },
+    { 162, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "agent-pipe",
+      "pipe program state seq sig ts prev",
+      "Information (Warning for held)" },
     { 170, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "logrotate", "result seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     /* the chain's anchors (kitty/kitty_auditchain.h): written whatever the
@@ -504,6 +507,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
     { "pid",
       "100-170: the process that asked the agent, empty when none "
       "did; 200-403: the process writing the record" },
+    { "pipe",
+      "162: the further pipe kageant serves: openssh-ssh-agent, or the "
+      "name of [Agent] extrapipe" },
     { "port",
       "the port connected to; a serial line's speed; empty for a Local "
       "session; with proxy set and "
@@ -514,7 +520,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "not written; 171: the head the anchor pins" },
     { "program",
       "900: the refused program file's path. 161: the program that "
-      "holds the Pageant window" },
+      "holds the Pageant window. 162 held: the program that serves the "
+      "pipe, empty for a service or another user" },
     { "protection",
       "401, 403: none, passphrase or hello" },
     { "proto",
@@ -637,7 +644,11 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "then seq and prev" },
     { "state",
       "161: started-beside (kageant runs beside it on its own pipe) "
-      "or not-started (Windows XP, which cannot read a pipe's server)" },
+      "or not-started (Windows XP, which cannot read a pipe's server). "
+      "162: opened, closed, held (another program serves the pipe), "
+      "service-off (the Windows service stopped through kageant's box), "
+      "service-on (turned back on there), sshauthsock-set, "
+      "sshauthsock-removed, sshauthsock-kept (a value someone else set)" },
     { "tool",
       "400-403: kittygen or kittygen-cli" },
     { "transport",

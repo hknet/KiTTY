@@ -6,7 +6,7 @@ Four kinds of finding (no duplicate check: two names with the same English
 text are allowed, a translation may need different words for them - the
 user's decision 2026-10-27):
 
-  unused     a KT_ define of kitty/kitty_text.h that no .c, .h or .rc file
+  unused     a KT_ define of kitty/kitty_text.h that no .c, .h, .rc or .rc2 file
              of the tree uses (a use inside another KT_ define counts;
              comments and string contents do not).
   word       a text of kitty_text.h that uses say/ask/tell or names/named as
@@ -214,7 +214,7 @@ def find_unused(root, defs):
     if not names:
         return []
     uses = Counter()
-    for f in tree_files(root, (".c", ".h", ".rc")):
+    for f in tree_files(root, (".c", ".h", ".rc", ".rc2")):   # .rc2: templates shared by several .rc
         try:
             s = strip(read(os.path.join(root, f)), keep_strings=False)
         except OSError:

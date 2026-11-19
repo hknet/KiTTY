@@ -57,6 +57,10 @@
  * nothing and left RegisterApplicationRestart a raw loader-killing import. */
 #include "../kitty/kitty_oldwin_reg.h"
 #include "../kitty/kitty_notice.h"   /* KiTTY: kitty_notice_show */
+#include "../kitty/kitty_dlgbox.h"   /* KiTTY: the shared boxes (kitty_dlgbox.c) */
+/* the themed message box (kitty_dlgbox.c), called by name: kitty_msgbox.h
+ * would reroute every plain MessageBox of this file */
+int kitty_message_box(HWND owner, const char *text, const char *caption, unsigned type);
 #include "../kitty/kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 #include "../kitty/kitty_update_state.h"   /* KiTTY: the STORED update answer - no network here */
@@ -207,6 +211,12 @@ static void kageant_tick_sync(void)
 }
 static HMENU systray_menu, session_menu;
 static bool already_running;
+/* KiTTY: [Agent] opensshpipe and the Windows OpenSSH agent service box -
+ * defined after wpc, called by the settings dialog and the tray window */
+static void kageant_opensshpipe_apply(void);
+static int kageant_opensshpipe_try_open(void);
+static void kageant_ossh_box(HWND owner);
+static void kageant_ossh_done(DWORD code);
 /* KiTTY: another program holds the "Pageant" window while no pipe exists - a
  * window-only agent (Pageant before 0.75, KeeAgent). kageant starts beside it
  * without a window of its own (two would split the window-message clients
@@ -5952,7 +5962,10 @@ static INT_PTR CALLBACK AuditViewProc(HWND hwnd, UINT msg,
 static int keysettings_open_page = -1;
 
 static const int keysettings_page_agent[] = {
-    IDC_SET_OPENSSH, IDC_SET_KNOWNHOSTS, IDC_SET_STARTUP, IDC_SET_LOADKEYS,
+    IDC_SET_OPENSSH, IDC_SET_OPENSSHPIPE, IDC_SET_OSSHSERVICE,
+    IDC_SET_L_EXTRAPIPE, IDC_SET_EXTRAPIPE, IDC_SET_SSHAUTHSOCK, IDC_SET_KNOWNHOSTS,
+    IDC_SET_STARTUP,
+    IDC_SET_LOADKEYS,
     IDC_SET_NOTIFY, IDC_SET_ARRIVAL,
     IDC_SET_L_NOTICE, IDC_SET_NOTICESECS, IDC_SET_L_NOTICEHINT,
     IDC_SET_L_THEME, IDC_SET_THEME, IDC_SET_L_THEMEHINT,
@@ -6439,6 +6452,16 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             kageant_blockforwarded_get() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_ALLOWWMCD,
             kageant_allowwmcopydata_get() ? BST_CHECKED : BST_UNCHECKED);
+        CheckDlgButton(hwnd, IDC_SET_OPENSSHPIPE,
+            kageant_opensshpipe_get() ? BST_CHECKED : BST_UNCHECKED);
+        {
+            char *xp = kageant_extrapipe_dup();
+            SetDlgItemText(hwnd, IDC_SET_EXTRAPIPE, xp ? xp : "");
+            sfree(xp);
+            SendDlgItemMessage(hwnd, IDC_SET_EXTRAPIPE, EM_SETLIMITTEXT, 200, 0);
+        }
+        CheckDlgButton(hwnd, IDC_SET_SSHAUTHSOCK,
+            kageant_setsshauthsock_get() ? BST_CHECKED : BST_UNCHECKED);
         /* KiTTY: When Windows locks - the list index is the stored value */
         {
             static const char *const wl[] = {
@@ -6596,6 +6619,11 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
           case IDC_SET_EVENTVIEWER:
             kageant_eventviewer_open(hwnd);
             return 0;
+          case IDC_SET_OSSHSERVICE:
+            /* KiTTY: the Windows OpenSSH agent service box, also without
+             * the notice */
+            kageant_ossh_box(hwnd);
+            return 0;
           case IDC_SET_THEME:
             /* Repaint as soon as the droplist changes, so the choice is
              * visible before OK writes it. Cancel therefore has to put the
@@ -6604,6 +6632,18 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 keysettings_apply_theme(hwnd);
             return 0;
           case IDOK: {
+            /* KiTTY: [Agent] extrapipe - a name kageant accepts, or none;
+             * anything else keeps the dialog open with nothing stored */
+            {
+                char xp[208];
+                GetDlgItemTextA(hwnd, IDC_SET_EXTRAPIPE, xp, sizeof(xp));
+                if (xp[0] && !kageant_extrapipe_valid(xp)) {
+                    kitty_message_box(hwnd, KT_KA_EXTRAPIPE_BAD, KT_CAP_KA_ERROR,
+                                      MB_ICONERROR | MB_OK);
+                    SetFocus(GetDlgItem(hwnd, IDC_SET_EXTRAPIPE));
+                    return 0;
+                }
+            }
             kageant_notify_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED);
             kageant_arrival_notice_set(
@@ -6679,6 +6719,16 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 IsDlgButtonChecked(hwnd, IDC_SET_BLOCKFWD) == BST_CHECKED);
             kageant_allowwmcopydata_set(
                 IsDlgButtonChecked(hwnd, IDC_SET_ALLOWWMCD) == BST_CHECKED);
+            kageant_opensshpipe_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_OPENSSHPIPE) == BST_CHECKED);
+            {
+                char xp[208];
+                GetDlgItemTextA(hwnd, IDC_SET_EXTRAPIPE, xp, sizeof(xp));
+                kageant_extrapipe_set(xp);
+            }
+            kageant_setsshauthsock_set(
+                IsDlgButtonChecked(hwnd, IDC_SET_SSHAUTHSOCK) == BST_CHECKED);
+            kageant_opensshpipe_apply();   /* KiTTY: live, on or off */
             /* off before, on now: the file is checked once OK has stored
              * everything (keysettings_knownhosts_on below) - a plain OK
              * with the box already ticked does not repeat it */
@@ -8747,6 +8797,13 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         sfree(owners);
         break;
       }
+      case KAGEANT_WM_NOTICE_OSSH:
+        /* KiTTY: the OpenSSH pipe notice - the service box */
+        kageant_ossh_box(hwnd);
+        break;
+      case KAGEANT_WM_OSSH_DONE:
+        kageant_ossh_done((DWORD)wParam);
+        break;
       case KAGEANT_WM_NOTICE_SECURITY:
         /* KiTTY: the window-messages notice - the settings on the
          * Security page, where its checkbox is */
@@ -9313,6 +9370,437 @@ static const PageantListenerClientVtable winpgnt_vtable = {
 };
 
 static struct winpgnt_client wpc[1];
+
+/* KiTTY: [Agent] opensshpipe - a second listener on the Windows OpenSSH
+ * agent's pipe, for ssh.exe, ssh-add and KeePassXC's "Use OpenSSH": the same
+ * keys, rules and agent log as kageant's own pipe, made by the same code
+ * (first instance, the user-only access list). Opened and closed live. Held
+ * by another program (the Windows service, Bitwarden, gpg-agent): kageant
+ * serves its own pipe only and shows who holds it. */
+#define KAGEANT_OPENSSH_PIPE "\\\\.\\pipe\\openssh-ssh-agent"
+static struct pageant_listen_state *opensshpipe_pl = NULL;
+
+static void kageant_opensshpipe_apply(void);
+static void kageant_pipe_record(const char *pipe, const char *state,
+                                const char *program)
+{
+    kitty_audit("agent-pipe", "pipe", pipe, "program", program ? program : "",
+                "state", state, (const char *)NULL);
+}
+static void kageant_opensshpipe_record(const char *state, const char *program)
+{
+    kageant_pipe_record(KAGEANT_OPENSSH_PIPE, state, program);
+}
+
+/* The program serving the pipe now: its path, or NULL (a service or another
+ * user's process this one cannot open). */
+static char *kageant_pipe_holder_dup(const char *pipe);
+static char *kageant_opensshpipe_holder_dup(void)
+{
+    return kageant_pipe_holder_dup(KAGEANT_OPENSSH_PIPE);
+}
+
+/* ---- the Windows OpenSSH agent service: its state. The box that stops
+ * and disables it or turns it back on (elevated, the user's consent through
+ * UAC), or shows the commands to run oneself. Reached from the "held" notice
+ * and from Settings > Agent. The shared boxes (kitty/kitty_dlgbox.c). */
+#define KAGEANT_OSSH_SERVICE "ssh-agent"
+enum { OSSH_ABSENT, OSSH_RUNNING, OSSH_STOPPED };
+static int kageant_ossh_state(DWORD *start)
+{
+    SC_HANDLE scm, svc;
+    SERVICE_STATUS st;
+    int state = OSSH_ABSENT;
+    *start = 0;
+    scm = OpenSCManagerA(NULL, NULL, SC_MANAGER_CONNECT);
+    if (!scm)
+        return OSSH_ABSENT;
+    svc = OpenServiceA(scm, KAGEANT_OSSH_SERVICE,
+                       SERVICE_QUERY_STATUS | SERVICE_QUERY_CONFIG);
+    if (svc) {
+        DWORD need = 0;
+        QUERY_SERVICE_CONFIGA *cfg;
+        state = (QueryServiceStatus(svc, &st) &&
+                 st.dwCurrentState != SERVICE_STOPPED) ? OSSH_RUNNING : OSSH_STOPPED;
+        QueryServiceConfigA(svc, NULL, 0, &need);
+        if (need && (cfg = (QUERY_SERVICE_CONFIGA *)snewn(need, char)) != NULL) {
+            if (QueryServiceConfigA(svc, cfg, need, &need))
+                *start = cfg->dwStartType;
+            sfree(cfg);
+        }
+        CloseServiceHandle(svc);
+    }
+    CloseServiceHandle(scm);
+    return state;
+}
+
+static int kageant_ossh_action;   /* 1 stop (and disable), 2 back on */
+
+static void kageant_ossh_copy(const char *cmds)
+{
+    size_t n = strlen(cmds) + 1;
+    HGLOBAL g;
+    if (!OpenClipboard(traywindow))
+        return;
+    EmptyClipboard();
+    g = GlobalAlloc(GMEM_MOVEABLE, n);
+    if (g) {
+        memcpy(GlobalLock(g), cmds, n);
+        GlobalUnlock(g);
+        if (!SetClipboardData(CF_TEXT, g))
+            GlobalFree(g);
+    }
+    CloseClipboard();
+    kitty_notice_show(KT_KA_OSSH_TITLE, KT_KA_OSSH_COPIED, KAGEANT_NOTICE_INFO,
+                      kageant_notice_seconds(8), traywindow, 0);
+}
+
+struct kageant_ossh_wait { HANDLE proc; };
+static DWORD WINAPI kageant_ossh_wait_thread(void *arg)
+{
+    struct kageant_ossh_wait *w = (struct kageant_ossh_wait *)arg;
+    DWORD code = 1;
+    WaitForSingleObject(w->proc, 120000);
+    if (!GetExitCodeProcess(w->proc, &code) || code == STILL_ACTIVE)
+        code = 1;
+    CloseHandle(w->proc);
+    sfree(w);
+    PostMessage(traywindow, KAGEANT_WM_OSSH_DONE, (WPARAM)code, 0);
+    return 0;
+}
+
+/* Run the commands in an elevated PowerShell, no window: Windows requests
+ * the administrator's consent. Declined: nothing happens. */
+static void kageant_ossh_run_elevated(const char *cmds)
+{
+    char *one = dupstr(cmds), *p, *args;
+    for (p = one; *p; p++)      /* one command line: the lines joined with ';' */
+        if (*p == '\r') *p = ' ';
+        else if (*p == '\n') *p = ';';
+    args = dupprintf("-NoProfile -ExecutionPolicy Bypass -Command \"%s\"", one);
+    sfree(one);
+    SHELLEXECUTEINFOA sei;
+    memset(&sei, 0, sizeof(sei));
+    sei.cbSize = sizeof(sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.hwnd = traywindow;
+    sei.lpVerb = "runas";
+    sei.lpFile = "powershell.exe";
+    sei.lpParameters = args;
+    sei.nShow = SW_HIDE;
+    if (ShellExecuteExA(&sei) && sei.hProcess) {
+        struct kageant_ossh_wait *w = snew(struct kageant_ossh_wait);
+        HANDLE t;
+        w->proc = sei.hProcess;
+        t = CreateThread(NULL, 0, kageant_ossh_wait_thread, w, 0, NULL);
+        if (t) CloseHandle(t);
+        else { CloseHandle(sei.hProcess); sfree(w); }
+    }
+    sfree(args);
+}
+
+static char *kageant_ossh_cmds = NULL;   /* the commands of the open box */
+
+static void kageant_ossh_box_done(int answer, void *ctx)
+{
+    (void)ctx;
+    if (answer == 1 && kageant_ossh_cmds) {
+        if (kageant_ossh_action == 2 && opensshpipe_pl) {
+            /* the service needs the pipe: kageant lets it go first */
+            kageant_opensshpipe_set(0);
+            kageant_opensshpipe_apply();
+        }
+        kageant_ossh_run_elevated(kageant_ossh_cmds);
+    } else if (answer == 2 && kageant_ossh_cmds) {
+        kageant_ossh_copy(kageant_ossh_cmds);
+    }
+    sfree(kageant_ossh_cmds);
+    kageant_ossh_cmds = NULL;
+}
+
+static const char *kageant_ossh_start_word(DWORD start)
+{
+    return start == SERVICE_AUTO_START ? KT_KA_OSSH_START_AUTO :
+           start == SERVICE_DEMAND_START ? KT_KA_OSSH_START_MANUAL :
+           start == SERVICE_DISABLED ? KT_KA_OSSH_START_DISABLED : KT_KA_OSSH_START_OTHER;
+}
+
+/* The box: the service's state and the action that fits it. */
+static void kageant_ossh_box(HWND owner)
+{
+    DWORD start;
+    int state = kageant_ossh_state(&start);
+    char *text, *q;
+    const char *pipe;
+    char *holder = NULL;
+    if (opensshpipe_pl)
+        pipe = KT_KA_OSSH_PIPE_KAGEANT;
+    else if ((holder = kageant_opensshpipe_holder_dup()) != NULL)
+        pipe = holder;
+    else
+        pipe = state == OSSH_RUNNING ? KT_KA_OSSH_PIPE_SERVICE : KT_KA_OSSH_PIPE_FREE;
+    sfree(kageant_ossh_cmds);
+    kageant_ossh_cmds = NULL;
+    if (state == OSSH_ABSENT) {
+        text = dupprintf(KT_KA_OSSH_ABSENT_FMT, pipe);
+        kitty_info_modeless(owner, KT_KA_OSSH_TITLE, text, NULL, NULL);
+        sfree(text);
+        sfree(holder);
+        return;
+    }
+    if (state == OSSH_RUNNING || start == SERVICE_AUTO_START ||
+        (start == SERVICE_DEMAND_START && kageant_autostart_active())) {
+        int disable = kageant_autostart_active() || start == SERVICE_AUTO_START;
+        kageant_ossh_action = 1;
+        if (disable && (start == SERVICE_AUTO_START || start == SERVICE_DEMAND_START))
+            kageant_opensshservice_start_set(start == SERVICE_AUTO_START ? 2 : 3);
+        kageant_ossh_cmds = dupstr(disable ?
+            "Stop-Service ssh-agent\r\nSet-Service ssh-agent -StartupType Disabled" :
+            "Stop-Service ssh-agent");
+        q = disable ? KT_KA_OSSH_Q_DISABLE : KT_KA_OSSH_Q_STOP;
+    } else {
+        int back = kageant_opensshservice_start_get();
+        kageant_ossh_action = 2;
+        kageant_ossh_cmds = dupprintf(
+            "Set-Service ssh-agent -StartupType %s\r\nStart-Service ssh-agent",
+            back == 2 ? "Automatic" : "Manual");
+        q = KT_KA_OSSH_Q_BACK;
+    }
+    text = dupprintf(KT_KA_OSSH_STATE_FMT, state == OSSH_RUNNING ?
+                     KT_KA_OSSH_RUNNING : KT_KA_OSSH_STOPPED,
+                     kageant_ossh_start_word(start), pipe, q);
+    if (!kitty_confirm_modeless3(owner, KT_KA_OSSH_TITLE, text, kageant_ossh_cmds,
+                                 KT_KA_OSSH_B_RUN, KT_KA_OSSH_B_COPY, KT_KA_OSSH_B_CLOSE,
+                                 kageant_ossh_box_done, NULL)) {
+        sfree(kageant_ossh_cmds);
+        kageant_ossh_cmds = NULL;
+    }
+    sfree(text);
+    sfree(holder);
+}
+
+/* The elevated commands ended: what changed. The pipe is taken again. */
+static void kageant_ossh_done(DWORD code)
+{
+    DWORD start;
+    int state = kageant_ossh_state(&start);
+    char *text = NULL;
+    int failed;
+    if (kageant_ossh_action == 1) {
+        if (state == OSSH_STOPPED) {
+            int i;
+            kageant_opensshpipe_record("service-off", NULL);
+            if (!kageant_opensshpipe_get())
+                kageant_opensshpipe_set(1);
+            /* the stopped service's pipe outlives it for a moment (its
+             * instances still closing): the listener tried again for 5 s,
+             * quietly, before a "held" is reported */
+            for (i = 0; i < 25 && !opensshpipe_pl; i++) {
+                if (kageant_opensshpipe_try_open())
+                    break;
+                Sleep(200);
+            }
+            kageant_opensshpipe_apply();
+            if (opensshpipe_pl)
+                text = dupstr(KT_KA_OSSH_DONE_OPENED);
+        }
+    } else if (kageant_ossh_action == 2 && state == OSSH_RUNNING) {
+        kageant_opensshpipe_record("service-on", NULL);
+        text = dupstr(KT_KA_OSSH_DONE_ON);
+    }
+    failed = (text == NULL);
+    if (!text)
+        text = dupprintf(KT_KA_OSSH_DONE_FAILED_FMT, (unsigned long)code,
+                         state == OSSH_RUNNING ? KT_KA_OSSH_RUNNING : KT_KA_OSSH_STOPPED,
+                         kageant_ossh_start_word(start));
+    kitty_notice_show(KT_KA_OSSH_TITLE, text,
+                      failed ? KAGEANT_NOTICE_WARN : KAGEANT_NOTICE_INFO,
+                      kageant_notice_seconds(15), traywindow, 0);
+    sfree(text);
+}
+
+static void kageant_opensshpipe_held(void)
+{
+    char *path = kageant_opensshpipe_holder_dup();
+    char *text;
+    const char *base;
+    if (path && (base = strrchr(path, '\\')) != NULL &&
+        !stricmp(base + 1, "ssh-agent.exe")) {
+        /* the Windows service: with "Start at login" on it must also stay
+         * off at the next boot, or it takes the pipe before kageant */
+        text = dupstr(kageant_autostart_active() ?
+                      KT_KA_OSSHPIPE_SERVICE_DISABLE : KT_KA_OSSHPIPE_SERVICE_STOP);
+    } else if (path) {
+        base = strrchr(path, '\\');
+        text = dupprintf(KT_KA_OSSHPIPE_HELD_FMT, base ? base + 1 : path, path,
+                         base ? base + 1 : path);
+    } else {
+        text = dupstr(KT_KA_OSSHPIPE_HELD_UNKNOWN);
+    }
+    kageant_opensshpipe_record("held", path);
+    if (traywindow)
+        kitty_notice_show(KT_KA_OSSHPIPE_TITLE, text, KAGEANT_NOTICE_WARN,
+                          kageant_notice_seconds(20), traywindow,
+                          KAGEANT_WM_NOTICE_OSSH);
+    sfree(text);
+    sfree(path);
+}
+
+/* ---- [Agent] extrapipe and setsshauthsock --------------------------------- */
+static struct pageant_listen_state *extrapipe_pl = NULL;
+static char *extrapipe_path = NULL;   /* \\.\pipe\<name> while served */
+
+/* The server of a pipe now: its path, or NULL (none, a service, another
+ * user). */
+static char *kageant_pipe_holder_dup(const char *pipe)
+{
+    HANDLE h = CreateFileA(pipe, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           NULL, OPEN_EXISTING, 0, NULL);
+    ULONG pid = 0;
+    char *path = NULL;
+    if (h == INVALID_HANDLE_VALUE)
+        return NULL;
+    if (GetNamedPipeServerProcessId(h, &pid) && pid)
+        path = kageant_foreign_path_dup(pid);
+    CloseHandle(h);
+    return path;
+}
+
+/* SSH_AUTH_SOCK of the Windows user (HKCU\Environment): set to the extra
+ * pipe while kageant serves it and the setting is on, removed again when
+ * not - only ever the value kageant wrote itself (sshauthsockvalue). A value
+ * someone else set stays, with a notice. Windows is told (WM_SETTINGCHANGE
+ * "Environment"): programs started afterwards see it. */
+static void kageant_sshauthsock_apply(void)
+{
+    HKEY k;
+    char *cur = NULL;
+    DWORD type = 0, n = 0;
+    char *mine = kageant_sshauthsock_value_dup();
+    const char *want = (kageant_setsshauthsock_get() && extrapipe_path) ? extrapipe_path : NULL;
+    int changed = 0;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Environment", 0,
+                      KEY_QUERY_VALUE | KEY_SET_VALUE, &k) != ERROR_SUCCESS) {
+        sfree(mine);
+        return;
+    }
+    /* the value at its own length: its size read first */
+    if (RegQueryValueExA(k, "SSH_AUTH_SOCK", NULL, &type, NULL, &n) == ERROR_SUCCESS &&
+        (type == REG_SZ || type == REG_EXPAND_SZ)) {
+        cur = snewn(n + 1, char);
+        if (RegQueryValueExA(k, "SSH_AUTH_SOCK", NULL, &type, (LPBYTE)cur, &n) == ERROR_SUCCESS)
+            cur[n] = '\0';
+        else
+            cur[0] = '\0';
+    } else {
+        cur = dupstr("");
+    }
+    if (want) {
+        if (!stricmp(cur, want)) {
+            /* already so */
+        } else if (!cur[0] || (mine && *mine && !stricmp(cur, mine))) {
+            if (RegSetValueExA(k, "SSH_AUTH_SOCK", 0, REG_SZ, (const BYTE *)want,
+                               (DWORD)strlen(want) + 1) == ERROR_SUCCESS) {
+                kageant_sshauthsock_value_set(want);
+                kageant_pipe_record(want, "sshauthsock-set", NULL);
+                changed = 1;
+            }
+        } else {
+            char *text = dupprintf(KT_KA_SSHAUTHSOCK_KEPT_FMT, cur, want);
+            kageant_pipe_record(want, "sshauthsock-kept", NULL);
+            if (traywindow)
+                kitty_notice_show(KT_KA_SSHAUTHSOCK_TITLE, text, KAGEANT_NOTICE_WARN,
+                                  kageant_notice_seconds(20), traywindow, 0);
+            sfree(text);
+        }
+    } else if (mine && *mine && cur[0] && !stricmp(cur, mine)) {
+        if (RegDeleteValueA(k, "SSH_AUTH_SOCK") == ERROR_SUCCESS) {
+            kageant_pipe_record(mine, "sshauthsock-removed", NULL);
+            kageant_sshauthsock_value_set("");
+            changed = 1;
+        }
+    }
+    RegCloseKey(k);
+    sfree(mine);
+    sfree(cur);
+    if (changed) {
+        DWORD_PTR r;
+        SendMessageTimeoutA(HWND_BROADCAST, WM_SETTINGCHANGE, 0, (LPARAM)"Environment",
+                            SMTO_ABORTIFHUNG, 2000, &r);
+    }
+}
+
+static void kageant_extrapipe_apply(void)
+{
+    char *name = kageant_extrapipe_dup();
+    char *want = (name && *name && kageant_extrapipe_valid(name)) ?
+                 dupprintf("\\\\.\\pipe\\%s", name) : NULL;
+    sfree(name);
+    if (extrapipe_pl && (!want || stricmp(want, extrapipe_path))) {
+        pageant_listener_free(extrapipe_pl);
+        extrapipe_pl = NULL;
+        kageant_pipe_record(extrapipe_path, "closed", NULL);
+        sfree(extrapipe_path);
+        extrapipe_path = NULL;
+    }
+    if (want && !extrapipe_pl) {
+        Plug *pl_plug;
+        struct pageant_listen_state *pl = pageant_listener_new(&pl_plug, &wpc->plc);
+        Socket *sock = new_named_pipe_listener(want, pl_plug);
+        if (sk_socket_error(sock)) {
+            char *path = kageant_pipe_holder_dup(want);
+            char *text = path ? dupprintf(KT_KA_EXTRAPIPE_HELD_FMT, path, want)
+                              : dupprintf(KT_KA_EXTRAPIPE_HELD_UNKNOWN_FMT, want);
+            sk_close(sock);
+            pageant_listener_free(pl);
+            kageant_pipe_record(want, "held", path);
+            if (traywindow)
+                kitty_notice_show(KT_KA_EXTRAPIPE_TITLE, text, KAGEANT_NOTICE_WARN,
+                                  kageant_notice_seconds(20), traywindow, 0);
+            sfree(text);
+            sfree(path);
+        } else {
+            pageant_listener_got_socket(pl, sock);
+            extrapipe_pl = pl;
+            extrapipe_path = want;
+            want = NULL;
+            kageant_pipe_record(extrapipe_path, "opened", NULL);
+        }
+    }
+    sfree(want);
+    kageant_sshauthsock_apply();
+}
+
+/* The listener on the OpenSSH pipe, nothing reported: 1 opened. */
+static int kageant_opensshpipe_try_open(void)
+{
+    Plug *pl_plug;
+    struct pageant_listen_state *pl = pageant_listener_new(&pl_plug, &wpc->plc);
+    Socket *sock = new_named_pipe_listener(KAGEANT_OPENSSH_PIPE, pl_plug);
+    if (sk_socket_error(sock)) {
+        sk_close(sock);
+        pageant_listener_free(pl);
+        return 0;
+    }
+    pageant_listener_got_socket(pl, sock);
+    opensshpipe_pl = pl;
+    kageant_opensshpipe_record("opened", NULL);
+    return 1;
+}
+
+static void kageant_opensshpipe_apply(void)
+{
+    int want = kageant_opensshpipe_get();
+    kageant_extrapipe_apply();   /* the extra pipe and SSH_AUTH_SOCK alike */
+    if (want && !opensshpipe_pl) {
+        if (!kageant_opensshpipe_try_open())
+            kageant_opensshpipe_held();
+    } else if (!want && opensshpipe_pl) {
+        pageant_listener_free(opensshpipe_pl);
+        opensshpipe_pl = NULL;
+        kageant_opensshpipe_record("closed", NULL);
+    }
+}
 
 HINSTANCE hinst;
 
@@ -10588,6 +11076,9 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     /* Set up a system tray icon */
     AddTrayIcon(traywindow);
+    /* KiTTY: [Agent] opensshpipe - the second listener, now that the tray
+     * (for a "held" notice) and the agent log exist */
+    kageant_opensshpipe_apply();
     /* KiTTY: running beside another program's "Pageant" window: name the program */
     if (kageant_foreign_pid) {
         char *text = kageant_foreign_text(KT_KA_FOREIGN_BESIDE_FMT);

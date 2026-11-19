@@ -584,45 +584,11 @@
  * MessageBox, for the reason IDD_UPDATEBOX gives above it: the dialog manager
  * hands it the shell font at the right DPI, so the text is not the wrong size on
  * a scaled display. The box grows to fit its text at that font. */
-#ifndef IDD_NOTICEBOX
-#define IDD_NOTICEBOX 146
-#endif
-#ifndef IDC_NOTICE_TEXT
-#define IDC_NOTICE_TEXT 1274
-#endif
-/* Yes/No confirmation with an optional SECOND line in red. A real dialog rather
- * than MessageBox for two reasons, NEITHER of them DPI (a MessageBox is drawn by
- * Windows and scales correctly - see the corrected note in kitty_dlgbox.c): it grows
- * to fit a long explanation, and a MessageBox cannot colour text. The red line is
- * for the case where the action would persist WITHOUT an explicit save, which the
- * ordinary wording of a confirmation understates. */
-#ifndef IDD_CONFIRMBOX
-#define IDD_CONFIRMBOX 147
+#include "kitty_boxes-rc.h"   /* IDD_NOTICEBOX, IDD_CONFIRMBOX and their controls */
+#ifndef IDD_STOREMOVEPW
 /* Make a portable copy: how the copy's passwords are protected. Same
  * control ids as IDD_EXPORTPW - one dialog proc serves both. */
 #define IDD_STOREMOVEPW 148
-#endif
-#ifndef IDC_CONFIRM_TEXT
-#define IDC_CONFIRM_TEXT 1275
-#endif
-#ifndef IDC_CONFIRM_WARN
-#define IDC_CONFIRM_WARN 1276
-#endif
-/* The optional THIRD button of the shared confirm box: shown only in its
- * 3-way mode (Get File "files already exist"); hidden for the Yes/No and info
- * boxes, which are byte-identical to before. */
-#ifndef IDC_CONFIRM_THIRD
-#define IDC_CONFIRM_THIRD 1277
-#endif
-/* The optional read-only DETAIL field of the shared confirm box (an OSC 8
- * link's target): hidden unless a box carries one. */
-#ifndef IDC_CONFIRM_DETAIL
-#define IDC_CONFIRM_DETAIL 1285
-#endif
-/* The optional CHECKBOX of the shared confirm box (the far2l clipboard box's
- * "Always allow this far2l"): hidden unless a box carries one. */
-#ifndef IDC_CONFIRM_CHECK
-#define IDC_CONFIRM_CHECK 1296
 #endif
 /* The upload-request dialog (kitty/kitty_transfer.c): the far end asks to
  * read files from this PC (OSC 5113, files leaving). One line per file with

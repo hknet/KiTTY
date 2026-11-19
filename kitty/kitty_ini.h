@@ -1662,6 +1662,31 @@ char default_init_file_content[] =
 ; per run. Default no: they are refused, the agent log records it (reason\n\
 ; window-messages).\n\
 ;allowwmcopydata=no\n\
+; opensshpipe: kageant serves the Windows OpenSSH agent pipe\n\
+;    (\\\\.\\pipe\\openssh-ssh-agent) beside its own: ssh.exe, ssh-add and\n\
+;    KeePassXC's \"Use OpenSSH\" reach kageant with nothing else set. When\n\
+;    another program holds that pipe (the Windows service OpenSSH\n\
+;    Authentication Agent, Bitwarden, gpg-agent), a notice shows it and\n\
+;    kageant serves its own pipe only. Default no.\n\
+;opensshpipe=no\n\
+; opensshservicestart: the start type (auto or manual) the Windows service\n\
+;    OpenSSH Authentication Agent had before kageant disabled it (its\n\
+;    service box, Settings > Agent). Turning the service back on there\n\
+;    restores it, manual when nothing is recorded. Written by kageant.\n\
+;opensshservicestart=manual\n\
+; extrapipe: a pipe name kageant serves too, as \\\\.\\pipe\\<name>: a name\n\
+;    that stays, unlike kageant's own pipe whose name changes with every\n\
+;    boot, for clients that take SSH_AUTH_SOCK (ssh.exe, ssh-add, scripts).\n\
+;    Letters, digits, '.', '_' and '-', up to 200. Empty = none.\n\
+;extrapipe=kageant-agent\n\
+; setsshauthsock: yes = SSH_AUTH_SOCK of this Windows user points at that\n\
+;    pipe. Programs started afterwards see it, programs already running need\n\
+;    a restart. The value stays when kageant exits. A value someone else set\n\
+;    stays. Git for Windows' own ssh cannot use a pipe there. Default no.\n\
+;setsshauthsock=no\n\
+; sshauthsockvalue: the SSH_AUTH_SOCK value kageant wrote, so it changes or\n\
+;    removes only its own. Written by kageant.\n\
+;sshauthsockvalue=\n\
 ; readknownhosts: use OpenSSH's %USERPROFILE%\\.ssh\\known_hosts as a\n\
 ; host-key source (Settings, Agent page). Off by default: kageant then\n\
 ; never opens the file. On: host names of a host key for the agent log's\n\
