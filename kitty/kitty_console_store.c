@@ -26,6 +26,7 @@
 #include "putty.h"
 #include "kitty_console_store.h"
 #include "kitty_inifile.h"
+#include "kitty_globalsettings.h"
 #include "kitty_inikeys.h"
 #include "kitty_storage.h"
 #include "kitty_secretstore.h"
@@ -98,25 +99,8 @@ void kitty_console_store_init(void)
      * otherwise and as the registry's fallback (ReadParameterN). */
     {
         char v[16] = "";
-        if (ini.registry_authoritative) {
-            HKEY k;
-            /* the hive in use, the one WriteParameter writes (PuTTY's with
-             * KiClassName=PuTTY, applied above) */
-            extern const char *kitty_registry_base(void);
-            if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_registry_base(), 0,
-                              KEY_QUERY_VALUE, &k) == ERROR_SUCCESS) {
-                DWORD type = 0, n = sizeof(v) - 1;
-                if (RegQueryValueExA(k, KI_INHERITDEFAULTSETTINGS, NULL, &type,
-                                     (LPBYTE)v, &n) != ERROR_SUCCESS || type != REG_SZ)
-                    v[0] = '\0';
-                else
-                    v[n < sizeof(v) ? n : sizeof(v) - 1] = '\0';
-                RegCloseKey(k);
-            }
-        }
-        if (!v[0])
-            /* store-pairs: read param KiTTY KI_INHERITDEFAULTSETTINGS - the kitty.ini leg of the hand-rolled param read above (the hive first, as ReadParameterN) */
-            kitty_inifile_read(KI_SECTION_KITTY, KI_INHERITDEFAULTSETTINGS, v, sizeof(v));
+        /* store-pairs: read param KiTTY KI_INHERITDEFAULTSETTINGS - the console tools' reader of kitty.exe's switch (the hive first in registry mode, as ReadParameterN) */
+        kitty_console_global_read(KI_INHERITDEFAULTSETTINGS, v, sizeof(v));
         kitty_set_inherit_default_settings(!stricmp(v, "yes"));
     }
 

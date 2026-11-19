@@ -219,8 +219,10 @@ GENERIC = {
         "the wrapper ShortcutsIniDup itself",
     ("kitty/kitty_reconnect.c", "kr_action", "ReadParameterN"):
         "the kr_rules rows",
-    ("kitty/kitty_winevent_cfg.c", "kitty_console_global_read", "kitty_inifile_read"):
-        "the wrapper kitty_console_global_read itself",
+    ("kitty/kitty_globalsettings.c", "ks_ini_dup", "kitty_inifile_read_dup"):
+        "the settings module's kitty.ini leg (kitty_settings_read_dup)",
+    ("kitty/kitty_globalsettings.c", "kitty_settings_write", "kitty_inifile_write"):
+        "the settings module's kitty.ini writer",
     ("kitty/kitty_switchnotice.c", "kitty_switchnotice_seconds", "ReadParameterN"):
         "the wrapper kitty_switchnotice_seconds itself",
     ("kitty/kitty_transfer.c", "kt_global_int", "ReadParameterN"):

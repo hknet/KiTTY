@@ -16,6 +16,7 @@
 
 #include "kitty_update_state.h"
 #include "kitty_inifile.h"
+#include "kitty_globalsettings.h"
 #include "kitty_inikeys.h"      /* KI_*: the kitty.ini key names */
 #include "kitty_oldwin_reg.h"   /* XP: RegGetValue via oldwin */
 
@@ -84,27 +85,24 @@ static void kus_parse(const char *s, unsigned long v[4])
     }
 }
 
+/* [KiTTY] checkupdate where kitty.exe keeps it: the registry in charge
+ * decides, kitty.ini otherwise (kitty_globalsettings.c) */
+static const struct kitty_setting kus_checkupdate = {
+    KI_SECTION_KITTY, KI_CHECKUPDATE, KI_CHECKUPDATE,
+    KS_HIVE_INICLASS, KS_RULE_REG_OVER_INI, NULL
+};
+
 int kitty_update_state_enabled(void)
 {
-    char buf[32];
-    DWORD sz = sizeof(buf);
-    int have = kitty_inifile_read("KiTTY", KI_CHECKUPDATE, buf, sizeof(buf));
-
-    /* the store that is authoritative decides; the other is a fallback */
-    if (kitty_inifile_registry_authoritative()) {
-        char rb[32];
-        /* store-pairs: read param KiTTY KI_CHECKUPDATE - kageant's hand-rolled read of the hive (KUS_REG_BASE) when the registry is in charge */
-        if (RegGetValueA(HKEY_CURRENT_USER, KUS_REG_BASE, KI_CHECKUPDATE,
-                         RRF_RT_REG_SZ, NULL, rb, &sz) == ERROR_SUCCESS) {
-            rb[sizeof(rb) - 1] = '\0';
-            strcpy(buf, rb);
-            have = 1;
-        }
-    }
-    if (!have)
+    /* store-pairs: read param KiTTY KI_CHECKUPDATE - kageant's reader (kitty_globalsettings.c): the hive when the registry is in charge, kitty.ini otherwise */
+    char *v = kitty_settings_read_dup(&kus_checkupdate);
+    int on;
+    if (!v)
         return 1;                       /* not set: on */
-    return !(!stricmp(buf, "no") || !stricmp(buf, "0") ||
-             !stricmp(buf, "false") || !stricmp(buf, "off"));
+    on = !(!stricmp(v, "no") || !stricmp(v, "0") ||
+           !stricmp(v, "false") || !stricmp(v, "off"));
+    free(v);
+    return on;
 }
 
 /* The program's own path whole (free it), NULL when it cannot be read. */

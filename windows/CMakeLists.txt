@@ -209,6 +209,7 @@ target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_fileperm.c)
 # their own copy; a static library member is only pulled in for a symbol
 # nothing else defines.
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c)
+target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_globalsettings.c)
 # KiTTY: test builds only - what each program reads for its global settings
 # (KITTY_TEST_SETTINGS_DUMP), the before/after record of the settings move
 target_sources(settings PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_testdoor_settings.c)
@@ -290,6 +291,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_dlgbox.c  # KiTTY: the shared notice and confirmation boxes
   ${CMAKE_SOURCE_DIR}/kitty/kitty_title.c     # KiTTY: shared title-suffix composer
   ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c  # KiTTY: kitty.ini resolver for satellite binaries
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_globalsettings.c   # KiTTY: the one reader and writer of the global settings
   ${CMAKE_SOURCE_DIR}/kitty/kitty_testdoor_settings.c  # KiTTY: test builds only, KITTY_TEST_SETTINGS_DUMP
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c  # KiTTY: session paths + the folder-store walk (no settings library needed)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessorder.c    # KiTTY: the manual order of the Saved Sessions menu
@@ -332,7 +334,8 @@ add_sources_from_current_dir(plink no-jump-list.c nohelp.c plink.rc
   ../kitty/kitty_hostkeys.c        # KiTTY: klink -knownhosts (the store, listed)
   ../kitty/kitty_hostkey_blob.c    # KiTTY: a stored key's text -> its blob (kitty_hostkeys.c)
   ../kitty/kitty_hostkey_scan.c    # KiTTY: klink -scan (our ssh-keyscan)
-  ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_inifile.c  # KiTTY: kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_globalsettings.c   # KiTTY: the one reader and writer of the global settings
   ../kitty/kitty_testdoor_settings.c  # KiTTY: test builds only, KITTY_TEST_SETTINGS_DUMP
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_winevent_cfg.c    # KiTTY: [KiTTY] clieventlog, the Event Log records' switch
@@ -351,7 +354,8 @@ add_sources_from_current_dir(pscp no-jump-list.c nohelp.c pscp.rc
   ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
-  ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_inifile.c  # KiTTY: kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_globalsettings.c   # KiTTY: the one reader and writer of the global settings
   ../kitty/kitty_testdoor_settings.c  # KiTTY: test builds only, KITTY_TEST_SETTINGS_DUMP
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_winevent_cfg.c    # KiTTY: [KiTTY] clieventlog, the Event Log records' switch
@@ -370,7 +374,8 @@ add_sources_from_current_dir(psftp no-jump-list.c nohelp.c psftp.rc
   ../kitty/kitty_termenv_console.c # KiTTY: the refused-variables NOTE, yellow on a console
   ../kitty/kitty_selfcheck.c       # KiTTY: the integrity stamp check (KITTY_SELFCHECK)
   ../kitty/kitty_selfcheck_stamp.c # KiTTY: the .ktstamp block the release fills
-  ../kitty/kitty_inifile.c        # KiTTY: kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_inifile.c  # KiTTY: kitty.ini resolver (showforeignsessions)
+  ../kitty/kitty_globalsettings.c   # KiTTY: the one reader and writer of the global settings
   ../kitty/kitty_testdoor_settings.c  # KiTTY: test builds only, KITTY_TEST_SETTINGS_DUMP
   ../kitty/kitty_console_store.c   # KiTTY: the folder store and KITTYPP_DIR, as kitty.exe has them
   ../kitty/kitty_winevent_cfg.c    # KiTTY: [KiTTY] clieventlog, the Event Log records' switch
@@ -422,7 +427,8 @@ add_executable(puttygen
   ${CMAKE_SOURCE_DIR}/kitty/kitty_protkey.c  # KiTTY: shared CryptProtectMemory key holder (#4)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c    # KiTTY: dark mode for the dialogs
   ${CMAKE_SOURCE_DIR}/kitty/kitty_theme_pref.c  # KiTTY: the app-wide theme setting
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c # KiTTY: kitty.ini resolver (kitty_theme_pref.c reads it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c  # KiTTY: kitty.ini resolver (kitty_theme_pref.c reads it)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_globalsettings.c   # KiTTY: the one reader and writer of the global settings
   ${CMAKE_SOURCE_DIR}/kitty/kitty_testdoor_settings.c # KiTTY: test builds only, KITTY_TEST_SETTINGS_DUMP
   ${CMAKE_SOURCE_DIR}/kitty/kitty_winevent_cfg.c # KiTTY: [KiTTY] kittygeneventlog
   ${CMAKE_SOURCE_DIR}/stubs/no-timing.c
@@ -476,7 +482,8 @@ add_executable(kittygen-cli
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c   # session names as paths (enumeration)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_sessorder.c     # the manual order (beside kitty_sessionpath.c)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_secretstore.c   # its at-rest credential crypto
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c   # kitty.ini resolver: readonly=yes for the store
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c  # kitty.ini resolver: readonly=yes for the store
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_globalsettings.c   # KiTTY: the one reader and writer of the global settings
   ${CMAKE_SOURCE_DIR}/kitty/kitty_winevent_cfg.c   # KiTTY: [KiTTY] kittygeneventlog
   ${CMAKE_SOURCE_DIR}/kitty/kitty_testdoor_settings.c   # KiTTY: test builds only, KITTY_TEST_SETTINGS_DUMP
   no-jump-list.c

@@ -15,105 +15,60 @@
 #include "kitty_theme.h"
 #include "kitty_theme_pref.h"
 #include "kitty_inifile.h"
+#include "kitty_globalsettings.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 
 /* The consolidated KiTTY hive, and the same value name kitty.exe writes. */
 /* the key kitty.exe keeps its settings under (KiClassName=PuTTY: PuTTY's) */
-#define KITTY_THEME_REG_BASE  kitty_inifile_registry_base()
 #define KITTY_THEME_REG_VALUE "theme"
 
 /* readonly=yes: the choice theme_reg_write did not store, held for this
  * process (-1: none) */
 static int theme_ro_pref = -1;
 
-static int theme_reg_read(int *pref_out)
+static int theme_valid(const char *s)
 {
-    char buf[32];
-    DWORD sz = sizeof(buf);
-    int v;
-    if (theme_ro_pref >= 0) {
-        *pref_out = theme_ro_pref;
-        return 1;
-    }
-    if (RegGetValueA(HKEY_CURRENT_USER, KITTY_THEME_REG_BASE,
-                     KITTY_THEME_REG_VALUE, RRF_RT_REG_SZ, NULL,
-                     buf, &sz) != ERROR_SUCCESS)
-        return 0;
-    buf[sizeof(buf) - 1] = '\0';
-    v = kitty_theme_pref_from_string(buf);
-    if (v < 0)
-        return 0;               /* present but unreadable: as if unset */
-    *pref_out = v;
-    return 1;
+    return kitty_theme_pref_from_string(s) >= 0;
 }
 
-static int theme_reg_write(int pref)
-{
-    HKEY hk;
-    LONG rc;
-    /* readonly=yes: not stored, KITTY_RO_REFUSED - this process only */
-    if (kitty_store_ro_regpath(1, KITTY_THEME_REG_BASE)) {
-        theme_ro_pref = pref;
-        return KITTY_RO_REFUSED;
-    }
-    rc = RegCreateKeyExA(HKEY_CURRENT_USER, KITTY_THEME_REG_BASE, 0, NULL,
-                         0, KEY_SET_VALUE, NULL, &hk, NULL);
-    if (rc == ERROR_SUCCESS) {
-        const char *s = kitty_theme_pref_to_string(pref);
-        rc = RegSetValueExA(hk, KITTY_THEME_REG_VALUE, 0, REG_SZ,
-                            (const BYTE *)s, (DWORD)(strlen(s) + 1));
-        RegCloseKey(hk);
-    }
-    if (rc != ERROR_SUCCESS) {
-        SetLastError((DWORD)rc);
-        return 0;
-    }
-    return 1;
-}
-
-/*
- * Which store wins is the rule every other satellite setting follows: when the
+/* Which store wins is the rule every other satellite setting follows: when the
  * ini kitty_inifile resolved is authoritative (a portable install), it decides
  * and the registry is only a fallback; otherwise the registry decides and the
- * ini acts as a first-run default.
- */
+ * ini acts as a first-run default. A value that is not a theme counts as
+ * unset in its store (kitty_globalsettings.c, KS_RULE_CHARGE_FIRST). */
+static const struct kitty_setting theme_setting = {
+    KI_SECTION_KITTY, KI_THEME, KITTY_THEME_REG_VALUE,
+    KS_HIVE_INICLASS, KS_RULE_CHARGE_FIRST, theme_valid
+};
+
 int kitty_theme_pref_get(void)
 {
-    char buf[32];
-    int ini_v = -1, reg_v;
-
-    /* store-pairs: read param KiTTY KI_THEME - the satellites' hand-rolled param read: the hive (KITTY_THEME_REG_BASE) or kitty.ini, by the store in charge */
-    if (kitty_inifile_read(KI_SECTION_KITTY, KI_THEME,
-                            buf, sizeof(buf)))
-        ini_v = kitty_theme_pref_from_string(buf);
-
-    if (kitty_inifile_registry_authoritative()) {
-        if (theme_reg_read(&reg_v))
-            return reg_v;
-        return ini_v >= 0 ? ini_v : KITTY_THEME_SYSTEM;
-    }
-    if (ini_v >= 0)
-        return ini_v;
-    if (theme_reg_read(&reg_v))
-        return reg_v;
-    return KITTY_THEME_SYSTEM;
+    char *v;
+    int pref;
+    if (theme_ro_pref >= 0 && kitty_inifile_registry_authoritative())
+        return theme_ro_pref;
+    /* store-pairs: read param KiTTY KI_THEME - the satellites' reader (kitty_globalsettings.c): the store in charge first, the other one as the fallback */
+    v = kitty_settings_read_dup(&theme_setting);
+    pref = v ? kitty_theme_pref_from_string(v) : KITTY_THEME_SYSTEM;
+    free(v);
+    return pref;
 }
 
 /* To the store in charge only, the same rule: it used to be written to both,
- * so a portable install wrote the registry. With readonly=yes
- * kitty_inifile_write leaves kitty.ini as it is: the choice holds for this
- * run only. 1 when stored or skipped so, 0 with the reason in
+ * so a portable install wrote the registry. With readonly=yes the choice holds
+ * for this run only. 1 when stored or skipped so, 0 with the reason in
  * GetLastError(). */
 int kitty_theme_pref_set(int pref)
 {
+    int rc;
     if (pref < KITTY_THEME_SYSTEM || pref > KITTY_THEME_DARK)
         pref = KITTY_THEME_SYSTEM;
-    if (!kitty_inifile_registry_authoritative())
-        /* store-pairs: write param KiTTY KI_THEME - the satellites' hand-rolled param write: kitty.ini or the hive (theme_reg_write), by the store in charge */
-        return kitty_inifile_write(KI_SECTION_KITTY, KI_THEME,
-                                    kitty_theme_pref_to_string(pref));
-    return theme_reg_write(pref);
+    /* store-pairs: write param KiTTY KI_THEME - the satellites' writer (kitty_globalsettings.c): kitty.ini or the hive, by the store in charge */
+    rc = kitty_settings_write(&theme_setting, kitty_theme_pref_to_string(pref));
+    if (rc == KITTY_RO_REFUSED && kitty_inifile_registry_authoritative())
+        theme_ro_pref = pref;
+    return rc;
 }
 
 bool kitty_theme_pref_dark(void)
