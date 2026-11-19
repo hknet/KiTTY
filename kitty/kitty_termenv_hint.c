@@ -21,6 +21,7 @@
 #include "putty.h"
 #include "kitty_storage.h"
 #include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
+#include "kitty_globalsettings.h"   /* the store's reads and writes */
 #include "kitty_termenv.h"
 
 #define KTH_SUBDIR "TermEnvHint"   /* registry subkey and portable folder */
@@ -41,16 +42,11 @@ static bool kth_said(void *ctx, const char *host_id)
         return said;
     } else {
         char base[600];
-        HKEY hk;
-        bool said;
+        void *v;
         kth_reg_path(base, sizeof(base));
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, base, 0, KEY_QUERY_VALUE, &hk)
-            != ERROR_SUCCESS)
-            return false;
-        said = RegQueryValueExA(hk, host_id, NULL, NULL, NULL, NULL)
-               == ERROR_SUCCESS;
-        RegCloseKey(hk);
-        return said;
+        v = kitty_settings_reg_value_dup_at(base, host_id, NULL, NULL);
+        free(v);
+        return v != NULL;
     }
 }
 
@@ -65,16 +61,8 @@ static bool kth_mark(void *ctx, const char *host_id)
         return portable_write_text_file(KTH_SUBDIR, host_id, "1") != 0;
     } else {
         char base[600];
-        HKEY hk;
-        bool ok = false;
         kth_reg_path(base, sizeof(base));
-        if (RegCreateKeyExA(HKEY_CURRENT_USER, base, 0, NULL, 0,
-                            KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-            ok = RegSetValueExA(hk, host_id, 0, REG_SZ, (const BYTE *)"1", 2)
-                 == ERROR_SUCCESS;
-            RegCloseKey(hk);
-        }
-        return ok;
+        return kitty_settings_reg_set_at(base, host_id, REG_SZ, "1", 2) == 1;
     }
 }
 

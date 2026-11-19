@@ -107,9 +107,8 @@ static void ks_ro_keep(const char *hive, const char *name, DWORD type,
     v->data = d;
 }
 
-int kitty_settings_reg_dword(int hive, const char *name, int *value)
+int kitty_settings_reg_dword_at(const char *h, const char *name, int *value)
 {
-    const char *h = kitty_settings_hive(hive);
     const struct ks_ro_value *ro = ks_ro_find(h, name);
     DWORD v, sz = sizeof(v);
     if (ro) {
@@ -126,9 +125,8 @@ int kitty_settings_reg_dword(int hive, const char *name, int *value)
     return 1;
 }
 
-char *kitty_settings_reg_str_dup(int hive, const char *name)
+char *kitty_settings_reg_str_dup_at(const char *h, const char *name)
 {
-    const char *h = kitty_settings_hive(hive);
     const struct ks_ro_value *ro = ks_ro_find(h, name);
     char *buf;
     int tries;
@@ -170,10 +168,8 @@ char *kitty_settings_reg_str_dup(int hive, const char *name)
     return NULL;
 }
 
-int kitty_settings_reg_set(int hive, const char *name, DWORD type,
-                           const void *data, DWORD len)
+int kitty_settings_reg_set_at(const char *h, const char *name, DWORD type, const void *data, DWORD len)
 {
-    const char *h = kitty_settings_hive(hive);
     HKEY hk;
     LONG rc;
     if (kitty_store_ro_regpath(1, h)) {
@@ -193,10 +189,8 @@ int kitty_settings_reg_set(int hive, const char *name, DWORD type,
     return 1;
 }
 
-void *kitty_settings_reg_value_dup(int hive, const char *name, DWORD *type,
-                                   DWORD *len)
+void *kitty_settings_reg_value_dup_at(const char *h, const char *name, DWORD *type, DWORD *len)
 {
-    const char *h = kitty_settings_hive(hive);
     const struct ks_ro_value *ro = ks_ro_find(h, name);
     HKEY k;
     DWORD t = 0, n = 0;
@@ -240,9 +234,8 @@ void *kitty_settings_reg_value_dup(int hive, const char *name, DWORD *type,
     return v;
 }
 
-int kitty_settings_reg_del(int hive, const char *name)
+int kitty_settings_reg_del_at(const char *h, const char *name)
 {
-    const char *h = kitty_settings_hive(hive);
     HKEY hk;
     LONG rc;
     if (kitty_store_ro_regpath(1, h))
@@ -670,6 +663,62 @@ int kitty_settings_state_file_set(const char *path, const char *key,
         SetLastError(err);
     }
     return ok;
+}
+
+int kitty_settings_reg_dword(int hive, const char *name, int *value)
+{
+    return kitty_settings_reg_dword_at(kitty_settings_hive(hive), name, value);
+}
+
+char *kitty_settings_reg_str_dup(int hive, const char *name)
+{
+    return kitty_settings_reg_str_dup_at(kitty_settings_hive(hive), name);
+}
+
+int kitty_settings_reg_set(int hive, const char *name, DWORD type, const void *data, DWORD len)
+{
+    return kitty_settings_reg_set_at(kitty_settings_hive(hive), name, type, data, len);
+}
+
+void *kitty_settings_reg_value_dup(int hive, const char *name, DWORD *type, DWORD *len)
+{
+    return kitty_settings_reg_value_dup_at(kitty_settings_hive(hive), name, type, len);
+}
+
+int kitty_settings_reg_del(int hive, const char *name)
+{
+    return kitty_settings_reg_del_at(kitty_settings_hive(hive), name);
+}
+
+int kitty_settings_reg_names_at(const char *path, int (*fn)(const char *name,
+                                                            void *ctx),
+                                void *ctx)
+{
+    HKEY k;
+    DWORD i, nlen, max = 0;
+    char *name;
+    int n = 0;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_QUERY_VALUE, &k) !=
+            ERROR_SUCCESS)
+        return 0;
+    if (RegQueryInfoKeyA(k, NULL, NULL, NULL, NULL, NULL, NULL, NULL, &max,
+                         NULL, NULL, NULL) != ERROR_SUCCESS ||
+        (name = malloc(max + 2)) == NULL) {
+        RegCloseKey(k);
+        return 0;
+    }
+    for (i = 0; ; i++) {
+        nlen = max + 1;
+        if (RegEnumValueA(k, i, name, &nlen, NULL, NULL, NULL, NULL) !=
+                ERROR_SUCCESS)
+            break;
+        n++;
+        if (!fn(name, ctx))
+            break;
+    }
+    free(name);
+    RegCloseKey(k);
+    return n;
 }
 
 /* kitty.ini's value whole (free() it), NULL when absent or empty. */

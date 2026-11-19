@@ -42,6 +42,7 @@
 #include "kitty_storage.h"
 #include "kitty_winpos.h"
 #include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
+#include "kitty_globalsettings.h"   /* the store's reads and writes */
 
 #define KWP_SHARED_SUBDIR   "WindowPos"     /* registry subkey and portable folder */
 #define KWP_SHARED_PREFIX   "WinPos"
@@ -355,18 +356,17 @@ int kitty_winpos_shared_get(unsigned long layout, struct kitty_termpos *out)
         return ok;
     } else {
         char base[600];
-        HKEY hk;
-        DWORD type = 0, sz;
-        BYTE raw[256];
+        DWORD type = 0, sz = 0;
+        unsigned char *raw;
         int ret = 0;
         kwp_reg_path(base, sizeof(base));
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, base, 0, KEY_QUERY_VALUE, &hk)
-            != ERROR_SUCCESS)
+        /* the settings module (kitty_globalsettings.c) */
+        raw = kitty_settings_reg_value_dup_at(base, key, &type, &sz);
+        if (!raw)
             return 0;
-        sz = sizeof(raw) - 1;
-        if (RegQueryValueExA(hk, key, NULL, &type, raw, &sz) == ERROR_SUCCESS) {
+        /* a value too long for the old 255-byte buffer counted as none */
+        if (sz < 256) {
             if (type == REG_SZ) {
-                raw[sz] = '\0';
                 ret = kitty_winpos_parse((const char *)raw, out) ? 1 : 0;
             } else if (type == REG_BINARY && sz == sizeof(RECT)) {
                 /* Written by an earlier version: a pixel rectangle. The
@@ -381,7 +381,7 @@ int kitty_winpos_shared_get(unsigned long layout, struct kitty_termpos *out)
                 ret = 2;
             }
         }
-        RegCloseKey(hk);
+        free(raw);
         return ret;
     }
 }
@@ -398,22 +398,37 @@ int kitty_winpos_shared_set(unsigned long layout, const struct kitty_termpos *po
         return portable_write_text_file(KWP_SHARED_SUBDIR, key, val) ? 1 : 0;
     } else {
         char base[600];
-        HKEY hk;
-        int ok = 0;
         kwp_reg_path(base, sizeof(base));
-        if (RegCreateKeyExA(HKEY_CURRENT_USER, base, 0, NULL, 0,
-                            KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-            ok = RegSetValueExA(hk, key, 0, REG_SZ, (const BYTE *)val,
-                                (DWORD)strlen(val) + 1) == ERROR_SUCCESS;
-            RegCloseKey(hk);
-        }
-        return ok;
+        return kitty_settings_reg_set_at(base, key, REG_SZ, val,
+                                         (DWORD)strlen(val) + 1) == 1;
     }
 }
 
 /* Walk the shared entries; with remove set, delete each one. Returns the
  * number seen (or removed). Only names starting with "WinPos_" count, so
  * the configuration window's "ConfigBox" value is never touched. */
+struct kwp_walk {
+    size_t plen;
+    int remove, count;
+    char **doomed;
+    int ndoomed, cap;
+};
+static int kwp_walk_name(const char *name, void *ctx)
+{
+    struct kwp_walk *w = ctx;
+    if (_strnicmp(name, KWP_SHARED_PREFIX "_", w->plen))
+        return 1;
+    w->count++;
+    if (w->remove) {
+        if (w->ndoomed == w->cap) {
+            w->cap = w->cap ? w->cap * 2 : 8;
+            w->doomed = sresize(w->doomed, w->cap, char *);
+        }
+        w->doomed[w->ndoomed++] = dupstr(name);
+    }
+    return 1;
+}
+
 static int kwp_shared_walk(int remove)
 {
     int count = 0;
@@ -448,42 +463,27 @@ static int kwp_shared_walk(int remove)
         return count;
     } else {
         char base[600];
-        HKEY hk;
-        char name[128];
-        DWORD i, nlen;
-        char **doomed = NULL;
-        int ndoomed = 0, cap = 0, k;
+        struct kwp_walk w;
+        int k;
         kwp_reg_path(base, sizeof(base));
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, base, 0,
-                          KEY_QUERY_VALUE | (remove ? KEY_SET_VALUE : 0), &hk)
-            != ERROR_SUCCESS)
-            return 0;
+        w.plen = plen;
+        w.remove = remove;
+        w.count = 0;
+        w.doomed = NULL;
+        w.ndoomed = w.cap = 0;
         /* Collect first, delete after: deleting while enumerating shifts
          * the indices under the enumeration. */
-        for (i = 0; ; i++) {
-            nlen = sizeof(name);
-            if (RegEnumValueA(hk, i, name, &nlen, NULL, NULL, NULL, NULL)
-                != ERROR_SUCCESS)
-                break;
-            if (_strnicmp(name, KWP_SHARED_PREFIX "_", plen)) continue;
-            count++;
-            if (remove) {
-                if (ndoomed == cap) {
-                    cap = cap ? cap * 2 : 8;
-                    doomed = sresize(doomed, cap, char *);
-                }
-                doomed[ndoomed++] = dupstr(name);
-            }
-        }
+        kitty_settings_reg_names_at(base, kwp_walk_name, &w);
+        count = w.count;
         if (remove) {
             count = 0;
-            for (k = 0; k < ndoomed; k++) {
-                if (RegDeleteValueA(hk, doomed[k]) == ERROR_SUCCESS) count++;
-                sfree(doomed[k]);
+            for (k = 0; k < w.ndoomed; k++) {
+                /* names just seen: 1 = removed */
+                if (kitty_settings_reg_del_at(base, w.doomed[k]) == 1) count++;
+                sfree(w.doomed[k]);
             }
-            sfree(doomed);
+            sfree(w.doomed);
         }
-        RegCloseKey(hk);
         return count;
     }
 }

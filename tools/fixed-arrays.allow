@@ -437,7 +437,6 @@ kitty/kitty_winevent.c | kitty_wev_term_transfer() | full | MAX_PATH * 2 | local
 
 kitty/kitty_winpos.c | kitty_winpos_session_copy() | raw | 256 | window-position record (registry text value), RegEnumValueA with sizeof-1, NUL added
 kitty/kitty_winpos.c | kitty_winpos_shared_get() | base | 600 | registry key path, not a file path: the store's base key (one of two fixed keys) plus \WindowPos, _snprintf to sizeof
-kitty/kitty_winpos.c | kitty_winpos_shared_get() | raw | 256 | window-position record (registry text value, a binary RECT accepted as well), RegQueryValueExA with sizeof-1, NUL added
 kitty/kitty_winpos.c | kitty_winpos_shared_set() | base | 600 | registry key path, not a file path: the store's base key (one of two fixed keys) plus \WindowPos, _snprintf to sizeof
 kitty/kitty_winpos.c | kwp_shared_walk() | base | 600 | registry key path, not a file path: the store's base key (one of two fixed keys) plus \WindowPos, _snprintf to sizeof
 
@@ -674,7 +673,6 @@ windows/console.c | console_read_line_to_strbuf() | buf | 4096 | upstream: conso
 windows/dialog.c | KittyCfgTreeProc() | ks | 256 | GetKeyboardState key-state array, 256 entries defined by the API
 windows/dialog.c | kitty_cfgact_dbg() | path | MAX_PATH | debug log path %TEMP%\kitty_cfgbox_activation.log; trace build only (KITTY_CFGBOX_ACTIVATION_TRACE)
 windows/dialog.c | kitty_cfgpos_dbg() | path | MAX_PATH | debug log path %TEMP%\kitty_winpos.log; GetTempPathA result checked (n >= sizeof-20 refused)
-windows/dialog.c | kitty_cfgbox_restore_pos() | base | 600 | registry key path, not a file path: the store's base key plus \WindowPos
 windows/dialog.c | kitty_cfg_session_label_update() | buf | 256 | session label text, GetWindowTextA(sizeof)
 windows/dialog.c | kitty_cfg_session_label_update() | want | 256 | session label text, _snprintf(sizeof-1)
 windows/dialog.c | kitty_cfg_remembered_app_panel() | buf | 256 | remembered configuration-tree panel path (not a file path), ReadParameterN(sizeof)

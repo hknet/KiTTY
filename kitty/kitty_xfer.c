@@ -314,6 +314,7 @@ static const char *kx_helper_keyfile(Conf *c)
 #include "kitty_winevent.h"       /* kitty_wev_suite: event 906 per helper decision */
 #include "mini/mini.h"            /* readINI / writeINI: portable mode's store */
 #include "kitty_storage.h"        /* kitty_registry_base: the registry store */
+#include "kitty_globalsettings.h"   /* the store's reads and writes */
 
 #define KH_STORE_SECTION "TrustedHelpers"
 
@@ -381,13 +382,10 @@ static char *kh_store_get_dup( const char *full ) {
 		hex = kitty_read_ini_dup( GetKittyIniFile(), KH_STORE_SECTION, name ) ;
 	} else {
 		char *key = dupprintf( "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;
-		HKEY hk ; DWORD type = 0, len = 0 ;
-		if( RegOpenKeyExA( HKEY_CURRENT_USER, key, 0, KEY_READ, &hk ) == ERROR_SUCCESS ) {
-			unsigned char *d = kitty_reg_query_dup( hk, name, &type, &len ) ;
-			if( d != NULL && type == REG_SZ ) hex = (char *)d ;
-			else sfree( d ) ;
-			RegCloseKey( hk ) ;
-		}
+		DWORD type = 0 ;
+		char *d = kitty_settings_reg_value_dup_at( key, name, &type, NULL ) ;
+		if( d != NULL && type == REG_SZ ) hex = d ;
+		else free( d ) ;
 		sfree( key ) ;
 	}
 	sfree( name ) ;
@@ -404,11 +402,7 @@ static void kh_store_put( const char *full, const char *hex ) {
 		if( !GetReadOnlyFlag() ) writeINI( GetKittyIniFile(), KH_STORE_SECTION, name, hex ) ;
 	} else {
 		char *key = dupprintf( "%s\\%s", kitty_registry_base(), KH_STORE_SECTION ) ;
-		HKEY hk ;
-		if( RegCreateKeyExA( HKEY_CURRENT_USER, key, 0, NULL, 0, KEY_WRITE, NULL, &hk, NULL ) == ERROR_SUCCESS ) {
-			RegSetValueExA( hk, name, 0, REG_SZ, (const BYTE *)hex, (DWORD)strlen( hex ) + 1 ) ;
-			RegCloseKey( hk ) ;
-		}
+		kitty_settings_reg_set_at( key, name, REG_SZ, hex, (DWORD)strlen( hex ) + 1 ) ;
 		sfree( key ) ;
 	}
 	sfree( name ) ;

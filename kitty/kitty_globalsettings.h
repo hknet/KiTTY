@@ -78,6 +78,23 @@ int kitty_settings_reg_set(int hive, const char *name, DWORD type,
 void *kitty_settings_reg_value_dup(int hive, const char *name, DWORD *type,
                                    DWORD *len);
 
+/* The same pieces under a key given by its path below HKEY_CURRENT_USER
+ * (a subkey of the settings: window positions, the helpers' hashes). */
+int kitty_settings_reg_dword_at(const char *path, const char *name,
+                                int *value);
+char *kitty_settings_reg_str_dup_at(const char *path, const char *name);
+int kitty_settings_reg_set_at(const char *path, const char *name, DWORD type,
+                              const void *data, DWORD len);
+void *kitty_settings_reg_value_dup_at(const char *path, const char *name,
+                                      DWORD *type, DWORD *len);
+int kitty_settings_reg_del_at(const char *path, const char *name);
+/* Calls fn with each value name under the key until it returns 0, the
+ * number of names seen. Removing values while it runs moves the rest:
+ * collect first. */
+int kitty_settings_reg_names_at(const char *path,
+                                int (*fn)(const char *name, void *ctx),
+                                void *ctx);
+
 /* Remove one value under the key: 1 when gone (or never there), 0 with the
  * reason in GetLastError(). readonly=yes: KITTY_RO_REFUSED. */
 int kitty_settings_reg_del(int hive, const char *name);

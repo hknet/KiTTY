@@ -30,6 +30,7 @@
 #include "../kitty/kitty_auxpos.h"   /* the Event Log's place and size */
 #include "../kitty/kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "../kitty/kitty_inifile.h"   /* KiTTY: kitty_store_readonly, readonly=yes */
+#include "../kitty/kitty_globalsettings.h"   /* KiTTY: the store's reads and writes */
 #include "kitty_gui.h"
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
 
@@ -2881,24 +2882,20 @@ static int kitty_cfgbox_restore_pos(HWND hwnd)
     /* Before 0.85.1.14 the place was one value for every monitor layout,
      * WindowPos\ConfigBox in the registry (even for a portable copy):
      * carried over once as this layout's entry, then removed. */
-    char base[600];
-    HKEY hk;
+    char *base = dupprintf("%s\\WindowPos", kitty_registry_base());
     int ok;
-    _snprintf(base, sizeof(base), "%s\\WindowPos", kitty_registry_base());
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, base, 0, KEY_QUERY_VALUE | KEY_SET_VALUE,
-                      &hk) == ERROR_SUCCESS) {
-        LONG xy[2];
-        DWORD sz = sizeof(xy), type = 0;
-        if (RegQueryValueExA(hk, KR_DLGPOS_CONFIGBOX, NULL, &type, (BYTE *)xy, &sz)
-            == ERROR_SUCCESS) {
-            if (type == REG_BINARY && sz == sizeof(xy))
-                kitty_auxpos_seed(KR_DLGPOS_CONFIGBOX, (int)xy[0], (int)xy[1], 0, 0);
-            if (!kitty_store_readonly())    /* readonly=yes: the old value stays */
-                RegDeleteValueA(hk, KR_DLGPOS_CONFIGBOX);
-            kitty_cfgpos_dbg("RESTORE carried the old WindowPos\\ConfigBox over");
-        }
-        RegCloseKey(hk);
+    DWORD sz = 0, type = 0;
+    LONG *xy = kitty_settings_reg_value_dup_at(base, KR_DLGPOS_CONFIGBOX,
+                                               &type, &sz);
+    if (xy) {
+        if (type == REG_BINARY && sz == 2 * sizeof(LONG))
+            kitty_auxpos_seed(KR_DLGPOS_CONFIGBOX, (int)xy[0], (int)xy[1], 0, 0);
+        free(xy);
+        if (!kitty_store_readonly())    /* readonly=yes: the old value stays */
+            kitty_settings_reg_del_at(base, KR_DLGPOS_CONFIGBOX);
+        kitty_cfgpos_dbg("RESTORE carried the old WindowPos\\ConfigBox over");
     }
+    sfree(base);
     ok = kitty_auxpos_restore(hwnd, KR_DLGPOS_CONFIGBOX, 0, 0, 0);
     kitty_cfgpos_dbg("RESTORE -> %d", ok);
     return ok;

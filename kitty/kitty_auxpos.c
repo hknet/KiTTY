@@ -11,6 +11,7 @@
 #include <string.h>
 #include "kitty_auxpos.h"
 #include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
+#include "kitty_globalsettings.h"   /* the store's reads and writes */
 
 #define KITTY_AUXPOS_REGKEY  "Software\\kapper.net\\KiTTY\\AuxWinPos"
 #define KITTY_AUXPOS_SECTION "AuxWinPos"   /* the file store's section */
@@ -127,30 +128,36 @@ static int kitty_auxpos_read(const char *key, int *x, int *y, int *w, int *h)
     *w = *h = 0;
     if (!kitty_auxpos_persist) return 0;
     kitty_auxpos_valname(vn, sizeof(vn), key);
+    buf[0] = '\0';
     if (kitty_auxpos_file) {
-        GetPrivateProfileStringA(KITTY_AUXPOS_SECTION, vn, "", buf, sizeof(buf),
-                                 kitty_auxpos_file);
-    } else {
-        HKEY hk;
-        DWORD type = 0, sz = sizeof(buf) - 1;
-        buf[0] = '\0';
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_auxpos_regkey, 0, KEY_READ, &hk)
-            != ERROR_SUCCESS)
-            return 0;
-        if (RegQueryValueExA(hk, vn, NULL, &type, (LPBYTE)buf, &sz) != ERROR_SUCCESS) {
-            RegCloseKey(hk);
-            return 0;
+        /* kitty_windowpos.ini beside the exe (kitty_globalsettings.c) */
+        char *v = kitty_settings_file_read_dup(kitty_auxpos_file,
+                                               KITTY_AUXPOS_SECTION, vn);
+        if (v) {
+            snprintf(buf, sizeof(buf), "%s", v);
+            free(v);
         }
-        RegCloseKey(hk);
+    } else {
+        DWORD type = 0, sz = 0;
+        char *v = kitty_settings_reg_value_dup_at(kitty_auxpos_regkey, vn,
+                                                  &type, &sz);
+        if (!v)
+            return 0;
         if (type == REG_BINARY && sz == sizeof(POINT)) {
             /* written by an earlier version: the top-left only */
             POINT pt;
-            memcpy(&pt, buf, sizeof(pt));
+            memcpy(&pt, v, sizeof(pt));
+            free(v);
             *x = pt.x; *y = pt.y;
             return 1;
         }
-        if (type != REG_SZ) return 0;
-        buf[sz] = '\0';
+        /* a value too long for the buffer counted as none, as before */
+        if (type != REG_SZ || strlen(v) >= sizeof(buf)) {
+            free(v);
+            return 0;
+        }
+        strcpy(buf, v);
+        free(v);
     }
     if (!buf[0]) return 0;
     {
@@ -171,16 +178,11 @@ static void kitty_auxpos_write(const char *key, int x, int y, int w, int h)
     kitty_auxpos_valname(vn, sizeof(vn), key);
     if (w > 0 && h > 0) snprintf(val, sizeof(val), "%d,%d,%d,%d", x, y, w, h);
     else snprintf(val, sizeof(val), "%d,%d", x, y);
-    if (kitty_auxpos_file) {
-        WritePrivateProfileStringA(KITTY_AUXPOS_SECTION, vn, val, kitty_auxpos_file);
-    } else {
-        HKEY hk;
-        if (RegCreateKeyExA(HKEY_CURRENT_USER, kitty_auxpos_regkey, 0, NULL, 0,
-                            KEY_WRITE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-            RegSetValueExA(hk, vn, 0, REG_SZ, (const BYTE*)val, (DWORD)strlen(val) + 1);
-            RegCloseKey(hk);
-        }
-    }
+    if (kitty_auxpos_file)
+        kitty_settings_file_write(kitty_auxpos_file, KITTY_AUXPOS_SECTION, vn, val);
+    else
+        kitty_settings_reg_set_at(kitty_auxpos_regkey, vn, REG_SZ, val,
+                                  (DWORD)strlen(val) + 1);
 }
 
 /* ---- placement ---- */
