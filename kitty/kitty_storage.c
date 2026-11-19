@@ -29,6 +29,7 @@
 #include "kitty_defs.h"   /* KITTY_DEFAULT_SESSION (dependency-free) */
 #include "kitty_b64.h"    /* ksec_b64_encode/decode (at-rest secret codec) */
 #include "kitty_storage.h"
+#include "kitty_globalsettings.h"   /* the state values' registry leg */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_oldwin.h"   /* kitty_api_record: what this Windows cannot do */
 #include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report lists */
@@ -208,32 +209,26 @@ int kitty_has_foreign_sessions(void)
  * (here and in every state writer below): the answer holds for this run. */
 static void kitty_dword_store(const char *name, DWORD v)
 {
-    HKEY hk;
     if (kitty_store_readonly())
         return;
     if (store_is_file()) {
         kitty_portable_store_state_dword(name, v);
         return;
     }
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        RegSetValueExA(hk, name, 0, REG_DWORD, (const BYTE *)&v, sizeof(v));
-        RegCloseKey(hk);
-    }
+    /* the hive in use (kitty_globalsettings.c) */
+    kitty_settings_reg_set(KS_HIVE_RUNTIME, name, REG_DWORD, &v, sizeof(v));
 }
 
 static DWORD kitty_dword_load(const char *name)
 {
-    DWORD v = 0, sz = sizeof(v);
+    DWORD v = 0;
+    int r;
     if (store_is_file()) {
         if (!kitty_portable_load_state_dword(name, &v))
             v = 0;
         return v;
     }
-    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name,
-                     RRF_RT_REG_DWORD, NULL, &v, &sz) != ERROR_SUCCESS)
-        v = 0;
-    return v;
+    return kitty_settings_reg_dword(KS_HIVE_RUNTIME, name, &r) ? (DWORD)r : 0;
 }
 
 static void kitty_persist_show_foreign(int on)
@@ -315,13 +310,13 @@ int kitty_showforeign_may_persist(void)
 int kitty_get_show_foreign_sessions(void)
 {
     if (kitty_show_foreign < 0) {
-        DWORD v = 0, sz = sizeof(v);
+        DWORD v = 0;
+        int r = 0;
         if (store_is_file() && kitty_portable_load_state_dword(KR_SHOWFOREIGNSESSIONS, &v)) {
             kitty_show_foreign = v ? 1 : 0;
-        } else if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, KR_SHOWFOREIGNSESSIONS,
-                         RRF_RT_REG_DWORD, NULL, &v, &sz) == ERROR_SUCCESS) {
+        } else if (kitty_settings_reg_dword(KS_HIVE_RUNTIME, KR_SHOWFOREIGNSESSIONS, &r)) {
             /* User has made an explicit choice: honour it. */
-            kitty_show_foreign = v ? 1 : 0;
+            kitty_show_foreign = r ? 1 : 0;
         } else {
             /*
              * No stored choice. kitty.ini decides: [KiTTY] showforeignsessions
@@ -402,13 +397,10 @@ void kitty_set_last_session(const char *sessionname)
         kitty_portable_store_state_string(KR_LASTSESSION, sessionname ? sessionname : "");
         return;
     }
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
+    {
         const char *v = sessionname ? sessionname : "";
-        RegSetValueExA(hk, KR_LASTSESSION, 0, REG_SZ,
-                       (const BYTE *)v, (DWORD)strlen(v) + 1);
-        RegCloseKey(hk);
+        kitty_settings_reg_set(KS_HIVE_RUNTIME, KR_LASTSESSION, REG_SZ, v,
+                               (DWORD)strlen(v) + 1);
     }
 }
 /* A remembered string in full (sfree it); NULL = not set or empty: the
@@ -417,7 +409,7 @@ char *kitty_state_get_dup(const char *key)
 {
     if (store_is_file())
         return kitty_portable_load_state_dup(key);
-    return kitty_reg_str_dup(HKEY_CURRENT_USER, reg_base_buf, key);
+    return kitty_settings_reg_str_dup(KS_HIVE_RUNTIME, key);
 }
 /* Into a caller's buffer: the value only when it fits in full - one that
  * does not counts as not set, never a cut one. */
@@ -439,22 +431,17 @@ char *kitty_get_last_session_dup(void)
  * NULL removes it. */
 void kitty_state_set_string(const char *key, const char *value)
 {
-    HKEY hk;
     if (kitty_store_readonly())
         return;
     if (store_is_file()) {
         kitty_portable_store_state_string(key, value ? value : "");
         return;
     }
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        if (value && *value)
-            RegSetValueExA(hk, key, 0, REG_SZ, (const BYTE *)value,
-                           (DWORD)strlen(value) + 1);
-        else
-            RegDeleteValueA(hk, key);
-        RegCloseKey(hk);
-    }
+    if (value && *value)
+        kitty_settings_reg_set(KS_HIVE_RUNTIME, key, REG_SZ, value,
+                               (DWORD)strlen(value) + 1);
+    else
+        kitty_settings_reg_del(KS_HIVE_RUNTIME, key);
 }
 
 void kitty_set_last_folder(const char *folder)
@@ -466,13 +453,8 @@ void kitty_set_last_folder(const char *folder)
         kitty_portable_store_state_string(KR_LASTFOLDER, folder);
         return;
     }
-    HKEY hk;
-    if (RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                        KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
-        RegSetValueExA(hk, KR_LASTFOLDER, 0, REG_SZ,
-                       (const BYTE *)folder, (DWORD)strlen(folder) + 1);
-        RegCloseKey(hk);
-    }
+    kitty_settings_reg_set(KS_HIVE_RUNTIME, KR_LASTFOLDER, REG_SZ, folder,
+                           (DWORD)strlen(folder) + 1);
 }
 char *kitty_get_last_folder_dup(void)
 {

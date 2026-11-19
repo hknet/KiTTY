@@ -71,6 +71,10 @@ char *kitty_settings_reg_str_dup(int hive, const char *name);
 int kitty_settings_reg_set(int hive, const char *name, DWORD type,
                            const void *data, DWORD len);
 
+/* Remove one value under the key: 1 when gone (or never there), 0 with the
+ * reason in GetLastError(). readonly=yes: KITTY_RO_REFUSED. */
+int kitty_settings_reg_del(int hive, const char *name);
+
 /* A kitty.ini value whole (free() it), NULL when absent or empty. */
 char *kitty_settings_ini_dup(const char *section, const char *key);
 

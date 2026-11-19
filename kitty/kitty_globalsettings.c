@@ -193,6 +193,29 @@ int kitty_settings_reg_set(int hive, const char *name, DWORD type,
     return 1;
 }
 
+int kitty_settings_reg_del(int hive, const char *name)
+{
+    const char *h = kitty_settings_hive(hive);
+    HKEY hk;
+    LONG rc;
+    if (kitty_store_ro_regpath(1, h))
+        return KITTY_RO_REFUSED;
+    rc = RegOpenKeyExA(HKEY_CURRENT_USER, h, 0, KEY_SET_VALUE, &hk);
+    if (rc == ERROR_FILE_NOT_FOUND)
+        return 1;
+    if (rc == ERROR_SUCCESS) {
+        rc = RegDeleteValueA(hk, name);
+        RegCloseKey(hk);
+        if (rc == ERROR_FILE_NOT_FOUND)
+            rc = ERROR_SUCCESS;
+    }
+    if (rc != ERROR_SUCCESS) {
+        SetLastError((DWORD)rc);
+        return 0;
+    }
+    return 1;
+}
+
 char *kitty_settings_ini_dup(const char *section, const char *key)
 {
     char *m = kitty_inifile_read_dup(section, key);   /* malloc'd */
