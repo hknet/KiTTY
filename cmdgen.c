@@ -27,6 +27,8 @@
 #ifdef _WINDOWS
 #include "kitty/kitty_winevent.h"  /* KiTTY: keys in the Windows Event Log */
 #include "kitty/kitty_inikeys.h"   /* KiTTY: KI_KITTYGENEVENTLOG */
+#include "kitty/kitty_testdoor_settings.h"   /* KiTTY: KITTY_TEST_SETTINGS_DUMP, test builds */
+int kitty_inifile_registry_authoritative(void);   /* kitty/kitty_inifile.c */
 #endif
 
 
@@ -333,6 +335,11 @@ static void spr_error(SeatPromptResult spr)
 /* For Unix in particular, but harmless if this main() is reused elsewhere */
 const bool buildinfo_gtk_relevant = false;
 
+/* KiTTY: test builds only (kitty/kitty_testdoor_settings.c): kittygen-cli's
+ * readers of the global settings the settings move records */
+static char *kts_cli_evlog(void) { return kitty_testdoor_int_dup(kitty_wev_switch_on(KI_KITTYGENEVENTLOG)); }
+static char *kts_cli_auth(void) { return kitty_testdoor_int_dup(kitty_inifile_registry_authoritative()); }
+
 int main(int argc, char **argv)
 {
     char *infile = NULL;
@@ -398,6 +405,16 @@ int main(int argc, char **argv)
      * passphrases changed, in the Windows Event Log; read once */
     kitty_wev_configure(KITTY_EVB_KITTYGEN,
                         kitty_wev_switch_on(KI_KITTYGENEVENTLOG));
+    /* KiTTY: test builds only - the global settings as read here, then
+     * exit (KITTY_TEST_SETTINGS_DUMP). A release build calls an empty
+     * function */
+    {
+        static const struct kts_probe p[] = {
+            { "kittygeneventlog", kts_cli_evlog, NULL },
+            { "store.authoritative", kts_cli_auth, NULL },
+        };
+        kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
+    }
 #endif
 
     /* derive program name from argv[0] */

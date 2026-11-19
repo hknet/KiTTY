@@ -34,6 +34,7 @@
 #include "kitty_hostkeys.h"
 #include "kitty_winevent.h"
 #include "kitty_store_acl.h"   /* kitty_set_store_acl_report */
+#include "kitty_testdoor_settings.h"   /* KITTY_TEST_SETTINGS_DUMP, test builds */
 
 /* windows/console.c: the question of updatehostkeys=ask on the console */
 int console_hk00_confirm(struct Seat *seat, const struct kitty_hk00_question *q,
@@ -157,7 +158,45 @@ void kitty_console_store_init(void)
         kitty_hk00_set_ui(&console_hk00_ui);
     }
 
+    /* test builds only - the global settings as read here, then exit
+     * (KITTY_TEST_SETTINGS_DUMP). A release build calls an empty function */
+    kitty_testdoor_settings_console();
+
     /* -masterpwfile before ANY argument is processed (cmdline.c). After the
      * store setup above: the PortablePasswordProtection conflict needs it. */
     kitty_masterpwfile_prescan();
+}
+
+/* Test builds only (kitty_testdoor_settings.c): the console tools' readers of
+ * the global settings the settings move records. */
+#include "kitty_testdoor_settings.h"
+#define KTS_CONSOLE(fn, key) \
+    static char *kts_cg_##fn(void) \
+    /* store-pairs: read param KiTTY verifyagent,clieventlog,autostoresshkey,theme,checkupdate - the test door's reader (KTS_CONSOLE rows below) */ \
+    { char v[64] = ""; kitty_console_global_read(key, v, sizeof(v)); return dupstr(v); }
+KTS_CONSOLE(verifyagent, KI_VERIFYAGENT)
+KTS_CONSOLE(clieventlog, KI_CLIEVENTLOG)
+KTS_CONSOLE(autostoresshkey, KI_AUTOSTORESSHKEY)
+KTS_CONSOLE(theme, KI_THEME)
+KTS_CONSOLE(checkupdate, KI_CHECKUPDATE)
+static char *kts_cg_showforeign(void)
+{
+    char v[64] = "";
+    return kitty_showforeign_ini_read(v, sizeof(v)) ? dupstr(v) : dupstr("<absent>");
+}
+static char *kts_cg_auth(void) { return kitty_testdoor_int_dup(kitty_inifile_registry_authoritative()); }
+static char *kts_cg_base(void) { return dupstr(kitty_registry_base()); }
+void kitty_testdoor_settings_console(void)
+{
+    static const struct kts_probe p[] = {
+        { "verifyagent", kts_cg_verifyagent, NULL },
+        { "clieventlog", kts_cg_clieventlog, NULL },
+        { "autostoresshkey", kts_cg_autostoresshkey, NULL },
+        { "theme", kts_cg_theme, NULL },
+        { "checkupdate", kts_cg_checkupdate, NULL },
+        { "showforeignsessions", kts_cg_showforeign, NULL },
+        { "store.authoritative", kts_cg_auth, NULL },
+        { "store.base", kts_cg_base, NULL },
+    };
+    kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
 }

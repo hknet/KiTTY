@@ -10285,6 +10285,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * the exe, never in the registry. */
     if (!kitty_inifile_registry_authoritative())
         kitty_auxpos_set_file_beside_exe();
+    /* KiTTY: test builds only - the global settings as read here, then
+     * exit (KITTY_TEST_SETTINGS_DUMP). A release build calls an empty
+     * function */
+    { extern void kitty_testdoor_settings_kageant(void);
+      kitty_testdoor_settings_kageant(); }
 
     hinst = inst;
 

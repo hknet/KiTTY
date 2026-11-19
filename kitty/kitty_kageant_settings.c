@@ -1192,3 +1192,55 @@ int kageant_notice_timeout_set(int seconds)
     return kageant_setting_write(KI_AGENT_NOTICETIMEOUT, buf,
                                  KAGEANT_REG_NOTICESECS, seconds);
 }
+
+/* Test builds only (kitty_testdoor_settings.c): kageant's readers and writers
+ * of the global settings the settings move records. */
+#include "kitty_testdoor_settings.h"
+#include "kitty_theme_pref.h"
+#include "kitty_update_state.h"
+#include "kitty_auxpos.h"
+static char *kts_ag_wm(void) { return kitty_testdoor_int_dup(kageant_allowwmcopydata_get()); }
+static int kts_as_wm(const char *v) { return kageant_allowwmcopydata_set(atoi(v)); }
+static char *kts_ag_confirm(void) { return kitty_testdoor_int_dup(kageant_confirm_mode()); }
+static int kts_as_confirm(const char *v)
+{
+    return kageant_confirm_set_mode(!stricmp(v, "yes") ? KAGEANT_CONFIRM_YES :
+                                    !stricmp(v, "no") ? KAGEANT_CONFIRM_NO :
+                                    KAGEANT_CONFIRM_AUTO);
+}
+static char *kts_ag_notice(void) { return kitty_testdoor_int_dup(kageant_notice_timeout_get()); }
+static int kts_as_notice(const char *v) { return kageant_notice_timeout_set(atoi(v)); }
+static char *kts_ag_ossh(void) { return kitty_testdoor_int_dup(kageant_opensshpipe_get()); }
+static int kts_as_ossh(const char *v) { return kageant_opensshpipe_set(atoi(v)); }
+static char *kts_ag_theme(void) { return kitty_testdoor_int_dup(kitty_theme_pref_get()); }
+static int kts_as_theme(const char *v) { return kitty_theme_pref_set(atoi(v)); }
+static char *kts_ag_upd(void) { return kitty_testdoor_int_dup(kitty_update_state_enabled()); }
+static char *kts_ag_auth(void) { return kitty_testdoor_int_dup(kitty_inifile_registry_authoritative()); }
+static char *kts_ag_base(void) { return dupstr(kitty_inifile_registry_base()); }
+static char *kts_ag_kbase(void) { return dupstr(KAGEANT_REG_BASE); }
+static char *kts_ag_xpipe(void) { char *v = kageant_extrapipe_dup(); return v ? v : dupstr("<null>"); }
+static int kts_as_xpipe(const char *v) { return kageant_extrapipe_set(v); }
+static char *kts_ag_tab(void) { return kitty_testdoor_int_dup(kageant_settings_tab_get()); }
+static int kts_as_tab(const char *v) { return kageant_settings_tab_set(atoi(v)); }
+static char *kts_ag_startup(void) { return kitty_testdoor_int_dup(kageant_startup_get()); }
+static int kts_as_startup(const char *v) { return kageant_startup_set(atoi(v)); }
+static int kts_as_auxpos(const char *v) { return kitty_auxpos_seed("QaProbe", atoi(v), 2, 300, 200); }
+void kitty_testdoor_settings_kageant(void)
+{
+    static const struct kts_probe p[] = {
+        { "allowwmcopydata", kts_ag_wm, kts_as_wm },
+        { "askconfirmation", kts_ag_confirm, kts_as_confirm },
+        { "noticetimeout", kts_ag_notice, kts_as_notice },
+        { "opensshpipe", kts_ag_ossh, kts_as_ossh },
+        { "theme", kts_ag_theme, kts_as_theme },
+        { "checkupdate", kts_ag_upd, NULL },
+        { "store.authoritative", kts_ag_auth, NULL },
+        { "store.base", kts_ag_base, NULL },
+        { "store.kageantbase", kts_ag_kbase, NULL },
+        { "extrapipe", kts_ag_xpipe, kts_as_xpipe },
+        { "settingstab", kts_ag_tab, kts_as_tab },
+        { "loadkeysonstartup", kts_ag_startup, kts_as_startup },
+        { "auxpos.QaProbe", NULL, kts_as_auxpos },
+    };
+    kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
+}

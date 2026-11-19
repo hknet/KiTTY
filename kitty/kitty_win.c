@@ -645,3 +645,70 @@ void kitty_set_check_update_enabled(int on)
 {
     WriteParameter(INIT_SECTION, KI_CHECKUPDATE, on ? "yes" : "no");
 }
+
+/* Test builds only (kitty_testdoor_settings.c): kitty.exe's readers and
+ * writers of the global settings the settings move records. */
+#include "kitty_testdoor_settings.h"
+#include "kitty_common.h"    /* GetReadOnlyFlag */
+#include "kitty_winutil.h"   /* PrintCharSize */
+#define KTS_GET(fn, key) \
+    /* store-pairs: read param KiTTY theme,checkupdate,verifyagent,clieventlog,kittygeneventlog,framepace,Folders,autostoresshkey,readonly,KiClassName,showforeignsessions - the test door's reader (KTS_GET rows below) */ \
+    static char *kts_kg_##fn(void) { return ReadParameterDup(INIT_SECTION, key); }
+#define KTS_PARAM(fn, key) \
+    KTS_GET(fn, key) \
+    /* store-pairs: write param KiTTY theme,checkupdate,verifyagent,clieventlog,kittygeneventlog,framepace,Folders,autostoresshkey - the test door's writer (KTS_PARAM rows below) */ \
+    static int kts_ks_##fn(const char *v) { return WriteParameter(INIT_SECTION, key, (char *)v); }
+KTS_PARAM(theme, KI_THEME)
+KTS_PARAM(checkupdate, KI_CHECKUPDATE)
+KTS_PARAM(verifyagent, KI_VERIFYAGENT)
+KTS_PARAM(clieventlog, KI_CLIEVENTLOG)
+KTS_PARAM(kittygeneventlog, KI_KITTYGENEVENTLOG)
+KTS_PARAM(framepace, KI_FRAMEPACE)
+KTS_PARAM(folders, KI_FOLDERS)
+KTS_PARAM(autostoresshkey, KI_AUTOSTORESSHKEY)
+KTS_GET(readonly, KI_READONLY)
+KTS_GET(kiclassname, KI_KICLASSNAME)
+KTS_GET(showforeignsessions, KI_SHOWFOREIGNSESSIONS)
+static char *kts_kg_showforeign_effective(void)
+{ return kitty_testdoor_int_dup(kitty_get_show_foreign_sessions()); }
+static int kts_ks_showforeign_effective(const char *v)
+{ kitty_set_show_foreign_sessions(atoi(v)); return 1; }
+static char *kts_kg_base(void) { return dupstr(kitty_registry_base()); }
+/* the values the program works with, not only what a reader returns */
+static char *kts_kg_theme_eff(void) { return kitty_testdoor_int_dup(kitty_theme_app_pref()); }
+static char *kts_kg_cu_eff(void) { return kitty_testdoor_int_dup(kitty_check_update_enabled()); }
+static char *kts_kg_print_h(void) { return kitty_testdoor_int_dup(PrintCharSize); }
+static char *kts_kg_cfgbox_h(void) { return kitty_testdoor_int_dup(GetConfigBoxHeight()); }
+/* a state value (KiTTYState file or the hive) and a window position */
+static char *kts_kg_state(void) { char *v = kitty_state_get_dup("QaProbeState"); return v ? v : dupstr("<null>"); }
+static int kts_ks_state(const char *v) { kitty_state_set_string("QaProbeState", v); return 1; }
+static int kts_ks_auxpos(const char *v) { return kitty_auxpos_seed("QaProbe", atoi(v), 2, 300, 200); }
+static char *kts_kg_mode(void) { return kitty_testdoor_int_dup(IniFileFlag); }
+static char *kts_kg_ro(void) { return kitty_testdoor_int_dup(GetReadOnlyFlag()); }
+void kitty_testdoor_settings_kitty(void)
+{
+    static const struct kts_probe p[] = {
+        { "theme", kts_kg_theme, kts_ks_theme },
+        { "checkupdate", kts_kg_checkupdate, kts_ks_checkupdate },
+        { "verifyagent", kts_kg_verifyagent, kts_ks_verifyagent },
+        { "clieventlog", kts_kg_clieventlog, kts_ks_clieventlog },
+        { "kittygeneventlog", kts_kg_kittygeneventlog, kts_ks_kittygeneventlog },
+        { "framepace", kts_kg_framepace, kts_ks_framepace },
+        { "Folders", kts_kg_folders, kts_ks_folders },
+        { "autostoresshkey", kts_kg_autostoresshkey, kts_ks_autostoresshkey },
+        { "readonly", kts_kg_readonly, NULL },
+        { "KiClassName", kts_kg_kiclassname, NULL },
+        { "showforeignsessions", kts_kg_showforeignsessions, NULL },
+        { "showforeign.effective", kts_kg_showforeign_effective, kts_ks_showforeign_effective },
+        { "theme.effective", kts_kg_theme_eff, NULL },
+        { "checkupdate.effective", kts_kg_cu_eff, NULL },
+        { "print.height", kts_kg_print_h, NULL },
+        { "configbox.height", kts_kg_cfgbox_h, NULL },
+        { "state.QaProbeState", kts_kg_state, kts_ks_state },
+        { "auxpos.QaProbe", NULL, kts_ks_auxpos },
+        { "store.base", kts_kg_base, NULL },
+        { "store.mode", kts_kg_mode, NULL },
+        { "store.readonly", kts_kg_ro, NULL },
+    };
+    kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
+}

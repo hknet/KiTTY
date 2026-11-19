@@ -26,6 +26,7 @@
 #include "../kitty/kitty_protkey.h" /* KiTTY: in-memory key protection */
 #include "../kitty/kitty_theme.h"      /* KiTTY: dark mode for the dialogs */
 #include "../kitty/kitty_theme_pref.h" /* KiTTY: the app-wide theme setting */
+#include "../kitty/kitty_testdoor_settings.h" /* KiTTY: KITTY_TEST_SETTINGS_DUMP, test builds */
 
 #include <commctrl.h>
 #include "../kitty/kitty_notice.h"   /* the themed startup notice */
@@ -3689,6 +3690,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * Windows Event Log (kitty_winevent.h, 400-402), read once */
     kitty_wev_configure(KITTY_EVB_KITTYGEN,
                         kitty_wev_switch_on(KI_KITTYGENEVENTLOG));
+    /* KiTTY: test builds only - the global settings as read here, then
+     * exit (KITTY_TEST_SETTINGS_DUMP). A release build calls an empty
+     * function */
+    kitty_testdoor_settings_kittygen();
 
     /* KiTTY: a portable copy remembers its windows in kitty_windowpos.ini
      * beside the exe, never in the registry. */
@@ -3948,4 +3953,20 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     cleanup_exit(ret);
     return ret;                        /* just in case optimiser complains */
+}
+
+/* KiTTY: test builds only (kitty_testdoor_settings.c): kittygen's readers and
+ * writers of the global settings the settings move records. */
+static char *kts_gg_theme(void) { return kitty_testdoor_int_dup(kitty_theme_pref_get()); }
+static int kts_gs_theme(const char *v) { return kitty_theme_pref_set(atoi(v)); }
+static char *kts_gg_evlog(void) { return kitty_testdoor_int_dup(kitty_wev_switch_on(KI_KITTYGENEVENTLOG)); }
+static char *kts_gg_auth(void) { return kitty_testdoor_int_dup(kitty_inifile_registry_authoritative()); }
+void kitty_testdoor_settings_kittygen(void)
+{
+    static const struct kts_probe p[] = {
+        { "theme", kts_gg_theme, kts_gs_theme },
+        { "kittygeneventlog", kts_gg_evlog, NULL },
+        { "store.authoritative", kts_gg_auth, NULL },
+    };
+    kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
 }
