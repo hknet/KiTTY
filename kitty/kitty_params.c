@@ -20,6 +20,7 @@
 // PuTTY includes
 #include "putty.h"
 #include "terminal.h"
+#include "kitty_globalsettings.h"   /* the one reader and writer */
 #include "putty-rc.h"
 
 // Windows-specific includes (windows.h must come first)
@@ -556,30 +557,14 @@ static void __attribute__((constructor)) kitty_params_autoreg( void ) {
 // testing for a failed write stays silent).
 static int write_parameter( const char * key, const char * name, char * value, int report ) {
 	int ret = 1 ;
-	char buffer[4096] ;
 	if( GetReadOnlyFlag() ) return KITTY_RO_REFUSED ;
-	if( IniFileFlag == SAVEMODE_DIR ) {
-		ret = writeINI( KittyIniFile, key, name, value ) ;
-		if( !ret && report ) {
-			DWORD err = GetLastError() ;
-			ini_write_failed_once( err ) ;
-			SetLastError( err ) ;
-		}
-	} else {
-		/* The hive in use, matching ReadParameterN.
-		 *
-		 * This used to write to PUTTY_REG_PARENT\\<key> - "Software\\kapper.net"
-		 * plus the INI SECTION name - while the read side looked at the base
-		 * hive and ignored the section entirely. The two agreed only by
-		 * coincidence, when that section happened to be "KiTTY". With
-		 * KiClassName=PuTTY the section becomes "PuTTY" and the sessions move
-		 * to SimonTatham\\PuTTY, so a global setting was WRITTEN to
-		 * kapper.net\\PuTTY and READ from somewhere else entirely: saving one
-		 * appeared to work, and it came back with the old value for ever.
-		 * Read and write now name the same key - the one this process uses. */
-		strcpy( buffer, kitty_registry_base() ) ;
-		/* its result: a failed write returned 1 like a stored one */
-		ret = RegTestOrCreate( HKEY_CURRENT_USER, buffer, name, value ) ;
+	/* kitty_globalsettings.c: kitty.ini with savemode=dir, else the hive in
+	 * use (the one ReadParameterN reads), the section dropped */
+	ret = kitty_settings_kitty_write( KittyIniFile, IniFileFlag == SAVEMODE_DIR, key, name, value ) ;
+	if( IniFileFlag == SAVEMODE_DIR && !ret && report ) {
+		DWORD err = GetLastError() ;
+		ini_write_failed_once( err ) ;
+		SetLastError( err ) ;
 	}
 	return ret ;
 }
@@ -608,15 +593,9 @@ char * kitty_read_ini_dup( const char * file, const char * section, const char *
 // nothing - took its place: a long Folders list saved to the registry never
 // came back.
 char * ReadParameterDup( const char * key, const char * name ) {
-	char * v = NULL ;
-	if( IniFileFlag == SAVEMODE_DIR ) {
-		/* Portable directory mode must be registry-independent: global KiTTY
-		 * parameters such as Folders are read from kitty.ini, not from a stale
-		 * HKCU value left by an installed/registry-mode copy. */
-		v = kitty_read_ini_dup( KittyIniFile, key, name ) ;
-	} else if( ( v = GetValueDataDup( HKEY_CURRENT_USER, kitty_registry_base(), name ) ) == NULL ) {
-		v = kitty_read_ini_dup( KittyIniFile, key, name ) ;
-		}
+	/* kitty_globalsettings.c: kitty.ini only with savemode=dir, else the
+	 * hive in use, then kitty.ini */
+	char * v = kitty_settings_kitty_read_dup( KittyIniFile, IniFileFlag == SAVEMODE_DIR, key, name ) ;
 	return v ? v : dupstr( "" ) ;
 	}
 

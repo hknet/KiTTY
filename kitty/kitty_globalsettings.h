@@ -74,6 +74,23 @@ int kitty_settings_reg_set(int hive, const char *name, DWORD type,
 /* A kitty.ini value whole (free() it), NULL when absent or empty. */
 char *kitty_settings_ini_dup(const char *section, const char *key);
 
+/* kitty.exe's rule (ReadParameter*, WriteParameter). ini_path is the
+ * kitty.ini kitty.exe resolved (NULL or "" before it is known: no kitty.ini
+ * value), dir_mode its savemode=dir.
+ *   read: dir_mode - kitty.ini only. Otherwise the registry value of that
+ *   name under KS_HIVE_RUNTIME, the section ignored, of any type (a DWORD as
+ *   its decimal number, a BINARY of 4 bytes or more as a.b.c.d, another type
+ *   as ""), else kitty.ini. An empty value counts as set in both stores.
+ *   Whole (free() it), NULL when set nowhere.
+ *   write: dir_mode - kitty.ini, else a REG_SZ under KS_HIVE_RUNTIME. The
+ *   store in charge under readonly=yes: KITTY_RO_REFUSED. 1 when stored, 0
+ *   with the reason in GetLastError(). */
+char *kitty_settings_kitty_read_dup(const char *ini_path, int dir_mode,
+                                    const char *section, const char *key);
+int kitty_settings_kitty_write(const char *ini_path, int dir_mode,
+                               const char *section, const char *key,
+                               const char *value);
+
 /* The global [KiTTY] keys the console tools and kittygen read where
  * kitty.exe keeps them (KS_HIVE_RUNTIME, KS_RULE_REG_OVER_INI). */
 void kitty_console_global_read(const char *key, char *value, int len);

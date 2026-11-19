@@ -203,6 +203,151 @@ char *kitty_settings_ini_dup(const char *section, const char *key)
     return m;
 }
 
+/* A value of any type as kitty.exe has read it (GetValueDataDup): text
+ * whole, a DWORD as its number, a BINARY of 4 bytes or more as a.b.c.d,
+ * anything else as "". NULL when the key or the value is absent. */
+static char *ks_reg_any_dup(const char *hive, const char *name)
+{
+    HKEY k;
+    DWORD type = 0, n = 0;
+    unsigned char *data;
+    char *out = NULL;
+    LONG rc;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, hive, 0, KEY_READ, &k) !=
+            ERROR_SUCCESS)
+        return NULL;
+    for (;;) {
+        rc = RegQueryValueExA(k, name, NULL, &type, NULL, &n);
+        if (rc != ERROR_SUCCESS)
+            break;
+        data = malloc(n + 2);
+        if (!data)
+            break;
+        rc = RegQueryValueExA(k, name, NULL, &type, data, &n);
+        if (rc == ERROR_MORE_DATA) {        /* grew in between: again */
+            free(data);
+            continue;
+        }
+        if (rc == ERROR_SUCCESS) {
+            char num[48];
+            data[n] = data[n + 1] = '\0';
+            switch (type) {
+              case REG_BINARY:
+                if (n >= 4)
+                    snprintf(num, sizeof(num), "%u.%u.%u.%u",
+                             (unsigned)data[0], (unsigned)data[1],
+                             (unsigned)data[2], (unsigned)data[3]);
+                else
+                    num[0] = '\0';
+                out = _strdup(num);
+                break;
+              case REG_DWORD: {
+                int v = 0;
+                memcpy(&v, data, n < sizeof(v) ? n : sizeof(v));
+                snprintf(num, sizeof(num), "%d", v);
+                out = _strdup(num);
+                break;
+              }
+              case REG_EXPAND_SZ:
+              case REG_MULTI_SZ:
+              case REG_SZ:
+                out = _strdup((char *)data);
+                break;
+              default:
+                out = _strdup("");
+                break;
+            }
+        }
+        free(data);
+        break;
+    }
+    RegCloseKey(k);
+    return out;
+}
+
+/* A kitty.ini value whole, an empty one included (free() it), NULL when the
+ * file or the key is absent. */
+static char *ks_ini_file_dup(const char *file, const char *section,
+                             const char *key)
+{
+    static const char absent[] = "\x01kitty.ini:absent\x01";
+    DWORD len = 512, got;
+    char *buf;
+    if (!file || !file[0] || !section || !section[0] || !key)
+        return NULL;
+    for (;;) {
+        buf = malloc(len);
+        if (!buf)
+            return NULL;
+        got = GetPrivateProfileStringA(section, key, absent, buf, len, file);
+        if (got < len - 2 || len >= (1u << 24))
+            break;
+        free(buf);
+        len *= 2;
+    }
+    if (!strcmp(buf, absent)) {
+        free(buf);
+        return NULL;
+    }
+    return buf;
+}
+
+char *kitty_settings_kitty_read_dup(const char *ini_path, int dir_mode,
+                                    const char *section, const char *key)
+{
+    char *v;
+    if (dir_mode)
+        /* Portable directory mode is registry-independent: a stale HKCU
+         * value of an installed copy is never read. */
+        return ks_ini_file_dup(ini_path, section, key);
+    v = ks_reg_any_dup(kitty_settings_hive(KS_HIVE_RUNTIME), key);
+    if (!v)
+        v = ks_ini_file_dup(ini_path, section, key);
+    return v;
+}
+
+int kitty_settings_kitty_write(const char *ini_path, int dir_mode,
+                               const char *section, const char *key,
+                               const char *value)
+{
+    const char *hive;
+    HKEY k = NULL;
+    LONG rc;
+    if (dir_mode) {
+        if (!ini_path || !ini_path[0] || !section || !section[0])
+            return 0;
+        if (kitty_inifile_write_blocked(ini_path))
+            return KITTY_RO_REFUSED;
+        return WritePrivateProfileStringA(section, key, value ? value : "",
+                                          ini_path) ? 1 : 0;
+    }
+    /* The hive in use, the one the read side looks at, the section dropped
+     * (a write to the vendor key plus the section name, read from somewhere
+     * else, made a setting come back with its old value for ever). */
+    hive = kitty_settings_hive(KS_HIVE_RUNTIME);
+    if (!hive[0])
+        return 0;
+    if (kitty_store_ro_regpath(1, hive))
+        return KITTY_RO_REFUSED;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, hive, 0, KEY_WRITE, &k) !=
+            ERROR_SUCCESS) {
+        /* the reason stays in GetLastError() for the caller's report */
+        if ((rc = RegCreateKeyA(HKEY_CURRENT_USER, hive, &k)) !=
+                ERROR_SUCCESS) {
+            SetLastError((DWORD)rc);
+            return 0;
+        }
+    }
+    rc = RegSetValueExA(k, key, 0, REG_SZ, (const BYTE *)value,
+                        (DWORD)(strlen(value) + 1));
+    RegCloseKey(k);
+    if (rc != ERROR_SUCCESS) {
+        SetLastError((DWORD)rc);
+        return 0;
+    }
+    return 1;
+}
+
 /* kitty.ini's value whole (free() it), NULL when absent or empty. */
 static char *ks_ini_dup(const char *section, const char *key)
 {

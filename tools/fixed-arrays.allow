@@ -264,7 +264,6 @@ kitty/kitty_pageant.c | kageant_do_notify() | text | 512 | notice text, snprintf
 
 kitty/kitty_params.c | (file) | PasswordConf | cstMaxRegLength+2 | legacy .sav decryption password; the only writer copies when strlen is under the size, else leaves it empty
 kitty/kitty_params.c | (file) | InitialDirectory | 4096 | program folder from GetInitialDirectory; a folder of 4096 bytes or more gives an empty string, never a cut one
-kitty/kitty_params.c | write_parameter() | buffer | 4096 | registry key path, not a file path: kitty_registry_base() (one of two fixed keys), strcpy into 4096
 kitty/kitty_params.c | DelParameter() | buffer | 4096 | registry key path, not a file path: kitty_registry_base() (one of two fixed keys), strcpy into 4096
 kitty/kitty_params.c | load_ini_params() | buffer | 4096 | [KiTTY] setting values (generic), readINI / ReadParameterN(sizeof); path settings are read in full by their own readers
 kitty/kitty_params.c | LoadParameters() | buffer | 4096 | [KiTTY] setting values in LoadParameters, ReadParameterN(sizeof); the browse folder is only skipped here, path values are duplicated in full

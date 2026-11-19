@@ -189,10 +189,6 @@ WRAPPERS = {
 # the accessors and wrappers themselves, and the loops over the tables read
 # above. (file, function, callee): reason. An entry that matches no call fails.
 GENERIC = {
-    ("kitty/kitty_params.c", "write_parameter", "writeINI"):
-        "WriteParameter itself",
-    ("kitty/kitty_params.c", "ReadParameterDup", "kitty_read_ini_dup"):
-        "ReadParameterDup itself",
     ("kitty/kitty_params.c", "ReadParameterN", "ReadParameterDup"):
         "ReadParameterN itself",
     ("kitty/kitty_params.c", "DelParameter", "delINI"):
