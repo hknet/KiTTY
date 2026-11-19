@@ -19,6 +19,7 @@
 #include "kitty_kageant_openssh.h"  /* the Windows OpenSSH client integration */
 #include "kitty_notice.h"   /* KiTTY: near-the-clock notice window (not a balloon) */
 #include "kitty_inifile.h"
+#include "kitty_globalsettings.h"
 
 /* KiTTY: notice accents. Kitty's own notices are green (workplace proxy), so
  * kageant uses two distinct colours: an amber WARNING for key-load problems,
@@ -55,87 +56,18 @@
  * to 0/1 at BOTH ends, so a multi-valued setting routed through it silently
  * loses every state above 1.
  */
-/* readonly=yes: a value kageant_reg_set did not store, held for the running
- * agent - the reads below answer from it first, so a change made in the
- * Settings dialog applies until kageant exits (KT_KASET_READONLY). */
-struct kageant_ro_value {
-    char *name;
-    DWORD type, len;
-    unsigned char *data;
-    struct kageant_ro_value *next;
-};
-static struct kageant_ro_value *kageant_ro_values = NULL;
-
-static struct kageant_ro_value *kageant_ro_find(const char *name)
-{
-    struct kageant_ro_value *v;
-    for (v = kageant_ro_values; v; v = v->next)
-        if (!stricmp(v->name, name))
-            return v;
-    return NULL;
-}
-
-static void kageant_ro_keep(const char *name, DWORD type, const void *data,
-                            DWORD len)
-{
-    struct kageant_ro_value *v = kageant_ro_find(name);
-    if (!v) {
-        v = snew(struct kageant_ro_value);
-        v->name = dupstr(name);
-        v->data = NULL;
-        v->next = kageant_ro_values;
-        kageant_ro_values = v;
-    }
-    sfree(v->data);
-    v->type = type;
-    v->len = len;
-    v->data = snewn(len ? len : 1, unsigned char);
-    if (len)
-        memcpy(v->data, data, len);
-}
-
+/* The registry pieces and the readonly=yes overlay (a value not stored
+ * holds for the running agent, KT_KASET_READONLY) are the settings
+ * module's, on the agent's fixed key (kitty_globalsettings.c). */
 static int kageant_reg_read_dword(const char *name, int *val_out)
 {
-    DWORD val, sz = sizeof(val);
-    const struct kageant_ro_value *ro = kageant_ro_find(name);
-    if (ro) {
-        if (ro->type != REG_DWORD || ro->len != sizeof(DWORD))
-            return 0;
-        memcpy(&val, ro->data, sizeof(val));
-        *val_out = (int)val;
-        return 1;
-    }
-    if (RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
-                     RRF_RT_REG_DWORD, NULL, &val, &sz) != ERROR_SUCCESS)
-        return 0;
-    *val_out = (int)val;
-    return 1;
+    return kitty_settings_reg_dword(KS_HIVE_FIXED, name, val_out);
 }
 
-/* One value under the agent's registry key: 1 when stored, 0 with the reason
- * in GetLastError(). readonly=yes: not stored, KITTY_RO_REFUSED (non-zero,
- * no failure noted) - the change holds for the running agent
- * (kageant_ro_keep). */
 static int kageant_reg_set(const char *name, DWORD type, const void *data,
                            DWORD len)
 {
-    HKEY hk;
-    LONG rc;
-    if (kitty_store_ro_regpath(1, KAGEANT_REG_BASE)) {
-        kageant_ro_keep(name, type, data, len);
-        return KITTY_RO_REFUSED;
-    }
-    rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                         KEY_SET_VALUE, NULL, &hk, NULL);
-    if (rc == ERROR_SUCCESS) {
-        rc = RegSetValueExA(hk, name, 0, type, (const BYTE *)data, len);
-        RegCloseKey(hk);
-    }
-    if (rc != ERROR_SUCCESS) {
-        SetLastError((DWORD)rc);
-        return 0;
-    }
-    return 1;
+    return kitty_settings_reg_set(KS_HIVE_FIXED, name, type, data, len);
 }
 
 int kageant_reg_write_dword(const char *name, int val)
@@ -227,60 +159,13 @@ int kageant_reg_write(const char *name, int on)
 /* A REG_SZ value whole, or NULL when absent or empty (sfree it). */
 static char *kageant_reg_read_str_dup(const char *name)
 {
-    const struct kageant_ro_value *ro = kageant_ro_find(name);
-    char *buf;
-    int tries;
-    if (ro) {                          /* readonly=yes: this run's value */
-        if (ro->type != REG_SZ || !ro->len)
-            return NULL;
-        buf = snewn(ro->len + 1, char);
-        memcpy(buf, ro->data, ro->len);
-        buf[ro->len] = '\0';
-        if (!buf[0]) {
-            sfree(buf);
-            return NULL;
-        }
-        return buf;
-    }
-    /* the size first; asked again if the value grew in between */
-    for (tries = 0; tries < 4; tries++) {
-        DWORD sz = 0;
-        LONG rc = RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
-                               RRF_RT_REG_SZ, NULL, NULL, &sz);
-        if (rc != ERROR_SUCCESS || !sz)
-            return NULL;
-        /* one byte more: room for the NUL of a value stored without one
-         * (Windows XP's stand-in for RegGetValue adds it in place) */
-        buf = snewn(sz + 1, char);
-        sz++;
-        rc = RegGetValueA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, name,
-                          RRF_RT_REG_SZ, NULL, buf, &sz);
-        if (rc == ERROR_SUCCESS && buf[0])
-            return buf;
-        sfree(buf);
-        if (rc != ERROR_MORE_DATA)
-            return NULL;
-    }
-    return NULL;
+    return kitty_settings_reg_str_dup(KS_HIVE_FIXED, name);
 }
 
-/* An [Agent] value of any length, or NULL when absent or empty (sfree it).
- * The read is repeated with a doubled buffer while the value fills it
- * (GetPrivateProfileString returns len - 1 on a cut value). */
+/* An [Agent] value of any length, or NULL when absent or empty (sfree it). */
 char *kageant_ini_read_dup(const char *key)
 {
-    int len = 512;
-    for (;;) {
-        char *buf = snewn(len, char);
-        if (!kitty_inifile_read(KI_SECTION_AGENT, key, buf, len)) {
-            sfree(buf);
-            return NULL;
-        }
-        if (strlen(buf) < (size_t)len - 2 || len >= (1 << 24))
-            return buf;
-        sfree(buf);
-        len *= 2;
-    }
+    return kitty_settings_ini_dup(KI_SECTION_AGENT, key);
 }
 
 char *kageant_setting_str_dup(const char *inikey, const char *regname)

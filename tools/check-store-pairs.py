@@ -245,8 +245,8 @@ GENERIC = {
         "the wrapper retire_ini_value_present itself",
     ("kitty/kitty_kageant_settings.c", "kageant_setting_write", "kitty_inifile_write"):
         "the wrapper kageant_setting_write itself",
-    ("kitty/kitty_kageant_settings.c", "kageant_ini_read_dup", "kitty_inifile_read"):
-        "the wrapper kageant_ini_read_dup itself",
+    ("kitty/kitty_globalsettings.c", "kitty_settings_ini_dup", "kitty_inifile_read_dup"):
+        "the settings module's kitty.ini reader (kageant_ini_read_dup)",
     ("kitty/kitty_kageant_settings.c", "kageant_setting_str_dup", "kageant_ini_read_dup"):
         "the wrapper kageant_setting_str_dup itself",
     ("kitty/kitty_kageant_settings.c", "kageant_setting_str_set", "kitty_inifile_write"):

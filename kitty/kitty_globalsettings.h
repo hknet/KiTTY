@@ -11,6 +11,8 @@
 #ifndef KITTY_GLOBALSETTINGS_H
 #define KITTY_GLOBALSETTINGS_H
 
+#include <windows.h>   /* DWORD */
+
 /* Which registry key holds the settings - the programs differ. */
 enum {
     KS_HIVE_RUNTIME,   /* kitty_registry_base(): the key this process uses */
@@ -51,6 +53,26 @@ void kitty_settings_read(const struct kitty_setting *s, char *value, int len);
 /* To the store in charge only. readonly=yes: not stored, KITTY_RO_REFUSED.
  * 1 when stored, 0 with the reason in GetLastError(). */
 int kitty_settings_write(const struct kitty_setting *s, const char *value);
+
+/* The pieces the rules are built from, for the programs whose settings
+ * still parse their own values (kageant's [Agent] keys). */
+
+/* A DWORD value under the key: 1 with it in *value, 0 when absent or of
+ * another type. A value readonly=yes refused this run answers first. */
+int kitty_settings_reg_dword(int hive, const char *name, int *value);
+
+/* A REG_SZ value whole (free() it), NULL when absent, empty or of another
+ * type. A value readonly=yes refused this run answers first. */
+char *kitty_settings_reg_str_dup(int hive, const char *name);
+
+/* One value under the key: 1 when stored, 0 with the reason in
+ * GetLastError(). readonly=yes: not stored, KITTY_RO_REFUSED. The value
+ * holds for this run (the two readers above answer from it). */
+int kitty_settings_reg_set(int hive, const char *name, DWORD type,
+                           const void *data, DWORD len);
+
+/* A kitty.ini value whole (free() it), NULL when absent or empty. */
+char *kitty_settings_ini_dup(const char *section, const char *key);
 
 /* The global [KiTTY] keys the console tools and kittygen read where
  * kitty.exe keeps them (KS_HIVE_RUNTIME, KS_RULE_REG_OVER_INI). */

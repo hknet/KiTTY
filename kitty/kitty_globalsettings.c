@@ -11,6 +11,7 @@
 #include "kitty_globalsettings.h"
 #include "kitty_inifile.h"
 #include "kitty_inikeys.h"
+#include "kitty_oldwin_reg.h"   /* XP: RegGetValue via oldwin */
 
 /* kitty_storage.c, in the programs that link it (kageant does not: it never
  * reads KS_HIVE_RUNTIME, the fixed key stands in) */
@@ -57,6 +58,149 @@ static char *ks_reg_sz_dup(const char *hive, const char *name)
         v = NULL;
     }
     return v;
+}
+
+/* readonly=yes: a value kitty_settings_reg_set did not store, held for the
+ * running program - the readers answer from it first, so a change made in a
+ * settings dialog applies until the program exits. */
+struct ks_ro_value {
+    char *hive, *name;
+    DWORD type, len;
+    unsigned char *data;
+    struct ks_ro_value *next;
+};
+static struct ks_ro_value *ks_ro_values = NULL;
+
+static struct ks_ro_value *ks_ro_find(const char *hive, const char *name)
+{
+    struct ks_ro_value *v;
+    for (v = ks_ro_values; v; v = v->next)
+        if (!_stricmp(v->hive, hive) && !_stricmp(v->name, name))
+            return v;
+    return NULL;
+}
+
+static void ks_ro_keep(const char *hive, const char *name, DWORD type,
+                       const void *data, DWORD len)
+{
+    struct ks_ro_value *v = ks_ro_find(hive, name);
+    unsigned char *d = malloc(len ? len : 1);
+    if (!d)
+        return;
+    if (len)
+        memcpy(d, data, len);
+    if (!v) {
+        v = malloc(sizeof(*v));
+        if (!v) {
+            free(d);
+            return;
+        }
+        v->hive = _strdup(hive);
+        v->name = _strdup(name);
+        v->data = NULL;
+        v->next = ks_ro_values;
+        ks_ro_values = v;
+    }
+    free(v->data);
+    v->type = type;
+    v->len = len;
+    v->data = d;
+}
+
+int kitty_settings_reg_dword(int hive, const char *name, int *value)
+{
+    const char *h = kitty_settings_hive(hive);
+    const struct ks_ro_value *ro = ks_ro_find(h, name);
+    DWORD v, sz = sizeof(v);
+    if (ro) {
+        if (ro->type != REG_DWORD || ro->len != sizeof(DWORD))
+            return 0;
+        memcpy(&v, ro->data, sizeof(v));
+        *value = (int)v;
+        return 1;
+    }
+    if (RegGetValueA(HKEY_CURRENT_USER, h, name, RRF_RT_REG_DWORD, NULL, &v,
+                     &sz) != ERROR_SUCCESS)
+        return 0;
+    *value = (int)v;
+    return 1;
+}
+
+char *kitty_settings_reg_str_dup(int hive, const char *name)
+{
+    const char *h = kitty_settings_hive(hive);
+    const struct ks_ro_value *ro = ks_ro_find(h, name);
+    char *buf;
+    int tries;
+    if (ro) {                          /* readonly=yes: this run's value */
+        if (ro->type != REG_SZ || !ro->len)
+            return NULL;
+        buf = malloc(ro->len + 1);
+        if (!buf)
+            return NULL;
+        memcpy(buf, ro->data, ro->len);
+        buf[ro->len] = '\0';
+        if (!buf[0]) {
+            free(buf);
+            return NULL;
+        }
+        return buf;
+    }
+    /* the size first, read again if the value grew in between */
+    for (tries = 0; tries < 4; tries++) {
+        DWORD sz = 0;
+        LONG rc = RegGetValueA(HKEY_CURRENT_USER, h, name, RRF_RT_REG_SZ,
+                               NULL, NULL, &sz);
+        if (rc != ERROR_SUCCESS || !sz)
+            return NULL;
+        /* one byte more: room for the NUL of a value stored without one
+         * (Windows XP's stand-in for RegGetValue adds it in place) */
+        buf = malloc(sz + 1);
+        if (!buf)
+            return NULL;
+        sz++;
+        rc = RegGetValueA(HKEY_CURRENT_USER, h, name, RRF_RT_REG_SZ, NULL,
+                          buf, &sz);
+        if (rc == ERROR_SUCCESS && buf[0])
+            return buf;
+        free(buf);
+        if (rc != ERROR_MORE_DATA)
+            return NULL;
+    }
+    return NULL;
+}
+
+int kitty_settings_reg_set(int hive, const char *name, DWORD type,
+                           const void *data, DWORD len)
+{
+    const char *h = kitty_settings_hive(hive);
+    HKEY hk;
+    LONG rc;
+    if (kitty_store_ro_regpath(1, h)) {
+        ks_ro_keep(h, name, type, data, len);
+        return KITTY_RO_REFUSED;
+    }
+    rc = RegCreateKeyExA(HKEY_CURRENT_USER, h, 0, NULL, 0, KEY_SET_VALUE,
+                         NULL, &hk, NULL);
+    if (rc == ERROR_SUCCESS) {
+        rc = RegSetValueExA(hk, name, 0, type, (const BYTE *)data, len);
+        RegCloseKey(hk);
+    }
+    if (rc != ERROR_SUCCESS) {
+        SetLastError((DWORD)rc);
+        return 0;
+    }
+    return 1;
+}
+
+char *kitty_settings_ini_dup(const char *section, const char *key)
+{
+    char *m = kitty_inifile_read_dup(section, key);   /* malloc'd */
+    if (m && !m[0]) {
+        free(m);
+        m = NULL;
+    }
+    return m;
 }
 
 /* kitty.ini's value whole (free() it), NULL when absent or empty. */
