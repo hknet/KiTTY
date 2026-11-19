@@ -71,6 +71,13 @@ char *kitty_settings_reg_str_dup(int hive, const char *name);
 int kitty_settings_reg_set(int hive, const char *name, DWORD type,
                            const void *data, DWORD len);
 
+/* A value of any type whole, followed by two NULs (a REG_MULTI_SZ list ends
+ * safely), free() it, NULL when the key or the value is absent. *type and
+ * *len (the stored bytes) when not NULL. A value readonly=yes refused this
+ * run answers first. */
+void *kitty_settings_reg_value_dup(int hive, const char *name, DWORD *type,
+                                   DWORD *len);
+
 /* Remove one value under the key: 1 when gone (or never there), 0 with the
  * reason in GetLastError(). readonly=yes: KITTY_RO_REFUSED. */
 int kitty_settings_reg_del(int hive, const char *name);

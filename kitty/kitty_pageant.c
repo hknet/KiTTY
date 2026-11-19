@@ -21,6 +21,7 @@
 #include "kitty_kageant_openssh.h"  /* the Windows OpenSSH client integration */
 #include "kitty_notice.h"   /* KiTTY: near-the-clock notice window (not a balloon) */
 #include "kitty_inifile.h"
+#include "kitty_globalsettings.h"   /* the agent's registry values */
 
 /* KiTTY: notice accents. Kitty's own notices are green (workplace proxy), so
  * kageant uses two distinct colours: an amber WARNING for key-load problems,
@@ -440,7 +441,6 @@ int kageant_save_startup_keys(void)
         size_t total = 1;
         char **entries = (nent ? snewn(nent, char *) : NULL);
         char *buf, *p;
-        HKEY hk;
         for (i = 0; i < g_nloaded; i++) {
             char *fp = (i < g_nblobs) ? kageant_fp_of_blob(g_loaded_blobs[i])
                                       : NULL;
@@ -474,16 +474,11 @@ int kageant_save_startup_keys(void)
         }
         *p = '\0';
         sfree(entries);
-        {
-            LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
-                                      NULL, 0, KEY_SET_VALUE, NULL, &hk, NULL);
-            if (rc == ERROR_SUCCESS) {
-                rc = RegSetValueExA(hk, KAGEANT_REG_KEYS, 0, REG_MULTI_SZ,
-                                    (const BYTE *)buf, (DWORD)total);
-                RegCloseKey(hk);
-            }
-            if (rc != ERROR_SUCCESS) { ok = 0; SetLastError((DWORD)rc); }
-        }
+        /* the agent's key (kitty_globalsettings.c), the reason in
+         * GetLastError() when not stored */
+        if (kitty_settings_reg_set(KS_HIVE_FIXED, KAGEANT_REG_KEYS,
+                                   REG_MULTI_SZ, buf, (DWORD)total) != 1)
+            ok = 0;
         sfree(buf);
     }
     return ok;
@@ -2529,18 +2524,12 @@ static void kageant_forget_startup_entry(const char *want)
     }
 
     {
-        HKEY hk;
         DWORD type = 0, sz = 0;
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
-                          KEY_QUERY_VALUE | KEY_SET_VALUE, &hk) != ERROR_SUCCESS)
-            return;
-        if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, &type, NULL, &sz)
-                == ERROR_SUCCESS && type == REG_MULTI_SZ && sz > 0) {
-            char *buf = snewn(sz + 2, char);
-            if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, NULL,
-                                 (BYTE *)buf, &sz) == ERROR_SUCCESS) {
+        char *buf = kitty_settings_reg_value_dup(KS_HIVE_FIXED,
+                                                 KAGEANT_REG_KEYS, &type, &sz);
+        if (buf && type == REG_MULTI_SZ && sz > 0) {
+            {
                 char *out = snewn(sz + 2, char), *o = out, *p;
-                buf[sz] = '\0'; buf[sz + 1] = '\0';
                 for (p = buf; *p; p += strlen(p) + 1) {
                     char *entry = dupstr(p);
                     int drop;
@@ -2552,18 +2541,15 @@ static void kageant_forget_startup_entry(const char *want)
                     memcpy(o, p, strlen(p) + 1); o += strlen(p) + 1;
                 }
                 *o++ = '\0';
-                {
-                    LONG rc = RegSetValueExA(hk, KAGEANT_REG_KEYS, 0,
-                                             REG_MULTI_SZ, (const BYTE *)out,
-                                             (DWORD)(o - out));
-                    if (rc != ERROR_SUCCESS) SetLastError((DWORD)rc);
-                    kageant_set_note(rc == ERROR_SUCCESS, KAGEANT_REG_KEYS);
-                }
+                kageant_set_note(
+                    kitty_settings_reg_set(KS_HIVE_FIXED, KAGEANT_REG_KEYS,
+                                           REG_MULTI_SZ, out,
+                                           (DWORD)(o - out)) == 1,
+                    KAGEANT_REG_KEYS);
                 sfree(out);
             }
-            sfree(buf);
         }
-        RegCloseKey(hk);
+        sfree(buf);
     }
 }
 
@@ -3103,17 +3089,14 @@ void kageant_load_startup_keys(void)
     }
 
     {
-        HKEY hk;
         DWORD type = 0, sz = 0;
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
-                          KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS)
+        /* the agent's key (kitty_globalsettings.c): two NULs after it */
+        char *buf = kitty_settings_reg_value_dup(KS_HIVE_FIXED,
+                                                 KAGEANT_REG_KEYS, &type, &sz);
+        if (!buf)
             return;
-        if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, &type, NULL, &sz)
-                == ERROR_SUCCESS && type == REG_MULTI_SZ && sz > 0) {
-            char *buf = snewn(sz + 1, char);
-            if (RegQueryValueExA(hk, KAGEANT_REG_KEYS, NULL, NULL,
-                                 (BYTE *)buf, &sz) == ERROR_SUCCESS) {
-                buf[sz] = '\0';
+        if (type == REG_MULTI_SZ && sz > 0) {
+            {
                 g_startup_loading = 1;
                 kitty_hello_batch_begin();
                 char *entry = NULL;
@@ -3192,9 +3175,8 @@ void kageant_load_startup_keys(void)
                 g_startup_unverified = startup_unverified;
                 kageant_refresh_tray_tip();
             }
-            sfree(buf);
         }
-        RegCloseKey(hk);
+        sfree(buf);
     }
 }
 
@@ -3292,16 +3274,10 @@ void kageant_save_key_order(void)
         return;
     }
 
-    HKEY hk;
-    LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0, NULL, 0,
-                              KEY_SET_VALUE, NULL, &hk, NULL);
-    if (rc == ERROR_SUCCESS) {
-        rc = RegSetValueExA(hk, KAGEANT_REG_ORDER, 0, REG_MULTI_SZ,
-                            (const BYTE *)buf, (DWORD)total);
-        RegCloseKey(hk);
-    }
-    if (rc != ERROR_SUCCESS) SetLastError((DWORD)rc);
-    kageant_set_note(rc == ERROR_SUCCESS, KAGEANT_REG_ORDER);
+    kageant_set_note(kitty_settings_reg_set(KS_HIVE_FIXED, KAGEANT_REG_ORDER,
+                                            REG_MULTI_SZ, buf,
+                                            (DWORD)total) == 1,
+                     KAGEANT_REG_ORDER);
     sfree(buf);
 }
 
@@ -3309,7 +3285,6 @@ void kageant_save_key_order(void)
  * startup once StartupKeys have been re-added. */
 void kageant_apply_saved_order(void)
 {
-    HKEY hk;
     DWORD type = 0, sz = 0;
 
     /* The ini first, where it is authoritative - see kageant_save_key_order. */
@@ -3335,15 +3310,10 @@ void kageant_apply_saved_order(void)
         return;
     }
 
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_REG_BASE, 0,
-                      KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS)
-        return;
-    if (RegQueryValueExA(hk, KAGEANT_REG_ORDER, NULL, &type, NULL, &sz)
-            == ERROR_SUCCESS && type == REG_MULTI_SZ && sz > 0) {
-        char *buf = snewn(sz + 1, char);
-        if (RegQueryValueExA(hk, KAGEANT_REG_ORDER, NULL, NULL,
-                             (BYTE *)buf, &sz) == ERROR_SUCCESS) {
-            buf[sz] = '\0';
+    {
+        char *buf = kitty_settings_reg_value_dup(KS_HIVE_FIXED,
+                                                 KAGEANT_REG_ORDER, &type, &sz);
+        if (buf && type == REG_MULTI_SZ && sz > 0) {
             int n = 0;
             for (char *p = buf; *p; p += strlen(p) + 1)
                 n++;
@@ -3356,7 +3326,6 @@ void kageant_apply_saved_order(void)
         }
         sfree(buf);
     }
-    RegCloseKey(hk);
 }
 
 /* KiTTY (Patrick Cernko) private-key usage confirmation. Installed into the

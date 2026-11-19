@@ -193,6 +193,53 @@ int kitty_settings_reg_set(int hive, const char *name, DWORD type,
     return 1;
 }
 
+void *kitty_settings_reg_value_dup(int hive, const char *name, DWORD *type,
+                                   DWORD *len)
+{
+    const char *h = kitty_settings_hive(hive);
+    const struct ks_ro_value *ro = ks_ro_find(h, name);
+    HKEY k;
+    DWORD t = 0, n = 0;
+    unsigned char *v = NULL;
+    LONG rc;
+    if (ro) {
+        if ((v = malloc(ro->len + 2)) == NULL)
+            return NULL;
+        memcpy(v, ro->data, ro->len);
+        v[ro->len] = v[ro->len + 1] = '\0';
+        if (type) *type = ro->type;
+        if (len) *len = ro->len;
+        return v;
+    }
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, h, 0, KEY_QUERY_VALUE, &k) !=
+            ERROR_SUCCESS)
+        return NULL;
+    for (;;) {
+        rc = RegQueryValueExA(k, name, NULL, &t, NULL, &n);
+        if (rc != ERROR_SUCCESS)
+            break;
+        if ((v = malloc(n + 2)) == NULL)
+            break;
+        rc = RegQueryValueExA(k, name, NULL, &t, v, &n);
+        if (rc == ERROR_MORE_DATA) {        /* grew in between: again */
+            free(v);
+            v = NULL;
+            continue;
+        }
+        if (rc != ERROR_SUCCESS) {
+            free(v);
+            v = NULL;
+            break;
+        }
+        v[n] = v[n + 1] = '\0';
+        if (type) *type = t;
+        if (len) *len = n;
+        break;
+    }
+    RegCloseKey(k);
+    return v;
+}
+
 int kitty_settings_reg_del(int hive, const char *name)
 {
     const char *h = kitty_settings_hive(hive);
