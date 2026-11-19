@@ -265,31 +265,52 @@ static char *ks_reg_any_dup(const char *hive, const char *name)
     return out;
 }
 
-/* A kitty.ini value whole, an empty one included (free() it), NULL when the
- * file or the key is absent. */
-static char *ks_ini_file_dup(const char *file, const char *section,
-                             const char *key)
+char *kitty_profile_string_dup(const char *section, const char *key,
+                               const char *def, const char *file);   /* kitty_oldwin.c */
+
+char *kitty_settings_file_read_dup(const char *file, const char *section,
+                                   const char *key)
 {
+    /* the value GetPrivateProfileString returns when the key is not there:
+     * it cannot distinguish "absent" from "empty" otherwise */
     static const char absent[] = "\x01kitty.ini:absent\x01";
-    DWORD len = 512, got;
-    char *buf;
+    char *v;
     if (!file || !file[0] || !section || !section[0] || !key)
         return NULL;
-    for (;;) {
-        buf = malloc(len);
-        if (!buf)
-            return NULL;
-        got = GetPrivateProfileStringA(section, key, absent, buf, len, file);
-        if (got < len - 2 || len >= (1u << 24))
-            break;
-        free(buf);
-        len *= 2;
+    v = kitty_profile_string_dup(section, key, absent, file);
+    if (v && !strcmp(v, absent)) {
+        free(v);
+        v = NULL;
     }
-    if (!strcmp(buf, absent)) {
-        free(buf);
-        return NULL;
+    return v;
+}
+
+int kitty_settings_file_write(const char *file, const char *section,
+                              const char *key, const char *value)
+{
+    if (!file || !file[0] || !section || !section[0])
+        return 0;
+    if (kitty_inifile_write_blocked(file))
+        return KITTY_RO_REFUSED;
+    if (!key || !key[0]) {
+        char probe[4];
+        if (GetPrivateProfileSectionA(section, probe, sizeof(probe), file) > 0)
+            return 1;
+        return WritePrivateProfileSectionA(section, "\0", file) ? 1 : 0;
     }
-    return buf;
+    return WritePrivateProfileStringA(section, key, value ? value : "",
+                                      file) ? 1 : 0;
+}
+
+int kitty_settings_file_del(const char *file, const char *section,
+                            const char *key)
+{
+    if (!file || !file[0] || !section || !section[0])
+        return 0;
+    if (kitty_inifile_write_blocked(file))
+        return KITTY_RO_REFUSED;
+    return WritePrivateProfileStringA(section, (key && key[0]) ? key : NULL,
+                                      NULL, file) ? 1 : 0;
 }
 
 char *kitty_settings_kitty_read_dup(const char *ini_path, int dir_mode,
@@ -299,10 +320,10 @@ char *kitty_settings_kitty_read_dup(const char *ini_path, int dir_mode,
     if (dir_mode)
         /* Portable directory mode is registry-independent: a stale HKCU
          * value of an installed copy is never read. */
-        return ks_ini_file_dup(ini_path, section, key);
+        return kitty_settings_file_read_dup(ini_path, section, key);
     v = ks_reg_any_dup(kitty_settings_hive(KS_HIVE_RUNTIME), key);
     if (!v)
-        v = ks_ini_file_dup(ini_path, section, key);
+        v = kitty_settings_file_read_dup(ini_path, section, key);
     return v;
 }
 
@@ -313,14 +334,8 @@ int kitty_settings_kitty_write(const char *ini_path, int dir_mode,
     const char *hive;
     HKEY k = NULL;
     LONG rc;
-    if (dir_mode) {
-        if (!ini_path || !ini_path[0] || !section || !section[0])
-            return 0;
-        if (kitty_inifile_write_blocked(ini_path))
-            return KITTY_RO_REFUSED;
-        return WritePrivateProfileStringA(section, key, value ? value : "",
-                                          ini_path) ? 1 : 0;
-    }
+    if (dir_mode)
+        return kitty_settings_file_write(ini_path, section, key, value);
     /* The hive in use, the one the read side looks at, the section dropped
      * (a write to the vendor key plus the section name, read from somewhere
      * else, made a setting come back with its old value for ever). */

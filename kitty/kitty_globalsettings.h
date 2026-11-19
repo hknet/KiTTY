@@ -74,6 +74,22 @@ int kitty_settings_reg_set(int hive, const char *name, DWORD type,
 /* A kitty.ini value whole (free() it), NULL when absent or empty. */
 char *kitty_settings_ini_dup(const char *section, const char *key);
 
+/* One key of a kitty.ini by file, section and key, through Windows' own ini
+ * functions: a write changes its one line and leaves the rest of the file -
+ * comments, order, layout - as it was.
+ *   read: the value whole, an empty one included (free() it), NULL when the
+ *   file, the section or the key is absent.
+ *   write: 1 written, 0 not with Windows' reason in GetLastError(). A NULL
+ *   key makes sure the section exists. The kitty.ini in charge under
+ *   readonly=yes: nothing written, KITTY_RO_REFUSED (del too).
+ *   del: one key, or with a NULL key the whole section. */
+char *kitty_settings_file_read_dup(const char *file, const char *section,
+                                   const char *key);
+int kitty_settings_file_write(const char *file, const char *section,
+                              const char *key, const char *value);
+int kitty_settings_file_del(const char *file, const char *section,
+                            const char *key);
+
 /* kitty.exe's rule (ReadParameter*, WriteParameter). ini_path is the
  * kitty.ini kitty.exe resolved (NULL or "" before it is known: no kitty.ini
  * value), dir_mode its savemode=dir.

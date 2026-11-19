@@ -579,12 +579,7 @@ int WriteParameterNoReport( const char * key, const char * name, char * value ) 
 
 /* A kitty.ini value whole (sfree it); NULL = the key is not there. */
 char * kitty_read_ini_dup( const char * file, const char * section, const char * key ) {
-	static const char absent[] = "\x01kitty.ini:absent\x01" ;
-	char * v ;
-	if( file == NULL || !file[0] || section == NULL || !section[0] || key == NULL ) return NULL ;
-	v = kitty_profile_string_dup( section, key, absent, file ) ;
-	if( v && !strcmp( v, absent ) ) { sfree( v ) ; v = NULL ; }
-	return v ;
+	return kitty_settings_file_read_dup( file, section, key ) ;
 }
 
 // Read a parameter either from the configuration file or from the registry,
