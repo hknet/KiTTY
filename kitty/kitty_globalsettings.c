@@ -517,18 +517,25 @@ static void ks_each_line(char *buf, size_t len, ks_line_fn fn, void *ctx)
     }
 }
 
-struct ks_get_ctx { const char *key; char *out; int found; };
+/* A key on more than one line: the last line's value counts, written back
+ * as one line at the first line's place (ksf_load, ksf_save). */
+struct ks_get_ctx { const char *key; char *out, *last_line; int found; };
 static int ks_get_line(char *line, int crlf, void *vctx)
 {
     struct ks_get_ctx *c = vctx;
-    char *k, *raw;
+    char *copy, *k, *raw;
     (void)crlf;
-    ks_state_line(line, &k, &raw);
+    if ((copy = _strdup(line)) == NULL)
+        return 1;
+    ks_state_line(copy, &k, &raw);
     if (k && !strcmp(k, c->key)) {
+        free(c->out);
+        free(c->last_line);
         c->out = ksf_unmunge(raw);
+        c->last_line = _strdup(line);      /* its text as read */
         c->found = 1;
-        return 0;                          /* the first line of the key */
     }
+    free(copy);
     return 1;
 }
 
@@ -540,10 +547,11 @@ char *kitty_settings_state_file_get_dup(const char *path, const char *key)
     if (!path || !path[0] || !key || (buf = ks_file_dup(path, &len)) == NULL)
         return NULL;
     c.key = key;
-    c.out = NULL;
+    c.out = c.last_line = NULL;
     c.found = 0;
     ks_each_line(buf, len, ks_get_line, &c);
     free(buf);
+    free(c.last_line);
     if (c.out && !c.out[0]) {
         free(c.out);
         c.out = NULL;
@@ -553,6 +561,8 @@ char *kitty_settings_state_file_get_dup(const char *path, const char *key)
 
 struct ks_set_ctx {
     const char *key, *value;
+    const char *last_line;     /* the key's last line as read, NULL = none */
+    int same;                  /* the new value is the one read */
     char *out;
     size_t n, cap;
     int done, first_crlf;
@@ -604,20 +614,20 @@ static int ks_set_line(char *line, int crlf, void *vctx)
     char *copy, *k, *raw;
     if (c->first_crlf < 0)
         c->first_crlf = crlf;
-    if (!c->done && (copy = _strdup(line)) != NULL) {
+    if (c->last_line && (copy = _strdup(line)) != NULL) {
+        int mine;
         ks_state_line(copy, &k, &raw);
-        if (k && !strcmp(k, c->key)) {
-            char *old = ksf_unmunge(raw);
-            int same = old && !strcmp(old, c->value);
-            free(old);
-            free(copy);
+        mine = k && !strcmp(k, c->key);
+        free(copy);
+        if (mine) {
+            if (c->done)
+                return 1;                  /* a later line of the key: gone */
             c->done = 1;
-            if (!same) {                   /* the line takes the new value */
+            if (c->same)                   /* the last line's text, here */
+                ks_put(c, c->last_line, crlf);
+            else                           /* the line takes the new value */
                 ks_put_pair(c, crlf);
-                return 1;
-            }
-        } else {
-            free(copy);
+            return 1;
         }
     }
     ks_put(c, line, crlf);                 /* as it was read */
@@ -640,13 +650,31 @@ int kitty_settings_state_file_set(const char *path, const char *key,
     buf = ks_file_dup(path, &len);
     c.key = key;
     c.value = value ? value : "";
+    c.last_line = NULL;
+    c.same = 0;
     c.cap = len + strlen(key) + strlen(c.value) * 3 + 64;
     c.out = malloc(c.cap);
     c.n = 0;
     c.done = 0;
     c.first_crlf = -1;
     if (buf) {
+        /* first the key's last line and value (a copy: the walk cuts the
+         * lines in place) */
+        struct ks_get_ctx g;
+        char *scan = malloc(len + 1);
+        g.key = key;
+        g.out = g.last_line = NULL;
+        g.found = 0;
+        if (scan) {
+            memcpy(scan, buf, len + 1);
+            ks_each_line(scan, len, ks_get_line, &g);
+            free(scan);
+        }
+        c.last_line = g.last_line;
+        c.same = g.out && !strcmp(g.out, c.value);
         ks_each_line(buf, len, ks_set_line, &c);
+        free(g.out);
+        free(g.last_line);
         free(buf);
     }
     if (!c.done)                           /* a new key: at the end */
