@@ -94,6 +94,21 @@ int kitty_settings_file_write(const char *file, const char *section,
 int kitty_settings_file_del(const char *file, const char *section,
                             const char *key);
 
+/* The KiTTYState file of a folder store (the remembered values: the last
+ * session, Manage Sessions' state, the update check's answer), in the folder
+ * store's line format: key=value with the value %HH-escaped (ksf_munge),
+ * classic KiTTY's key\value\ read too, comments and every line's own line
+ * ending kept.
+ *   get: the first line of the key, decoded, whole (free() it), NULL when
+ *   the file or the key is absent or the value empty.
+ *   set: the key's line takes the value (a new key goes at the end, with the
+ *   file's line ending, LF in a new file), the file written whole or not at
+ *   all. 1 written, 0 not with the reason in GetLastError(). readonly=yes is
+ *   the caller's to check. */
+char *kitty_settings_state_file_get_dup(const char *path, const char *key);
+int kitty_settings_state_file_set(const char *path, const char *key,
+                                  const char *value);
+
 /* kitty.exe's rule (ReadParameter*, WriteParameter). ini_path is the
  * kitty.ini kitty.exe resolved (NULL or "" before it is known: no kitty.ini
  * value), dir_mode its savemode=dir.

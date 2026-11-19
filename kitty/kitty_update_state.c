@@ -27,39 +27,23 @@ int kitty_file_version(const char *path, unsigned long *ms, unsigned long *ls); 
 
 /* One value of the portable state file: lines of key=value, the value
  * %XX-escaped - a version number and a 0/1 flag contain nothing to escape. */
-static int kus_state_file_value(const char *path, const char *key, char *out, int n)
-{
-    char line[512];
-    size_t klen = strlen(key);
-    FILE *fp;
-    int found = 0;
-
-    fp = fopen(path, "rb");
-    if (!fp)
-        return 0;
-    while (fgets(line, sizeof(line), fp)) {
-        if (!strncmp(line, key, klen) && line[klen] == '=') {
-            char *v = line + klen + 1;
-            v[strcspn(v, "\r\n")] = '\0';
-            strncpy(out, v, n - 1);
-            out[n - 1] = '\0';
-            found = out[0] != '\0';
-            break;
-        }
-    }
-    fclose(fp);
-    return found;
-}
-
 static int kus_stored(char *latest, int n, int *beta)
 {
     char *sf;   /* the state file's path whole */
     *beta = 0;
     if ((sf = kitty_inifile_state_file_dup()) != NULL) {
-        char b[16];
-        int got = kus_state_file_value(sf, "UpdateLatest", latest, n);
-        if (got && kus_state_file_value(sf, "UpdateLatestBeta", b, sizeof(b)))
-            *beta = atoi(b) != 0;
+        /* the KiTTYState reader kitty.exe uses (kitty_globalsettings.c) */
+        char *v = kitty_settings_state_file_get_dup(sf, "UpdateLatest");
+        int got = v != NULL;
+        if (v) {
+            strncpy(latest, v, (size_t)n - 1);
+            latest[n - 1] = '\0';
+            free(v);
+            if ((v = kitty_settings_state_file_get_dup(sf, "UpdateLatestBeta")) != NULL) {
+                *beta = atoi(v) != 0;
+                free(v);
+            }
+        }
         free(sf);
         return got;
     } else {

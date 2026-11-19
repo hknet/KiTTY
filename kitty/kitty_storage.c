@@ -2539,16 +2539,13 @@ static char *portable_state_path(void)          /* snewn'd or NULL */
 int kitty_portable_store_state_string(const char *key, const char *value)
 {
     char *path;
-    struct ksf_item *items;
     if (!store_is_file()) return 0;
     if (kitty_store_readonly()) return KITTY_RO_REFUSED;
     path = portable_state_path();
     if (!path) return 0;
-    kitty_store_acl_new_file(path);   /* a new KiTTYState: the store's rights */
-    items = ksf_load(path);
-    ksf_list_set(&items, key, value ? value : "");
-    ksf_save(path, items);
-    ksf_list_free(items);
+    /* the module writes it (kitty_globalsettings.c), the store's rights on a
+     * new file included */
+    kitty_settings_state_file_set(path, key, value ? value : "");
     sfree(path);
     return 1;
 }
@@ -2556,16 +2553,11 @@ int kitty_portable_store_state_string(const char *key, const char *value)
 /* One value of the state file in full (sfree it); NULL = absent or empty. */
 char *kitty_portable_load_state_dup(const char *key)
 {
-    char *path, *v, *out = NULL;
-    struct ksf_item *items;
+    char *path, *out;
     if (!store_is_file()) return NULL;
     path = portable_state_path();
     if (!path) return NULL;
-    items = ksf_load(path);
-    v = ksf_list_get(items, key);
-    if (v && v[0])
-        out = dupstr(v);
-    ksf_list_free(items);
+    out = kitty_settings_state_file_get_dup(path, key);   /* NULL: absent or empty */
     sfree(path);
     return out;
 }

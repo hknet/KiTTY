@@ -386,6 +386,245 @@ int kitty_settings_kitty_write(const char *ini_path, int dir_mode,
     return 1;
 }
 
+char *ksf_munge(const char *in);     /* kitty_sessionpath.c, malloc'd */
+char *ksf_unmunge(const char *in);   /* kitty_sessionpath.c, malloc'd */
+int kitty_write_file_whole(const char *path, const void *data, size_t len);
+void smemclr(void *b, size_t len);   /* utils: a wipe the compiler keeps */
+/* kitty_store_acl.c, in the programs that write the store (kageant only
+ * reads KiTTYState) */
+int kitty_store_acl_new_file(const char *path) __attribute__((weak));
+
+/* A file whole (free() it) with its length, NULL when it cannot be read. */
+static char *ks_file_dup(const char *path, size_t *len)
+{
+    FILE *fp = fopen(path, "rb");
+    char *buf;
+    long n;
+    if (!fp)
+        return NULL;
+    if (fseek(fp, 0, SEEK_END) || (n = ftell(fp)) < 0 ||
+        fseek(fp, 0, SEEK_SET) || (buf = malloc((size_t)n + 1)) == NULL) {
+        fclose(fp);
+        return NULL;
+    }
+    if (fread(buf, 1, (size_t)n, fp) != (size_t)n) {
+        fclose(fp);
+        free(buf);
+        return NULL;
+    }
+    fclose(fp);
+    buf[n] = '\0';
+    *len = (size_t)n;
+    return buf;
+}
+
+/* One line of the folder store's format: its key (NULL for a comment or a
+ * line without one) and its raw value, both pointing into the line, which
+ * is cut in place. */
+static void ks_state_line(char *line, char **key, char **raw)
+{
+    const char *f = line;
+    char *eq, *bs;
+    *key = *raw = NULL;
+    while (*f == ' ' || *f == '\t')
+        f++;
+    if (*f == '#' || *f == ';')
+        return;
+    eq = strchr(line, '=');
+    bs = strchr(line, '\\');
+    if (eq && (!bs || eq < bs)) {          /* key=value */
+        *eq = '\0';
+        *key = line;
+        *raw = eq + 1;
+    } else if (bs) {                       /* classic KiTTY: key\value\ */
+        size_t rl;
+        *bs = '\0';
+        *key = line;
+        *raw = bs + 1;
+        rl = strlen(*raw);
+        if (rl && (*raw)[rl - 1] == '\\')
+            (*raw)[rl - 1] = '\0';
+    }
+}
+
+/* Calls back with each line (its text cut out, without the line break) and
+ * whether it ended in CRLF. The last line without a break takes the file's
+ * first line break. */
+typedef int (*ks_line_fn)(char *line, int crlf, void *ctx);
+static void ks_each_line(char *buf, size_t len, ks_line_fn fn, void *ctx)
+{
+    size_t i = 0;
+    int file_crlf = -1;
+    while (i < len) {
+        size_t start = i, end;
+        int crlf = -1;
+        while (i < len && buf[i] != '\n')
+            i++;
+        end = i;
+        if (i < len) {                     /* a line break */
+            crlf = (end > start && buf[end - 1] == '\r');
+            if (crlf)
+                end--;
+            i++;
+            if (file_crlf < 0)
+                file_crlf = crlf;
+        }
+        if (crlf < 0)
+            crlf = file_crlf > 0;
+        buf[end] = '\0';
+        if (!fn(buf + start, crlf, ctx))
+            return;
+    }
+}
+
+struct ks_get_ctx { const char *key; char *out; int found; };
+static int ks_get_line(char *line, int crlf, void *vctx)
+{
+    struct ks_get_ctx *c = vctx;
+    char *k, *raw;
+    (void)crlf;
+    ks_state_line(line, &k, &raw);
+    if (k && !strcmp(k, c->key)) {
+        c->out = ksf_unmunge(raw);
+        c->found = 1;
+        return 0;                          /* the first line of the key */
+    }
+    return 1;
+}
+
+char *kitty_settings_state_file_get_dup(const char *path, const char *key)
+{
+    struct ks_get_ctx c;
+    size_t len = 0;
+    char *buf;
+    if (!path || !path[0] || !key || (buf = ks_file_dup(path, &len)) == NULL)
+        return NULL;
+    c.key = key;
+    c.out = NULL;
+    c.found = 0;
+    ks_each_line(buf, len, ks_get_line, &c);
+    free(buf);
+    if (c.out && !c.out[0]) {
+        free(c.out);
+        c.out = NULL;
+    }
+    return c.out;
+}
+
+struct ks_set_ctx {
+    const char *key, *value;
+    char *out;
+    size_t n, cap;
+    int done, first_crlf;
+};
+static void ks_put(struct ks_set_ctx *c, const char *s, int crlf)
+{
+    size_t need = strlen(s) + 3;
+    if (!c->out)
+        return;
+    if (c->n + need > c->cap) {
+        char *nb;
+        while (c->n + need > c->cap)
+            c->cap *= 2;
+        if ((nb = realloc(c->out, c->cap)) == NULL) {
+            free(c->out);
+            c->out = NULL;
+            return;
+        }
+        c->out = nb;
+    }
+    memcpy(c->out + c->n, s, strlen(s));
+    c->n += strlen(s);
+    if (crlf)
+        c->out[c->n++] = '\r';
+    c->out[c->n++] = '\n';
+}
+static void ks_put_pair(struct ks_set_ctx *c, int crlf)
+{
+    char *mv = ksf_munge(c->value), *line;
+    if (!mv) {
+        free(c->out);
+        c->out = NULL;
+        return;
+    }
+    line = malloc(strlen(c->key) + strlen(mv) + 2);
+    if (line) {
+        sprintf(line, "%s=%s", c->key, mv);
+        ks_put(c, line, crlf);
+        free(line);
+    } else {
+        free(c->out);
+        c->out = NULL;
+    }
+    free(mv);
+}
+static int ks_set_line(char *line, int crlf, void *vctx)
+{
+    struct ks_set_ctx *c = vctx;
+    char *copy, *k, *raw;
+    if (c->first_crlf < 0)
+        c->first_crlf = crlf;
+    if (!c->done && (copy = _strdup(line)) != NULL) {
+        ks_state_line(copy, &k, &raw);
+        if (k && !strcmp(k, c->key)) {
+            char *old = ksf_unmunge(raw);
+            int same = old && !strcmp(old, c->value);
+            free(old);
+            free(copy);
+            c->done = 1;
+            if (!same) {                   /* the line takes the new value */
+                ks_put_pair(c, crlf);
+                return 1;
+            }
+        } else {
+            free(copy);
+        }
+    }
+    ks_put(c, line, crlf);                 /* as it was read */
+    return 1;
+}
+
+int kitty_settings_state_file_set(const char *path, const char *key,
+                                  const char *value)
+{
+    struct ks_set_ctx c;
+    size_t len = 0;
+    char *buf;
+    int ok;
+    if (!path || !path[0] || !key || !key[0]) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return 0;
+    }
+    if (kitty_store_acl_new_file)
+        kitty_store_acl_new_file(path);   /* a new file: the store's rights */
+    buf = ks_file_dup(path, &len);
+    c.key = key;
+    c.value = value ? value : "";
+    c.cap = len + strlen(key) + strlen(c.value) * 3 + 64;
+    c.out = malloc(c.cap);
+    c.n = 0;
+    c.done = 0;
+    c.first_crlf = -1;
+    if (buf) {
+        ks_each_line(buf, len, ks_set_line, &c);
+        free(buf);
+    }
+    if (!c.done)                           /* a new key: at the end */
+        ks_put_pair(&c, c.first_crlf > 0);
+    if (!c.out) {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return 0;
+    }
+    ok = kitty_write_file_whole(path, c.out, c.n) != 0;
+    {
+        DWORD err = GetLastError();
+        smemclr(c.out, c.n);
+        free(c.out);
+        SetLastError(err);
+    }
+    return ok;
+}
+
 /* kitty.ini's value whole (free() it), NULL when absent or empty. */
 static char *ks_ini_dup(const char *section, const char *key)
 {

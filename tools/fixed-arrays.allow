@@ -407,7 +407,6 @@ kitty/kitty_transfer.h | struct kt5113_cmd | name | KT5113_NAME_MAX + 1 | REMOTE
 kitty/kitty_transfer.h | struct kt5113_cmd | status | KT5113_ST_MAX + 1 | OSC 5113 status field, KT5113_ST_MAX
 kitty/kitty_transfer.h | struct kt5113_cmd | data | KT5113_DATA_MAX | OSC 5113 data field, KT5113_DATA_MAX
 
-kitty/kitty_update_state.c | kus_state_file_value() | line | 512 | line of the update-state file (version / time values), fgets(sizeof)
 
 kitty/kitty_updater.c | kitty_msi_owns_this_exe() | wmenu | MAX_PATH + 1 | SHGetFolderPathW(CSIDL_STARTMENU) output, NUL forced, then duplicated
 kitty/kitty_updater.c | kitty_download_to_file() | buf | 16384 | download chunk, InternetReadFile(sizeof)
