@@ -360,6 +360,7 @@ static const char *kageant_sessions_key(void)
     return key;
 }
 #define PUTTY_DEFAULT     "Default%20Settings"
+static int kageant_registry_rows(char ***ids, char ***folders);
 static int initial_menuitems_count;
 
 /*
@@ -7831,6 +7832,34 @@ static BOOL AddTrayIcon(HWND hwnd)
  * identity, not the item text. Rebuilt with the menu. */
 static char **kageant_sess_ids;
 static int kageant_sess_nids;
+
+/* Test builds only (kitty_testdoor_settings.c): the session menu's rows -
+ * the folder store's or the registry's, as the menu takes them - as
+ * "id|folder" lines (sfree it). */
+char *kageant_testdoor_sessions_dup(void)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    struct kitty_ini_startup ini;
+    char **ids = NULL, **folders = NULL;
+    int n, i;
+    strbuf *sb = strbuf_new();
+    memset(&ini, 0, sizeof(ini));
+    kitty_inifile_startup(&ini);
+    if (ini.folder_store)
+        n = ksm_folder_store_rows(ini.session_dir, ini.session_suffix,
+                                  &ids, &folders);
+    else
+        n = kageant_registry_rows(&ids, &folders);
+    kitty_inifile_startup_free(&ini);
+    for (i = 0; i < n; i++)
+        put_fmt(sb, "%s%s|%s", i ? ";" : "", ids[i],
+                folders[i] ? folders[i] : "<none>");
+    ksm_rows_free(ids, folders, n);
+    return strbuf_to_str(sb);
+#else
+    return NULL;
+#endif
+}
 
 /* The registry store's sessions (the hive kageant_sessions_key names): the
  * identity of every key, and the Folder value of each one stored by its bare

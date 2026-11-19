@@ -1084,6 +1084,7 @@ int kageant_notice_timeout_set(int seconds)
 #include "kitty_theme_pref.h"
 #include "kitty_update_state.h"
 #include "kitty_auxpos.h"
+#include "kitty_kageant_dest.h"
 static char *kts_ag_wm(void) { return kitty_testdoor_int_dup(kageant_allowwmcopydata_get()); }
 static int kts_as_wm(const char *v) { return kageant_allowwmcopydata_set(atoi(v)); }
 static char *kts_ag_confirm(void) { return kitty_testdoor_int_dup(kageant_confirm_mode()); }
@@ -1110,6 +1111,37 @@ static int kts_as_tab(const char *v) { return kageant_settings_tab_set(atoi(v));
 static char *kts_ag_startup(void) { return kitty_testdoor_int_dup(kageant_startup_get()); }
 static int kts_as_startup(const char *v) { return kageant_startup_set(atoi(v)); }
 static int kts_as_auxpos(const char *v) { return kitty_auxpos_seed("QaProbe", atoi(v), 2, 300, 200); }
+char *kageant_testdoor_sessions_dup(void);   /* windows/pageant.c */
+static char *kts_ag_sessions(void) { return kageant_testdoor_sessions_dup(); }
+/* qa.example's host keys and CAs as the rule editor looks them up, then the
+ * names kageant gives the first plain host key found */
+static char *kts_ag_dest(int names)
+{
+    struct kageant_dest_found *f = NULL;
+    size_t n = kageant_dest_lookup("qa.example", 22, &f), i;
+    strbuf *sb = strbuf_new();
+    for (i = 0; i < n; i++) {
+        if (!names) {
+            put_fmt(sb, "%s%s:%s:%u", i ? ";" : "", f[i].is_ca ? "ca" : "key",
+                    f[i].source ? f[i].source : "", (unsigned)f[i].blob->len);
+        } else if (!f[i].is_ca) {
+            char **nm = NULL;
+            bool *kh = NULL;
+            size_t k, nn = kageant_dest_names(ptrlen_from_strbuf(f[i].blob), &nm, &kh);
+            for (k = 0; k < nn; k++) {
+                put_fmt(sb, "%s%s%s", k ? ";" : "", nm[k], kh[k] ? "(kh)" : "");
+                sfree(nm[k]);
+            }
+            sfree(nm);
+            sfree(kh);
+            break;
+        }
+    }
+    kageant_dest_found_free(f, n);
+    return strbuf_to_str(sb);
+}
+static char *kts_ag_dest_lookup(void) { return kts_ag_dest(0); }
+static char *kts_ag_dest_names(void) { return kts_ag_dest(1); }
 void kitty_testdoor_settings_kageant(void)
 {
     static const struct kts_probe p[] = {
@@ -1126,6 +1158,9 @@ void kitty_testdoor_settings_kageant(void)
         { "settingstab", kts_ag_tab, kts_as_tab },
         { "loadkeysonstartup", kts_ag_startup, kts_as_startup },
         { "auxpos.QaProbe", NULL, kts_as_auxpos },
+        { "sessions", kts_ag_sessions, NULL },
+        { "dest.lookup.qa.example", kts_ag_dest_lookup, NULL },
+        { "dest.names.qa.example", kts_ag_dest_names, NULL },
     };
     kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
 }
