@@ -623,6 +623,16 @@ static void kh_answer( int yes, void *vp ) {
  * warning's wording. zmodem: the box adds that the transfer may need starting
  * again.
  */
+/* [KiTTY] verifyagent before a hand-over: a helper that may log in through
+ * the agent (WinSCP, FileZilla, kscp) reaches whoever serves it. Judged before
+ * the helper starts - a warning, never a refusal. WinSCP and FileZilla call
+ * this themselves: kitty_helper_ready is compiled out for them
+ * (KX_CHECK_SELF_UPDATING_TOOLS). */
+static void kx_agent_probe( void ) {
+	if( conf_get_bool( conf, CONF_tryagent ) )
+		agent_serving_probe() ;
+}
+
 int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
                         void (*fn)( void * ), void *ctx, void (*ctxfree)( void * ) ) {
 	/* signer: a certificate's common name, at most 64 characters (X.520) */
@@ -634,6 +644,8 @@ int kitty_helper_ready( HWND owner, const char *path, int password, int zmodem,
 	kh_pending *p ;
 	kh_retry *r ;
 
+	if( !zmodem )   /* ZModem's helpers use no agent */
+		kx_agent_probe() ;
 	if( !path || ( full = kh_full_path_dup( path ) ) == NULL ) {
 		if( ctxfree ) ctxfree( ctx ) ;
 		return 1 ;   /* nothing there: the action reports its own "not found" */
@@ -5306,6 +5318,7 @@ void StartWinSCP( HWND hwnd, char * directory, char * host, char * user ) {
 		debug_logevent( "%s", KT_XFER_WINSCP_NOT_FOUND ) ;
 		return ;
 	}
+	kx_agent_probe() ;
 #if KX_CHECK_SELF_UPDATING_TOOLS
 	/* checked before any password file exists; a Yes starts WinSCP again */
 	{ kx_again_t *g = kx_again( hwnd ) ;
@@ -5906,6 +5919,7 @@ void StartFileZillaDir( HWND hwnd, const char * dir ) {
 		smemclr( pw, sizeof(pw) ) ;
 		return ;
 	}
+	kx_agent_probe() ;
 #if KX_CHECK_SELF_UPDATING_TOOLS
 	/* FileZilla receives the password in modes 1 and 2 only (0 = it prompts for it) */
 	if( !kitty_helper_ready( hwnd, FileZillaPath, havepw && mode != 0, 0,

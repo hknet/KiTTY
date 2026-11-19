@@ -759,6 +759,8 @@ The tray menu's **Lock agent** keeps the keys loaded but neither offers nor uses
 
 **Programs built on PuTTY before 0.75.** They reach the agent through window messages (WM_COPYDATA) instead of the named pipe. kageant does not identify the program that sends such a request: any program can hand the request's file mapping to another program and pose as it. **Accept requests by window messages (PuTTY before 0.75)** on **Settings > Security** (`[Agent] allowwmcopydata`) is a legacy option and off by default. Such a request counts as coming from an unknown program: it never gets a key unlocked for another program. A notice appears once per run. A click on it opens that page. KiTTY++'s own programs use window messages only when the named pipe cannot be opened.
 
+**Another program holds the Pageant window.** A window-only agent (Pageant before 0.75, KeePass with KeeAgent) holds the window of the window messages without a pipe. kageant starts beside it on its own pipe and creates no window of its own. A notice shows the program and its path. Programs that use window messages reach that program, not kageant. On Windows XP kageant does not start beside it (exit code 3): XP cannot read which program serves a pipe, so the agent check judges the window's owner there. The agent log records both cases (event ID 161).
+
 (no screenshot)
 
 ### kageant — destination of a key use

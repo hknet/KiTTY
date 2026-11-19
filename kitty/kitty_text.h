@@ -3022,6 +3022,14 @@
 #define KT_KA_NOTICE_KEY_USED                        "kageant: SSH key used"
 #define KT_KA_NOTICE_NO_KEY                          "kageant: no key offered"
 #define KT_KA_NOTICE_WMCOPYDATA                      "kageant: outdated agent connection"
+/* another program holds the "Pageant" window at kageant's start (pageant.c):
+ * %s the program with its path, then its file name twice */
+#define KT_KA_FOREIGN_TITLE                          "kageant: another program holds the Pageant window"
+#define KT_KA_FOREIGN_BESIDE_FMT                     "%s holds the Pageant window. kageant runs beside it on its own pipe. " \
+        "Programs that use window messages (PuTTY before 0.75) reach %s, not kageant."
+#define KT_KA_FOREIGN_XP_FMT                         "%s holds the Pageant window. On Windows XP kageant cannot run beside " \
+        "it: close %s, or start kageant first."
+#define KT_KA_FOREIGN_PROCESS_FMT                    "process %lu"
 #define KT_KA_NOTICE_RULES_APPLY                     "kageant: destination rules apply"
 #define KT_KA_NOTICE_RULES_KEPT                      "kageant: destination rules kept"
 /* the hints of the add and removal notices (kitty_pageant.c) */

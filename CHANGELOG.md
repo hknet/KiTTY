@@ -95,6 +95,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 
 ### Fixed
 
+- kageant no longer ends silently when another program (KeePass with
+  KeeAgent, Pageant before 0.75) holds the Pageant window. It starts
+  beside it on its own pipe and shows that program in a notice. Keys on its
+  command line went to that program before. On Windows XP it shows the
+  program and does not start. WinSCP, FileZilla and kscp started from
+  KiTTY++ get the agent check first. Refs hknet/KiTTY#29
 - Application > Config Window: ticking or clearing **Lock window size** left
   a second copy of the panel's "Settings here are saved as you change them."
   line on the screen and laid the panels out again. The box now changes its

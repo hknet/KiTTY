@@ -44,6 +44,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 | `151` | `KiTTY++_agent` | `reencrypt` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `reason`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
 | `152` | `KiTTY++_agent` | `decrypt` | Information; Warning for a refusal or failure | `fp`, `comment`, `result`, `trigger`, `req`, `reqpath`, `pid`, `seq`, `sig`, `ts`, `prev` |
 | `160` | `KiTTY++_agent` | `agent` | Information; Warning for a refusal or failure | `result`, `seq`, `sig`, `ts`, `prev` |
+| `161` | `KiTTY++_agent` | `foreign-window` | Warning | `program`, `ownerpid`, `state`, `seq`, `sig`, `ts`, `prev` |
 | `170` | `KiTTY++_agent` | `logrotate` | Information; Warning for a refusal or failure | `result`, `seq`, `sig`, `ts`, `prev` |
 | `171` | `KiTTY++_agent` | `logchain` | Information | `result`, `run`, `logkey`, `file`, `fragment`, `value`, `rotation`, `keep`, `expired`, `seq`, `sig`, `ts`, `prev` |
 | `172` | `KiTTY++_agent` | `repeated` | Information | `count`, `first`, `last`, `of`, `seq`, `sig`, `ts`, `prev` |
@@ -135,12 +136,13 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `missing` - 902: each missing entry point with its DLL and the feature it powers, separated by semicolons.
 - `of` - 172: the seq of the record repeated, empty when the file is not written.
 - `oldfp` - 213, 313: the hash of the stored key a replaced key took the place of, for added the hash of key 1 of its type (SHA256:...), empty for every other result.
+- `ownerpid` - 161: the process id of the program that holds the Pageant window.
 - `path` - 100-170: the key file; 401-403: the file written; 903: the session file; 904: the folder or file created without the access rights; 905: the program file the Applications panel marked red; 906: the helper program's file; 907: the session log file.
 - `pattern` - 901: the folder and the log file name pattern searched.
 - `pid` - 100-170: the process that asked the agent, empty when none did; 200-403: the process writing the record.
 - `port` - the port connected to; a serial line's speed; empty for a Local session; with proxy set and in 225, 325: the proxy's; 225, 325 local-command: empty.
 - `prev` - 100-172: the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written; 171: the head the anchor pins.
-- `program` - 900: the refused program file's path.
+- `program` - 900: the refused program file's path. 161: the program that holds the Pageant window.
 - `protection` - 401, 403: none, passphrase or hello.
 - `proto` - 200, 300: the protocol; values: ssh, telnet, raw, rlogin, supdup, serial, conpty (a Local session).
 - `proxy` - 210-221, 310-321: empty for the connection's own host key and login; for a proxy's its type: ssh (a jump host), http, socks5, socks4; 225, 325: the proxy's type: http, socks4, socks5, telnet, local-command.
@@ -158,6 +160,7 @@ Each record carries its kind as insertion string `%1` and its fields as `%2` onw
 - `seq` - 100-172: the record's line in the chain of the agent log file, counted over every file and every run, empty when the file is not written.
 - `session` - the saved session's name, empty when none was loaded.
 - `sig` - 100-172: the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev.
+- `state` - 161: started-beside (kageant runs beside it on its own pipe) or not-started (Windows XP, which cannot read a pipe's server).
 - `tool` - 400-403: kittygen or kittygen-cli.
 - `transport` - 226, 227, 326, 327: how the agent is reached, pipe (its named pipe), window (the window messages of PuTTY before 0.75) or pipe-windowowner (the pipe on Windows XP, which cannot read the pipe's server: the owner of the Pageant window is judged).
 - `trigger` - 113: what started the retry; values: button, device-arrival; 117: what brought the key back, the same values; 152: what asked for the passphrase; values: first-use (a signature), gui (the key list's Decrypt).

@@ -185,6 +185,14 @@ bool agent_exists(void)
     return named_pipe_agent_exists() || wm_copydata_agent_exists();
 }
 
+/* KiTTY: an agent with a pipe - kageant's rule for "already running". A
+ * "Pageant" window alone belongs to a window-only agent (Pageant before
+ * 0.75, KeeAgent): kageant starts beside it. */
+bool agent_pipe_exists(void)
+{
+    return named_pipe_agent_exists();
+}
+
 struct agent_pending_query {
     struct handle *handle;
     HANDLE os_handle;
@@ -229,6 +237,36 @@ static void agent_serving_check_pipe(HANDLE pipehandle)
         else if (!reported_none) {
             reported_none = true;
             agent_serving_check_hook(0, KITTY_AGENT_TRANSPORT_PIPE_WINDOWOWNER);
+        }
+    }
+}
+
+/* KiTTY: who serves the agent, before a helper program (WinSCP, FileZilla,
+ * kscp) uses it: one connection opened and closed, no request. The check
+ * judges it as for a request of our own. */
+void agent_serving_probe(void)
+{
+    char *err = NULL;
+    char *pipename;
+    HANDLE pipehandle;
+    if (!agent_serving_check_hook)
+        return;
+    pipename = agent_named_pipe_name();
+    pipehandle = connect_to_named_pipe(pipename, &err);
+    sfree(pipename);
+    sfree(err);
+    if (pipehandle != INVALID_HANDLE_VALUE) {
+        agent_serving_check_pipe(pipehandle);
+        CloseHandle(pipehandle);
+        return;
+    }
+    {
+        HWND hwnd = FindWindow("Pageant", "Pageant");
+        DWORD spid = 0;
+        if (hwnd) {
+            GetWindowThreadProcessId(hwnd, &spid);
+            agent_serving_report((unsigned long)spid,
+                                 KITTY_AGENT_TRANSPORT_WMCOPYDATA);
         }
     }
 }

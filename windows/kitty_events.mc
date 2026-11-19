@@ -176,6 +176,12 @@ Language=English
 %1%nresult: %2%nseq: %3%nsig: %4%nts: %5%nprev: %6%0
 .
 
+MessageId=161
+SymbolicName=KITTY_AGENT_FOREIGN_WINDOW
+Language=English
+%1%nprogram: %2%nownerpid: %3%nstate: %4%nseq: %5%nsig: %6%nts: %7%nprev: %8%0
+.
+
 MessageId=170
 SymbolicName=KITTY_AGENT_LOGROTATE
 Language=English

@@ -105,6 +105,8 @@ The fields, by name:
 
 \b \c{oldfp} - 213, 313: the hash of the stored key a replaced key took the place of, for added the hash of key 1 of its type (SHA256:...), empty for every other result.
 
+\b \c{ownerpid} - 161: the process id of the program that holds the Pageant window.
+
 \b \c{path} - 100-170: the key file; 401-403: the file written; 903: the session file; 904: the folder or file created without the access rights; 905: the program file the Applications panel marked red; 906: the helper program's file; 907: the session log file.
 
 \b \c{pattern} - 901: the folder and the log file name pattern searched.
@@ -115,7 +117,7 @@ The fields, by name:
 
 \b \c{prev} - 100-172: the SHA-256 of the line before this record in the file (base64), none for the first line of a file, empty when the file is not written; 171: the head the anchor pins.
 
-\b \c{program} - 900: the refused program file's path.
+\b \c{program} - 900: the refused program file's path. 161: the program that holds the Pageant window.
 
 \b \c{protection} - 401, 403: none, passphrase or hello.
 
@@ -150,6 +152,8 @@ The fields, by name:
 \b \c{session} - the saved session's name, empty when none was loaded.
 
 \b \c{sig} - 100-172: the Ed25519 signature (base64) of the record's line up to its sig field, under the run's logkey, empty when the file is not written. The signed line is rebuilt from the event alone: ts=, the kind as ev=, the fields in the order of this table when not empty, then seq and prev.
+
+\b \c{state} - 161: started-beside (kageant runs beside it on its own pipe) or not-started (Windows XP, which cannot read a pipe's server).
 
 \b \c{tool} - 400-403: kittygen or kittygen-cli.
 
@@ -222,6 +226,8 @@ The event IDs:
 \b \c{152} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{decrypt}, then \c{fp}, \c{comment}, \c{result}, \c{trigger}, \c{req}, \c{reqpath}, \c{pid}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
 
 \b \c{160} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{agent}, then \c{result}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
+
+\b \c{161} \c{KiTTY++_agent} (Warning): \c{foreign-window}, then \c{program}, \c{ownerpid}, \c{state}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
 
 \b \c{170} \c{KiTTY++_agent} (Information; Warning for a refusal or failure): \c{logrotate}, then \c{result}, \c{seq}, \c{sig}, \c{ts}, \c{prev}.
 

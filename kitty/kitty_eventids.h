@@ -179,6 +179,9 @@ static const struct kitty_eventid kitty_eventids[] = {
       "Information; Warning for a refusal or failure" },
     { 160, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "agent", "result seq sig ts prev",
       "Information; Warning for a refusal or failure" },
+    { 161, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "foreign-window",
+      "program ownerpid state seq sig ts prev",
+      "Warning" },
     { 170, KITTY_EVB_AGENT, KITTY_EVSRC_AGENT, "logrotate", "result seq sig ts prev",
       "Information; Warning for a refusal or failure" },
     /* the chain's anchors (kitty/kitty_auditchain.h): written whatever the
@@ -487,6 +490,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "213, 313: the hash of the stored key a replaced key took the "
       "place of, for added the hash of key 1 of its type (SHA256:...), "
       "empty for every other result" },
+    { "ownerpid",
+      "161: the process id of the program that holds the Pageant "
+      "window" },
     { "path",
       "100-170: the key file; 401-403: the file written; 903: the "
       "session file; 904: the folder or file created without the "
@@ -507,7 +513,8 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "(base64), none for the first line of a file, empty when the file is "
       "not written; 171: the head the anchor pins" },
     { "program",
-      "900: the refused program file's path" },
+      "900: the refused program file's path. 161: the program that "
+      "holds the Pageant window" },
     { "protection",
       "401, 403: none, passphrase or hello" },
     { "proto",
@@ -628,6 +635,9 @@ static const struct kitty_eventfield kitty_eventfields[] = {
       "written. The signed line is rebuilt from the event alone: ts=, the "
       "kind as ev=, the fields in the order of this table when not empty, "
       "then seq and prev" },
+    { "state",
+      "161: started-beside (kageant runs beside it on its own pipe) "
+      "or not-started (Windows XP, which cannot read a pipe's server)" },
     { "tool",
       "400-403: kittygen or kittygen-cli" },
     { "transport",

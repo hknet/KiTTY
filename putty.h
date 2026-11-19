@@ -2590,6 +2590,7 @@ agent_pending_query *agent_query(
 void agent_cancel_query(agent_pending_query *);
 void agent_query_synchronous(strbuf *in, void **out, int *outlen);
 bool agent_exists(void);
+bool agent_pipe_exists(void);   /* KiTTY: windows/agent-client.c */
 
 /* For stream-oriented agent connections, if available. */
 Socket *agent_connect(Plug *plug);

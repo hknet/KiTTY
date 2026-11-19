@@ -55,5 +55,8 @@ enum { KITTY_AGENT_TRANSPORT_PIPE, KITTY_AGENT_TRANSPORT_WMCOPYDATA,
 extern void (*agent_serving_check_hook)(unsigned long server_pid,
                                         int transport);
 void kitty_install_agent_check(void);   /* kitty.exe: install the hook */
+/* agent-client.c: judge who serves the agent before a helper program uses
+ * it - a connection opened and closed, no request */
+void agent_serving_probe(void);
 
 #endif /* KITTY_AUTHENTICODE_H */

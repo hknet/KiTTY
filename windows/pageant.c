@@ -207,6 +207,57 @@ static void kageant_tick_sync(void)
 }
 static HMENU systray_menu, session_menu;
 static bool already_running;
+/* KiTTY: another program holds the "Pageant" window while no pipe exists - a
+ * window-only agent (Pageant before 0.75, KeeAgent). kageant starts beside it
+ * without a window of its own (two would split the window-message clients
+ * between them), or on Windows XP does not start: there the agent check
+ * judges the window's owner in place of the pipe's server. */
+static DWORD kageant_foreign_pid = 0;
+static char *kageant_foreign_path = NULL;   /* NULL: not readable */
+
+static char *kageant_foreign_path_dup(DWORD pid)
+{
+    char *path = NULL;
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!h)   /* Windows XP: the path lookup reads the process */
+        h = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE,
+                        pid);
+    if (h) {
+        path = kitty_process_image_path_dup(h);
+        CloseHandle(h);
+    }
+    return path;
+}
+
+/* The notice's text for the program (its file name, then its path). */
+static char *kageant_foreign_text(const char *fmt)
+{
+    const char *path = kageant_foreign_path;
+    const char *base;
+    char *name, *text;
+    if (!path) {
+        name = dupprintf(KT_KA_FOREIGN_PROCESS_FMT,
+                         (unsigned long)kageant_foreign_pid);
+        text = dupprintf(fmt, name, name, name);
+        sfree(name);
+        return text;
+    }
+    base = strrchr(path, '\\');
+    base = base ? base + 1 : path;
+    name = dupprintf("%s (%s)", base, path);
+    text = dupprintf(fmt, name, base, base);
+    sfree(name);
+    return text;
+}
+
+static void kageant_foreign_record(const char *result)
+{
+    char pid[16];
+    sprintf(pid, "%lu", (unsigned long)kageant_foreign_pid);
+    kitty_audit("foreign-window", "program",
+                kageant_foreign_path ? kageant_foreign_path : "",
+                "ownerpid", pid, "state", result, (const char *)NULL);
+}
 
 /* KiTTY: a key added is remembered for startup by the agent itself only.
  * A second instance (kageant key.ppk beside a running kageant) hands
@@ -10024,7 +10075,35 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /*
      * Find out if Pageant is already running.
      */
-    already_running = agent_exists();
+    /* KiTTY: only a pipe means an agent runs here. agent_exists() also
+     * counts a "Pageant" window, which a window-only agent holds: kageant
+     * used to take that for itself and end silently, handing keys of its
+     * command line to that program. */
+    already_running = agent_pipe_exists();
+    if (!already_running) {
+        HWND fw = FindWindow(IPCCLASSNAME, IPCWINTITLE);
+        if (fw) {
+            GetWindowThreadProcessId(fw, &kageant_foreign_pid);
+            kageant_foreign_path = kageant_foreign_path_dup(kageant_foreign_pid);
+            /* Windows XP cannot read a pipe's server: the agent check
+             * judges the window's owner instead, so kageant must not serve
+             * the pipe beside another program's window there */
+            if (!GetProcAddress(GetModuleHandleA("kernel32.dll"),
+                                "GetNamedPipeServerProcessId")) {
+                char *text = kageant_foreign_text(KT_KA_FOREIGN_XP_FMT);
+                kageant_random_hook = kageant_hello_random;
+                kitty_audit_set_random(kageant_hello_random);
+                kageant_audit_setup();
+                kageant_foreign_record("not-started");
+                kitty_audit_chain_end();
+                unlock_interprocess_mutex(mutex);
+                MessageBox(NULL, text, KT_KA_FOREIGN_TITLE,
+                           MB_ICONWARNING | MB_OK);
+                sfree(text);
+                return 3;
+            }
+        }
+    }
 
     /* KiTTY: -d and -D act on a running agent only; -h with -encrypted
      * cannot reach one (add-ppk carries no destinations) */
@@ -10111,6 +10190,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kitty_audit_set_random(kageant_hello_random);
         kageant_audit_setup();
         kitty_audit("agent", "result", "start", (const char *)NULL);
+        if (kageant_foreign_pid)   /* KiTTY: beside another program's window */
+            kageant_foreign_record("started-beside");
         kitty_wev_missing_features();   /* KiTTY: event 902 at every start */
         /* KiTTY: a head anchor every 15 minutes with new records, and the
          * summary of a record's repeats a minute after the first: looked
@@ -10257,7 +10338,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * the WM_COPYDATA message used by the old-style Pageant IPC
          * system.
          */
-        if (!prev) {
+        if (!prev && !kageant_foreign_pid) {   /* KiTTY: none beside another's */
             WNDCLASS wndclass;
 
             memset(&wndclass, 0, sizeof(wndclass));
@@ -10272,6 +10353,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * And launch the subthread which will open that hidden window and
          * handle WM_COPYDATA messages on it.
          */
+        if (!kageant_foreign_pid) {   /* KiTTY: no window beside another's */
         wmcpc.vt = &wmcpc_vtable;
         wmcpc.suppress_logging = true;
         pageant_register_client(&wmcpc);
@@ -10283,6 +10365,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         if (hThread)
             CloseHandle(hThread); /* we don't need the thread handle */
         add_handle_wait(wmct.ev_msg_ready, wm_copydata_got_msg, NULL);
+        }
     }
 
     /*
@@ -10505,6 +10588,13 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 
     /* Set up a system tray icon */
     AddTrayIcon(traywindow);
+    /* KiTTY: running beside another program's "Pageant" window: name the program */
+    if (kageant_foreign_pid) {
+        char *text = kageant_foreign_text(KT_KA_FOREIGN_BESIDE_FMT);
+        kitty_notice_show(KT_KA_FOREIGN_TITLE, text, KAGEANT_NOTICE_WARN,
+                          kageant_notice_seconds(15), traywindow, 0);
+        sfree(text);
+    }
     /* KiTTY: the startup load ran BEFORE this icon existed, so anything it
      * refused could not reach the tooltip then. Compose it once here, or a key
      * held back at login would be missing from the one surface that is meant to

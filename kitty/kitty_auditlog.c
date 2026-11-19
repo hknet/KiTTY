@@ -113,7 +113,8 @@ int kitty_audit_result_is_warning(const char *result)
 int kitty_audit_is_warning(const char *ev, const char *result)
 {
     return kitty_audit_result_is_warning(result) ||
-           (ev && !strcmp(ev, "keyfile-warning"));
+           (ev && (!strcmp(ev, "keyfile-warning") ||
+                   !strcmp(ev, "foreign-window")));   /* 161 */
 }
 
 /* ev="..." key="value" ... - the record without its timestamp, whole: a
@@ -320,6 +321,8 @@ static const char *const af_decrypt[] = {
     "seq", "sig", "ts", "prev", NULL
 };
 static const char *const af_result[] = { "result", "seq", "sig", "ts", "prev", NULL };
+/* 161: another program holds the "Pageant" window at kageant's start */
+static const char *const af_foreign[] = { "program", "ownerpid", "state", "seq", "sig", "ts", "prev", NULL };
 /* a refused request (kageant_refused_hook): the agent's reason, the
  * requester, and the server of a verified session-bind */
 static const char *const af_request[] = {
@@ -365,6 +368,7 @@ static const struct audit_kind {
     { "reencrypt",       151, af_use },
     { "decrypt",         152, af_decrypt },
     { "agent",           160, af_result },
+    { "foreign-window",  161, af_foreign },
     { "logrotate",       170, af_result },
     { "logchain",        171, af_logchain },
     { "repeated",        172, af_repeated },
