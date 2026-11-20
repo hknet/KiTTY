@@ -777,6 +777,11 @@ LONG kitty_settings_reg_stored_del_at(const char *path, const char *name)
     }
     return rc;
 }
+LONG kitty_settings_reg_get_stored_at(const char *path, const char *name,
+                                      DWORD flags, void *buf, DWORD *size)
+{
+    return RegGetValueA(HKEY_CURRENT_USER, path, name, flags, NULL, buf, size);
+}
 LONG kitty_settings_reg_key_check(const char *path)
 {
     HKEY k;

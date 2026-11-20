@@ -519,7 +519,8 @@ static char *mpw_state_get(const char *name)    /* malloc'd (ksec_dup) or NULL *
         return res;
     }
     char b[2048]; DWORD sz = sizeof(b);
-    if (RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name, RRF_RT_REG_SZ, NULL, b, &sz)
+    /* the hive through the settings module */
+    if (kitty_settings_reg_get_stored_at(reg_base_buf, name, RRF_RT_REG_SZ, b, &sz)
         != ERROR_SUCCESS) return NULL;
     return ksec_dup(b);
 }
@@ -1792,8 +1793,8 @@ static int store_has_mpw_wrapped_secret(void)
 static int reg_base_read(const char *name, char *buf, DWORD bufsz)
 {
     DWORD sz = bufsz;
-    return RegGetValueA(HKEY_CURRENT_USER, reg_base_buf, name, RRF_RT_REG_SZ,
-                        NULL, buf, &sz) == ERROR_SUCCESS;
+    return kitty_settings_reg_get_stored_at(reg_base_buf, name, RRF_RT_REG_SZ,
+                                            buf, &sz) == ERROR_SUCCESS;
 }
 
 /* Prove that an archived salt+verifier really is this store's master-password

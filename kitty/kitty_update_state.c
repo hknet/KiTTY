@@ -48,12 +48,13 @@ static int kus_stored(char *latest, int n, int *beta)
         return got;
     } else {
         DWORD sz = (DWORD)n, bv = 0, bsz = sizeof(bv);
-        if (RegGetValueA(HKEY_CURRENT_USER, KUS_REG_BASE, "UpdateLatest",
-                         RRF_RT_REG_SZ, NULL, latest, &sz) != ERROR_SUCCESS)
+        /* the hive through the settings module */
+        if (kitty_settings_reg_get_stored_at(KUS_REG_BASE, "UpdateLatest",
+                                             RRF_RT_REG_SZ, latest, &sz) != ERROR_SUCCESS)
             return 0;
         latest[n - 1] = '\0';
-        if (RegGetValueA(HKEY_CURRENT_USER, KUS_REG_BASE, "UpdateLatestBeta",
-                         RRF_RT_REG_DWORD, NULL, &bv, &bsz) == ERROR_SUCCESS)
+        if (kitty_settings_reg_get_stored_at(KUS_REG_BASE, "UpdateLatestBeta",
+                                             RRF_RT_REG_DWORD, &bv, &bsz) == ERROR_SUCCESS)
             *beta = bv != 0;
         return latest[0] != '\0';
     }

@@ -440,8 +440,9 @@ int kitty_update_available( char *latest_out, int latest_n,
 	char base[512], latest[64]="" ; DWORD sz=sizeof(latest), beta=0, bsz=sizeof(beta) ;
 	if( !kitty_portable_load_state_string( "UpdateLatest", latest, sizeof(latest) ) ) {
 		snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
-		if( RegGetValueA( HKEY_CURRENT_USER, base, "UpdateLatest", RRF_RT_REG_SZ, NULL, latest, &sz ) != ERROR_SUCCESS ) return 0 ;
-		RegGetValueA( HKEY_CURRENT_USER, base, "UpdateLatestBeta", RRF_RT_REG_DWORD, NULL, &beta, &bsz ) ;
+		/* the hive through the settings module */
+		if( kitty_settings_reg_get_stored_at( base, "UpdateLatest", RRF_RT_REG_SZ, latest, &sz ) != ERROR_SUCCESS ) return 0 ;
+		kitty_settings_reg_get_stored_at( base, "UpdateLatestBeta", RRF_RT_REG_DWORD, &beta, &bsz ) ;
 	} else {
 		kitty_portable_load_state_dword( "UpdateLatestBeta", &beta ) ;
 	}

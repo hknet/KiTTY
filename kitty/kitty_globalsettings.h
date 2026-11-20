@@ -107,6 +107,10 @@ LONG kitty_settings_reg_stored_set_at(const char *path, const char *name,
 /* A value of HKCU\path removed: Windows' answer (the key's when it does not
  * open, ERROR_FILE_NOT_FOUND when the value is not there). */
 LONG kitty_settings_reg_stored_del_at(const char *path, const char *name);
+/* RegGetValue of HKCU\path as the hive holds it (flags RRF_RT_*, the
+ * buffer's size in *size), no readonly overlay: Windows' answer. */
+LONG kitty_settings_reg_get_stored_at(const char *path, const char *name,
+                                      DWORD flags, void *buf, DWORD *size);
 /* Whether HKCU\path opens for reading: Windows' answer (ERROR_SUCCESS). */
 LONG kitty_settings_reg_key_check(const char *path);
 /* HKCU\path removed, a key without subkeys: Windows' answer. */
