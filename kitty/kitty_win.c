@@ -685,6 +685,19 @@ static int kts_ks_state(const char *v) { kitty_state_set_string("QaProbeState", 
 static int kts_ks_auxpos(const char *v) { return kitty_auxpos_seed("QaProbe", atoi(v), 2, 300, 200); }
 static char *kts_kg_mode(void) { return kitty_testdoor_int_dup(IniFileFlag); }
 static char *kts_kg_ro(void) { return kitty_testdoor_int_dup(GetReadOnlyFlag()); }
+/* window places, terminal hints and helper hashes by key path (the
+ * wrappers beside each reader, test builds only) */
+static char *kts_kg_aux_name(void) { return kitty_testdoor_auxpos_dup("QaOld", 1); }
+static char *kts_kg_aux_old(void) { return kitty_testdoor_auxpos_dup("QaOld", 0); }
+static char *kts_kg_aux_str(void) { return kitty_testdoor_auxpos_dup("QaStr", 0); }
+static char *kts_kg_aux_cfg(void) { return kitty_testdoor_auxpos_dup(KR_DLGPOS_CONFIGBOX, 0); }
+static char *kts_kg_hint(void) { return kitty_testdoor_termenv_said_dup("qa-hint"); }
+static char *kts_kg_hintf(void) { return kitty_testdoor_termenv_said_dup("qa-hintf"); }
+static char *kts_kg_hintn(void) { return kitty_testdoor_termenv_said_dup("qa-new"); }
+static int kts_ks_hintn(const char *v) { (void)v; return kitty_testdoor_termenv_mark("qa-new"); }
+static char *kts_kg_helper(void) { return kitty_testdoor_helper_get_dup("C:\\QA\\Helper.exe"); }
+static int kts_ks_helper(const char *v) { return kitty_testdoor_helper_put("C:\\QA\\Helper.exe", v); }
+static int kts_ks_cfgbox(const char *v) { (void)v; return kitty_testdoor_cfgbox_restore(); }
 void kitty_testdoor_settings_kitty(void)
 {
     static const struct kts_probe p[] = {
@@ -709,6 +722,15 @@ void kitty_testdoor_settings_kitty(void)
         { "store.base", kts_kg_base, NULL },
         { "store.mode", kts_kg_mode, NULL },
         { "store.readonly", kts_kg_ro, NULL },
+        { "auxpos.name.QaOld", kts_kg_aux_name, NULL },
+        { "auxpos.QaOld", kts_kg_aux_old, NULL },
+        { "auxpos.QaStr", kts_kg_aux_str, NULL },
+        { "auxpos.ConfigBox", kts_kg_aux_cfg, NULL },
+        { "cfgbox.restore", NULL, kts_ks_cfgbox },
+        { "termenv.qa-hint", kts_kg_hint, NULL },
+        { "termenv.qa-hintf", kts_kg_hintf, NULL },
+        { "termenv.qa-new", kts_kg_hintn, kts_ks_hintn },
+        { "helper.qa", kts_kg_helper, kts_ks_helper },
     };
     kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
 }

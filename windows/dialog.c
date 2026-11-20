@@ -1201,6 +1201,7 @@ int kitty_category_expand_depth = 99;
 
 /* KiTTY: a remembered panel path from before a rename reaches today's. */
 #include "../kitty/kitty_panel_path.h"
+#include "../kitty/kitty_testdoor_settings.h"
 
 static HTREEITEM treeview_insert(struct treeview_faff *faff,
                                  int level, char *text, char *path)
@@ -2899,6 +2900,25 @@ static int kitty_cfgbox_restore_pos(HWND hwnd)
     ok = kitty_auxpos_restore(hwnd, KR_DLGPOS_CONFIGBOX, 0, 0, 0);
     kitty_cfgpos_dbg("RESTORE -> %d", ok);
     return ok;
+}
+
+/* Test builds only (kitty_testdoor_settings.c): the config box's place
+ * restored on a hidden window, the old WindowPos\ConfigBox value carried
+ * over first as at the box's start (-1: no window). */
+int kitty_testdoor_cfgbox_restore(void)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    HWND w = CreateWindowExA(0, "STATIC", "", WS_POPUP, 0, 0, 200, 100,
+                             NULL, NULL, GetModuleHandle(NULL), NULL);
+    int ok;
+    if (!w)
+        return -1;
+    ok = kitty_cfgbox_restore_pos(w);
+    DestroyWindow(w);
+    return ok;
+#else
+    return 0;
+#endif
 }
 
 /* KiTTY: Ctrl+F anywhere in the config box jumps to the Session panel and

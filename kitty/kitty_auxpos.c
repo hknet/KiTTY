@@ -14,6 +14,8 @@
 #include "kitty_globalsettings.h"   /* the store's reads and writes */
 
 #define KITTY_AUXPOS_REGKEY  "Software\\kapper.net\\KiTTY\\AuxWinPos"
+#include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the test door */
+#include "kitty_testdoor_settings.h"
 #define KITTY_AUXPOS_SECTION "AuxWinPos"   /* the file store's section */
 
 static int kitty_auxpos_persist = 1;       /* 0 => place only, nothing stored */
@@ -308,4 +310,28 @@ int kitty_auxpos_seed(const char *key, int x, int y, int w, int h)
                        w > 0 ? (int)(w / s + 0.5) : 0,
                        h > 0 ? (int)(h / s + 0.5) : 0);
     return 1;
+}
+
+/* Test builds only (kitty_testdoor_settings.c): key's value name in this
+ * monitor layout (name 1), or what the store's reader parses for key as
+ * "x,y,w,h", "<none>" for no entry (name 0). malloc'd. */
+char *kitty_testdoor_auxpos_dup(const char *key, int name)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    char *buf = malloc(200);
+    int x = 0, y = 0, w = 0, h = 0;
+    if (!buf)
+        return NULL;
+    if (name)
+        kitty_auxpos_valname(buf, 200, key);
+    else if (kitty_auxpos_read(key, &x, &y, &w, &h))
+        snprintf(buf, 200, "%d,%d,%d,%d", x, y, w, h);
+    else
+        snprintf(buf, 200, "<none>");
+    return buf;
+#else
+    (void)key;
+    (void)name;
+    return NULL;
+#endif
 }

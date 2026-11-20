@@ -22,4 +22,13 @@ void kitty_testdoor_settings_kageant(void);   /* kageant, kitty_kageant_settings
 void kitty_testdoor_settings_console(void);   /* klink/kscp/ksftp, kitty_console_store.c */
 void kitty_testdoor_settings_kittygen(void);  /* kittygen, windows/puttygen.c */
 
+/* The readers and writers by key path, beside each reader (test builds only:
+ * a release build's return NULL or 0). */
+char *kitty_testdoor_auxpos_dup(const char *key, int name);   /* kitty_auxpos.c, malloc'd */
+char *kitty_testdoor_termenv_said_dup(const char *host_id);   /* kitty_termenv_hint.c */
+int kitty_testdoor_termenv_mark(const char *host_id);
+char *kitty_testdoor_helper_get_dup(const char *full);        /* kitty_xfer.c */
+int kitty_testdoor_helper_put(const char *full, const char *hex);
+int kitty_testdoor_cfgbox_restore(void);                      /* windows/dialog.c */
+
 #endif

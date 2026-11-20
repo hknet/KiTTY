@@ -23,6 +23,8 @@
 #include "kitty_inifile.h"   /* kitty_store_readonly: readonly=yes */
 #include "kitty_globalsettings.h"   /* the store's reads and writes */
 #include "kitty_termenv.h"
+#include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the test door */
+#include "kitty_testdoor_settings.h"
 
 #define KTH_SUBDIR "TermEnvHint"   /* registry subkey and portable folder */
 
@@ -70,4 +72,26 @@ bool kitty_termenv_hint_first(const char *host_id)
 {
     static const KittyTermEnvHintStore store = { kth_said, kth_mark, NULL };
     return kitty_termenv_hint_due(&store, host_id);
+}
+
+/* Test builds only (kitty_testdoor_settings.c): "1" when the store holds
+ * host_id's hint, else "0" (sfree it). kitty_testdoor_termenv_mark stores it. */
+char *kitty_testdoor_termenv_said_dup(const char *host_id)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    return dupstr(kth_said(NULL, host_id) ? "1" : "0");
+#else
+    (void)host_id;
+    return NULL;
+#endif
+}
+
+int kitty_testdoor_termenv_mark(const char *host_id)
+{
+#ifdef KITTY_TEST_BUILD_LABEL
+    return kth_mark(NULL, host_id) ? 1 : 0;
+#else
+    (void)host_id;
+    return 0;
+#endif
 }

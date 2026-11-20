@@ -22,6 +22,7 @@
 #include <windows.h>
 #include <shellapi.h>        /* SHFileOperation: remove a leftover staging tree */
 #include <ws2tcpip.h>        /* struct addrinfo: the DNS step of OSC 8 file:// links */
+#include "kitty_testdoor_settings.h"
 #include <objbase.h>         /* COM: Attachment Services for a link's download */
 
 #include "kitty.h"
@@ -406,6 +407,27 @@ static void kh_store_put( const char *full, const char *hex ) {
 		sfree( key ) ;
 	}
 	sfree( name ) ;
+}
+
+/* Test builds only (kitty_testdoor_settings.c): the SHA-256 the store holds
+ * for full, "<none>" for none (sfree it). kitty_testdoor_helper_put stores one. */
+char *kitty_testdoor_helper_get_dup( const char *full ) {
+#ifdef KITTY_TEST_BUILD_LABEL
+	char *hex = kh_store_get_dup( full ) ;
+	return hex ? hex : dupstr( "<none>" ) ;
+#else
+	(void)full ;
+	return NULL ;
+#endif
+}
+int kitty_testdoor_helper_put( const char *full, const char *hex ) {
+#ifdef KITTY_TEST_BUILD_LABEL
+	kh_store_put( full, hex ) ;
+	return 1 ;
+#else
+	(void)full ; (void)hex ;
+	return 0 ;
+#endif
 }
 
 /* Open the file for the check and the start: reading shared, writing and
