@@ -32,7 +32,7 @@
 
 #include "kitty_kageant_dest.h"
 #include "kitty_inifile.h"      /* the store in charge (kitty.ini) */
-#include "kitty_inikeys.h"      /* KI_SECTION_KITTY, KI_KICLASSNAME */
+#include "kitty_globalsettings.h"   /* the store's key by KiClassName */
 #include "kitty_sessionpath.h"  /* ksp_component_unmunge */
 #include "kitty_text.h"         /* KT_KA_DEST_*, KT_KARULES_SRC_* */
 #include "kitty_agentrestrict.h" /* kar_blob_valid, kar_wildcard */
@@ -181,18 +181,18 @@ static bool store_text_matches(const char *text, const char *want)
 static void names_from_registry(const struct dest_key *k,
                                 struct dest_names *nm)
 {
-    const char *path = "Software\\kapper.net\\KiTTY\\SshHostKeys";
+    char *path = dupprintf("%s\\SshHostKeys",
+                           kitty_settings_hive(KS_HIVE_INICLASS));
     DWORD nvals = 0, maxname = 0, maxdata = 0;
-    char cls[64], *name, *data;
+    char *name, *data;
     HKEY key;
 
-    cls[0] = '\0';
-    if (kitty_inifile_read(KI_SECTION_KITTY, KI_KICLASSNAME, cls,
-                           sizeof(cls)) && !stricmp(cls, "PuTTY"))
-        path = "Software\\SimonTatham\\PuTTY\\SshHostKeys";
     if (RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_QUERY_VALUE, &key) !=
-        ERROR_SUCCESS)
+        ERROR_SUCCESS) {
+        sfree(path);
         return;
+    }
+    sfree(path);
     if (RegQueryInfoKeyA(key, NULL, NULL, NULL, NULL, NULL, NULL, &nvals,
                          &maxname, &maxdata, NULL, NULL) != ERROR_SUCCESS) {
         RegCloseKey(key);
@@ -554,14 +554,10 @@ static void store_entry(struct lookup *lk, const char *name, const char *text)
 
 /* The registry's SshHostKeys or SshHostCAs of the store in charge: kitty.exe's
  * hive, or PuTTY's with KiClassName=PuTTY in kitty.ini. */
+/* the store's key by kitty.ini's KiClassName (kitty_globalsettings.c) */
 static const char *reg_base(void)
 {
-    char cls[64];
-    cls[0] = '\0';
-    if (kitty_inifile_read(KI_SECTION_KITTY, KI_KICLASSNAME, cls,
-                           sizeof(cls)) && !stricmp(cls, "PuTTY"))
-        return "Software\\SimonTatham\\PuTTY";
-    return "Software\\kapper.net\\KiTTY";
+    return kitty_settings_hive(KS_HIVE_INICLASS);
 }
 
 static void lookup_registry_keys(struct lookup *lk)
@@ -811,28 +807,11 @@ static void ca_enum_registry(ca_fn fn, void *ctx)
 
 /* A folder store file's value: "Key=value" (or the old "Key\value\"),
  * %HH-escaped (ksf_munge). sfree it. */
+/* One key's value of a folder-store file (kitty_sessionpath.c ksf_text_value:
+ * the last line of the key wins, as in the store's own reader). */
 static char *folder_value(const char *text, const char *want)
 {
-    const char *p = text;
-    size_t wl = strlen(want);
-    while (*p) {
-        const char *eol = strpbrk(p, "\r\n");
-        size_t len = eol ? (size_t)(eol - p) : strlen(p);
-        if (len > wl && !strncmp(p, want, wl) &&
-            (p[wl] == '=' || p[wl] == '\\')) {
-            char *raw = dupprintf("%.*s", (int)(len - wl - 1), p + wl + 1), *v;
-            size_t rl = strlen(raw);
-            if (p[wl] == '\\' && rl && raw[rl - 1] == '\\')
-                raw[rl - 1] = '\0';
-            v = ksp_component_unmunge(raw);
-            sfree(raw);
-            return v;
-        }
-        p += len;
-        while (*p == '\r' || *p == '\n')
-            p++;
-    }
-    return NULL;
+    return ksf_text_value(text, strlen(text), want);
 }
 
 static void ca_enum_folder(const struct kitty_ini_startup *ini, ca_fn fn,

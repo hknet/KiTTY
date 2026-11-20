@@ -69,6 +69,10 @@ unsigned long ksm_folder_reads(void);
  * count; free with ksm_rows_free. */
 int ksm_folder_store_rows(const char *dir, const char *suffix,
                           char ***ids, char ***folders);
+/* The same rows from the registry store: the session keys under key (its
+ * ...\Sessions), Default Settings left out, the Folder value of each session
+ * stored by its bare name. */
+int ksm_registry_rows(const char *key, char ***ids, char ***folders);
 void ksm_rows_free(char **ids, char **folders, int n);
 
 #endif /* KITTY_SESSMENU_H */

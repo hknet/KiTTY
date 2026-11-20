@@ -272,63 +272,11 @@ void ksm_free(struct ksm_entry *e, int n)
     sfree(e);
 }
 
-/* ---- a session file's Folder value ----
- * The line forms of the folder store's reader (ksf_load): the first delimiter
- * after the key decides - '=' is KiTTY++'s "Key=value", '\' is classic
- * KiTTY's "Key\value\". Values are %xx escaped in both, so a '\' inside a
- * KiTTY++ value is always "%5C" and never taken for the classic form. The
- * last Folder line wins, as in ksf_load. */
-static char *ksm_line_folder(const char *line, size_t n)
-{
-    static const char key[] = "Folder";
-    const size_t kl = sizeof(key) - 1;
-    const char *eq, *bs, *v;
-    size_t vl;
-    char *raw, *out;
-    if (n <= kl || memcmp(line, key, kl))
-        return NULL;
-    eq = memchr(line, '=', n);
-    bs = memchr(line, '\\', n);
-    if (eq && (!bs || eq < bs)) {
-        if (eq != line + kl)
-            return NULL;
-        v = eq + 1;
-        vl = n - (size_t)(v - line);
-    } else if (bs) {
-        if (bs != line + kl)
-            return NULL;
-        v = bs + 1;
-        vl = n - (size_t)(v - line);
-        if (vl && v[vl - 1] == '\\')
-            vl--;                      /* the closing delimiter */
-    } else {
-        return NULL;
-    }
-    raw = dupprintf("%.*s", (int)vl, v);
-    out = ksf_unmunge(raw);
-    sfree(raw);
-    return out;
-}
-
+/* ---- a session file's Folder value (the folder store's line format,
+ * kitty_sessionpath.c ksf_text_value: the last Folder line wins) ---- */
 char *ksm_text_folder(const char *buf, size_t len)
 {
-    char *found = NULL;
-    size_t i = 0;
-    if (!buf)
-        return NULL;
-    while (i < len) {
-        size_t s = i;
-        char *f;
-        while (i < len && buf[i] != '\n' && buf[i] != '\r')
-            i++;
-        if ((f = ksm_line_folder(buf + s, i - s)) != NULL) {
-            sfree(found);
-            found = f;
-        }
-        while (i < len && (buf[i] == '\n' || buf[i] == '\r'))
-            i++;
-    }
-    return found;
+    return ksf_text_value(buf, len, "Folder");
 }
 
 static unsigned long ksm_nreads;
@@ -347,7 +295,7 @@ char *ksm_file_folder(const char *path)
         size_t m = strlen(line);
         while (m && (line[m - 1] == '\n' || line[m - 1] == '\r'))
             m--;
-        if ((f = ksm_line_folder(line, m)) != NULL) {
+        if ((f = ksm_text_folder(line, m)) != NULL) {
             sfree(found);
             found = f;
         }
@@ -464,6 +412,58 @@ int ksm_folder_store_rows(const char *dir, const char *suffix,
     }
     ksm_folder_cache_end();
     ksp_walk_store_free(v, n);
+    return n;
+}
+
+/* The registry store's sessions under key (...\Sessions): the
+ * identity of every key with the Folder value of each one stored by its bare
+ * name - one key open per such session. */
+int ksm_registry_rows(const char *key, char ***ids, char ***folders)
+{
+    HKEY hkey;
+    char buf[MAX_PATH + 1];
+    strbuf *sb;
+    int n = 0;
+    size_t cap = 0, cap2 = 0;
+    DWORD i;
+
+    *ids = NULL;
+    *folders = NULL;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, key, 0,
+                      KEY_READ, &hkey) != ERROR_SUCCESS)
+        return 0;
+    sb = strbuf_new();
+    for (i = 0; RegEnumKeyA(hkey, i, buf, MAX_PATH) == ERROR_SUCCESS; i++) {
+        char *folder = NULL;
+        if (!strcmp(buf, "Default%20Settings"))
+            continue;
+        strbuf_clear(sb);
+        unescape_registry_key(buf, sb);
+        if (!strchr(sb->s, '\\')) {
+            HKEY sk;
+            if (RegOpenKeyExA(hkey, buf, 0, KEY_QUERY_VALUE, &sk) == ERROR_SUCCESS) {
+                DWORD type = 0, size = 0;
+                if (RegQueryValueExA(sk, "Folder", NULL, &type, NULL,
+                                     &size) == ERROR_SUCCESS &&
+                    type == REG_SZ && size > 0 && size < 4096) {
+                    folder = snewn(size + 1, char);
+                    if (RegQueryValueExA(sk, "Folder", NULL, &type,
+                                         (BYTE *)folder, &size) == ERROR_SUCCESS)
+                        folder[size] = '\0';
+                    else
+                        folder[0] = '\0';
+                }
+                RegCloseKey(sk);
+            }
+        }
+        sgrowarray(*ids, cap, n);
+        sgrowarray(*folders, cap2, n);
+        (*ids)[n] = dupstr(sb->s);
+        (*folders)[n] = folder;
+        n++;
+    }
+    strbuf_free(sb);
+    RegCloseKey(hkey);
     return n;
 }
 

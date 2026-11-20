@@ -58,6 +58,7 @@
 #include "../kitty/kitty_oldwin_reg.h"
 #include "../kitty/kitty_notice.h"   /* KiTTY: kitty_notice_show */
 #include "../kitty/kitty_dlgbox.h"   /* KiTTY: the shared boxes (kitty_dlgbox.c) */
+#include "../kitty/kitty_globalsettings.h"   /* the store's key by KiClassName */
 /* the themed message box (kitty_dlgbox.c), called by name: kitty_msgbox.h
  * would reroute every plain MessageBox of this file */
 int kitty_message_box(HWND owner, const char *text, const char *caption, unsigned type);
@@ -348,15 +349,11 @@ static filereq_saved_dir *keypath = NULL;
 static const char *kageant_sessions_key(void)
 {
     static char key[300];
-    char cls[64];
     if (key[0])
         return key;                     /* settled on the first call */
-    cls[0] = '\0';
-    if (kitty_inifile_read(KI_SECTION_KITTY, KI_KICLASSNAME, cls, sizeof(cls)) &&
-        !stricmp(cls, "PuTTY"))
-        strcpy(key, "Software\\SimonTatham\\PuTTY\\Sessions");
-    else
-        strcpy(key, PUTTY_REG_POS "\\Sessions");
+    /* the store's key by kitty.ini's KiClassName (kitty_globalsettings.c) */
+    snprintf(key, sizeof(key), "%s\\Sessions",
+             kitty_settings_hive(KS_HIVE_INICLASS));
     return key;
 }
 #define PUTTY_DEFAULT     "Default%20Settings"
@@ -7861,56 +7858,11 @@ char *kageant_testdoor_sessions_dup(void)
 #endif
 }
 
-/* The registry store's sessions (the hive kageant_sessions_key names): the
- * identity of every key, and the Folder value of each one stored by its bare
- * name - one key open per such session. */
+/* The registry store's sessions: the rows the session menu builds from
+ * (kitty_sessmenu.c ksm_registry_rows), under the key this kageant reads. */
 static int kageant_registry_rows(char ***ids, char ***folders)
 {
-    HKEY hkey;
-    char buf[MAX_PATH + 1];
-    strbuf *sb;
-    int n = 0;
-    size_t cap = 0, cap2 = 0;
-    DWORD i;
-
-    *ids = NULL;
-    *folders = NULL;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, kageant_sessions_key(), 0,
-                      KEY_READ, &hkey) != ERROR_SUCCESS)
-        return 0;
-    sb = strbuf_new();
-    for (i = 0; RegEnumKeyA(hkey, i, buf, MAX_PATH) == ERROR_SUCCESS; i++) {
-        char *folder = NULL;
-        if (!strcmp(buf, PUTTY_DEFAULT))
-            continue;
-        strbuf_clear(sb);
-        unescape_registry_key(buf, sb);
-        if (!strchr(sb->s, '\\')) {
-            HKEY sk;
-            if (RegOpenKeyExA(hkey, buf, 0, KEY_QUERY_VALUE, &sk) == ERROR_SUCCESS) {
-                DWORD type = 0, size = 0;
-                if (RegQueryValueExA(sk, "Folder", NULL, &type, NULL,
-                                     &size) == ERROR_SUCCESS &&
-                    type == REG_SZ && size > 0 && size < 4096) {
-                    folder = snewn(size + 1, char);
-                    if (RegQueryValueExA(sk, "Folder", NULL, &type,
-                                         (BYTE *)folder, &size) == ERROR_SUCCESS)
-                        folder[size] = '\0';
-                    else
-                        folder[0] = '\0';
-                }
-                RegCloseKey(sk);
-            }
-        }
-        sgrowarray(*ids, cap, n);
-        sgrowarray(*folders, cap2, n);
-        (*ids)[n] = dupstr(sb->s);
-        (*folders)[n] = folder;
-        n++;
-    }
-    strbuf_free(sb);
-    RegCloseKey(hkey);
-    return n;
+    return ksm_registry_rows(kageant_sessions_key(), ids, folders);
 }
 
 /* A name as menu text: '&' doubled, so it is shown, not taken for an

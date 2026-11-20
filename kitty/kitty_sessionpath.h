@@ -33,6 +33,13 @@
 char *ksp_component_munge(const char *component);
 char *ksp_component_unmunge(const char *filename);
 
+/* One key's value in a text of the folder store's line format (a session
+ * file, KiTTYState, a host CA file): "key=value" or classic KiTTY's
+ * "key\value\", the value %xx-escaped and decoded here. The key starts its
+ * line. A key on more than one line gives the last one's value, as the
+ * folder store's reader does (ksf_load). snewn'd, NULL when absent. */
+char *ksf_text_value(const char *buf, size_t len, const char *key);
+
 /* A path's folder ("Linux\web" of "Linux\web\srv01"), snewn'd, or NULL for a
  * root session. ksp_leaf() points into the argument. */
 char *ksp_folder_of(const char *path);

@@ -694,7 +694,7 @@ windows/noise.c | noise_get_heavy() | winpath | MAX_PATH + 3 | upstream: Windows
 
 windows/pageant.c | kageant_sessions_key() | key | 300 | registry key path, not a file path: Software\...\Sessions from compile-time literals
 windows/pageant.c | find_kittygen() | b | 2048 | own exe folder + kittygen.exe; n >= sizeof-32 refused
-windows/pageant.c | kageant_registry_rows() | buf | MAX_PATH + 1 | session KEY names from RegEnumKeyA (max 255)
+kitty/kitty_sessmenu.c | ksm_registry_rows() | buf | MAX_PATH + 1 | session KEY names from RegEnumKeyA (max 255)
 windows/pageant.c | find_kitty_exe() | b | 2048 | own exe folder + kitty.exe; n >= sizeof-32 refused
 windows/pageant.c | kageant_refresh_tray_tip() | merged | 256 | tray tip text, snprintf to sizeof (the tip shows at most 128 characters)
 windows/pageant.c | kageant_refresh_tray_tip() | merged | 256 | tray tip text, snprintf to sizeof (the tip shows at most 128 characters)

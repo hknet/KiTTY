@@ -428,6 +428,7 @@ int kitty_settings_kitty_write(const char *ini_path, int dir_mode,
 
 char *ksf_munge(const char *in);     /* kitty_sessionpath.c, malloc'd */
 char *ksf_unmunge(const char *in);   /* kitty_sessionpath.c, malloc'd */
+char *ksf_text_value(const char *buf, size_t len, const char *key);   /* same */
 int kitty_write_file_whole(const char *path, const void *data, size_t len);
 void smemclr(void *b, size_t len);   /* utils: a wipe the compiler keeps */
 /* kitty_store_acl.c, in the programs that write the store (kageant only
@@ -546,12 +547,10 @@ char *kitty_settings_state_file_get_dup(const char *path, const char *key)
     char *buf;
     if (!path || !path[0] || !key || (buf = ks_file_dup(path, &len)) == NULL)
         return NULL;
-    c.key = key;
-    c.out = c.last_line = NULL;
-    c.found = 0;
-    ks_each_line(buf, len, ks_get_line, &c);
+    /* the folder store's one parser (kitty_sessionpath.c): the last line of
+     * the key wins */
+    c.out = ksf_text_value(buf, len, key);
     free(buf);
-    free(c.last_line);
     if (c.out && !c.out[0]) {
         free(c.out);
         c.out = NULL;

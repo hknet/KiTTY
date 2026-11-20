@@ -86,6 +86,56 @@ char *ksf_unmunge(const char *in)          /* snewn'd */
     return out;
 }
 
+char *ksf_text_value(const char *buf, size_t len, const char *key)
+{
+    size_t kl = strlen(key), i = 0;
+    char *found = NULL;
+    if (!buf || !kl)
+        return NULL;
+    while (i < len) {
+        size_t s = i, n;
+        const char *line, *eq, *bs, *v;
+        while (i < len && buf[i] != '\n' && buf[i] != '\r')
+            i++;
+        line = buf + s;
+        n = i - s;
+        while (i < len && (buf[i] == '\n' || buf[i] == '\r'))
+            i++;
+        if (n <= kl || memcmp(line, key, kl))
+            continue;
+        eq = memchr(line, '=', n);
+        bs = memchr(line, '\\', n);
+        /* the first delimiter after the key decides the form. A backslash inside
+         * a KiTTY++ value is always %5C, never taken for the classic form */
+        if (eq && (!bs || eq < bs)) {
+            size_t vl;
+            char *raw;
+            if (eq != line + kl)
+                continue;
+            v = eq + 1;
+            vl = n - (size_t)(v - line);
+            raw = dupprintf("%.*s", (int)vl, v);
+            sfree(found);
+            found = ksf_unmunge(raw);
+            sfree(raw);
+        } else if (bs) {
+            size_t vl;
+            char *raw;
+            if (bs != line + kl)
+                continue;
+            v = bs + 1;
+            vl = n - (size_t)(v - line);
+            if (vl && v[vl - 1] == '\\')
+                vl--;                      /* the closing delimiter */
+            raw = dupprintf("%.*s", (int)vl, v);
+            sfree(found);
+            found = ksf_unmunge(raw);
+            sfree(raw);
+        }
+    }
+    return found;
+}
+
 char *ksp_component_munge(const char *component)
 {
     char *m = ksf_munge(component ? component : "");
