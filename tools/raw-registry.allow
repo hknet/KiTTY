@@ -1,0 +1,90 @@
+# tools/raw-registry.allow - the functions that call the registry themselves
+# (tools/check-raw-registry.py). The programs' own settings and state go
+# through kitty/kitty_globalsettings.c; what is listed here is another store.
+# Format: file | function | reason   (function * = every function of the file)
+
+# ---- the session store, its trees and its records --------------------------
+windows/utils/registry.c | * | the session store's registry primitives (upstream PuTTY): open, enumerate, read and write a session key
+windows/storage.c | kitty_nd_put | the session store: a session's values
+windows/storage.c | kitty_retire_renamed_keys | the session store: a session's retired value names
+windows/storage.c | kitty_reg_value_get | the session store: a session's values
+windows/storage.c | kitty_reg_defaults_pass | the session store: Default Settings' values
+windows/storage.c | hostkey_value_delete | the session store: SshHostKeys
+kitty/kitty_sessionpath.c | ksp_reg_copy_key | the session store's tree: copying a session key (folder paths)
+kitty/kitty_sessionpath.c | ksp_reg_equal_key | the session store's tree: comparing two session keys
+kitty/kitty_sessionpath.c | ksp_reg_exists | the session store's tree: whether a session key exists
+kitty/kitty_sessionpath.c | ksp_reg_delete_tree | the session store's tree: removing a session key
+kitty/kitty_sessionpath.c | ksp_reg_copy_verified | the session store's tree: a verified copy of a session key
+kitty/kitty_sessionpath.c | ksp_reg_restore | the session store's tree: restoring a session key
+kitty/kitty_sessionrename.c | rk_move_one | the session store's tree: renaming a session
+kitty/kitty_sessionrename.c | rk_enum_value | the session store's tree: a renamed session's values
+kitty/kitty_sessionrename.c | rk_launcher_reg_walk | the session store's tree: launcher entries of a renamed session
+kitty/kitty_sessorder.c | kso_read_values | the session store: the manual order of sessions and folders
+kitty/kitty_sessorder.c | kso_key_stamp | the session store: the manual order's change stamp
+kitty/kitty_sessorder.c | kso_write_values | the session store: the manual order of sessions and folders
+kitty/kitty_sessorder.c | kso_folder_moved_keys | the session store: the manual order of a moved folder
+kitty/kitty_sessorder.c | kso_levels | the session store: the manual order's levels
+kitty/kitty_sessmenu.c | ksm_registry_rows | the session store's reader shared with kageant (narrow route): session keys and their Folder
+kitty/kitty_kageant_dest.c | names_from_registry | the session store's reader in kageant (narrow route): SshHostKeys
+kitty/kitty_kageant_dest.c | lookup_registry_keys | the session store's reader in kageant (narrow route): SshHostKeys
+kitty/kitty_kageant_dest.c | reg_sz_dup | the session store's reader in kageant (narrow route): a CA's values
+kitty/kitty_kageant_dest.c | ca_enum_registry | the session store's reader in kageant (narrow route): SshHostCAs
+kitty/kitty_hostkeys.c | hostkeys_enumerate | the session store: SshHostKeys
+kitty/kitty_storemove.c | ksm_hostkeys_to_dir | the session store's move: SshHostKeys to the folder store
+kitty/kitty_storemove.c | ksm_hostkeys_from_dir | the session store's move: SshHostKeys from the folder store
+kitty/kitty_winpos.c | kitty_winpos_session_copy | the session store: a session's window places copied with it
+kitty/kitty_config_app.c | hk_watch_arm | the session store: SshHostKeys changes watched
+kitty/kitty_commands.c | cmd_savesessions | the session store's tree: /savesessions exports the Sessions key
+kitty/kitty_commands.c | cmd_copytoputty | the session store's tree: /copytoputty copies the Sessions key
+kitty/kitty_regbackup.c | sav_load_file | the session store's tree: kitty.sav loaded into the hive
+kitty/kitty_registry.c | QuerySubKey | the store's tree: a key exported whole
+kitty/kitty_registry.c | RegDelTree | the store's tree: a key removed whole
+kitty/kitty_registry.c | kitty_RegCopyTree | the store's tree: a key copied whole
+kitty/kitty_registry.c | RegTestKey | the store's tree: whether a key exists
+kitty/kitty_registry.c | RegCountKey | the store's tree: how many subkeys a key has
+kitty/kitty_registry.c | RegCleanPuTTY | the store's tree: -cleanup of PuTTY's key
+kitty/kitty_registry.c | GetValueDataDup | another top key than HKCU (the HKCU leg reads through the settings module)
+kitty/kitty_registry.c | RegTestOrCreate | another top key than HKCU (the HKCU leg writes through the settings module)
+kitty/kitty_registry.c | RegTestOrCreateDWORD | another top key than HKCU (the HKCU leg writes through the settings module)
+kitty/kitty_registry.c | RegDelValue | another top key than HKCU (the HKCU leg deletes through the settings module)
+
+# ---- one-time migrations from older versions and other programs -----------
+kitty/kitty_registry.c | RepairSharrowDefaults | one-time migration: the shifted arrow keys' default
+kitty/kitty_registry.c | MigrateScpAutoPwd | one-time migration: SCPAutoPwd
+kitty/kitty_registry.c | TestRegKeyOrCopyFromPuTTY | one-time migration: PuTTY's or 9bis' store copied over
+kitty/kitty_proxy.c | kitty_migrate_old_proxies | one-time migration: 9bis' named proxies
+kitty/kitty_migrate.c | kitty_import_foreign_session | one-time migration: another program's sessions imported
+
+# ---- Windows' own keys ------------------------------------------------------
+kitty/kitty_registry.c | RegSzDup | Windows' own keys: file and URL associations
+kitty/kitty_registry.c | ClassKeyExists | Windows' own keys: file and URL associations
+kitty/kitty_registry.c | ClassRegTarget | Windows' own keys: file and URL associations
+kitty/kitty_registry.c | defapps_set | Windows' own keys: Default Apps registration
+kitty/kitty_registry.c | defapps_competitors | Windows' own keys: Default Apps registration
+kitty/kitty_registry.c | defapps_remove | Windows' own keys: Default Apps registration
+kitty/kitty_registry.c | RemoveSSHHandler | Windows' own keys: the ssh: URL handler
+kitty/kitty_registry.c | CreateFileAssoc | Windows' own keys: the .ktx file association
+kitty/kitty_registry.c | RemoveFileAssoc | Windows' own keys: the .ktx file association
+kitty/kitty_userpath.c | read_user_path | Windows' own keys: HKCU\Environment Path
+kitty/kitty_userpath.c | kitty_userpath_set_exe_dir | Windows' own keys: HKCU\Environment Path
+windows/pageant.c | kageant_sshauthsock_apply | Windows' own keys: HKCU\Environment SSH_AUTH_SOCK
+windows/pageant.c | kageant_tray_icon | Windows' own keys: the taskbar's light or dark theme
+kitty/kitty_theme.c | kitty_theme_system_is_dark | Windows' own keys: the apps' light or dark theme
+kitty/kitty_pageant.c | kageant_set_run_entry | Windows' own keys: the Run entry that starts kageant
+kitty/kitty_pageant.c | kageant_reg_sz_dup | Windows' own keys: the Run entry that starts kageant
+kitty/kitty_pageant.c | kageant_scan_run | Windows' own keys: the Run entry that starts kageant
+kitty/kitty_pageant.c | kageant_clear_own_run_entry | Windows' own keys: the Run entry that starts kageant
+kitty/kitty_pageant.c | kageant_autostart_active | Windows' own keys: the Run entry that starts kageant
+kitty/kitty_image.c | load_wallpaper_bmp | Windows' own keys: Control Panel\Desktop wallpaper
+kitty/kitty_zone.c | policy_dword | Windows' own keys: the Attachments policy
+kitty/kitty_serialports.c | kitty_serial_from_devicemap | Windows' own keys: HKLM SERIALCOMM
+kitty/kitty_serialports.c | kitty_serial_from_setupapi | Windows' own keys: a serial device's PortName
+kitty/kitty_kageant_audit.c | kageant_audit_eventlog_exists | Windows' own keys: the Event Log source (HKLM)
+kitty/kitty_auditverify.c | av_log_exists | Windows' own keys: the Event Log source (HKLM)
+kitty/kitty_config_app.c | kitty_session_eventlog_exists | Windows' own keys: the Event Log source (HKLM)
+
+# ---- the Windows XP stand-ins ----------------------------------------------
+kitty/kitty_oldwin.c | kitty_reg_query_dup | the stand-ins for APIs newer than Windows XP: a value whole
+kitty/kitty_oldwin.c | kitty_reg_str_dup | the stand-ins for APIs newer than Windows XP: a string value whole
+kitty/kitty_oldwin.c | reg_deltree_fallback | the stand-ins for APIs newer than Windows XP: RegDeleteTree
+kitty/kitty_oldwin.c | kitty_oldwin_RegGetValueA | the stand-ins for APIs newer than Windows XP: RegGetValue

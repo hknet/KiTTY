@@ -898,6 +898,25 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking environment reads against tools/test-doors.allow")
   add_custom_target(check_test_doors ALL DEPENDS ${KITTY_TESTDOORS_CHECK_STAMP})
 
+  # A registry call outside the settings module (kitty/kitty_globalsettings.c)
+  # in a function not listed with its store in tools/raw-registry.allow: the
+  # programs' own settings and state are read and written in one place. A
+  # stale line fails. The self-test runs first, on planted sources.
+  set(KITTY_RAWREG_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_rawreg_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_RAWREG_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-raw-registry.py --self-test
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-raw-registry.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_RAWREG_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-raw-registry.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/raw-registry.allow
+            ${KITTY_CONF_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking registry calls against tools/raw-registry.allow")
+  add_custom_target(check_raw_registry ALL DEPENDS ${KITTY_RAWREG_CHECK_STAMP})
+
   # A command of the terminal window's menus without a shortcut action (no
   # key can reach it), or an action whose menu command is on no menu. The
   # menus: windows/window.c and the kitty menu builders it calls. The
@@ -979,7 +998,7 @@ if(KITTY_INI_CHECK_PYTHON)
     check_kitty_ini check_features_toc check_menu_ids check_kitty_events
     check_conf_types check_dialog_accelerators check_fixed_arrays
     check_kitty_text check_secure_wipe check_store_pairs check_menu_shortcuts
-    check_test_doors)
+    check_test_doors check_raw_registry)
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)
