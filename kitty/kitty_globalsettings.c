@@ -192,10 +192,7 @@ int kitty_settings_reg_set_at(const char *h, const char *name, DWORD type, const
 void *kitty_settings_reg_value_dup_at(const char *h, const char *name, DWORD *type, DWORD *len)
 {
     const struct ks_ro_value *ro = ks_ro_find(h, name);
-    HKEY k;
-    DWORD t = 0, n = 0;
-    unsigned char *v = NULL;
-    LONG rc;
+    unsigned char *v;
     if (ro) {
         if ((v = malloc(ro->len + 2)) == NULL)
             return NULL;
@@ -205,6 +202,14 @@ void *kitty_settings_reg_value_dup_at(const char *h, const char *name, DWORD *ty
         if (len) *len = ro->len;
         return v;
     }
+    return kitty_settings_reg_stored_dup_at(h, name, type, len);
+}
+void *kitty_settings_reg_stored_dup_at(const char *h, const char *name, DWORD *type, DWORD *len)
+{
+    HKEY k;
+    DWORD t = 0, n = 0;
+    unsigned char *v = NULL;
+    LONG rc;
     if (RegOpenKeyExA(HKEY_CURRENT_USER, h, 0, KEY_QUERY_VALUE, &k) !=
             ERROR_SUCCESS)
         return NULL;
@@ -746,6 +751,19 @@ int kitty_settings_reg_names_at(const char *path, int (*fn)(const char *name,
     free(name);
     RegCloseKey(k);
     return n;
+}
+
+LONG kitty_settings_reg_key_check(const char *path)
+{
+    HKEY k;
+    LONG rc = RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_READ, &k);
+    if (rc == ERROR_SUCCESS)
+        RegCloseKey(k);
+    return rc;
+}
+LONG kitty_settings_reg_key_del_at(const char *path)
+{
+    return RegDeleteKeyA(HKEY_CURRENT_USER, path);
 }
 
 int kitty_settings_reg_subkeys_at(const char *path,

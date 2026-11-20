@@ -94,6 +94,15 @@ int kitty_settings_reg_del_at(const char *path, const char *name);
 int kitty_settings_reg_names_at(const char *path,
                                 int (*fn)(const char *name, void *ctx),
                                 void *ctx);
+/* A value of HKCU\path as the hive holds it, the readonly overlay left out
+ * (the readers that never took it: a session's or a named proxy's values,
+ * the special menu). malloc'd, NULL when absent. */
+void *kitty_settings_reg_stored_dup_at(const char *path, const char *name,
+                                       DWORD *type, DWORD *len);
+/* Whether HKCU\path opens for reading: Windows' answer (ERROR_SUCCESS). */
+LONG kitty_settings_reg_key_check(const char *path);
+/* HKCU\path removed, a key without subkeys: Windows' answer. */
+LONG kitty_settings_reg_key_del_at(const char *path);
 /* Each subkey name of HKCU\path in turn, fn returning 0 stops: the number of
  * names seen, -1 when the key cannot be opened. */
 int kitty_settings_reg_subkeys_at(const char *path,

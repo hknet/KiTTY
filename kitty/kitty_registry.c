@@ -23,6 +23,7 @@
 #include "kitty_tools.h"
 #include "kitty.h"
 #include "kitty_inifile.h"  /* kitty_store_ro_regpath: readonly=yes */
+#include "kitty_globalsettings.h"   /* the store's values through the settings module */
 #include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: KITTY_NO_SETTINGS_LAUNCH */
 #include <objbase.h>        /* CoInitializeEx: the ms-settings: launch */
 #include <stdarg.h>
@@ -45,9 +46,17 @@ char * GetValueDataDup( HKEY hkTopKey, const char * lpSubKey, const char * lpVal
 	DWORD type = 0, len = 0 ;
 	unsigned char * data ;
 	char * out ;
-	if( RegOpenKeyEx( hkTopKey, lpSubKey, 0, KEY_READ, &hkKey ) != ERROR_SUCCESS ) return NULL ;
-	data = kitty_reg_query_dup( hkKey, lpValueName, &type, &len ) ;
-	RegCloseKey( hkKey ) ;
+	int module = 0 ;
+	if( hkTopKey == HKEY_CURRENT_USER && lpSubKey != NULL && lpValueName != NULL ) {
+		/* the store's values through the settings module, as the hive holds
+		 * them */
+		data = kitty_settings_reg_stored_dup_at( lpSubKey, lpValueName, &type, &len ) ;
+		module = 1 ;
+	} else {
+		if( RegOpenKeyEx( hkTopKey, lpSubKey, 0, KEY_READ, &hkKey ) != ERROR_SUCCESS ) return NULL ;
+		data = kitty_reg_query_dup( hkKey, lpValueName, &type, &len ) ;
+		RegCloseKey( hkKey ) ;
+	}
 	if( data == NULL ) return NULL ;
 	switch( (int)type ) {
 	  case REG_BINARY:
@@ -69,7 +78,8 @@ char * GetValueDataDup( HKEY hkTopKey, const char * lpSubKey, const char * lpVal
 		out = dupstr( "" ) ;
 		break ;
 	}
-	sfree( data ) ;
+	if( module ) free( data ) ;
+	else sfree( data ) ;
 	return out ;
 }
 

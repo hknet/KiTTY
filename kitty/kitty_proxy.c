@@ -32,6 +32,7 @@
 #include "kitty_winutil.h"
 #include "kitty_store_acl.h"   /* the Proxies folder: owner-only rights */
 #include "kitty_winerr.h"   /* kitty_win_reason: why a definition was not loaded */
+#include "kitty_globalsettings.h"   /* the registry through the settings module */
 
 /* The registry hive chosen AT RUNTIME (kitty_set_registry_root, driven by
  * kitty.ini KiClassName). Named proxies used the compile-time PUTTY_REG_POS
@@ -96,8 +97,21 @@ void kitty_proxy_resolve_selection( Conf *conf ) {
 			? KITTY_PROXY_SESSION : KITTY_PROXY_NONE ) ;
 }
 
+/* One definition's key into proxies[] (None and Default left out), for
+ * kitty_settings_reg_subkeys_at: 0 when proxies[] is full. */
+static int proxy_list_one( const char *lpData, void *ctx ) {
+	int *j = (int *)ctx ;
+	if( *j>=MAX_PROXY ) return 0 ; /* SECURITY: bound proxies[] */
+	if( strcmp(lpData,"None") && strcmp(lpData,"Default") ) {
+		/* unescaping never makes a name longer */
+		proxies[*j].name=(char*)malloc(strlen(lpData)+1);
+		unmungestr( lpData, proxies[*j].name, (int)strlen(lpData)+1 ) ;
+		(*j)++;
+	}
+	return 1 ;
+}
+
 void InitProxyList(void) {
-	HKEY hKey ;
 	int i,j;
 	for( i=0; i<lenof(proxies); i++) {
 		if( proxies[i].name != NULL ) { free( proxies[i].name ) ; }   /* re-callable, no leak */
@@ -111,34 +125,11 @@ void InitProxyList(void) {
 	proxies[1].name=(char*)malloc(sizeof(KITTY_PROXY_NONE));    strcpy(proxies[1].name,KITTY_PROXY_NONE);
 	j=2;
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
-		TCHAR 	achClass[MAX_PATH] = TEXT("");
-		DWORD   cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass;
-		DWORD	cValues,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
-		FILETIME ftLastWriteTime;
 		char *key = dupprintf( "%s\\Proxies", kitty_registry_base() ) ;
-		LONG r ;
 		RegTestOrCreate( HKEY_CURRENT_USER, key, NULL, NULL ) ;
-		r = RegOpenKeyEx( HKEY_CURRENT_USER, key, 0, KEY_READ, &hKey) ;
+		/* the definitions' keys through the settings module */
+		kitty_settings_reg_subkeys_at( key, proxy_list_one, &j ) ;
 		sfree( key ) ;
-		if( r != ERROR_SUCCESS ) return ;
-		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) != ERROR_SUCCESS )
-			cSubKeys = 0 ;
-		if( cSubKeys>0 )
-			for (i=0; i<cSubKeys; i++) {
-				/* a key name is at most 255 characters */
-				char lpData[MAX_KEY_LENGTH + 1] ;
-				DWORD cchValue = sizeof(lpData) ;
-				if( j>=MAX_PROXY ) break; /* SECURITY: bound proxies[] */
-				if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
-					if( strcmp(lpData,"None") && strcmp(lpData,"Default") ) {
-						/* unescaping never makes a name longer */
-						proxies[j].name=(char*)malloc(strlen(lpData)+1);
-						unmungestr( lpData, proxies[j].name, (int)strlen(lpData)+1 ) ;
-						j++;
-					}
-				}
-			}
-		RegCloseKey( hKey ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		char *pdir = portable_config_subdir( "Proxies" ) ;
 		DIR * dir ;
@@ -217,10 +208,9 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 	}
 	debug_logevent( "Load proxy \"%s\" definition", name ) ;
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
-		HKEY hKey ;
 		char *buffer = proxy_reg_key( name ) ;
 		char *lpData ;
-		LONG ropen = RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) ;
+		LONG ropen = kitty_settings_reg_key_check( buffer ) ;
 		if( ropen != ERROR_SUCCESS ) {
 			sfree( buffer ) ;
 			return proxy_load_failed( kitty_win_reason( (DWORD)ropen ) ) ;
@@ -275,7 +265,6 @@ int LoadProxyInfo( Conf * conf, const char * name ) {
 		} else
 			conf_set_int( conf, CONF_proxy_host_kind, -1 ) ;
 		#undef PXV
-		RegCloseKey( hKey ) ;
 		sfree( buffer ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		char *fullpath = proxy_file_path( name ) ;
@@ -478,7 +467,7 @@ int DeleteProxyInfo( const char *name ) {
 	if( !strcmp(name,KITTY_PROXY_SESSION) || !strcmp(name,KITTY_PROXY_NONE) ) return 0 ;
 	if( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) {
 		char *sub = proxy_reg_key( name ) ;
-		RegDeleteKey( HKEY_CURRENT_USER, sub ) ;
+		kitty_settings_reg_key_del_at( sub ) ;
 		sfree( sub ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		char *fullpath = proxy_file_path( name ) ;
@@ -502,12 +491,15 @@ int DeleteProxyInfo( const char *name ) {
  * A marked (already-encrypted) password is never re-wrapped. The one-shot marker
  * means a proxy the user later deletes never resurrects (hknet/KiTTY#11). */
 static int kitty_proxies_migrated( void ) {
-	HKEY h ; DWORD val = 0, sz = sizeof(val), type = 0 ; int got = 0 ;
-	if( RegOpenKeyEx( HKEY_CURRENT_USER, kitty_registry_base(), 0, KEY_READ, &h ) == ERROR_SUCCESS ) {
-		if( RegQueryValueEx( h, "ProxiesMigrated", NULL, &type, (LPBYTE)&val, &sz ) == ERROR_SUCCESS
-		    && type == REG_DWORD && val ) got = 1 ;
-		RegCloseKey( h ) ;
+	DWORD val = 0, len = 0, type = 0 ; int got = 0 ;
+	/* through the settings module. A value over 4 bytes did not fit the
+	 * read and counts as not set */
+	unsigned char *v = kitty_settings_reg_stored_dup_at( kitty_registry_base(), "ProxiesMigrated", &type, &len ) ;
+	if( v != NULL && len <= sizeof(val) ) {
+		memcpy( &val, v, len ) ;
+		if( type == REG_DWORD && val ) got = 1 ;
 	}
+	free( v ) ;
 	return got ;
 }
 

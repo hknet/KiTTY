@@ -272,8 +272,6 @@ kitty/kitty_progstatus.h | struct PsRecord | msg | PS_MSG_MAX + 1 | OSC 7501 mes
 
 kitty/kitty_protkey.c | kitty_protkey_available() | ref | sizeof(buf) | copy of a test buffer for the memory-protection probe (sizeof(buf))
 
-kitty/kitty_proxy.c | InitProxyList() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
-kitty/kitty_proxy.c | InitProxyList() | lpData | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
 kitty/kitty_proxy.c | SaveProxyInfo() | pxpw | KITTY_PW_MAX + 1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
 kitty/kitty_proxy.c | kitty_migrate_old_proxies() | sub | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
 kitty/kitty_proxy.c | kitty_export_proxies_to_dir() | pxpw | KITTY_PW_MAX + 1 | password/secret buffer sized to KITTY_PW_MAX (the suite-wide password limit, 4096)
@@ -367,8 +365,6 @@ kitty/kitty_shortcuts.c | kitty_menu_show_shortcuts() | base | 256 | menu item t
 kitty/kitty_shortcuts.c | kitty_menu_show_shortcuts() | label | 320 | menu item with key text, snprintf to sizeof
 kitty/kitty_shortcuts.c | kitty_menu_show_shortcuts() | old | 256 | menu item text, size passed
 
-kitty/kitty_specialmenu.c | ReadSpecialMenu() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
-kitty/kitty_specialmenu.c | ReadSpecialMenu() | lpData | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
 
 
 kitty/kitty_startup.c | MigratePuttyIni() | err | 256 | FormatMessage text, size passed

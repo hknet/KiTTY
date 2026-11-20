@@ -16,6 +16,7 @@
 #include <windows.h>
 
 #include "kitty.h"
+#include "kitty_globalsettings.h"   /* the registry through the settings module */
 #include "kitty_params.h"
 #include "kitty_broadcast.h"
 /* The hive in use, not the compile-time default - see kitty_storage.c. */
@@ -174,44 +175,48 @@ static int sm_append_entries( HMENU menu, struct sm_item *items, int nitems, int
 	return n ;
 	}
 
-/* One value of an open key, its name and its data in full (sfree both; the
- * data gets two NULs after it, so a string is always terminated). The answer
- * is RegEnumValue's: anything but ERROR_SUCCESS leaves both NULL. */
-static LONG sm_enum_value( HKEY hKey, DWORD i, char ** name, char ** data ) {
-	DWORD dcap = 4096 ;
-	*name = NULL ; *data = NULL ;
-	for( ;; ) {
-		/* a value name is at most 16383 characters */
-		DWORD nlen = MAX_VALUE_NAME + 1, dlen = dcap, type ;
-		LONG r ;
-		*name = snewn( MAX_VALUE_NAME + 1, char ) ;
-		*data = snewn( dcap + 2, char ) ;
-		r = RegEnumValue( hKey, i, *name, &nlen, NULL, &type, (LPBYTE)*data, &dlen ) ;
-		if( r == ERROR_SUCCESS && dlen <= dcap ) {
-			(*data)[dlen] = (*data)[dlen+1] = '\0' ;
-			return r ;
-			}
-		sfree( *name ) ; sfree( *data ) ;
-		*name = NULL ; *data = NULL ;
-		if( r != ERROR_MORE_DATA && r != ERROR_SUCCESS ) return r ;
-		/* the data grew: dlen holds the size it needs now */
-		if( dlen <= dcap ) dlen = dcap * 2 ;
-		if( dlen > 64 * 1024 * 1024 ) return ERROR_MORE_DATA ;
-		dcap = dlen ;
+/* ReadSpecialMenu's collection of one key, for the settings module's
+ * listings: the submenus by their key names, the items by their values. */
+struct sm_collect {
+	struct sm_item **items ;
+	int *nitems ;
+	int launcher, first, separator ;
+	const char *key ;
+	HMENU menu ;
+	} ;
+static int sm_sub_one( const char *lpData, void *ctx ) {
+	struct sm_collect *c = (struct sm_collect *)ctx ;
+	char * plain = unmungestr_dup( lpData ) ;
+	sm_items_add( c->items, c->nitems, plain, lpData ) ;
+	sfree( plain ) ;
+	return 1 ;
+	}
+static int sm_value_one( const char *achValue, void *ctx ) {
+	struct sm_collect *c = (struct sm_collect *)ctx ;
+	char * lpData ;
+	if( c->first ) {   /* the separator before the first value, as before */
+		if( c->separator ) AppendMenu( c->menu, MF_SEPARATOR, 0, 0 ) ;
+		c->first = 0 ;
 		}
+	lpData = kitty_settings_reg_stored_dup_at( c->key, achValue, NULL, NULL ) ;
+	if( lpData == NULL ) return 1 ;
+	/* Default Settings never appears in the launcher, at ANY level of
+	 * its hand-edited copy (reload=no). */
+	if( strcmp(achValue,KITTY_DEFAULT_SESSION) || !c->launcher )
+		sm_items_add( c->items, c->nitems, achValue, lpData ) ;
+	free( lpData ) ;
+	return 1 ;
 	}
 
 int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
-	HKEY hKey ;
+	struct sm_collect sm_ctx ;
 	HMENU SubMenu ;
 	char * buffer, * p ;
 	int i ;
 	int local_nb = 0 ;
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
-	if( RegOpenKeyEx( HKEY_CURRENT_USER, TEXT(KeyName), 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
-		TCHAR achClass[MAX_PATH] = TEXT("");
-		DWORD  cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass,cValues=0,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
-		FILETIME ftLastWriteTime;
+	if( kitty_settings_reg_key_check( KeyName ) == ERROR_SUCCESS ) {
+		/* the key's subkeys and values through the settings module */
 
 		char * launcherkey, * lfolder ;
 		struct sm_item *items = NULL ;
@@ -221,23 +226,8 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		lfolder = is_launcher ? sm_launcher_folder( KeyName + strlen(launcherkey) ) : NULL ;
 		sfree( launcherkey ) ;
 
-		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) != ERROR_SUCCESS ) {
-			cSubKeys = 0 ; cValues = 0 ;
-			}
-
-		if( cSubKeys>0 ) { // collect the submenus
-		for (i=0; i<cSubKeys; i++) {
-			/* a key name is at most 255 characters */
-			char lpData[MAX_KEY_LENGTH + 1] ;
-			DWORD cchValue = sizeof(lpData) ;
-
-			if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
-				char * plain = unmungestr_dup( lpData ) ;
-				sm_items_add( &items, &nitems, plain, lpData ) ;
-				sfree( plain ) ;
-				}
-			}
-		}
+		sm_ctx.items = &items ; sm_ctx.nitems = &nitems ; sm_ctx.launcher = is_launcher ;
+		kitty_settings_reg_subkeys_at( KeyName, sm_sub_one, &sm_ctx ) ; // collect the submenus
 		if( is_launcher ) sm_items_sort( items, nitems ) ;
 		sm_items_order( items, nitems, lfolder, KSP_ORDER_FOLDER ) ;
 		for( k = 0 ; k < nitems ; k++ ) {
@@ -249,21 +239,8 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		sm_items_free( &items, &nitems ) ;
 
 
-		if (cValues) { // collect the menu items
-		if( separator ) AppendMenu( menu, MF_SEPARATOR, 0, 0 ) ;
-
-	        for (i=0; i<cValues; i++) {
-			char * achValue, * lpData ;
-			if( sm_enum_value( hKey, i, &achValue, &lpData ) == ERROR_SUCCESS ) {
-			/* Default Settings never appears in the launcher, at ANY level of
-			 * its hand-edited copy (reload=no). */
-			if( strcmp(achValue,KITTY_DEFAULT_SESSION) || !is_launcher )
-				sm_items_add( &items, &nitems, achValue, lpData ) ;
-			sfree( achValue ) ;
-			sfree( lpData ) ;
-				}
-			}
-    		}
+		sm_ctx.key = KeyName ; sm_ctx.first = 1 ; sm_ctx.menu = menu ; sm_ctx.separator = separator ;
+		kitty_settings_reg_names_at( KeyName, sm_value_one, &sm_ctx ) ; // collect the menu items
 		if( is_launcher ) sm_items_sort( items, nitems ) ;
 		sm_items_order( items, nitems, lfolder, KSP_ORDER_SESSION ) ;
 		local_nb += sm_append_entries( menu, items, nitems, ShortcutsFlag, 0 ) ;
@@ -272,7 +249,6 @@ int ReadSpecialMenu( HMENU menu, char * KeyName, int * nbitem, int separator ) {
 		(*nbitem)=kitty_menuslots_count() ;
 		sfree( lfolder ) ;
 
-		RegCloseKey( hKey ) ;
 		}
 		}
 	else if( IniFileFlag == SAVEMODE_DIR ) {
