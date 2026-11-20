@@ -31,6 +31,7 @@
 #include <string.h>
 
 #include "putty.h"
+#include "kitty_globalsettings.h"   /* the hive through the settings module */
 #include "kitty.h"
 #include "kitty_atomicfile.h"   /* kitty_write_file_whole: whole or not at all */
 #include "kitty_params.h"
@@ -469,64 +470,36 @@ static const char *ksm_section_of(const char *name)
  * where both hold a key, as it does for the running copy (ReadParameterN).
  * In folder mode the store in use IS a kitty.ini, so its [KiTTY] section is
  * copied as a whole. */
+/* One value of the hive's base key into kitty.ini's sections (ksm_globals_to_ini):
+ * strings only, the window layout's keys left out. */
+struct ksm_reg_copy { const char *dst; int *n; int *fail; };
+static int ksm_reg_copy_one(const char *name, void *ctx)
+{
+    struct ksm_reg_copy *c = (struct ksm_reg_copy *)ctx;
+    DWORD type = 0, len = 0;
+    char *val = kitty_settings_reg_stored_dup_at(kitty_registry_base(), name,
+                                                 &type, &len);
+    if (!val) { (*c->fail)++; return 1; }
+    if (type == REG_SZ && !ksm_layout_key(name)) {
+        if (WritePrivateProfileStringA(ksm_section_of(name), name, val, c->dst))
+            (*c->n)++;
+        else
+            (*c->fail)++;
+    }
+    free(val);
+    return 1;
+}
+
 static int ksm_globals_to_ini(const char *dst, int *fail)
 {
     int n = 0, i;
     const char *cur = GetKittyIniFile();
     struct ksm_ini_copy c = { dst, INIT_SECTION, &n, fail, 1, 0 };
     if (GetIniFileFlag() != SAVEMODE_DIR) {
-        HKEY k;
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, kitty_registry_base(), 0,
-                          KEY_READ, &k) == ERROR_SUCCESS) {
-            /* every name and value whole: buffers as big as the longest
-             * the key holds, grown when one grew since. A value past 8 KB
-             * used to be left out of the copy without a count. */
-            DWORD i2 = 0, maxname = 0, maxdata = 0;
-            char *name;
-            BYTE *val;
-            if (RegQueryInfoKeyA(k, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                                 &maxname, &maxdata, NULL, NULL) != ERROR_SUCCESS) {
-                maxname = 16383;
-                maxdata = 65536;
-            }
-            name = snewn(maxname + 2, char);
-            val = snewn(maxdata + 2, BYTE);
-            for (;;) {
-                DWORD nlen = maxname + 2, vlen = maxdata, type;
-                LONG r = RegEnumValueA(k, i2, name, &nlen, NULL, &type,
-                                       val, &vlen);
-                if (r == ERROR_NO_MORE_ITEMS) break;
-                if (r == ERROR_MORE_DATA) {
-                    DWORD mn = 0, md = 0;
-                    if (RegQueryInfoKeyA(k, NULL, NULL, NULL, NULL, NULL, NULL,
-                                         NULL, &mn, &md, NULL, NULL) == ERROR_SUCCESS &&
-                        (mn > maxname || md > maxdata)) {
-                        if (mn > maxname) maxname = mn;
-                        if (md > maxdata) maxdata = md;
-                        sfree(name);
-                        sfree(val);
-                        name = snewn(maxname + 2, char);
-                        val = snewn(maxdata + 2, BYTE);
-                        continue;               /* the same value again */
-                    }
-                    (*fail)++;
-                    i2++;
-                    continue;
-                }
-                i2++;
-                if (r != ERROR_SUCCESS) { (*fail)++; continue; }
-                if (type != REG_SZ) continue;
-                val[vlen] = '\0';
-                val[vlen + 1] = '\0';
-                if (ksm_layout_key(name)) continue;
-                if (WritePrivateProfileStringA(ksm_section_of(name), name,
-                                               (char *)val, dst)) n++;
-                else (*fail)++;
-            }
-            sfree(val);
-            sfree(name);
-            RegCloseKey(k);
-        }
+        /* every value of the hive's base key through the settings module,
+         * each whole */
+        struct ksm_reg_copy rc = { dst, &n, fail };
+        kitty_settings_reg_names_at(kitty_registry_base(), ksm_reg_copy_one, &rc);
         c.only_missing = 1;
     }
     if (cur && cur[0] && ksm_file_exists(cur)) {
