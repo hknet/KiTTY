@@ -151,6 +151,9 @@ target_link_libraries(testcrypt
 add_executable(test_bpp
   test/test_bpp.c
   kitty/kitty_inifile.c    # ssh/common.c checks readonly=yes (kitty_store_readonly)
+  kitty/kitty_globalsettings.c   # kitty_inifile.c reads kitty.ini through it
+  kitty/kitty_sessionpath.c      # the settings module's KiTTYState parser
+  kitty/kitty_atomicfile.c       # the settings module's whole-file writes
   test/test_random.c
   callback.c
   stubs/no-logging.c
@@ -467,6 +470,9 @@ installed_program(psftp)
 
 add_executable(psocks
   kitty/kitty_inifile.c    # windows/console.c checks readonly=yes (kitty_store_readonly)
+  kitty/kitty_globalsettings.c   # kitty_inifile.c reads kitty.ini through it
+  kitty/kitty_sessionpath.c      # the settings module's KiTTYState parser
+  kitty/kitty_atomicfile.c       # the settings module's whole-file writes
   ${platform}/psocks.c
   psocks.c
   stubs/no-rand.c
@@ -541,7 +547,8 @@ add_executable(test_sessmenu
   kitty/kitty_sessionpath.c
   kitty/kitty_sessorder.c      # the manual order of the menu
   kitty/kitty_atomicfile.c
-  kitty/kitty_inifile.c)   # kitty_sessionpath.c's registry writers check readonly=yes
+  kitty/kitty_inifile.c    # kitty_sessionpath.c's registry writers check readonly=yes
+  kitty/kitty_globalsettings.c)   # kitty_inifile.c reads kitty.ini through it
 target_link_libraries(test_sessmenu utils ${platform_libraries})
 
 # KiTTY: the manual order of folders and sessions (Manage Sessions' drag and
@@ -554,7 +561,8 @@ add_executable(test_sessorder
   kitty/kitty_sessorder.c
   kitty/kitty_sessionpath.c
   kitty/kitty_atomicfile.c
-  kitty/kitty_inifile.c)
+  kitty/kitty_inifile.c
+  kitty/kitty_globalsettings.c)   # kitty_inifile.c reads kitty.ini through it
 target_link_libraries(test_sessorder utils ${platform_libraries})
 
 # KiTTY: the payload table behind the launcher's session menu and the User

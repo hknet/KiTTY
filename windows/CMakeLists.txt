@@ -583,8 +583,12 @@ target_link_libraries(test_termenv_hint
 # ini still written. A %TEMP% tree (deleted); never the registry.
 add_executable(test_inifile
   test/test_inifile.c
-  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c)
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_inifile.c
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_globalsettings.c   # kitty_inifile.c reads kitty.ini through it
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_sessionpath.c      # the settings module's KiTTYState parser
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_atomicfile.c)      # the settings module's whole-file writes
 target_include_directories(test_inifile PRIVATE ${CMAKE_SOURCE_DIR}/kitty)
+target_link_libraries(test_inifile utils ${platform_libraries})
 
 add_executable(test_lineedit
   ${CMAKE_SOURCE_DIR}/test/test_lineedit.c

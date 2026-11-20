@@ -23,6 +23,20 @@
 #include "kitty_inifile.h"
 #include "kitty_inikeys.h"
 
+/* the settings module (linked for kitty_inifile.c) allocates through
+ * utils, which reports a failed allocation here */
+void modalfatalbox(const char *p, ...);
+void modalfatalbox(const char *p, ...)
+{
+    va_list ap;
+    fprintf(stderr, "FATAL ERROR: ");
+    va_start(ap, p);
+    vfprintf(stderr, p, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+    exit(1);
+}
+
 static int failures = 0;
 static void check(int cond, const char *what)
 {

@@ -137,6 +137,15 @@ char *kitty_settings_ini_dup(const char *section, const char *key);
  *   key makes sure the section exists. The kitty.ini in charge under
  *   readonly=yes: nothing written, KITTY_RO_REFUSED (del too).
  *   del: one key, or with a NULL key the whole section. */
+/* GetPrivateProfileString of file into buf (len bytes, "" when absent, a
+ * longer value cut as Windows cuts it): the characters copied. */
+DWORD kitty_settings_file_get(const char *file, const char *section,
+                              const char *key, char *buf, DWORD len);
+/* WritePrivateProfileString of file as it is (value NULL: the key removed),
+ * no readonly check: 1 written, 0 not (Windows' reason in GetLastError()).
+ * For the writers that handle readonly=yes themselves. */
+int kitty_settings_file_put(const char *file, const char *section,
+                            const char *key, const char *value);
 char *kitty_settings_file_read_dup(const char *file, const char *section,
                                    const char *key);
 int kitty_settings_file_write(const char *file, const char *section,

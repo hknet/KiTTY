@@ -54,6 +54,7 @@
 
 #include "kitty_inifile.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
+#include "kitty_globalsettings.h"   /* kitty.ini through the settings module */
 
 /* Every path and value here is held whole, in malloc'd memory (this file
  * links nothing but Windows): a path too long for Windows makes Windows'
@@ -101,7 +102,7 @@ static char *inifile_get_dup(const char *section, const char *key,
         DWORD n;
         if (!buf)
             return NULL;
-        n = GetPrivateProfileStringA(section, key, "", buf, len, file);
+        n = kitty_settings_file_get(file, section, key, buf, len);
         if (n + 2 < len || len >= (1u << 24)) {
             buf[n < len ? n : len - 1] = '\0';
             return buf;
@@ -379,8 +380,8 @@ int kitty_inifile_registry_authoritative(void)
         return inifile_pinned_registry;
     if (!kitty_inifile_file())
         return 1;
-    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SAVEMODE, "",
-                             buf, sizeof(buf), inifile_path);
+    kitty_settings_file_get(inifile_path, KI_SECTION_KITTY, KI_SAVEMODE,
+                            buf, sizeof(buf));
     if (!stricmp(buf, "file") || !stricmp(buf, "dir"))
         return 0;
     if (!stricmp(buf, "registry"))
@@ -417,7 +418,7 @@ int kitty_inifile_read(const char *section, const char *key,
         snprintf(value, len, "%s", ro->value ? ro->value : "");
         return value[0] != '\0';
     }
-    GetPrivateProfileStringA(section, key, "", value, len, f);
+    kitty_settings_file_get(f, section, key, value, (DWORD)len);
     return value[0] != '\0';
 }
 
@@ -454,8 +455,8 @@ static int inifile_readonly_read(void)
      * (kitty_inifile_read reaches this function for those) */
     buf[0] = '\0';
     if (f)
-        GetPrivateProfileStringA(KI_SECTION_KITTY, KI_READONLY, "", buf,
-                                 sizeof(buf), f);
+        kitty_settings_file_get(f, KI_SECTION_KITTY, KI_READONLY, buf,
+                                sizeof(buf));
     return !stricmp(buf, "YES");
 }
 
@@ -601,7 +602,7 @@ int kitty_inifile_write(const char *section, const char *key,
         inifile_ro_keep(section, key, value);
         return 1;
     }
-    return WritePrivateProfileStringA(section, key, value, f) ? 1 : 0;
+    return kitty_settings_file_put(f, section, key, value);
 }
 
 /* The folder store, as kitty.exe finds it (kitty_store.c loadPath and
@@ -685,8 +686,8 @@ static int inifile_folder_store_dup(char **dirp, char **sufp)
     *sufp = NULL;
     if (!kitty_inifile_file())
         return 0;
-    GetPrivateProfileStringA(KI_SECTION_KITTY, KI_SAVEMODE, "",
-                             mode, sizeof(mode), inifile_path);
+    kitty_settings_file_get(inifile_path, KI_SECTION_KITTY, KI_SAVEMODE,
+                            mode, sizeof(mode));
     inifile_rtrim(mode, " \t\r\n");
     if (stricmp(mode, "dir") && (mode[0] || !inifile_portable_layout()))
         return 0;

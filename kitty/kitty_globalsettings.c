@@ -336,6 +336,16 @@ static char *ks_reg_any_dup(const char *hive, const char *name)
 char *kitty_profile_string_dup(const char *section, const char *key,
                                const char *def, const char *file);   /* kitty_oldwin.c */
 
+DWORD kitty_settings_file_get(const char *file, const char *section,
+                              const char *key, char *buf, DWORD len)
+{
+    return GetPrivateProfileStringA(section, key, "", buf, len, file);
+}
+int kitty_settings_file_put(const char *file, const char *section,
+                            const char *key, const char *value)
+{
+    return WritePrivateProfileStringA(section, key, value, file) ? 1 : 0;
+}
 char *kitty_settings_file_read_dup(const char *file, const char *section,
                                    const char *key)
 {
