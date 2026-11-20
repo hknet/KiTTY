@@ -132,6 +132,14 @@ int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR valu
 	if( lpSubKey == NULL ) return 0 ;
 	if( strlen( lpSubKey ) == 0 ) return 0 ;
 	if( kitty_store_ro_regpath( hMainKey == HKEY_CURRENT_USER, lpSubKey ) ) return KITTY_RO_REFUSED ;
+	if( hMainKey == HKEY_CURRENT_USER ) {
+		/* the store through the settings module. The reason stays in
+		 * GetLastError() for the caller's report */
+		rc = kitty_settings_reg_stored_set_at( lpSubKey, name, REG_SZ, value,
+			name != NULL ? (DWORD)strlen(value)+1 : 0 ) ;
+		if( rc != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
+		return 1 ;
+		}
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
 		/* the reason stays in GetLastError() for the caller's report */
 		if( ( rc = RegCreateKey( hMainKey, lpSubKey, &hKey ) ) != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
@@ -151,6 +159,13 @@ int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD v
 	if( lpSubKey == NULL ) return 0 ;
 	if( strlen( lpSubKey ) == 0 ) return 0 ;
 	if( kitty_store_ro_regpath( hMainKey == HKEY_CURRENT_USER, lpSubKey ) ) return KITTY_RO_REFUSED ;
+	if( hMainKey == HKEY_CURRENT_USER ) {
+		/* the store through the settings module */
+		rc = kitty_settings_reg_stored_set_at( lpSubKey, name, REG_DWORD, &value,
+			name != NULL ? sizeof(DWORD) : 0 ) ;
+		if( rc != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
+		return 1 ;
+		}
 	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
 		/* the reason stays in GetLastError() for the caller's report */
 		if( ( rc = RegCreateKey( hMainKey, lpSubKey, &hKey ) ) != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
@@ -261,7 +276,9 @@ BOOL RegDelValue (HKEY hKeyRoot, LPCTSTR lpSubKey, LPCTSTR lpValue ) {
 	HKEY hKey;
 	LONG lResult;
 	if( kitty_store_ro_regpath( hKeyRoot == HKEY_CURRENT_USER, lpSubKey ) ) return KITTY_RO_REFUSED ;
-	if( (lResult = RegOpenKeyEx (hKeyRoot, lpSubKey, 0, KEY_WRITE, &hKey)) == ERROR_SUCCESS ) {
+	if( hKeyRoot == HKEY_CURRENT_USER && lpSubKey != NULL )   /* through the settings module */
+		lResult = kitty_settings_reg_stored_del_at( lpSubKey, lpValue ) ;
+	else if( (lResult = RegOpenKeyEx (hKeyRoot, lpSubKey, 0, KEY_WRITE, &hKey)) == ERROR_SUCCESS ) {
 		lResult = RegDeleteValue( hKey, lpValue ) ;
 		RegCloseKey(hKey) ;
 		}

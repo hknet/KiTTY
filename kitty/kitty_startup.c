@@ -48,6 +48,7 @@
 #include "winfont_fallback.h"
 #include "kitty_msgbox.h"   /* themed MessageBox routing */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_globalsettings.h"   /* the hive through the settings module */
 #include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
@@ -895,13 +896,12 @@ void InitWinMain( void ) {
 		 && RegCountKey( HKEY_CURRENT_USER, kitty_reg_park_sess ) > 0
 		 && !kitty_cli_do_and_exit()
 		 && WindowsCount( MainHwnd ) == 1 ) {
-			DWORD declined = 0, dwsize = sizeof(DWORD), dwtype = 0 ;
-			HKEY hsave = NULL ;
-			if( RegOpenKeyEx( HKEY_CURRENT_USER, kitty_reg_park, 0, KEY_READ, &hsave ) == ERROR_SUCCESS ) {
-				if( RegQueryValueEx( hsave, KR_RESTOREDECLINED, NULL, &dwtype, (LPBYTE)&declined, &dwsize ) != ERROR_SUCCESS )
-					declined = 0 ;
-				RegCloseKey( hsave ) ;
-				}
+			DWORD declined = 0, dwsize = 0 ;
+			/* through the settings module: any kind, a value over 4 bytes
+			 * did not fit the read and counts as not declined */
+			unsigned char * dv = kitty_settings_reg_stored_dup_at( kitty_reg_park, KR_RESTOREDECLINED, NULL, &dwsize ) ;
+			if( dv != NULL && dwsize <= sizeof(declined) ) memcpy( &declined, dv, dwsize ) ;
+			free( dv ) ;
 			if( !declined ) {
 				char question[1200] ;
 				snprintf( question, sizeof(question),

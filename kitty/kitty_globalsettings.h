@@ -99,6 +99,14 @@ int kitty_settings_reg_names_at(const char *path,
  * the special menu). malloc'd, NULL when absent. */
 void *kitty_settings_reg_stored_dup_at(const char *path, const char *name,
                                        DWORD *type, DWORD *len);
+/* A value written to HKCU\path as it is, the key made when missing (name
+ * NULL: the key only), no readonly overlay: Windows' answer. For the
+ * writers that check readonly=yes themselves. */
+LONG kitty_settings_reg_stored_set_at(const char *path, const char *name,
+                                      DWORD type, const void *data, DWORD len);
+/* A value of HKCU\path removed: Windows' answer (the key's when it does not
+ * open, ERROR_FILE_NOT_FOUND when the value is not there). */
+LONG kitty_settings_reg_stored_del_at(const char *path, const char *name);
 /* Whether HKCU\path opens for reading: Windows' answer (ERROR_SUCCESS). */
 LONG kitty_settings_reg_key_check(const char *path);
 /* HKCU\path removed, a key without subkeys: Windows' answer. */

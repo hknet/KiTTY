@@ -26,6 +26,7 @@
 #include "kitty_b64.h"    /* ksec_b64_encode/decode (at-rest secret codec) */
 #include "kitty_storage.h"
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
+#include "kitty_globalsettings.h"   /* the hive through the settings module */
 #include "kitty_inifile.h"     /* kitty_store_readonly: readonly=yes */
 #include "kitty_oldwin.h"   /* kitty_api_record: what this Windows cannot do */
 #include "kitty_text.h"     /* KT_WINFEAT_*: the feature names that report lists */
@@ -530,13 +531,9 @@ static int mpw_state_set(const char *name, const char *val)
         return KITTY_RO_REFUSED;
     if (store_is_file())
         return portable_write_text_file(KSEC_MPW_SUBDIR, name, val);
-    HKEY hk;
-    LONG rc = RegCreateKeyExA(HKEY_CURRENT_USER, reg_base_buf, 0, NULL, 0,
-                              KEY_SET_VALUE, NULL, &hk, NULL);
-    if (rc == ERROR_SUCCESS) {
-        rc = RegSetValueExA(hk, name, 0, REG_SZ, (const BYTE *)val, (DWORD)strlen(val) + 1);
-        RegCloseKey(hk);
-    }
+    /* the hive through the settings module */
+    LONG rc = kitty_settings_reg_stored_set_at(reg_base_buf, name, REG_SZ, val,
+                                               (DWORD)strlen(val) + 1);
     if (rc != ERROR_SUCCESS) { SetLastError((DWORD)rc); return 0; }
     return 1;
 }
@@ -1665,36 +1662,40 @@ int kitty_secret_is_mpw(const char *stored)
 
 /* Registry: every session (and named proxy) is a subkey holding at most two
  * secret values. */
-static int reg_subtree_has_mpw(const char *subpath)
+/* One key below the subtree: whether a secret value of it is a master
+ * password's (kitty_settings_reg_subkeys_at; 0 stops at the first). A
+ * REG_SZ value counts as RegGetValue took it: 4096 bytes with its NUL. */
+struct mpw_scan { const char *path; int found; };
+static int reg_subtree_one(const char *name, void *ctx)
 {
     static const char *const secrets[] = { KR_PASSWORD, "ProxyPassword" };
-    char path[2048];
-    HKEY h;
-    DWORD i;
-    int found = 0;
-    snprintf(path, sizeof(path), "%s%s", reg_base_buf, subpath);
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_READ, &h) != ERROR_SUCCESS)
-        return 0;
-    for (i = 0; !found; i++) {
-        char name[512], full[2600];
-        DWORD nl = sizeof(name);
-        unsigned k;
-        if (RegEnumKeyExA(h, i, name, &nl, NULL, NULL, NULL, NULL) != ERROR_SUCCESS)
-            break;
-        snprintf(full, sizeof(full), "%s\\%s", path, name);
-        for (k = 0; k < lenof(secrets); k++) {
-            char v[4096];
-            DWORD sz = sizeof(v);
-            if (RegGetValueA(HKEY_CURRENT_USER, full, secrets[k], RRF_RT_REG_SZ,
-                             NULL, v, &sz) == ERROR_SUCCESS &&
-                ksec_value_is_mpw(v)) {
-                found = 1;
-                break;
-            }
-        }
+    struct mpw_scan *m = (struct mpw_scan *)ctx;
+    char *full = dupprintf("%s\\%s", m->path, name);
+    unsigned k;
+    for (k = 0; k < lenof(secrets) && !m->found; k++) {
+        DWORD type = 0, len = 0;
+        char *v = kitty_settings_reg_stored_dup_at(full, secrets[k], &type, &len);
+        if (v && type == REG_SZ &&
+            ((len && !v[len - 1]) ? len : len + 1) <= 4096 &&
+            ksec_value_is_mpw(v))
+            m->found = 1;
+        if (v)
+            smemclr(v, len);   /* a stored password */
+        free(v);
     }
-    RegCloseKey(h);
-    return found;
+    sfree(full);
+    return !m->found;
+}
+static int reg_subtree_has_mpw(const char *subpath)
+{
+    struct mpw_scan m;
+    char *path = dupprintf("%s%s", reg_base_buf, subpath);
+    m.path = path;
+    m.found = 0;
+    /* the subtree through the settings module */
+    kitty_settings_reg_subkeys_at(path, reg_subtree_one, &m);
+    sfree(path);
+    return m.found;
 }
 
 /* Portable: session and proxy files are small key/value text. Values are munged

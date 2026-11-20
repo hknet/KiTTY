@@ -326,10 +326,6 @@ kitty/kitty_searchbar.c | ksb_proc() | last | 512 | last search text, size passe
 
 kitty/kitty_secretstore.c | mpw_state_get() | b | 2048 | master-password state value, RegGetValueA(sizeof)
 kitty/kitty_secretstore.c | struct kpwh_record | data | KPWH_DATA | sealed password record (KPWH_DATA)
-kitty/kitty_secretstore.c | reg_subtree_has_mpw() | path | 2048 | registry key path, not a file path: the store's base key plus a fixed subpath
-kitty/kitty_secretstore.c | reg_subtree_has_mpw() | full | 2600 | registry key path, not a file path: <path>\<key name>, sized for path (2048) + name (at most 255)
-kitty/kitty_secretstore.c | reg_subtree_has_mpw() | name | 512 | session key name from RegEnumKeyExA (<= 255)
-kitty/kitty_secretstore.c | reg_subtree_has_mpw() | v | 4096 | stored password value (a secret), RegGetValueA(sizeof)
 kitty/kitty_secretstore.c | kitty_migrate_portable_mpw_state() | salt | 2048 | master-password salt from the registry, RegGetValueA with sizeof
 kitty/kitty_secretstore.c | kitty_migrate_portable_mpw_state() | ver | 2048 | master-password verifier from the registry, RegGetValueA with sizeof
 kitty/kitty_secretstore.c | ksec_wrap_bundle() | dpapi_why | 600 | DPAPI failure text, snprintf to sizeof
@@ -402,7 +398,6 @@ kitty/kitty_transfer.h | struct kt5113_cmd | data | KT5113_DATA_MAX | OSC 5113 d
 
 kitty/kitty_updater.c | kitty_msi_owns_this_exe() | wmenu | MAX_PATH + 1 | SHGetFolderPathW(CSIDL_STARTMENU) output, NUL forced, then duplicated
 kitty/kitty_updater.c | kitty_download_to_file() | buf | 16384 | download chunk, InternetReadFile(sizeof)
-kitty/kitty_updater.c | kitty_update_worker() | base | 512 | registry key path, not a file path: the store's base key (one of two fixed keys), snprintf to sizeof
 kitty/kitty_updater.c | kitty_update_available() | base | 512 | registry key path, not a file path: the store's base key (one of two fixed keys), snprintf to sizeof
 kitty/kitty_updater.c | kitty_do_msi_update() | tmpbase | MAX_PATH | GetTempFileNameA output (MAX_PATH by the API); the .msi name is built with dupprintf
 kitty/kitty_updater.c | struct kitty_titlenotice_t | saved | 512 | saved window title, GetWindowTextA(sizeof-1)

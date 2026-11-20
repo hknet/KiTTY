@@ -753,6 +753,30 @@ int kitty_settings_reg_names_at(const char *path, int (*fn)(const char *name,
     return n;
 }
 
+LONG kitty_settings_reg_stored_set_at(const char *path, const char *name,
+                                      DWORD type, const void *data, DWORD len)
+{
+    HKEY k;
+    LONG rc = RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_WRITE, &k);
+    if (rc != ERROR_SUCCESS &&
+        (rc = RegCreateKeyA(HKEY_CURRENT_USER, path, &k)) != ERROR_SUCCESS)
+        return rc;
+    rc = ERROR_SUCCESS;
+    if (name != NULL)
+        rc = RegSetValueExA(k, name, 0, type, (const BYTE *)data, len);
+    RegCloseKey(k);
+    return rc;
+}
+LONG kitty_settings_reg_stored_del_at(const char *path, const char *name)
+{
+    HKEY k;
+    LONG rc = RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_WRITE, &k);
+    if (rc == ERROR_SUCCESS) {
+        rc = RegDeleteValueA(k, name);
+        RegCloseKey(k);
+    }
+    return rc;
+}
 LONG kitty_settings_reg_key_check(const char *path)
 {
     HKEY k;

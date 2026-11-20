@@ -13,6 +13,7 @@
 #include "../windows/putty-rc.h"   /* -demo-templates: the shared dialog ids */
 #include "kitty_oldwin.h"   /* APIs newer than the oldest Windows we load on */
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin - a STATIC RegGetValueA import kills the loader there */
+#include "kitty_globalsettings.h"   /* the hive through the settings module */
 #include "kitty_text.h"     /* shared captions */
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_buildlabel.h"   /* the test build's label, if this is one */
@@ -374,13 +375,9 @@ static DWORD WINAPI kitty_update_worker( LPVOID param ) {
 		if( !kitty_store_readonly() &&
 		    ( !kitty_portable_store_state_string( "UpdateLatest", ver ) ||
 		      !kitty_portable_store_state_dword( "UpdateLatestBeta", b ) ) ) {
-			HKEY hk ; char base[512] ;
-			snprintf( base, sizeof(base), "%s", kitty_registry_base() ) ;
-			if( RegCreateKeyExA( HKEY_CURRENT_USER, base, 0, NULL, 0, KEY_SET_VALUE, NULL, &hk, NULL ) == ERROR_SUCCESS ) {
-				RegSetValueExA( hk, "UpdateLatest", 0, REG_SZ, (const BYTE*)ver, (DWORD)strlen(ver)+1 ) ;
-				RegSetValueExA( hk, "UpdateLatestBeta", 0, REG_DWORD, (const BYTE*)&b, sizeof(b) ) ;
-				RegCloseKey( hk ) ;
-				}
+			/* the hive through the settings module */
+			if( kitty_settings_reg_stored_set_at( kitty_registry_base(), "UpdateLatest", REG_SZ, ver, (DWORD)strlen(ver)+1 ) == ERROR_SUCCESS )
+				kitty_settings_reg_stored_set_at( kitty_registry_base(), "UpdateLatestBeta", REG_DWORD, &b, sizeof(b) ) ;
 			}
 		}
 	if( notify != NULL ) {
