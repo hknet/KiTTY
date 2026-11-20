@@ -67,6 +67,7 @@
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory */
 #include "kitty_storage.h"
+#include "kitty_globalsettings.h"   /* the registry through the settings module */
 #include "kitty_secretstore.h"
 #include "kitty_gui.h"
 #include "kitty_bridge.h"
@@ -261,6 +262,22 @@ char * kitty_current_dir(void) {
 // List of folders
 char **FolderList=NULL ;
 
+/* One session key's Folder into the folder list, for
+ * kitty_settings_reg_subkeys_at (a name of MAX_KEY_LENGTH characters or
+ * more is left out, as the list's key buffer did). */
+static int FolderListAddOne( const char * key, void * ctx ) {
+	char * nValue, * fld ;
+	(void)ctx ;
+	if( strlen( key ) >= MAX_KEY_LENGTH ) return 1 ;
+	nValue = dupprintf( "%s\\%s", kitty_reg_sessions(), key ) ;
+	fld = GetValueDataDup( HKEY_CURRENT_USER, nValue, KR_FOLDER ) ;
+	if( fld != NULL && strlen( fld ) > 0 )
+		StringList_Add( &FolderList, fld ) ;
+	sfree( fld ) ;
+	sfree( nValue ) ;
+	return 1 ;
+	}
+
 // Initialise the folder list from the existing sessions and from kitty.ini
 void InitFolderList( void ) {
 	char * pst, * fList ;
@@ -289,53 +306,8 @@ void InitFolderList( void ) {
 	sfree( fList ) ;
 	
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
-		HKEY hKey ;
-		TCHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
-		DWORD    cbName;                   // size of name string 
-		TCHAR    achClass[MAX_PATH] = TEXT("");  // buffer for class name 
-		DWORD    cchClassName = MAX_PATH;  // size of class string 
-		DWORD    cSubKeys=0;               // number of subkeys 
-		DWORD    cbMaxSubKey;              // longest subkey size 
-		DWORD    cchMaxClass;              // longest class string 
-		DWORD    cValues;              // number of values for key 
-		DWORD    cchMaxValue;          // longest value name 
-		DWORD    cbMaxValueData;       // longest value data 
-		DWORD    cbSecurityDescriptor; // size of security descriptor 
-		FILETIME ftLastWriteTime;      // last write time
-		DWORD retCode;
-		const char * buffer = kitty_reg_sessions() ;
-
-		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) != ERROR_SUCCESS ) return ;
-	
-		retCode = RegQueryInfoKey(
-		hKey,                    // key handle 
-		achClass,                // buffer for class name 
-		&cchClassName,           // size of class string 
-		NULL,                    // reserved 
-		&cSubKeys,               // number of subkeys 
-		&cbMaxSubKey,            // longest subkey size 
-		&cchMaxClass,            // longest class string 
-		&cValues,                // number of values for this key 
-		&cchMaxValue,            // longest value name 
-		&cbMaxValueData,         // longest value data 
-		&cbSecurityDescriptor,   // security descriptor 
-		&ftLastWriteTime);       // last write time 
-		// Enumerate the subkeys, until RegEnumKeyEx fails.
-		if (cSubKeys) {
-			for (i=0; i<cSubKeys; i++) { 
-				cbName = MAX_KEY_LENGTH;
-				retCode = RegEnumKeyEx(hKey, i, achKey, &cbName, NULL, NULL, NULL, &ftLastWriteTime); 
-				if (retCode == ERROR_SUCCESS) {
-					char * nValue = dupprintf( "%s\\%s", buffer, achKey ) ;
-					char * fld = GetValueDataDup( HKEY_CURRENT_USER, nValue, KR_FOLDER ) ;
-					if( fld != NULL && strlen( fld ) > 0 )
-						StringList_Add( &FolderList, fld ) ;
-					sfree( fld ) ;
-					sfree( nValue ) ;
-		}
-				}
-			} 
-		RegCloseKey( hKey ) ;
+		/* the Folder value of each session key, through the settings module */
+		if( kitty_settings_reg_subkeys_at( kitty_reg_sessions(), FolderListAddOne, NULL ) < 0 ) return ;
 		}
 	else if( IniFileFlag == SAVEMODE_DIR ) {
 		/* KiTTY (hknet/KiTTY#55): through the store, which knows where the
@@ -402,7 +374,6 @@ static const char * kitty_sessions_root( void ) {
 
 // Get the name of the folder a session belongs to
 void GetSessionFolderName( const char * session_in, char * folder ) {
-	HKEY hKey ;
 	char buffer[1024], session[1024] ;
 	FILE *fp ;
 	
@@ -416,21 +387,19 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 	//if( (p = strrchr(buffer, '[')) != NULL ) *(p-1) = '\0' ;
 
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
+		DWORD len = 0 ;
+		char * v ;
 		mungestr(buffer, session) ;
 		snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_reg_sessions(), session ) ;
-		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
-			DWORD lpType ;
-			unsigned char lpData[1024] ;
-			DWORD dwDataSize = 1024 ;
-			if( RegQueryValueEx( hKey, KR_FOLDER, 0, &lpType, lpData, &dwDataSize ) == ERROR_SUCCESS ) {
-				/* SECURITY: RegQueryValueEx may not NUL-terminate; bound + terminate
-				 * before strcpy into the caller's char[1024]. */
-				if( dwDataSize >= sizeof(lpData) ) dwDataSize = sizeof(lpData)-1 ;
-				lpData[dwDataSize] = '\0' ;
-				strcpy( folder, (char*)lpData ) ;
-			}
-			RegCloseKey( hKey ) ;
+		/* any kind, as stored. A value over 1024 bytes counts as none (it
+		 * did not fit the read's buffer), one of 1024 is cut to 1023 */
+		v = kitty_settings_reg_value_dup_at( buffer, KR_FOLDER, NULL, &len ) ;
+		if( v != NULL && len <= 1024 ) {
+			if( len >= 1024 ) len = 1023 ;
+			v[len] = '\0' ;
+			strcpy( folder, v ) ;
 		}
+		free( v ) ;
 	} else if( IniFileFlag==SAVEMODE_DIR ) {
 		/* KiTTY (hknet/KiTTY#55): through the store - it knows where the
 		 * session folder is (kitty.ini sessions=), the suffix, nested paths
@@ -442,7 +411,6 @@ void GetSessionFolderName( const char * session_in, char * folder ) {
 
 // One entry of a session, in full (sfree it); NULL = it is not there
 char * GetSessionFieldDup( const char * session_in, const char * folder_in, const char * field ) {
-	HKEY hKey ;
 	char *buffer, *session, *name, *p ;
 	char *res = NULL ;
 
@@ -461,13 +429,9 @@ char * GetSessionFieldDup( const char * session_in, const char * folder_in, cons
 	sfree( session ) ;
 
 	if( (IniFileFlag==SAVEMODE_REG)||(IniFileFlag==SAVEMODE_FILE) ) {
-		if( RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
-			/* the value in full and terminated (RegQueryValueEx does not add
-			 * the NUL a stored value may lack) */
-			unsigned char * v = kitty_reg_query_dup( hKey, field, NULL, NULL ) ;
-			if( v != NULL ) res = (char *)v ;
-			RegCloseKey( hKey ) ;
-			}
+		/* the value in full and terminated (RegQueryValueEx does not add
+		 * the NUL a stored value may lack), through the settings module */
+		res = kitty_settings_reg_value_dup_at( buffer, field, NULL, NULL ) ;
 		}
 	else if( IniFileFlag==SAVEMODE_DIR ) {
 		/* KiTTY (hknet/KiTTY#55): through the store itself - it knows the

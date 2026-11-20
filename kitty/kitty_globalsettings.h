@@ -94,6 +94,11 @@ int kitty_settings_reg_del_at(const char *path, const char *name);
 int kitty_settings_reg_names_at(const char *path,
                                 int (*fn)(const char *name, void *ctx),
                                 void *ctx);
+/* Each subkey name of HKCU\path in turn, fn returning 0 stops: the number of
+ * names seen, -1 when the key cannot be opened. */
+int kitty_settings_reg_subkeys_at(const char *path,
+                                  int (*fn)(const char *name, void *ctx),
+                                  void *ctx);
 
 /* Remove one value under the key: 1 when gone (or never there), 0 with the
  * reason in GetLastError(). readonly=yes: KITTY_RO_REFUSED. */

@@ -49,6 +49,7 @@
 #include "kitty_storage.h"       /* kitty_read_session_folder */
 #include "kitty_common.h"
 #include "kitty_image.h"
+#include "kitty_globalsettings.h"   /* the registry through the settings module */
 #include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the test door */
 #include "kitty_testdoor_settings.h"
 #include "kitty_crypt.h"
@@ -1039,67 +1040,50 @@ static const char * kitty_launcher_sessions_root( void ) {
 	return root ;
 	}
 
+/* One session key of the registry store into the menu entries (skipped:
+ * LauncherHide, Default Settings), for kitty_settings_reg_subkeys_at. */
+static int LauncherCollectOne( const char * lpData, void * ctx ) {
+	char * sess, * folder, * pf, * buffer ;
+	int hide = 0 ;
+	(void)ctx ;
+	/* KiTTY: skip sessions marked LauncherHide (excluded from the launcher). */
+	buffer = dupprintf( "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
+	if( kitty_settings_reg_dword_at( buffer, KR_LAUNCHERHIDE, &hide ) && hide ) {
+		sfree( buffer ) ;
+		return 1 ;
+		}
+	/* Default Settings is the template, not a session to start. */
+	sess = unmungestr_dup( lpData ) ;
+	if( !strcmp( sess, KITTY_DEFAULT_SESSION ) ) { sfree( sess ) ; sfree( buffer ) ; return 1 ; }
+	/* KiTTY (hknet/KiTTY#55): a session stored under a folder
+	 * path is in that folder, regardless of its Folder value. */
+	if( ( pf = ksp_folder_of( sess ) ) != NULL )
+		folder = pf ;
+	else {
+		folder = GetValueDataDup( HKEY_CURRENT_USER, buffer, KR_FOLDER ) ;
+		if( folder == NULL ) folder = dupstr( "Default" ) ;
+		}
+	sfree( buffer ) ;
+	CleanFolderName( folder ) ;
+	launcher_entries_add( folder, sess ) ;
+	sfree( folder ) ;
+	sfree( sess ) ;
+	return 1 ;
+	}
+
 /* [Launcher] reload=yes: the saved sessions into the menu entries in
  * memory (launcher_entries), by the rules the Launcher copy had. Writes
  * nothing. */
 static void LauncherCollectSessions( void ) {
-	HKEY hKey ;
 	char * buffer ;
-	int i;
 	launcher_entries_clear() ;
 	launcher_entries_built = 1 ;
 
 	if( (IniFileFlag == SAVEMODE_REG)||(IniFileFlag == SAVEMODE_FILE) ) {
-		TCHAR achClass[MAX_PATH] = TEXT("");
-		DWORD   cchClassName=MAX_PATH,cSubKeys=0,cbMaxSubKey,cchMaxClass;
-		DWORD	cValues,cchMaxValue,cbMaxValueData,cbSecurityDescriptor;
-		FILETIME ftLastWriteTime;
-		LONG r ;
-
+		/* the store's session keys through the settings module */
 		buffer = dupprintf( "%s\\Sessions", kitty_registry_base() ) ;
-		r = RegOpenKeyEx( HKEY_CURRENT_USER, buffer, 0, KEY_READ, &hKey) ;
+		kitty_settings_reg_subkeys_at( buffer, LauncherCollectOne, NULL ) ;
 		sfree( buffer ) ;
-		if( r != ERROR_SUCCESS ) return ;
-
-		if( RegQueryInfoKey(hKey,achClass,&cchClassName,NULL,&cSubKeys,&cbMaxSubKey,&cchMaxClass,&cValues,&cchMaxValue,&cbMaxValueData,&cbSecurityDescriptor,&ftLastWriteTime) != ERROR_SUCCESS )
-			cSubKeys = 0 ;
-
-		if( cSubKeys>0 )
-			for (i=0; i<cSubKeys; i++) {
-				/* a key name is at most 255 characters */
-				char lpData[MAX_KEY_LENGTH + 1] ;
-				DWORD cchValue = sizeof(lpData) ;
-				if( RegEnumKeyEx(hKey, i, lpData, &cchValue, NULL, NULL, NULL, &ftLastWriteTime) == ERROR_SUCCESS ) {
-					char * sess, * folder, * pf ;
-					/* KiTTY: skip sessions marked LauncherHide (excluded from the launcher). */
-					{
-						DWORD hide = 0, hsz = sizeof(hide) ;
-						char * skey = dupprintf( "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
-						LONG hr = RegGetValueA( HKEY_CURRENT_USER, skey, KR_LAUNCHERHIDE, RRF_RT_REG_DWORD, NULL, &hide, &hsz ) ;
-						sfree( skey ) ;
-						if( hr == ERROR_SUCCESS && hide )
-							continue ;
-					}
-					/* Default Settings is the template, not a session to start. */
-					sess = unmungestr_dup( lpData ) ;
-					if( !strcmp( sess, KITTY_DEFAULT_SESSION ) ) { sfree( sess ) ; continue ; }
-					/* KiTTY (hknet/KiTTY#55): a session stored under a folder
-					 * path is in that folder, regardless of its Folder value. */
-					if( ( pf = ksp_folder_of( sess ) ) != NULL )
-						folder = pf ;
-					else {
-						buffer = dupprintf( "%s\\Sessions\\%s", kitty_registry_base(), lpData ) ;
-						folder = GetValueDataDup( HKEY_CURRENT_USER, buffer, KR_FOLDER ) ;
-						sfree( buffer ) ;
-						if( folder == NULL ) folder = dupstr( "Default" ) ;
-						}
-					CleanFolderName( folder ) ;
-					launcher_entries_add( folder, sess ) ;
-					sfree( folder ) ;
-					sfree( sess ) ;
-				}
-			}
-		RegCloseKey( hKey ) ;
 	} else if( IniFileFlag == SAVEMODE_DIR ) {
 		/* KiTTY (hknet/KiTTY#55): every session of the folder tree, by the
 		 * store's own enumeration (nested folders, dot-files and non-session

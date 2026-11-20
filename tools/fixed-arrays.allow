@@ -67,10 +67,8 @@ kitty/kitty.c | (file) | BuildVersionTime | 256 | sprintf of the compile-time BU
 kitty/kitty.c | (file) | RemoteCwd | OSC7_PATH_MAX + 1 | REMOTE working directory from OSC 7, 4096 bytes = Linux PATH_MAX; a longer decoded folder is refused, never cut
 kitty/kitty.c | (file) | RemoteCwdHost | 256 | host part of OSC 7 (refused when >= 256)
 kitty/kitty.c | (file) | RemoteCwdHostFirst | 256 | first OSC 7 host, same size as RemoteCwdHost
-kitty/kitty.c | InitFolderList() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
 kitty/kitty.c | GetSessionFolderName() | buffer | 1024 | registry key path, not a file path: <sessions>\<munged name>, name refused at 341+; a cut leaves a last name over 255 characters, which opens no key
 kitty/kitty.c | GetSessionFolderName() | session | 1024 | munged session name (input refused at >= 1024/3)
-kitty/kitty.c | GetSessionFolderName() | lpData | 1024 | registry Folder value, RegQueryValueEx with 1024: a longer value is ERROR_MORE_DATA and nothing is read; NUL forced
 kitty/kitty.c | CountUp() | buffer | 4096 | counter / licence values from kitty.ini, ReadParameterN(sizeof)
 kitty/kitty.c | ManageToTray() | buffer | 256 | window title for the tray tip, GetWindowText(sizeof-1)
 
@@ -221,8 +219,6 @@ kitty/kitty_launcher.c | LauncherBuildWinList() | t | 256 | swap buffer between 
 kitty/kitty_launcher.c | InitLauncherMenu() | item | 400 | launcher menu item, snprintf to sizeof
 kitty/kitty_launcher.c | InitLauncherMenu() | remembered | 256 | remembered workplace proxy name, size passed
 kitty/kitty_launcher.c | InitLauncherMenu() | item | 320 | menu item with a proxy name ("%.250s"), snprintf to sizeof
-kitty/kitty_launcher.c | LauncherCollectSessions() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
-kitty/kitty_launcher.c | LauncherCollectSessions() | lpData | MAX_KEY_LENGTH + 1 | registry key name from RegEnumKeyEx; key names are limited to 255 characters
 kitty/kitty_launcher.c | LauncherWinProp() | buf | 256 | GlobalGetAtomNameW(256)
 kitty/kitty_launcher.c | RefreshWinListProc() | buffer | 256 | window class name from GetClassName (class names are at most 256 characters)
 kitty/kitty_launcher.c | ShowLauncherUpdateBalloon() | umsg | 256 | update balloon text, snprintf to sizeof

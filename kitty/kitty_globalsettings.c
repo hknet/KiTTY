@@ -748,6 +748,37 @@ int kitty_settings_reg_names_at(const char *path, int (*fn)(const char *name,
     return n;
 }
 
+int kitty_settings_reg_subkeys_at(const char *path,
+                                  int (*fn)(const char *name, void *ctx),
+                                  void *ctx)
+{
+    HKEY k;
+    DWORD i, nlen, max = 0;
+    char *name;
+    int n = 0;
+    if (RegOpenKeyExA(HKEY_CURRENT_USER, path, 0, KEY_READ, &k) !=
+            ERROR_SUCCESS)
+        return -1;
+    if (RegQueryInfoKeyA(k, NULL, NULL, NULL, NULL, &max, NULL, NULL, NULL,
+                         NULL, NULL, NULL) != ERROR_SUCCESS ||
+        (name = malloc(max + 2)) == NULL) {
+        RegCloseKey(k);
+        return 0;
+    }
+    for (i = 0; ; i++) {
+        nlen = max + 1;
+        if (RegEnumKeyExA(k, i, name, &nlen, NULL, NULL, NULL, NULL) !=
+                ERROR_SUCCESS)
+            break;
+        n++;
+        if (!fn(name, ctx))
+            break;
+    }
+    free(name);
+    RegCloseKey(k);
+    return n;
+}
+
 /* kitty.ini's value whole (free() it), NULL when absent or empty. */
 static char *ks_ini_dup(const char *section, const char *key)
 {
