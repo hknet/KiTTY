@@ -73,13 +73,6 @@ static void *ks_key_value_dup(HKEY root, const char *path, const char *name,
  * key for 32-bit and 64-bit programs (not redirected). */
 #define KS_POLICY_PATH "Software\\Policies\\kapper.net\\KiTTY++"
 
-/* The names read before the store is known: never from a policy (a policy
- * savemode would move the store). */
-static int ks_policy_exempt(const char *name)
-{
-    return !name || !name[0] || !_stricmp(name, "KiClassName") ||
-           !_stricmp(name, "savemode") || !_stricmp(name, "readonly");
-}
 
 /* One reading of a policy value for every program: a REG_SZ not empty or a
  * REG_DWORD, as text (a DWORD as its decimal number) or as a number (a
@@ -93,7 +86,7 @@ static void *ks_policy_dup(const char *name, int want, int *src)
 {
     static const HKEY roots[2] = { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER };
     int i;
-    if (ks_policy_exempt(name))
+    if (!name || !name[0])
         return NULL;
     for (i = 0; i < 2; i++) {
         DWORD t = 0, n = 0, num = 0;
@@ -142,6 +135,11 @@ static int ks_policy_has(const char *name, int want)
         return 0;
     free(v);
     return src;
+}
+
+char *kitty_settings_policy_text_dup(const char *name)
+{
+    return ks_policy_dup(name, KS_POL_TEXT, NULL);
 }
 
 int kitty_settings_policy_source(const char *name, int dword)

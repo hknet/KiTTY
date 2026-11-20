@@ -373,15 +373,41 @@ int kitty_inifile_portable(void)
     return inifile_portable_layout();
 }
 
+/* The keys that decide the store, [KiTTY] savemode, readonly and
+ * KiClassName: a policy's value first (kitty_globalsettings.h), the file's
+ * otherwise. */
+static int inifile_boot_key(const char *section, const char *key)
+{
+    return section && key && !_stricmp(section, KI_SECTION_KITTY) &&
+           (!_stricmp(key, KI_SAVEMODE) || !_stricmp(key, KI_READONLY) ||
+            !_stricmp(key, KI_KICLASSNAME));
+}
+
+/* Into buf: 1 with a policy's value, else the file's (file NULL: "") and
+ * 0. */
+static int inifile_boot_get(const char *file, const char *key, char *buf,
+                            DWORD len)
+{
+    char *p = kitty_settings_policy_text_dup(key);
+    if (p) {
+        snprintf(buf, len, "%s", p);
+        free(p);
+        return 1;
+    }
+    buf[0] = '\0';
+    if (file)
+        kitty_settings_file_get(file, KI_SECTION_KITTY, key, buf, len);
+    return 0;
+}
+
 int kitty_inifile_registry_authoritative(void)
 {
     char buf[32];
     if (inifile_pinned_registry >= 0)
         return inifile_pinned_registry;
-    if (!kitty_inifile_file())
+    if (!inifile_boot_get(kitty_inifile_file(), KI_SAVEMODE, buf,
+                          sizeof(buf)) && !kitty_inifile_file())
         return 1;
-    kitty_settings_file_get(inifile_path, KI_SECTION_KITTY, KI_SAVEMODE,
-                            buf, sizeof(buf));
     if (!stricmp(buf, "file") || !stricmp(buf, "dir"))
         return 0;
     if (!stricmp(buf, "registry"))
@@ -408,6 +434,13 @@ int kitty_inifile_read(const char *section, const char *key,
 {
     const char *f = kitty_inifile_file();
     const struct inifile_ro_value *ro;
+    char *p;
+    if (len > 0 && inifile_boot_key(section, key) &&
+        (p = kitty_settings_policy_text_dup(key)) != NULL) {
+        snprintf(value, len, "%s", p);
+        free(p);
+        return value[0] != '\0';
+    }
     if (!f || len <= 0)
         return 0;
     value[0] = '\0';
@@ -428,6 +461,9 @@ char *kitty_inifile_read_dup(const char *section, const char *key)
     const char *f = kitty_inifile_file();
     const struct inifile_ro_value *ro;
     char *v;
+    if (inifile_boot_key(section, key) &&
+        (v = kitty_settings_policy_text_dup(key)) != NULL)
+        return v;
     if (!f)
         return NULL;
     if (inifile_ro_values && (ro = inifile_ro_find(section, key)) != NULL &&
@@ -463,8 +499,12 @@ static int inifile_readonly_read(void)
 int kitty_inifile_readonly(void)
 {
     WIN32_FILE_ATTRIBUTE_DATA fa;
+    char pol[16];
     if (ro_forced)
         return 1;
+    /* a policy decides, no kitty.ini needed */
+    if (inifile_boot_get(NULL, KI_READONLY, pol, sizeof(pol)))
+        return !stricmp(pol, "YES");
     /* kitty_inifile_file()'s answer, with the one stat the cache needs */
     inifile_resolve();
     if (inifile_state != 1 && inifile_state != 2)
@@ -686,8 +726,7 @@ static int inifile_folder_store_dup(char **dirp, char **sufp)
     *sufp = NULL;
     if (!kitty_inifile_file())
         return 0;
-    kitty_settings_file_get(inifile_path, KI_SECTION_KITTY, KI_SAVEMODE,
-                            mode, sizeof(mode));
+    inifile_boot_get(inifile_path, KI_SAVEMODE, mode, sizeof(mode));
     inifile_rtrim(mode, " \t\r\n");
     if (stricmp(mode, "dir") && (mode[0] || !inifile_portable_layout()))
         return 0;

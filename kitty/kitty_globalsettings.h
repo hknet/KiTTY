@@ -19,8 +19,9 @@
  * names it, read the same way by every program: a REG_SZ not empty or a
  * REG_DWORD, as text (a DWORD as its decimal number) or as a number (a
  * REG_SZ that is a decimal number whole). Another kind counts as unset
- * there. KiClassName, savemode and readonly are never read from a
- * policy: they decide the store. Without a value there nothing changes.
+ * there. KiClassName, savemode and readonly too: kitty_inifile.c
+ * reads them from a policy first, so a policy decides the store. Without a
+ * value there nothing changes.
  * The setters do not store a value a policy holds: KITTY_POLICY_REFUSED,
  * non-zero, so a caller testing for failure stays silent. It is not
  * KITTY_RO_REFUSED, which keeps the value for the run. */
@@ -33,6 +34,9 @@ enum {
 /* Which policy key holds the registry name: KS_SOURCE_*. dword 1: for a
  * reader of numbers, else for a reader of text. */
 int kitty_settings_policy_source(const char *name, int dword);
+/* A policy's value of the registry name as text (free() it), NULL when no
+ * policy key holds one. */
+char *kitty_settings_policy_text_dup(const char *name);
 
 /* Which registry key holds the settings - the programs differ. */
 enum {
