@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""The programs' own settings and state reach the registry through the
-settings module only (kitty/kitty_globalsettings.c).
+"""The programs' own settings and state reach the registry and kitty.ini
+through the settings module only (kitty/kitty_globalsettings.c).
 
 What fails the build:
 1. A call of a registry function (RegOpenKey, RegCreateKey, RegQueryValue,
    RegSetValue, RegDeleteValue, RegEnumKey, RegEnumValue, RegGetValue,
    RegDeleteKey, RegDeleteTree, RegQueryInfoKey, RegCopyTree, RegSetKeyValue,
-   RegDeleteKeyValue, RegRenameKey, each with Ex, A and W) in a function not
+   RegDeleteKeyValue, RegRenameKey, each with Ex, A and W) or of an .ini
+   function (GetPrivateProfileString/Int/Section/SectionNames/Struct,
+   WritePrivateProfileString/Section/Struct, A and W) in a function not
    listed in tools/raw-registry.allow. The settings module itself is the
    place for them and is not checked.
 2. A listed line that matches no call (the list cannot go stale).
@@ -15,7 +17,8 @@ tools/raw-registry.allow, one line per function that keeps its own calls:
     file | function | reason
     file | * | reason            every function of the file
 The reasons say which store it is: the session store and its tree code,
-Windows' own keys, the Windows XP stand-ins, a one-time migration.
+Windows' own keys, the Windows XP stand-ins, a one-time migration, the
+store move's whole sections of kitty.ini.
 
 What counts: every .c file of the source tree except test/, windows/test/,
 unix/, contrib/, .git and build directories (a top-level folder whose name
@@ -43,7 +46,9 @@ SKIP_TOP = ("test", "unix", "contrib", ".git")
 CALL = re.compile(
     r"\bReg(OpenKey|CreateKey|QueryValue|SetValue|DeleteValue|EnumKey|"
     r"EnumValue|GetValue|DeleteKey|DeleteTree|QueryInfoKey|CopyTree|"
-    r"SetKeyValue|DeleteKeyValue|RenameKey)(Ex)?[AW]?\s*\(")
+    r"SetKeyValue|DeleteKeyValue|RenameKey)(Ex)?[AW]?\s*\(|"
+    r"\b(GetPrivateProfile(String|Int|Section|SectionNames|Struct)|"
+    r"WritePrivateProfile(String|Section|Struct))[AW]?\s*\(")
 NAME_BEFORE_PAREN = re.compile(r"([A-Za-z_]\w*)\s*\(")
 
 
@@ -173,7 +178,7 @@ def check(root, allow_path, quiet=False):
                 hit = i
                 break
         if hit is None:
-            bad.append(f"  {rel}:{line}: a registry call in {func}() outside "
+            bad.append(f"  {rel}:{line}: a registry or kitty.ini call in {func}() outside "
                        f"the settings module, not in {os.path.basename(allow_path)}")
         else:
             used.add(hit)

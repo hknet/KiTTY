@@ -1,6 +1,7 @@
-# tools/raw-registry.allow - the functions that call the registry themselves
-# (tools/check-raw-registry.py). The programs' own settings and state go
-# through kitty/kitty_globalsettings.c; what is listed here is another store.
+# tools/raw-registry.allow - the functions that call the registry or the
+# .ini functions themselves (tools/check-raw-registry.py). The programs'
+# own settings and state go through kitty/kitty_globalsettings.c. What is
+# listed here is another store.
 # Format: file | function | reason   (function * = every function of the file)
 
 # ---- the session store, its trees and its records --------------------------
@@ -88,3 +89,14 @@ kitty/kitty_oldwin.c | kitty_reg_query_dup | the stand-ins for APIs newer than W
 kitty/kitty_oldwin.c | kitty_reg_str_dup | the stand-ins for APIs newer than Windows XP: a string value whole
 kitty/kitty_oldwin.c | reg_deltree_fallback | the stand-ins for APIs newer than Windows XP: RegDeleteTree
 kitty/kitty_oldwin.c | kitty_oldwin_RegGetValueA | the stand-ins for APIs newer than Windows XP: RegGetValue
+
+# ---- kitty.ini written whole: the store move and kitty.ini's own upkeep ------
+kitty/kitty_storemove.c | ksm_walk_section | the store move: a kitty.ini section read whole
+kitty/kitty_storemove.c | ksm_copy_pair | the store move: a kitty.ini key copied to the new kitty.ini
+kitty/kitty_storemove.c | ksm_reg_copy_one | the store move: a hive value written to the new kitty.ini
+kitty/kitty_storemove.c | ksm_globals_from_ini | the store move: restrictacl written to the kitty.ini left behind
+kitty/kitty_storemove.c | ksm_own_kscp_check | the store move: pscppath removed from the new kitty.ini
+kitty/kitty_storemove.c | kitty_portable_copy_core | the store move: savemode and the password protection of a new portable copy
+kitty/kitty_startup.c | ConsolidateKittyIniLocked | kitty.ini rewritten whole: Windows' ini cache of the file flushed
+kitty/kitty_startup.c | MigratePuttyIni | one-time migration: putty.ini's [KiTTY] section
+kitty/kitty_oldwin.c | kitty_profile_string_dup | a kitty.ini value whole, the settings module's file reader built on it
