@@ -765,6 +765,109 @@ static char *kts_kg_sessfield(void)
         }
     return strbuf_to_str(sb);
 }
+/* the named proxies (list, one loaded, one saved, one deleted) and the
+ * special menu (the Commands keys of the hive, a folder and a session) */
+#include "kitty_proxy.h"
+#include "kitty_menuslots.h"
+static char *kts_kg_proxylist(void)
+{
+    strbuf *sb = strbuf_new();
+    int i, k = 0;
+    InitProxyList();
+    for (i = 2; i < MAX_PROXY; i++)
+        if (proxies[i].name) {
+            char *e = kts_esc_dup(proxies[i].name);
+            put_fmt(sb, "%s%s", k++ ? ";" : "", e);
+            sfree(e);
+        }
+    return strbuf_to_str(sb);
+}
+static char *kts_proxy_load(const char *name)
+{
+    Conf *c = conf_new();
+    strbuf *sb = strbuf_new();
+    char *h, *u, *x, *t;
+    int r;
+    do_defaults(NULL, c);
+    r = LoadProxyInfo(c, name);
+    h = kts_esc_dup(conf_get_str(c, CONF_proxy_host));
+    u = kts_esc_dup(conf_get_str(c, CONF_proxy_username));
+    x = kts_esc_dup(conf_get_str(c, CONF_proxy_exclude_list));
+    t = kts_esc_dup(conf_get_str(c, CONF_proxy_telnet_command));
+    put_fmt(sb, "ret=%d;type=%d;host=%s;port=%d;user=%s;excl=%s;dns=%d;"
+            "local=%d;telnet=%s;log=%d;kind=%d", r,
+            conf_get_int(c, CONF_proxy_type), h,
+            conf_get_int(c, CONF_proxy_port), u, x,
+            conf_get_int(c, CONF_proxy_dns),
+            (int)conf_get_bool(c, CONF_even_proxy_localhost), t,
+            conf_get_int(c, CONF_proxy_log_to_term),
+            conf_get_int(c, CONF_proxy_host_kind));
+    sfree(h);
+    sfree(u);
+    sfree(x);
+    sfree(t);
+    conf_free(c);
+    return strbuf_to_str(sb);
+}
+static char *kts_kg_proxy_qapx(void) { return kts_proxy_load("QaPx"); }
+static char *kts_kg_proxy_qadw(void) { return kts_proxy_load("QaDw"); }
+static int kts_ks_proxy_save(const char *v)
+{
+    Conf *c = conf_new();
+    int r;
+    do_defaults(NULL, c);
+    conf_set_int(c, CONF_proxy_type, PROXY_HTTP);
+    conf_set_str(c, CONF_proxy_host, "new.example");
+    conf_set_int(c, CONF_proxy_port, 8081);
+    conf_set_str(c, CONF_proxy_username, "nu");
+    conf_set_str(c, CONF_proxy_exclude_list, "nx");
+    r = SaveProxyInfo(c, v);
+    conf_free(c);
+    return r;
+}
+static int kts_ks_proxy_del(const char *v) { return DeleteProxyInfo(v); }
+static void kts_menu_walk(strbuf *sb, HMENU m, int depth)
+{
+    int i, n = GetMenuItemCount(m);
+    for (i = 0; i < n; i++) {
+        char *txt = snewn(256, char);
+        HMENU sub = GetSubMenu(m, i);
+        UINT st = GetMenuState(m, (UINT)i, MF_BYPOSITION);
+        txt[0] = '\0';
+        GetMenuStringA(m, (UINT)i, txt, 256, MF_BYPOSITION);
+        if (st & MF_SEPARATOR)
+            put_fmt(sb, "%s-", sb->len ? "," : "");
+        else {
+            char *e = kts_esc_dup(txt);
+            put_fmt(sb, "%s%s", sb->len ? "," : "", e);
+            sfree(e);
+        }
+        sfree(txt);
+        if (sub && depth < 4) {
+            put_fmt(sb, "[");
+            kts_menu_walk(sb, sub, depth + 1);
+            put_fmt(sb, "]");
+        }
+    }
+}
+static char *kts_kg_specialmenu(void)
+{
+    HMENU m = CreatePopupMenu();
+    strbuf *sb = strbuf_new();
+    int i, n;
+    InitSpecialMenu(m, "QaFld", "qa-sess");
+    kts_menu_walk(sb, m, 0);
+    n = kitty_menuslots_count();
+    put_fmt(sb, ";slots=%d", n);
+    for (i = 0; i < n; i++) {
+        char *d = kitty_menuslots_get(i);
+        char *e = kts_esc_dup(d);
+        put_fmt(sb, ";%s", e);
+        sfree(e);
+    }
+    DestroyMenu(m);
+    return strbuf_to_str(sb);
+}
 void kitty_testdoor_settings_kitty(void)
 {
     static const struct kts_probe p[] = {
@@ -802,6 +905,12 @@ void kitty_testdoor_settings_kitty(void)
         { "folderlist", kts_kg_folderlist, NULL },
         { "session.folder", kts_kg_sessfolder, NULL },
         { "session.field", kts_kg_sessfield, NULL },
+        { "proxy.list", kts_kg_proxylist, NULL },
+        { "proxy.QaPx", kts_kg_proxy_qapx, NULL },
+        { "proxy.QaDw", kts_kg_proxy_qadw, NULL },
+        { "proxy.save", NULL, kts_ks_proxy_save },
+        { "proxy.del", NULL, kts_ks_proxy_del },
+        { "specialmenu", kts_kg_specialmenu, NULL },
     };
     kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
 }
