@@ -31,6 +31,124 @@ const char *kitty_settings_hive(int hive)
     }
 }
 
+/* A value of root\path whole, followed by two NULs, malloc'd: NULL when the
+ * key or the value is absent. */
+static void *ks_key_value_dup(HKEY root, const char *path, const char *name,
+                              REGSAM sam,
+                              DWORD *type, DWORD *len)
+{
+    HKEY k;
+    DWORD t = 0, n = 0;
+    unsigned char *v = NULL;
+    LONG rc;
+    if (RegOpenKeyExA(root, path, 0, sam, &k) != ERROR_SUCCESS)
+        return NULL;
+    for (;;) {
+        rc = RegQueryValueExA(k, name, NULL, &t, NULL, &n);
+        if (rc != ERROR_SUCCESS)
+            break;
+        if ((v = malloc(n + 2)) == NULL)
+            break;
+        rc = RegQueryValueExA(k, name, NULL, &t, v, &n);
+        if (rc == ERROR_MORE_DATA) {        /* grew in between: again */
+            free(v);
+            v = NULL;
+            continue;
+        }
+        if (rc != ERROR_SUCCESS) {
+            free(v);
+            v = NULL;
+            break;
+        }
+        v[n] = v[n + 1] = '\0';
+        if (type) *type = t;
+        if (len) *len = n;
+        break;
+    }
+    RegCloseKey(k);
+    return v;
+}
+
+/* The policy keys: the machine's, then the user's. Software\Policies is one
+ * key for 32-bit and 64-bit programs (not redirected). */
+#define KS_POLICY_PATH "Software\\Policies\\kapper.net\\KiTTY++"
+
+/* The names read before the store is known: never from a policy (a policy
+ * savemode would move the store). */
+static int ks_policy_exempt(const char *name)
+{
+    return !name || !name[0] || !_stricmp(name, "KiClassName") ||
+           !_stricmp(name, "savemode") || !_stricmp(name, "readonly");
+}
+
+/* One reading of a policy value for every program: a REG_SZ not empty or a
+ * REG_DWORD, as text (a DWORD as its decimal number) or as a number (a
+ * REG_SZ that is a decimal number whole). Any other kind, an empty REG_SZ
+ * or a text that is not a number for a number counts as unset in that key:
+ * the next key is read. */
+enum { KS_POL_TEXT, KS_POL_DWORD };
+
+/* The text whole (free() it) or, KS_POL_DWORD, a malloc'd DWORD. */
+static void *ks_policy_dup(const char *name, int want, int *src)
+{
+    static const HKEY roots[2] = { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER };
+    int i;
+    if (ks_policy_exempt(name))
+        return NULL;
+    for (i = 0; i < 2; i++) {
+        DWORD t = 0, n = 0, num = 0;
+        int have = 0;
+        void *out = NULL;
+        unsigned char *v = ks_key_value_dup(roots[i], KS_POLICY_PATH, name,
+                                            KEY_QUERY_VALUE, &t, &n);
+        if (!v)
+            continue;
+        if (t == REG_DWORD && n == 4) {
+            memcpy(&num, v, sizeof(num));
+            have = 1;
+        } else if (t == REG_SZ && v[0]) {
+            char *end;
+            long l = strtol((const char *)v, &end, 10);
+            if (want == KS_POL_TEXT)
+                out = _strdup((const char *)v);
+            else if (!*end && end != (char *)v) {
+                num = (DWORD)l;
+                have = 1;
+            }
+        }
+        if (have) {
+            if (want == KS_POL_TEXT) {
+                char txt[16];
+                snprintf(txt, sizeof(txt), "%d", (int)num);
+                out = _strdup(txt);
+            } else if ((out = malloc(sizeof(num))) != NULL) {
+                memcpy(out, &num, sizeof(num));
+            }
+        }
+        free(v);
+        if (out) {
+            if (src) *src = i ? KS_SOURCE_USER_POLICY : KS_SOURCE_MACHINE_POLICY;
+            return out;
+        }
+    }
+    return NULL;
+}
+
+static int ks_policy_has(const char *name, int want)
+{
+    int src = 0;
+    void *v = ks_policy_dup(name, want, &src);
+    if (!v)
+        return 0;
+    free(v);
+    return src;
+}
+
+int kitty_settings_policy_source(const char *name, int dword)
+{
+    return ks_policy_has(name, dword > 0 ? KS_POL_DWORD : KS_POL_TEXT);
+}
+
 /* A REG_SZ value whole (free() it), NULL when it is absent, empty or of
  * another type. */
 static char *ks_reg_sz_dup(const char *hive, const char *name)
@@ -206,37 +324,8 @@ void *kitty_settings_reg_value_dup_at(const char *h, const char *name, DWORD *ty
 }
 void *kitty_settings_reg_stored_dup_at(const char *h, const char *name, DWORD *type, DWORD *len)
 {
-    HKEY k;
-    DWORD t = 0, n = 0;
-    unsigned char *v = NULL;
-    LONG rc;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, h, 0, KEY_QUERY_VALUE, &k) !=
-            ERROR_SUCCESS)
-        return NULL;
-    for (;;) {
-        rc = RegQueryValueExA(k, name, NULL, &t, NULL, &n);
-        if (rc != ERROR_SUCCESS)
-            break;
-        if ((v = malloc(n + 2)) == NULL)
-            break;
-        rc = RegQueryValueExA(k, name, NULL, &t, v, &n);
-        if (rc == ERROR_MORE_DATA) {        /* grew in between: again */
-            free(v);
-            v = NULL;
-            continue;
-        }
-        if (rc != ERROR_SUCCESS) {
-            free(v);
-            v = NULL;
-            break;
-        }
-        v[n] = v[n + 1] = '\0';
-        if (type) *type = t;
-        if (len) *len = n;
-        break;
-    }
-    RegCloseKey(k);
-    return v;
+    return ks_key_value_dup(HKEY_CURRENT_USER, h, name, KEY_QUERY_VALUE,
+                            type, len);
 }
 
 int kitty_settings_reg_del_at(const char *h, const char *name)
@@ -271,65 +360,44 @@ char *kitty_settings_ini_dup(const char *section, const char *key)
     return m;
 }
 
+/* The text of a value of any kind (data followed by two NULs). */
+static char *ks_any_text(DWORD type, const unsigned char *data, DWORD n)
+{
+    char num[48];
+    switch (type) {
+      case REG_BINARY:
+        if (n >= 4)
+            snprintf(num, sizeof(num), "%u.%u.%u.%u",
+                     (unsigned)data[0], (unsigned)data[1],
+                     (unsigned)data[2], (unsigned)data[3]);
+        else
+            num[0] = '\0';
+        return _strdup(num);
+      case REG_DWORD: {
+        int v = 0;
+        memcpy(&v, data, n < sizeof(v) ? n : sizeof(v));
+        snprintf(num, sizeof(num), "%d", v);
+        return _strdup(num);
+      }
+      case REG_EXPAND_SZ:
+      case REG_MULTI_SZ:
+      case REG_SZ:
+        return _strdup((const char *)data);
+      default:
+        return _strdup("");
+    }
+}
+
 /* A value of any type as kitty.exe has read it (GetValueDataDup): text
  * whole, a DWORD as its number, a BINARY of 4 bytes or more as a.b.c.d,
  * anything else as "". NULL when the key or the value is absent. */
 static char *ks_reg_any_dup(const char *hive, const char *name)
 {
-    HKEY k;
     DWORD type = 0, n = 0;
-    unsigned char *data;
-    char *out = NULL;
-    LONG rc;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, hive, 0, KEY_READ, &k) !=
-            ERROR_SUCCESS)
-        return NULL;
-    for (;;) {
-        rc = RegQueryValueExA(k, name, NULL, &type, NULL, &n);
-        if (rc != ERROR_SUCCESS)
-            break;
-        data = malloc(n + 2);
-        if (!data)
-            break;
-        rc = RegQueryValueExA(k, name, NULL, &type, data, &n);
-        if (rc == ERROR_MORE_DATA) {        /* grew in between: again */
-            free(data);
-            continue;
-        }
-        if (rc == ERROR_SUCCESS) {
-            char num[48];
-            data[n] = data[n + 1] = '\0';
-            switch (type) {
-              case REG_BINARY:
-                if (n >= 4)
-                    snprintf(num, sizeof(num), "%u.%u.%u.%u",
-                             (unsigned)data[0], (unsigned)data[1],
-                             (unsigned)data[2], (unsigned)data[3]);
-                else
-                    num[0] = '\0';
-                out = _strdup(num);
-                break;
-              case REG_DWORD: {
-                int v = 0;
-                memcpy(&v, data, n < sizeof(v) ? n : sizeof(v));
-                snprintf(num, sizeof(num), "%d", v);
-                out = _strdup(num);
-                break;
-              }
-              case REG_EXPAND_SZ:
-              case REG_MULTI_SZ:
-              case REG_SZ:
-                out = _strdup((char *)data);
-                break;
-              default:
-                out = _strdup("");
-                break;
-            }
-        }
-        free(data);
-        break;
-    }
-    RegCloseKey(k);
+    unsigned char *data = ks_key_value_dup(HKEY_CURRENT_USER, hive, name,
+                                           KEY_READ, &type, &n);
+    char *out = data ? ks_any_text(type, data, n) : NULL;
+    free(data);
     return out;
 }
 
@@ -394,7 +462,9 @@ int kitty_settings_file_del(const char *file, const char *section,
 char *kitty_settings_kitty_read_dup(const char *ini_path, int dir_mode,
                                     const char *section, const char *key)
 {
-    char *v;
+    char *v = ks_policy_dup(key, KS_POL_TEXT, NULL);
+    if (v)                           /* a policy holds it: every save mode */
+        return v;
     if (dir_mode)
         /* Portable directory mode is registry-independent: a stale HKCU
          * value of an installed copy is never read. */
@@ -412,6 +482,8 @@ int kitty_settings_kitty_write(const char *ini_path, int dir_mode,
     const char *hive;
     HKEY k = NULL;
     LONG rc;
+    if (ks_policy_has(key, KS_POL_TEXT))
+        return KITTY_POLICY_REFUSED;
     if (dir_mode)
         return kitty_settings_file_write(ini_path, section, key, value);
     /* The hive in use, the one the read side looks at, the section dropped
@@ -709,16 +781,30 @@ int kitty_settings_state_file_set(const char *path, const char *key,
 
 int kitty_settings_reg_dword(int hive, const char *name, int *value)
 {
+    void *p = ks_policy_dup(name, KS_POL_DWORD, NULL);
+    if (p) {
+        DWORD v;
+        memcpy(&v, p, sizeof(v));
+        free(p);
+        *value = (int)v;
+        return 1;
+    }
     return kitty_settings_reg_dword_at(kitty_settings_hive(hive), name, value);
 }
 
 char *kitty_settings_reg_str_dup(int hive, const char *name)
 {
+    char *p = ks_policy_dup(name, KS_POL_TEXT, NULL);
+    if (p)
+        return p;
     return kitty_settings_reg_str_dup_at(kitty_settings_hive(hive), name);
 }
 
 int kitty_settings_reg_set(int hive, const char *name, DWORD type, const void *data, DWORD len)
 {
+    if ((type == REG_DWORD && ks_policy_has(name, KS_POL_DWORD)) ||
+        (type == REG_SZ && ks_policy_has(name, KS_POL_TEXT)))
+        return KITTY_POLICY_REFUSED;
     return kitty_settings_reg_set_at(kitty_settings_hive(hive), name, type, data, len);
 }
 
@@ -729,6 +815,8 @@ void *kitty_settings_reg_value_dup(int hive, const char *name, DWORD *type, DWOR
 
 int kitty_settings_reg_del(int hive, const char *name)
 {
+    if (ks_policy_has(name, KS_POL_TEXT))
+        return KITTY_POLICY_REFUSED;
     return kitty_settings_reg_del_at(kitty_settings_hive(hive), name);
 }
 
@@ -855,10 +943,19 @@ static char *ks_checked(const struct kitty_setting *s, char *v)
     return v;
 }
 
+/* The policy's value of the setting, NULL when no policy holds one it
+ * takes. */
+static char *ks_policy_setting_dup(const struct kitty_setting *s)
+{
+    return ks_checked(s, ks_policy_dup(s->regname, KS_POL_TEXT, NULL));
+}
+
 char *kitty_settings_read_dup(const struct kitty_setting *s)
 {
     const char *hive = kitty_settings_hive(s->hive);
-    char *v = NULL;
+    char *v = ks_policy_setting_dup(s);
+    if (v)
+        return v;
     if (kitty_inifile_registry_authoritative()) {
         v = ks_checked(s, ks_reg_sz_dup(hive, s->regname));
         if (!v)
@@ -890,6 +987,11 @@ int kitty_settings_write(const struct kitty_setting *s, const char *value)
     const char *hive;
     HKEY hk;
     LONG rc;
+    char *pv = ks_policy_setting_dup(s);
+    if (pv) {
+        free(pv);
+        return KITTY_POLICY_REFUSED;
+    }
     if (!kitty_inifile_registry_authoritative())
         /* kitty.ini in charge (readonly=yes: kitty_inifile_write leaves it) */
         return kitty_inifile_write(s->section, s->key, value);

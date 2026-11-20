@@ -32,6 +32,7 @@ const char *kageant_confirm_token(int mode);
 char *kageant_inidir_dup(void);           /* NULL: no authoritative ini */
 int kageant_path_under(const char *dir, const char *path);
 int kageant_policy_get(const char *inikey, const char *regname);
+int kageant_reg_first(const char *regname, int dword);
 char *kageant_resolve_form(const char *stored);
 char *kageant_store_form(const char *abspath);
 /* an [Agent] kitty.ini value whole; NULL when absent or empty (sfree it) */

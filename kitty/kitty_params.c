@@ -616,10 +616,12 @@ void kitty_antiidle_report_cut( LogContext *logctx ) {
 	           (unsigned)( sizeof(AntiIdleStr) - 1 ) ) ;
 }
 
-// Delete a parameter (readonly=yes: nothing, KITTY_RO_REFUSED)
+// Delete a parameter (readonly=yes: nothing, KITTY_RO_REFUSED). A policy
+// holds it: nothing, KITTY_POLICY_REFUSED.
 int DelParameter( const char * key, const char * name ) {
 	char buffer[4096] ;
 	if( GetReadOnlyFlag() ) return KITTY_RO_REFUSED ;
+	if( kitty_settings_policy_source( name, -1 ) ) return KITTY_POLICY_REFUSED ;
 	delINI( KittyIniFile, key, name ) ;
 	/* The same key WriteParameter uses: a delete aimed at a different hive
 	 * removes nothing and still reports success. */

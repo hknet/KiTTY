@@ -46,7 +46,8 @@ int kitty_theme_pref_get(void)
 {
     char *v;
     int pref;
-    if (theme_ro_pref >= 0 && kitty_inifile_registry_authoritative())
+    if (theme_ro_pref >= 0 && kitty_inifile_registry_authoritative() &&
+        !kitty_settings_policy_source(KITTY_THEME_REG_VALUE, 0))
         return theme_ro_pref;
     /* store-pairs: read param KiTTY KI_THEME - the satellites' reader (kitty_globalsettings.c): the store in charge first, the other one as the fallback */
     v = kitty_settings_read_dup(&theme_setting);

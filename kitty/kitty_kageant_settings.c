@@ -59,6 +59,15 @@
 /* The registry pieces and the readonly=yes overlay (a value not stored
  * holds for the running agent, KT_KASET_READONLY) are the settings
  * module's, on the agent's fixed key (kitty_globalsettings.c). */
+/* The registry reader first: the registry in charge, or a policy holds the
+ * value (the registry readers answer with the policy's, kitty.ini in charge
+ * or not). dword: the value's kind. */
+int kageant_reg_first(const char *regname, int dword)
+{
+    return kitty_inifile_registry_authoritative() ||
+           kitty_settings_policy_source(regname, dword);
+}
+
 static int kageant_reg_read_dword(const char *name, int *val_out)
 {
     return kitty_settings_reg_dword(KS_HIVE_FIXED, name, val_out);
@@ -120,6 +129,8 @@ void kageant_setting_failure_box(HWND parent)
 int kageant_setting_write(const char *inikey, const char *ini_text,
                           const char *regname, int regval)
 {
+    if (kitty_settings_policy_source(regname, 1))
+        return KITTY_POLICY_REFUSED;
     if (!kitty_inifile_registry_authoritative())
         return kageant_set_note(
             kitty_inifile_write(KI_SECTION_AGENT, inikey, ini_text), inikey);
@@ -171,7 +182,7 @@ char *kageant_ini_read_dup(const char *key)
 char *kageant_setting_str_dup(const char *inikey, const char *regname)
 {
     char *ini = kageant_ini_read_dup(inikey), *reg;
-    if (kitty_inifile_registry_authoritative()) {
+    if (kageant_reg_first(regname, 0)) {
         if ((reg = kageant_reg_read_str_dup(regname)) != NULL) {
             sfree(ini);
             return reg;
@@ -188,6 +199,8 @@ char *kageant_setting_str_dup(const char *inikey, const char *regname)
 int kageant_setting_str_set(const char *inikey, const char *regname,
                             const char *value)
 {
+    if (kitty_settings_policy_source(regname, 0))
+        return KITTY_POLICY_REFUSED;
     if (!kitty_inifile_registry_authoritative())
         return kageant_set_note(
             kitty_inifile_write(KI_SECTION_AGENT, inikey, value), inikey);
@@ -206,7 +219,7 @@ int kageant_notify_get(void)
         if (!stricmp(buf, "yes")) ini_val = 1;
         else if (!stricmp(buf, "no")) ini_val = 0;
     }
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first(KAGEANT_REG_NOTIFY, 1))
         return kageant_reg_read(KAGEANT_REG_NOTIFY, &reg_val) ? reg_val :
                (ini_val >= 0 ? ini_val : 1);
     if (ini_val >= 0)
@@ -229,7 +242,7 @@ int kageant_notice_seconds(int fallback)
     int ini_v = -1, reg_v, v;
     if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf, sizeof(buf)))
         ini_v = atoi(buf);
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first(KAGEANT_REG_NOTICESECS, 1))
         v = kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
             (ini_v > 0 ? ini_v : 0);
     else
@@ -283,7 +296,7 @@ static int kageant_confirm_mode_read(void)
     }
     /* _dword, not the boolean reader: this setting has three states and the
      * boolean one would fold "no" (2) into "yes" (1). */
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first(KAGEANT_REG_CONFIRM, 1))
         return kageant_reg_read_dword(KAGEANT_REG_CONFIRM, &reg_val) ?
                kageant_reg_to_mode(reg_val) :
                (ini_mode >= 0 ? ini_mode : KAGEANT_CONFIRM_AUTO);
@@ -444,7 +457,7 @@ int kageant_bool_get(const char *inikey, const char *regname, int def)
         if (!stricmp(buf, "yes")) ini_v = 1;
         else if (!stricmp(buf, "no")) ini_v = 0;
     }
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first(regname, 1))
         return kageant_reg_read(regname, &reg_v) ? reg_v :
                (ini_v >= 0 ? ini_v : def);
     if (ini_v >= 0)
@@ -486,7 +499,7 @@ int kageant_int_setting(const char *inikey, const char *regname,
         if (v >= lo && v <= hi)
             ini_v = v;
     }
-    if (kitty_inifile_registry_authoritative()) {
+    if (kageant_reg_first(regname, 1)) {
         if (kageant_reg_read_dword(regname, &reg_v) &&
             reg_v >= lo && reg_v <= hi)
             return reg_v;
@@ -531,7 +544,7 @@ int kageant_retry_keys(void)
         else if (!stricmp(buf, "no")) ini_v = 0;
         else if (!stricmp(buf, "ignoredriveletter")) ini_v = KAGEANT_RETRY_ANYDRIVE;
     }
-    if (kitty_inifile_registry_authoritative()) {
+    if (kageant_reg_first("RetryKeys", 1)) {
         if (kageant_reg_read_dword("RetryKeys", &reg_v))
             return (reg_v >= 0 && reg_v <= KAGEANT_RETRY_ANYDRIVE) ? reg_v : 1;
         return ini_v >= 0 ? ini_v : 1;
@@ -567,7 +580,7 @@ int kageant_passphrase_ttl(void)
         if (v >= 0)
             ini_v = kageant_clamp_ttl(v);
     }
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first("PassphraseCacheSeconds", 1))
         return kageant_reg_read_dword("PassphraseCacheSeconds", &reg_v) ?
                kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : KAGEANT_TTL_DEFAULT);
     if (ini_v >= 0)
@@ -591,7 +604,7 @@ int kageant_hello_ttl(void)
         if (v >= 0)
             ini_v = kageant_clamp_ttl(v);
     }
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first("HelloCacheSeconds", 1))
         return kageant_reg_read_dword("HelloCacheSeconds", &reg_v) ?
                kageant_clamp_ttl(reg_v) : (ini_v >= 0 ? ini_v : KAGEANT_TTL_DEFAULT);
     if (ini_v >= 0)
@@ -743,7 +756,7 @@ int kageant_autoenc_mode_read(void)
     int ini_v = -1, reg_v;
     if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTMODE, buf, sizeof(buf)))
         ini_v = kageant_autoenc_mode_parse(buf);
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first("AutoEncryptMode", 1))
         return kageant_reg_read_dword("AutoEncryptMode", &reg_v) ?
                (reg_v >= 0 && reg_v <= 2 ? reg_v : 0) : (ini_v >= 0 ? ini_v : 0);
     if (ini_v >= 0) return ini_v;
@@ -768,7 +781,7 @@ int kageant_autoenc_seconds(void)
     int ini_v = -1, reg_v;
     if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_AUTOENCRYPTSECONDS, buf, sizeof(buf)))
         ini_v = kageant_autoenc_parse(buf);
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first("AutoEncryptSeconds", 1))
         return kageant_reg_read_dword("AutoEncryptSeconds", &reg_v) ?
                kageant_autoenc_clamp(reg_v) : (ini_v >= 0 ? ini_v : 600);
     if (ini_v >= 0) return ini_v;
@@ -805,7 +818,7 @@ static int kageant_policy_read(const char *inikey, const char *regname,
         if (!stricmp(buf, "yes")) ini_val = 1;
         else if (!stricmp(buf, "no")) ini_val = 0;
     }
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first(regname, 1))
         return kageant_reg_read(regname, &reg_val) ? reg_val :
                (ini_val >= 0 ? ini_val : def);
     if (ini_val >= 0)
@@ -1012,7 +1025,7 @@ int kageant_winlock_mode(void)
         else if (!stricmp(buf, "lock")) ini_v = 1;
         else if (!stricmp(buf, "reencrypt")) ini_v = 2;
     }
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first("LockWithWindows", 1))
         return kageant_reg_read_dword("LockWithWindows", &reg_v) ?
                (reg_v >= 0 && reg_v <= 2 ? reg_v : 0) : (ini_v >= 0 ? ini_v : 0);
     if (ini_v >= 0) return ini_v;
@@ -1039,7 +1052,7 @@ int kageant_opensshservice_start_get(void)
         if (!stricmp(buf, "auto")) ini_v = 2;
         else if (!stricmp(buf, "manual")) ini_v = 3;
     }
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first("OpenSSHServiceStart", 1))
         return kageant_reg_read_dword("OpenSSHServiceStart", &reg_v) &&
                (reg_v == 2 || reg_v == 3) ? reg_v : (ini_v >= 0 ? ini_v : 0);
     if (ini_v >= 0) return ini_v;
@@ -1061,7 +1074,7 @@ int kageant_notice_timeout_get(void)
     int ini_v = -1, reg_v;
     if (kitty_inifile_read(KI_SECTION_AGENT, KI_AGENT_NOTICETIMEOUT, buf, sizeof(buf)))
         ini_v = atoi(buf);
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first(KAGEANT_REG_NOTICESECS, 1))
         return kageant_reg_read_dword(KAGEANT_REG_NOTICESECS, &reg_v) ? reg_v :
                (ini_v > 0 ? ini_v : 0);
     if (ini_v >= 0)

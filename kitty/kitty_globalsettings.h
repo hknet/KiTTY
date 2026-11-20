@@ -13,6 +13,27 @@
 
 #include <windows.h>   /* DWORD */
 
+/* The policy keys: HKLM\Software\Policies\kapper.net\KiTTY++, then the
+ * same path under HKCU, read before every store and in every save mode. A
+ * value there holds the setting of the same name as the registry store
+ * names it, read the same way by every program: a REG_SZ not empty or a
+ * REG_DWORD, as text (a DWORD as its decimal number) or as a number (a
+ * REG_SZ that is a decimal number whole). Another kind counts as unset
+ * there. KiClassName, savemode and readonly are never read from a
+ * policy: they decide the store. Without a value there nothing changes.
+ * The setters do not store a value a policy holds: KITTY_POLICY_REFUSED,
+ * non-zero, so a caller testing for failure stays silent. It is not
+ * KITTY_RO_REFUSED, which keeps the value for the run. */
+#define KITTY_POLICY_REFUSED (-3)
+enum {
+    KS_SOURCE_NONE,
+    KS_SOURCE_MACHINE_POLICY,  /* HKLM\Software\Policies\... */
+    KS_SOURCE_USER_POLICY      /* HKCU\Software\Policies\... */
+};
+/* Which policy key holds the registry name: KS_SOURCE_*. dword 1: for a
+ * reader of numbers, else for a reader of text. */
+int kitty_settings_policy_source(const char *name, int dword);
+
 /* Which registry key holds the settings - the programs differ. */
 enum {
     KS_HIVE_RUNTIME,   /* kitty_registry_base(): the key this process uses */
@@ -44,30 +65,35 @@ struct kitty_setting {
 const char *kitty_settings_hive(int hive);
 
 /* The setting's value by its rule, whole (free() it), NULL when it is set
- * nowhere. */
+ * nowhere. A policy's value of regname first. */
 char *kitty_settings_read_dup(const struct kitty_setting *s);
 
 /* Into a caller's buffer of len bytes: "" when it is set nowhere. */
 void kitty_settings_read(const struct kitty_setting *s, char *value, int len);
 
 /* To the store in charge only. readonly=yes: not stored, KITTY_RO_REFUSED.
- * 1 when stored, 0 with the reason in GetLastError(). */
+ * A policy holds it: not stored, KITTY_POLICY_REFUSED. 1 when stored, 0 with
+ * the reason in GetLastError(). */
 int kitty_settings_write(const struct kitty_setting *s, const char *value);
 
 /* The pieces the rules are built from, for the programs whose settings
  * still parse their own values (kageant's [Agent] keys). */
 
 /* A DWORD value under the key: 1 with it in *value, 0 when absent or of
- * another type. A value readonly=yes refused this run answers first. */
+ * another type. A policy's value as a number first, then a value
+ * readonly=yes refused this run. */
 int kitty_settings_reg_dword(int hive, const char *name, int *value);
 
 /* A REG_SZ value whole (free() it), NULL when absent, empty or of another
- * type. A value readonly=yes refused this run answers first. */
+ * type. A policy's value as text first, then a value readonly=yes refused
+ * this run. */
 char *kitty_settings_reg_str_dup(int hive, const char *name);
 
 /* One value under the key: 1 when stored, 0 with the reason in
  * GetLastError(). readonly=yes: not stored, KITTY_RO_REFUSED. The value
- * holds for this run (the two readers above answer from it). */
+ * holds for this run (the two readers above answer from it). A REG_DWORD or
+ * REG_SZ of a name a policy holds (the readers above answer with the
+ * policy's): KITTY_POLICY_REFUSED. */
 int kitty_settings_reg_set(int hive, const char *name, DWORD type,
                            const void *data, DWORD len);
 
@@ -122,7 +148,8 @@ int kitty_settings_reg_subkeys_at(const char *path,
                                   void *ctx);
 
 /* Remove one value under the key: 1 when gone (or never there), 0 with the
- * reason in GetLastError(). readonly=yes: KITTY_RO_REFUSED. */
+ * reason in GetLastError(). readonly=yes: KITTY_RO_REFUSED. A policy holds
+ * it: KITTY_POLICY_REFUSED. */
 int kitty_settings_reg_del(int hive, const char *name);
 
 /* A kitty.ini value whole (free() it), NULL when absent or empty. */
@@ -171,14 +198,16 @@ int kitty_settings_state_file_set(const char *path, const char *key,
 /* kitty.exe's rule (ReadParameter*, WriteParameter). ini_path is the
  * kitty.ini kitty.exe resolved (NULL or "" before it is known: no kitty.ini
  * value), dir_mode its savemode=dir.
- *   read: dir_mode - kitty.ini only. Otherwise the registry value of that
- *   name under KS_HIVE_RUNTIME, the section ignored, of any type (a DWORD as
- *   its decimal number, a BINARY of 4 bytes or more as a.b.c.d, another type
- *   as ""), else kitty.ini. An empty value counts as set in both stores.
- *   Whole (free() it), NULL when set nowhere.
+ *   read: a policy's value of key first. dir_mode - kitty.ini only.
+ *   Otherwise the registry value of that name under KS_HIVE_RUNTIME, the
+ *   section ignored, of any type (a DWORD as its decimal number, a BINARY of
+ *   4 bytes or more as a.b.c.d, another type as ""), else kitty.ini. An
+ *   empty value counts as set in both stores. Whole (free() it), NULL when
+ *   set nowhere.
  *   write: dir_mode - kitty.ini, else a REG_SZ under KS_HIVE_RUNTIME. The
- *   store in charge under readonly=yes: KITTY_RO_REFUSED. 1 when stored, 0
- *   with the reason in GetLastError(). */
+ *   store in charge under readonly=yes: KITTY_RO_REFUSED. A policy value of
+ *   key: KITTY_POLICY_REFUSED. 1 when stored, 0 with the reason in
+ *   GetLastError(). */
 char *kitty_settings_kitty_read_dup(const char *ini_path, int dir_mode,
                                     const char *section, const char *key);
 int kitty_settings_kitty_write(const char *ini_path, int dir_mode,

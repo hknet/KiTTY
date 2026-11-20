@@ -769,6 +769,7 @@ static char *kts_kg_sessfield(void)
  * special menu (the Commands keys of the hive, a folder and a session) */
 #include "kitty_proxy.h"
 #include "kitty_menuslots.h"
+#include "kitty_globalsettings.h"   /* kitty_settings_policy_source */
 static char *kts_kg_proxylist(void)
 {
     strbuf *sb = strbuf_new();
@@ -826,6 +827,12 @@ static int kts_ks_proxy_save(const char *v)
     return r;
 }
 static int kts_ks_proxy_del(const char *v) { return DeleteProxyInfo(v); }
+/* kitty.exe's delete of a [KiTTY] setting (a reset) */
+static int kts_ks_param_del(const char *v)
+{
+    /* store-pairs: write param KiTTY checkupdate - the test door's delete (the matrix's pol runs) */
+    return DelParameter(KI_SECTION_KITTY, v);
+}
 static void kts_menu_walk(strbuf *sb, HMENU m, int depth)
 {
     int i, n = GetMenuItemCount(m);
@@ -849,6 +856,25 @@ static void kts_menu_walk(strbuf *sb, HMENU m, int depth)
             put_fmt(sb, "]");
         }
     }
+}
+/* Which policy key holds each name the matrix seeds (1 the machine's, 2 the
+ * user's, 0 none): name:kind=source, kind s a REG_SZ, d a REG_DWORD. */
+static char *kts_kg_policy(void)
+{
+    static const struct { const char *name; int dword; } n[] = {
+        { "theme", 0 }, { "checkupdate", 0 }, { "verifyagent", 0 },
+        { "verifyagent", 1 }, { "framepace", 0 }, { "savemode", 0 },
+        { "NoticeTimeout", 1 }, { "ConfirmKeyUse", 1 },
+        { "AllowWmCopyData", 0 }, { "AllowWmCopyData", 1 },
+        { "SettingsTab", 1 }, { "ExtraPipe", 0 },
+    };
+    strbuf *sb = strbuf_new();
+    size_t i;
+    for (i = 0; i < sizeof(n) / sizeof(n[0]); i++)
+        put_fmt(sb, "%s%s:%c=%d", i ? "," : "", n[i].name,
+                n[i].dword ? 'd' : 's',
+                kitty_settings_policy_source(n[i].name, n[i].dword));
+    return strbuf_to_str(sb);
 }
 static char *kts_kg_specialmenu(void)
 {
@@ -911,6 +937,8 @@ void kitty_testdoor_settings_kitty(void)
         { "proxy.save", NULL, kts_ks_proxy_save },
         { "proxy.del", NULL, kts_ks_proxy_del },
         { "specialmenu", kts_kg_specialmenu, NULL },
+        { "policy.source", kts_kg_policy, NULL },
+        { "param.del", NULL, kts_ks_param_del },
     };
     kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
 }

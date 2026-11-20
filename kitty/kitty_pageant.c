@@ -228,7 +228,7 @@ static int kageant_startup_read_ini(void)
 int kageant_startup_get(void)
 {
     int ini_val = kageant_startup_read_ini(), reg_val;
-    if (kitty_inifile_registry_authoritative())
+    if (kageant_reg_first(KAGEANT_REG_STARTUP, 1))
         return kageant_reg_read(KAGEANT_REG_STARTUP, &reg_val) ? reg_val :
                (ini_val >= 0 ? ini_val : 0);
     if (ini_val >= 0)
