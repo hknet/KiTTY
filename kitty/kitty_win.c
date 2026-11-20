@@ -698,6 +698,73 @@ static int kts_ks_hintn(const char *v) { (void)v; return kitty_testdoor_termenv_
 static char *kts_kg_helper(void) { return kitty_testdoor_helper_get_dup("C:\\QA\\Helper.exe"); }
 static int kts_ks_helper(const char *v) { return kitty_testdoor_helper_put("C:\\QA\\Helper.exe", v); }
 static int kts_ks_cfgbox(const char *v) { (void)v; return kitty_testdoor_cfgbox_restore(); }
+/* the session lists outside the session store: the launcher's entries,
+ * the folder list, a session's Folder and fields (bytes outside printable
+ * ASCII and the separators as %xx) */
+static char *kts_esc_dup(const char *s)
+{
+    strbuf *sb = strbuf_new();
+    for (; s && *s; s++) {
+        unsigned char c = (unsigned char)*s;
+        if (c < 0x20 || c > 0x7e || c == '%' || c == ';' || c == '=')
+            put_fmt(sb, "%%%02x", c);
+        else
+            put_byte(sb, c);
+    }
+    return strbuf_to_str(sb);
+}
+static const char *const kts_qa_sessions[] = {
+    "qa-sess", "qa-hide", "qa-dw", "qa-bin", "qa-long", "QaDir\\qa-in",
+};
+static char *kts_kg_launcher(void)
+{
+    char *raw = kitty_testdoor_launcher_rows_dup();
+    char *v = kts_esc_dup(raw);
+    sfree(raw);
+    return v;
+}
+static char *kts_kg_folderlist(void)
+{
+    strbuf *sb = strbuf_new();
+    int i;
+    InitFolderList();
+    for (i = 0; FolderList && FolderList[i]; i++) {
+        char *e = kts_esc_dup(FolderList[i]);
+        put_fmt(sb, "%s%s", i ? ";" : "", e);
+        sfree(e);
+    }
+    return strbuf_to_str(sb);
+}
+static char *kts_kg_sessfolder(void)
+{
+    strbuf *sb = strbuf_new();
+    size_t i;
+    for (i = 0; i < lenof(kts_qa_sessions); i++) {
+        char *f = snewn(1024, char), *e;
+        GetSessionFolderName(kts_qa_sessions[i], f);
+        e = kts_esc_dup(f);
+        put_fmt(sb, "%s%s=%s", i ? ";" : "", kts_qa_sessions[i], e);
+        sfree(e);
+        sfree(f);
+    }
+    return strbuf_to_str(sb);
+}
+static char *kts_kg_sessfield(void)
+{
+    static const char *const fields[] = { "HostName", "Folder", "LauncherHide" };
+    strbuf *sb = strbuf_new();
+    size_t i, j;
+    for (i = 0; i < lenof(kts_qa_sessions); i++)
+        for (j = 0; j < lenof(fields); j++) {
+            char *v = GetSessionFieldDup(kts_qa_sessions[i], NULL, fields[j]);
+            char *e = v ? kts_esc_dup(v) : dupstr("<null>");
+            put_fmt(sb, "%s%s.%s=%s", (i || j) ? ";" : "",
+                    kts_qa_sessions[i], fields[j], e);
+            sfree(e);
+            sfree(v);
+        }
+    return strbuf_to_str(sb);
+}
 void kitty_testdoor_settings_kitty(void)
 {
     static const struct kts_probe p[] = {
@@ -731,6 +798,10 @@ void kitty_testdoor_settings_kitty(void)
         { "termenv.qa-hintf", kts_kg_hintf, NULL },
         { "termenv.qa-new", kts_kg_hintn, kts_ks_hintn },
         { "helper.qa", kts_kg_helper, kts_ks_helper },
+        { "launcher.rows", kts_kg_launcher, NULL },
+        { "folderlist", kts_kg_folderlist, NULL },
+        { "session.folder", kts_kg_sessfolder, NULL },
+        { "session.field", kts_kg_sessfield, NULL },
     };
     kitty_testdoor_settings(p, (int)(sizeof(p) / sizeof(p[0])));
 }

@@ -30,5 +30,6 @@ int kitty_testdoor_termenv_mark(const char *host_id);
 char *kitty_testdoor_helper_get_dup(const char *full);        /* kitty_xfer.c */
 int kitty_testdoor_helper_put(const char *full, const char *hex);
 int kitty_testdoor_cfgbox_restore(void);                      /* windows/dialog.c */
+char *kitty_testdoor_launcher_rows_dup(void);                 /* kitty_launcher.c */
 
 #endif

@@ -49,6 +49,8 @@
 #include "kitty_storage.h"       /* kitty_read_session_folder */
 #include "kitty_common.h"
 #include "kitty_image.h"
+#include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: the test door */
+#include "kitty_testdoor_settings.h"
 #include "kitty_crypt.h"
 #include "kitty_registry.h"
 #include "kitty_tools.h"
@@ -1117,6 +1119,21 @@ static void LauncherCollectSessions( void ) {
 		kitty_session_names_free( names, nn ) ;
 	}
 }
+
+/* Test builds only (kitty_testdoor_settings.c): the menu entries the
+ * collection gives, a "folder<TAB>session" line each (sfree it). */
+char * kitty_testdoor_launcher_rows_dup( void ) {
+#ifdef KITTY_TEST_BUILD_LABEL
+	strbuf * sb = strbuf_new() ;
+	int i ;
+	LauncherCollectSessions() ;
+	for( i = 0 ; i < launcher_entries_n ; i++ )
+		put_fmt( sb, "%s%s\t%s", i ? "\n" : "", launcher_entries[i].folder, launcher_entries[i].session ) ;
+	return strbuf_to_str( sb ) ;
+#else
+	return NULL ;
+#endif
+	}
 
 /* KiTTY #544: the launcher menu shows "Ctrl+Shift+<letter>" accelerators for the
  * predefined-command/session items, but a Win32 popup menu only displays that
