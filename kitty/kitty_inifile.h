@@ -42,6 +42,21 @@ void kitty_store_ro_set_regbase(const char *base);
 /* hkcu: the root is HKEY_CURRENT_USER (no windows.h here: putty.h wants
  * winsock2.h first, and this header is included before it) */
 int kitty_store_ro_regpath(int hkcu, const char *subkey);
+/* [KiTTY] conf=no (upstream KiTTY's "no files" switch): a policy key's,
+ * kitty.exe's (kitty_inifile_noconf_force, the hive or kitty.ini), else
+ * kitty.ini's own. */
+int kitty_inifile_noconf(void);
+/* conf=no holds the kitty.ini in use back: KiTTY++ neither creates nor
+ * writes it. Not in the folder store, where kitty.ini IS the store and is
+ * written as ever (readonly=yes stops that). */
+int kitty_inifile_noconf_blocks(void);
+/* kitty.exe: conf=no found by its ReadParameter. Only switched on. */
+void kitty_inifile_noconf_force(int on);
+/* May the kitty.ini in use be written? 0 yes (created when missing),
+ * KITTY_INI_REFUSED_RO (readonly=yes), KITTY_INI_REFUSED_NOCONF (conf=no),
+ * KITTY_INI_REFUSED_NOPATH (no kitty.ini path at all). */
+enum { KITTY_INI_REFUSED_RO = 1, KITTY_INI_REFUSED_NOCONF, KITTY_INI_REFUSED_NOPATH };
+int kitty_inifile_write_refusal(void);
 /* 1 when readonly=yes comes from a policy key (kitty_globalsettings.h). */
 int kitty_store_ro_by_policy(void);
 /* The reason a refusal under readonly=yes gives (KT_STORE_RO_NOT_SAVED): a

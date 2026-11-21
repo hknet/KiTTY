@@ -279,8 +279,8 @@ int GetAutoSendToTray( void ) { return AutoSendToTray ; }
 void SetAutoSendToTray( const int flag ) { AutoSendToTray = flag ; }
 
 // Flag to avoid creating the kitty.ini and kitty.sav files
-int NoKittyFileFlag = 0 ;
-int GetNoKittyFileFlag(void) { return NoKittyFileFlag ; }
+/* [KiTTY] conf=no: kept by the settings module (kitty_inifile_noconf) */
+static void SetNoConfFlag( const int flag ) { kitty_inifile_noconf_force( flag ) ; }
 
 // Height of the configuration box (visible saved-session rows; 16 = stock fit)
 static int ConfigBoxHeight = 16 ;
@@ -468,7 +468,8 @@ void SetPSCPPath( const char * path ) {
 void SetTransparencyEnabled( const int flag ) { SetTransparencyIni( flag ) ; }
 
 void CreateDefaultIniFile( void ) {
-	if( !NoKittyFileFlag ) if( !GetReadOnlyFlag() ) {
+	/* conf=no: no kitty.ini created (upstream's meaning of the key) */
+	if( !kitty_inifile_noconf_blocks() ) if( !GetReadOnlyFlag() ) {
 		if( KittyIniFile==NULL ) return ;
 		if( strlen(KittyIniFile)==0 ) return ;
 		if( !existfile( KittyIniFile ) ) {
@@ -713,7 +714,7 @@ static const IniParam ini_params[] = {
 #endif
 	INIP_NUM( INIT_SECTION, 0, KI_BCDELAY,		IGN,		&between_char_delay, NULL ),
 	/* conf=no: do NOT auto-create kitty.ini/kitty.sav */
-	INIP_KW( INIT_SECTION, 0, KI_CONF,		IGN, 1, IGN,	&NoKittyFileFlag, NULL ),
+	INIP_KW( INIT_SECTION, 0, KI_CONF,		IGN, 1, IGN,	NULL, SetNoConfFlag ),
 	INIP_NUM( INIT_SECTION, 0, KI_CRYPTSALT,		IGN,		NULL, SetCryptSaltFlag ),
 	INIP_KW( INIT_SECTION, 0, KI_CTRLTAB,		1, 0, IGN,	NULL, SetCtrlTabFlag ),   /* symmetrical: a checkbox */
 	INIP_KW( INIT_SECTION, 0, KI_HYPERLINK,		1, 0, IGN,	&HyperlinkFlag, NULL ),

@@ -598,7 +598,8 @@ static void ksm_param_pair(const char *key, const char *val, void *vctx)
 static int ksm_globals_from_ini(const char *src, int *fail)
 {
     int n = 0, i;
-    const char *cur = GetKittyIniFile();
+    /* conf=no: nothing goes into the kitty.ini in use */
+    const char *cur = kitty_inifile_noconf_blocks() ? NULL : GetKittyIniFile();
     struct ksm_param_copy pc = { INIT_SECTION, &n, fail };
     struct ksm_ini_copy fc = { cur, NULL, &n, fail, 0, 0 };
     ksm_walk_section(src, INIT_SECTION, ksm_param_pair, &pc);

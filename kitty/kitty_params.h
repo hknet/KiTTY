@@ -131,8 +131,6 @@ void SetAutoSendToTray( const int flag ) ;
 int GetTransparencyFlag(void) ;
 
 // Flag to avoid creating the kitty.ini and kitty.sav files
-// extern int NoKittyFileFlag ;
-int GetNoKittyFileFlag(void) ;
 
 // Height of the configuration box
 // extern int ConfigBoxHeight ;

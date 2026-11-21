@@ -480,7 +480,8 @@ static int SavePortableDirBackupEx( char **out ) {
 	time_t now ;
 	struct tm *tmnow ;
 	if( out ) *out = NULL ;
-	if( NoKittyFileFlag || ConfigDirectory == NULL || strlen(ConfigDirectory)==0 ) return -2 ;
+	/* the count alone switches it off (portablebackupcount=0), not conf=no */
+	if( ConfigDirectory == NULL || strlen(ConfigDirectory)==0 ) return -2 ;
 	/* readonly=yes writes nothing, a backup included - as the registry
 	 * paths below and the manual have it. The check was missing here. */
 	if( GetReadOnlyFlag() ) return -2 ;
@@ -822,7 +823,8 @@ static int sav_backup( int async ) {
 		sfree( where ) ;
 		return 1 ;
 		}
-	if( NoKittyFileFlag || (KittySavFile==NULL) ) return 1 ;
+	/* the count alone switches it off (savbackupcount=0), not conf=no */
+	if( KittySavFile==NULL ) return 1 ;
 	if( strlen(KittySavFile)==0 ) return 1 ;
 
 	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) ) keep = atoi( kb ) ;
@@ -902,7 +904,7 @@ int kitty_sav_backup_report_dup( char ** path ) {
 			sav_why_set( &kitty_sav_save_why, dupprintf( "%s: %s", *path ? *path : "", kitty_win_reason( (int)GetLastError() ) ) ) ;
 		return r ;
 		}
-	if( NoKittyFileFlag || (KittySavFile==NULL) || !KittySavFile[0] ) return -2 ;
+	if( (KittySavFile==NULL) || !KittySavFile[0] ) return -2 ;
 	if( GetReadOnlyFlag() ) return -2 ;   /* readonly=yes, as the folder store's above */
 	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) ) keep = atoi( kb ) ;
 	if( keep <= 0 ) return -1 ;

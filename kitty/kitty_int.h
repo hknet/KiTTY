@@ -17,7 +17,6 @@ extern HWND MainHwnd ;
  * configuration-password value the backup retires. */
 extern char * KittyIniFile ;
 extern char * KittySavFile ;
-extern int NoKittyFileFlag ;
 extern char PasswordConf[] ;
 
 /* kitty_regbackup.c, for the startup sequence: the newest .sav to offer at a

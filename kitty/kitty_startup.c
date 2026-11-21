@@ -434,7 +434,7 @@ static void InitNameConfigFile( void ) {
  * would come at every start; the resolver's layout guess covers that copy. */
 static void PortableWriteSaveMode( void ) {
 	char buffer[64] = "" ;
-	if( GetNoKittyFileFlag() || GetReadOnlyFlag() ) return ;
+	if( GetReadOnlyFlag() ) return ;   /* the folder store: conf=no does not hold it back */
 	if( (KittyIniFile == NULL) || !KittyIniFile[0] ) return ;
 	if( IniFileFlag != SAVEMODE_DIR ) return ;
 	if( !existfile( KittyIniFile ) ) { CreateIniFile( KittyIniFile ) ; return ; }
@@ -445,6 +445,16 @@ static void PortableWriteSaveMode( void ) {
 	writeINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, "dir" ) ;
 }
 #endif
+
+/* conf=no used to switch the .sav backups off too. Now the count alone does
+ * (savbackupcount=0): an install with conf=no and no count gets the count
+ * once, so it keeps writing no backups. */
+static void ConfNoBackupCountOnce( void ) {
+	char kb[16] = "" ;
+	if( !kitty_inifile_noconf() || GetReadOnlyFlag() ) return ;
+	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) && kb[0] ) return ;
+	WriteParameter( INIT_SECTION, KI_SAVBACKUPCOUNT, "0" ) ;
+}
 
 /* Which store kitty.exe uses: kitty.ini's savemode (registry, file, dir),
  * else the build's default - the folder store for kitty_portable.exe, the
@@ -618,7 +628,7 @@ static void AutoTextFromRegistry( void ) {
 	int ok = 1 ;
 	if( IniFileFlag == SAVEMODE_DIR || GetReadOnlyFlag() ) return ;
 	if( KittyIniFile == NULL || !KittyIniFile[0] ) return ;
-	if( GetNoKittyFileFlag() && !existfile( KittyIniFile ) ) return ;
+	if( kitty_inifile_noconf_blocks() ) return ;   /* conf=no: nothing into kitty.ini */
 	if( ( have = kitty_read_ini_dup( KittyIniFile, KI_SECTION_SHORTCUTS, KI_SC_LIST ) ) != NULL ) {
 		sfree( have ) ;
 		return ;
@@ -806,6 +816,7 @@ void InitWinMain( void ) {
 	AutoTextFromRegistry() ;
 	// [Launcher] dblclick, noticeseconds: their new names, once
 	LauncherKeysRename() ;
+	ConfNoBackupCountOnce() ;
 	// [Shortcuts] script: its new name typetextfile, once
 	ShortcutsRenameOldKeys() ;
 	// Initialise the shortcuts

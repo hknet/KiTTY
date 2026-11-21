@@ -1171,7 +1171,7 @@
 #define KT_SEC_HARD_NEXTSTART                        "Applies from the next start. Stored in kitty.ini."
 #define KT_SEC_HARD_LOCKED                           "Locked for all users of this PC."
 #define KT_SEC_HARD_ADMIN                            "Set by your administrator."
-#define KT_SEC_HARD_NOINI                            "No kitty.ini (conf=no): nothing to store it in."
+#define KT_SEC_HARD_NOINI                            "No kitty.ini: nothing to store it in."
 #define KT_SEC_HARD_LOCK                             "Lock for all users..."
 #define KT_SEC_HARD_UNLOCK                           "Unlock..."
 #define KT_SEC_HARD_CANCELLED                        "Nothing changed: the Windows prompt was cancelled."
@@ -1337,7 +1337,7 @@
         "(savemode=file)"
 #define KT_KSET_STORAGE_STORE_FOLDER                 "Settings store: folder (%s)"
 #define KT_KSET_STORAGE_INI                          "Configuration file: %s"
-#define KT_KSET_STORAGE_INI_NONE                     "Configuration file: none (conf=no)"
+#define KT_KSET_STORAGE_INI_NONE                     "Configuration file: none"
 #define KT_KSET_STORAGE_READONLY                     "Read-only (readonly=yes): sessions, settings, host keys " \
         "and backups are not written."
 #define KT_KSET_STORAGE_READONLY_POLICY              "Read-only (set by your administrator): sessions, settings, " \
@@ -1352,7 +1352,7 @@
 #define KT_STORE_RO_NOT_SAVED                        "Not saved: the settings store is read-only (%s)."
 #define KT_STORE_RO_BY_INI                           "readonly=yes in %s"
 #define KT_STORE_RO_BY_POLICY                        "set by your administrator"
-#define KT_KSET_STORAGE_NOCONF                       "KiTTY++ is running without a configuration file (conf=no)."
+#define KT_KSET_STORAGE_NOCONF                       "conf=no: KiTTY++ writes nothing into kitty.ini."
 
 /* Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini (the view) */
 #define KT_INIVIEW_TITLE                             "kitty.ini"

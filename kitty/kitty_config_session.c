@@ -2693,7 +2693,7 @@ static void sessionsaver_offer_hide_default(struct sessionsaver_data *ssd,
     /* readonly=yes, or a folder store without its kitty.ini (conf=no): the
      * setting cannot be stored, so no choice is offered. The registry modes
      * store it in the hive, with or without a kitty.ini. */
-    if (GetReadOnlyFlag() || (dir && (GetNoKittyFileFlag() || !ini || !ini[0]))) {
+    if (GetReadOnlyFlag() || (dir && (!ini || !ini[0]))) {
         msg = dupprintf(KT_CFG_DEFAULT_CANT_DELETE_NOSAVE,
                         KITTY_DEFAULT_SESSION,
                         GetReadOnlyFlag() ? KT_CFG_DEFAULT_READONLY

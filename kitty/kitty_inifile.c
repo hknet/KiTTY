@@ -74,6 +74,8 @@ static char *ro_path = NULL;
 static FILETIME ro_time;
 static DWORD ro_size_lo, ro_size_hi;
 static int ro_forced = 0;              /* kitty_inifile_readonly_force */
+static int noconf_forced = 0;          /* kitty_inifile_noconf_force */
+static int inifile_folder_store_dup(char **dirp, char **sufp);   /* below */
 static LONG ro_allow = 0;              /* kitty_store_ro_allow nesting */
 static char *ro_regbase = NULL;        /* kitty_store_ro_set_regbase */
 
@@ -540,6 +542,54 @@ void kitty_inifile_readonly_force(int on)
         ro_forced = 1;
 }
 
+void kitty_inifile_noconf_force(int on)
+{
+    if (on)
+        noconf_forced = 1;
+}
+
+int kitty_inifile_noconf(void)
+{
+    char buf[16];
+    const char *f;
+    char *p = kitty_settings_policy_text_dup(KI_CONF);
+    if (p) {                            /* a policy decides */
+        int no = !stricmp(p, "NO");
+        free(p);
+        return no;
+    }
+    if (noconf_forced)
+        return 1;
+    buf[0] = '\0';
+    if ((f = kitty_inifile_file()) != NULL)
+        kitty_settings_file_get(f, KI_SECTION_KITTY, KI_CONF, buf, sizeof(buf));
+    return !stricmp(buf, "NO");
+}
+
+int kitty_inifile_noconf_blocks(void)
+{
+    char *dir = NULL, *suf = NULL;
+    int folder;
+    if (!kitty_inifile_noconf())
+        return 0;
+    folder = inifile_folder_store_dup(&dir, &suf);
+    free(dir);
+    free(suf);
+    return !folder;
+}
+
+int kitty_inifile_write_refusal(void)
+{
+    inifile_resolve();
+    if (!inifile_path || !inifile_path[0])
+        return KITTY_INI_REFUSED_NOPATH;
+    if (kitty_inifile_readonly())
+        return KITTY_INI_REFUSED_RO;
+    if (kitty_inifile_noconf_blocks())
+        return KITTY_INI_REFUSED_NOCONF;
+    return 0;
+}
+
 /* Is a store write refused now? readonly=yes, outside a
  * kitty_store_ro_allow() scope. */
 int kitty_store_readonly(void)
@@ -632,15 +682,20 @@ static int inifile_same_file(const char *a, const char *b)
     return same;
 }
 
-/* 1 when a write to path must be skipped: path is the resolved kitty.ini
- * and that sets readonly=yes. For the writers that name the file
- * themselves (kitty.exe's writeINI / delINI); any other file is never
- * held back by this. */
+/* 1 when a write to path must be skipped: path is the kitty.ini in use and
+ * readonly=yes or conf=no holds it back (conf=no also when the file does not
+ * exist yet: it is not created). For the writers that name the file
+ * themselves (kitty.exe's writeINI / delINI). Any other file is never held
+ * back by this. */
 int kitty_inifile_write_blocked(const char *path)
 {
     const char *f;
     if (!path || !path[0])
         return 0;
+    inifile_resolve();
+    if ((inifile_state == 1 || inifile_state == 2) && inifile_path &&
+        inifile_same_file(path, inifile_path) && kitty_inifile_noconf_blocks())
+        return 1;
     f = kitty_inifile_file();
     return f && inifile_same_file(path, f) && kitty_inifile_readonly();
 }
@@ -657,7 +712,8 @@ int kitty_inifile_write(const char *section, const char *key,
     const char *f = kitty_inifile_file();
     if (!f)
         return 0;
-    if (kitty_inifile_readonly()) {
+    /* conf=no as readonly=yes: the change holds for this run only */
+    if (kitty_inifile_readonly() || kitty_inifile_noconf_blocks()) {
         inifile_ro_keep(section, key, value);
         return 1;
     }

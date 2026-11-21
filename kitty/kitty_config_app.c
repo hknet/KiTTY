@@ -2264,7 +2264,9 @@ static void khard_refresh(dlgparam *dlg)
     char buf[16] = "";
     const char *ini = GetKittyIniFile();
     char *h = kitty_settings_hardening_dup(KI_RESTRICTACL, &src);
-    bool noini = GetNoKittyFileFlag() || !ini || !ini[0];
+    int refusal = kitty_inifile_write_refusal();
+    bool noini = refusal == KITTY_INI_REFUSED_NOPATH ||
+                 refusal == KITTY_INI_REFUSED_NOCONF;
     bool on;
     HWND bh;
     if (h)
@@ -2282,6 +2284,7 @@ static void khard_refresh(dlgparam *dlg)
                  khard_result ? khard_result :
                  src == KS_SOURCE_MACHINE_KEY ? KT_SEC_HARD_LOCKED :
                  src ? KT_SEC_HARD_ADMIN :
+                 refusal == KITTY_INI_REFUSED_NOCONF ? KT_KSET_STORAGE_NOCONF :
                  noini ? KT_SEC_HARD_NOINI : KT_SEC_HARD_NEXTSTART);
     dlg_label_change(khard_btn, dlg, src == KS_SOURCE_MACHINE_KEY ?
                      KT_SEC_HARD_UNLOCK : KT_SEC_HARD_LOCK);
@@ -4411,7 +4414,7 @@ static void scb_panel_iniview(struct controlbox *b, const char *ini)
     memset(iv, 0, sizeof(*iv));
     kitty_iniview_active = iv;
     /* both paths whole, in the box's own memory (freed with it) */
-    iv->ini_path = iniview_box_str(b, (ini && ini[0] && !GetNoKittyFileFlag()) ? ini : "");
+    iv->ini_path = iniview_box_str(b, (ini && ini[0]) ? ini : "");
     iv->example_path = iniview_box_str(b, "");
     /* The example ships beside the executable (MSI and ZIP alike). */
     {
@@ -4527,7 +4530,8 @@ static void sc_report(const char *text)
 static bool sc_can_write(void)
 {
     const char *ini = GetKittyIniFile();
-    if (GetNoKittyFileFlag() || !ini || !ini[0]) { sc_report(KT_KSET_SC_NO_INI); return false; }
+    if (!ini || !ini[0]) { sc_report(KT_KSET_SC_NO_INI); return false; }
+    if (kitty_inifile_noconf_blocks()) { sc_report(KT_KSET_STORAGE_NOCONF); return false; }
     if (GetReadOnlyFlag()) { sc_report(KT_KSET_SC_READONLY); return false; }
     return true;
 }
@@ -5152,7 +5156,7 @@ static bool kitty_sp_folder_store_writable(void)
 {
     const char *ini = GetKittyIniFile();
     return kitty_storage_is_portable() && ini && ini[0] &&
-        !GetReadOnlyFlag() && !GetNoKittyFileFlag();
+        !GetReadOnlyFlag();   /* the folder store: conf=no does not hold it back */
 }
 
 /* The session list, re-read: the suffix changes the names it shows. */
@@ -5711,7 +5715,9 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     const char *ini = GetKittyIniFile();
     const char *sav = GetKittySavFile();
     int mode = GetIniFileFlag();
-    bool locked = GetReadOnlyFlag() || GetNoKittyFileFlag();
+    /* the backup counts and the password policy are settings of the store
+     * in charge: conf=no (kitty.ini) does not lock them */
+    bool locked = GetReadOnlyFlag();
 
     if (midsession)
         return;
@@ -5737,7 +5743,7 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     if (kitty_settings_policy_source(KI_SAVEMODE, -1) != KS_SOURCE_NONE)
         strncat(line, KT_KSET_STORAGE_POLICY_HELD, sizeof(line) - strlen(line) - 1);
     ctrl_text(s, line, HELPCTX(kitty_storage));
-    if (GetNoKittyFileFlag() || !ini || !ini[0])
+    if (!ini || !ini[0] || !existfile(ini))
         snprintf(line, sizeof(line), "%s", KT_KSET_STORAGE_INI_NONE);
     else
         snprintf(line, sizeof(line), KT_KSET_STORAGE_INI, ini);
@@ -5798,7 +5804,7 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
         ctrl_text(s, kitty_store_ro_by_policy() ? KT_KSET_STORAGE_READONLY_POLICY
                                                 : KT_KSET_STORAGE_READONLY,
                   HELPCTX(kitty_storage));
-    if (GetNoKittyFileFlag())
+    if (kitty_inifile_noconf_blocks())
         ctrl_text(s, KT_KSET_STORAGE_NOCONF, HELPCTX(kitty_storage));
 
     /* The backups: the ONE count this store mode reads - a folder store

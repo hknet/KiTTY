@@ -453,7 +453,6 @@ EMERGENCY_BREAK
  * (conf=no, readonly=yes) nothing moves and putty.conf keeps working, with a
  * key kitty.ini does carry still winning.
  */
-extern int GetNoKittyFileFlag(void);
 extern int writeINI(const char *filename, const char *section, const char *key, const char *value);
 extern int delINI(const char *filename, const char *section, const char *key);
 void kitty_set_session_suffix(const char *suffix);
@@ -549,7 +548,7 @@ static void kstore_store_endings( const char *ini, int ini_only, int is_new ) {
 int kitty_store_ini_takeover(void) {
 	const char *ini = GetKittyIniFile() ;
 	char v[64], *pv ;
-	int can_write = ini && ini[0] && !GetNoKittyFileFlag() && !GetReadOnlyFlag() ;
+	int can_write = ini && ini[0] && !GetReadOnlyFlag() ;   /* the folder store: conf=no does not hold it back */
 	int migrated = 0, moved_now = 0, ini_only ;
 	const char *suffix = "", *hkdir = "", *keysuf = "" ;
 	static char suffix_buf[64], keysuf_buf[64], *hkdir_buf = NULL ;
@@ -700,14 +699,14 @@ void kitty_store_ending_applied( const char *key, char *buf, size_t n ) {
 	const char *ini = GetKittyIniFile() ;
 	if( !n ) return ;
 	buf[0] = '\0' ;
-	if( ini && ini[0] && !GetNoKittyFileFlag() )
+	if( ini && ini[0] )
 		readINI( ini, INIT_SECTION, key, buf, (int)n ) ;
 	str_rtrim( buf, " \n\r\t" ) ;
 }
 /* Record `now` as applied (the files renamed to it, or the rename declined). */
 void kitty_store_ending_mark( const char *key, const char *now ) {
 	const char *ini = GetKittyIniFile() ;
-	if( !ini || !ini[0] || GetNoKittyFileFlag() || GetReadOnlyFlag() ) return ;
+	if( !ini || !ini[0] || GetReadOnlyFlag() ) return ;
 	if( now && now[0] ) writeINI( ini, INIT_SECTION, key, now ) ;
 	else delINI( ini, INIT_SECTION, key ) ;
 }
@@ -721,7 +720,7 @@ int kitty_store_hostkey_rename( int dry_run, strbuf *clashes ) {
 	WIN32_FIND_DATAA fd ;
 	HANDLE h ;
 
-	if( !ini || !ini[0] || GetNoKittyFileFlag() || GetReadOnlyFlag() ) return 0 ;
+	if( !ini || !ini[0] || GetReadOnlyFlag() ) return 0 ;
 	readINI( ini, INIT_SECTION, KI_HOSTKEYEXTENSIONAPPLIED, was, sizeof(was) ) ;
 	str_rtrim( was, " \n\r\t" ) ;
 	if( !stricmp( was, now ) ) return 0 ;

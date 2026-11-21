@@ -430,7 +430,7 @@ static int cmd_savemode( HWND hwnd, char * arg ) {
 	}
 	IniFileFlag++ ; if( IniFileFlag>SAVEMODE_DIR ) IniFileFlag = 0 ;
 	mode = IniFileFlag == SAVEMODE_FILE ? "file" : IniFileFlag == SAVEMODE_DIR ? "dir" : "registry" ;
-	if( NoKittyFileFlag || KittyIniFile == NULL || !KittyIniFile[0] ) {
+	if( KittyIniFile == NULL || !KittyIniFile[0] || kitty_inifile_noconf_blocks() ) {
 		cmd_say( KT_CMD_RES_SAVEMODE_NOINI, mode ) ;
 		return 1 ;
 	}
