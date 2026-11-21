@@ -55,6 +55,7 @@
 #include "kitty_inifile.h"
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_globalsettings.h"   /* kitty.ini through the settings module */
+#include "kitty_text.h"     /* KT_STORE_RO_BY_*: the reason of a refusal */
 
 /* Every path and value here is held whole, in malloc'd memory (this file
  * links nothing but Windows): a path too long for Windows makes Windows'
@@ -595,12 +596,30 @@ int kitty_store_ro_regpath(int hkcu, const char *subkey)
     return kitty_store_readonly();
 }
 
-/* The kitty.ini a refusal under readonly=yes names: the resolved file, else
- * the plain name (readonly forced from the hive, no file found). */
-const char *kitty_store_ro_inifile(void)
+int kitty_store_ro_by_policy(void)
 {
+    char pol[16];
+    return inifile_boot_get(NULL, KI_READONLY, pol, sizeof(pol)) &&
+           !stricmp(pol, "YES");
+}
+
+/* The kitty.ini named: the resolved file, else the plain name (readonly
+ * forced from the hive, no file found). */
+const char *kitty_store_ro_reason(void)
+{
+    static char *why = NULL;
     const char *f = kitty_inifile_file();
-    return f ? f : "kitty.ini";
+    size_t n;
+    if (kitty_store_ro_by_policy())
+        return KT_STORE_RO_BY_POLICY;
+    if (!f)
+        f = "kitty.ini";
+    n = strlen(KT_STORE_RO_BY_INI) + strlen(f) + 1;
+    free(why);
+    if ((why = malloc(n)) == NULL)
+        return "readonly=yes";
+    snprintf(why, n, KT_STORE_RO_BY_INI, f);
+    return why;
 }
 
 /* Two names of one file: the full paths compared, case aside. */

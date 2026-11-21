@@ -994,7 +994,7 @@ bool kitty_osc52_save_deny_for_host(Terminal *term)
     if (kitty_store_readonly()) {
         /* readonly=yes: not saved - the Event Log has the refusal, and the
          * deny holds for this window (the caller's unsaved path) */
-        char *msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+        char *msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_reason());
         logevent(term->logctx, msg);
         sfree(msg);
         return false;

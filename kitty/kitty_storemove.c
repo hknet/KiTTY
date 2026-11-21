@@ -1026,6 +1026,14 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
         put_dataz(msg, KT_STOREMOVE_COPY_MPW);
     else
         put_dataz(msg, KT_STOREMOVE_COPY_DPAPI);
+    {   /* a policy key's savemode other than dir holds on this computer,
+         * the copy's savemode=dir notwithstanding */
+        char *pm = kitty_settings_policy_text_dup(KI_SAVEMODE);
+        if (pm && (!stricmp(pm, "registry") || !stricmp(pm, "file")))
+            put_fmt(msg, KT_STOREMOVE_COPY_POLICY_MODE,
+                    !stricmp(pm, "file") ? "file" : "registry");
+        free(pm);
+    }
     if (r->fail > 0)
         put_fmt(msg, KT_STOREMOVE_COPY_FAILED,
                  r->fail, r->fail == 1 ? "" : "s");
@@ -1187,7 +1195,7 @@ void kitty_take_folder_store(HWND hwnd)
 
     if (kitty_store_readonly()) {
         /* readonly=yes: the panel's button is greyed; refused as -takefolder is */
-        char *m = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+        char *m = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_reason());
         MessageBoxA(hwnd, m, KT_STOREMOVE_TITLE_IN, MB_OK | MB_ICONWARNING);
         sfree(m);
         return;

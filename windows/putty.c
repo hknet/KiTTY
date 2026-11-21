@@ -219,7 +219,7 @@ static void kitty_cli_store_refused(const char *title)
     char *msg;
     if (!kitty_store_readonly())
         return;
-    msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+    msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_reason());
     KittyCliReport(title, msg, 1);
     sfree(msg);
     cleanup_exit(1);

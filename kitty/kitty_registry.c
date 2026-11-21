@@ -1757,6 +1757,13 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 
 	if( strlen( FileExtension ) > 0 ) { snprintf( ext, sizeof(ext), "%s", FileExtension ) ; } else { snprintf( ext, sizeof(ext), "%s", ".ktx") ; }
 
+	/* a policy key's readonly=yes: nothing registered (/fileassoc and
+	 * -fileassoc alike) */
+	if( kitty_store_ro_by_policy() ) {
+		KittyCliReport( KT_CAP_FILE_ASSOC, KT_REG_ASSOC_POLICY_RO, 1 ) ;
+		return ;
+	}
+
 	/* the program's own path, whole; none: nothing to register */
 	if( ( path = kitty_module_path_dup( NULL ) ) == NULL ) return ;
 

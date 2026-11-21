@@ -42,9 +42,12 @@ void kitty_store_ro_set_regbase(const char *base);
 /* hkcu: the root is HKEY_CURRENT_USER (no windows.h here: putty.h wants
  * winsock2.h first, and this header is included before it) */
 int kitty_store_ro_regpath(int hkcu, const char *subkey);
-/* The kitty.ini a refusal names (KT_STORE_RO_NOT_SAVED): the resolved
- * file, else "kitty.ini". */
-const char *kitty_store_ro_inifile(void);
+/* 1 when readonly=yes comes from a policy key (kitty_globalsettings.h). */
+int kitty_store_ro_by_policy(void);
+/* The reason a refusal under readonly=yes gives (KT_STORE_RO_NOT_SAVED): a
+ * policy key's, else the resolved kitty.ini's, else "kitty.ini". Valid until
+ * the next call. */
+const char *kitty_store_ro_reason(void);
 /* 1 when path is the resolved kitty.ini and that sets readonly=yes: a
  * writer naming its own file (writeINI, delINI) skips the write. */
 int kitty_inifile_write_blocked(const char *path);

@@ -191,7 +191,8 @@ static char *rules_write(const kar_store *s)
     char *ret = NULL;
 
     if (kitty_store_readonly())
-        return dupstr(KT_KARULES_ERR_READONLY);
+        return dupstr(kitty_store_ro_by_policy() ? KT_KARULES_ERR_READONLY_POLICY
+                                                 : KT_KARULES_ERR_READONLY);
     if ((path = kageant_rules_path_dup()) == NULL)
         return dupstr(KT_KARULES_ERR_NOPLACE);
     /* %APPDATA%\KiTTY may not exist yet; beside kitty.ini it does */

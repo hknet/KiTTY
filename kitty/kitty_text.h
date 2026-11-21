@@ -1328,8 +1328,11 @@
 #define KT_KSET_STORAGE_READONLY                     "Read-only (readonly=yes): sessions, settings, host keys " \
         "and backups are not written."
 /* readonly=yes: an explicit storing action that has no control to grey (the
- * window menu's Save, /commands, command-line switches); %s = the kitty.ini */
-#define KT_STORE_RO_NOT_SAVED                        "Not saved: the settings store is read-only (readonly=yes in %s)."
+ * window menu's Save, /commands, command-line switches); %s = the reason,
+ * kitty_store_ro_reason(): KT_STORE_RO_BY_INI or KT_STORE_RO_BY_POLICY */
+#define KT_STORE_RO_NOT_SAVED                        "Not saved: the settings store is read-only (%s)."
+#define KT_STORE_RO_BY_INI                           "readonly=yes in %s"
+#define KT_STORE_RO_BY_POLICY                        "set by your administrator"
 #define KT_KSET_STORAGE_NOCONF                       "KiTTY++ is running without a configuration file (conf=no)."
 
 /* Application/KiTTY++ Settings/Storage & Backup/KiTTY.ini (the view) */
@@ -2233,6 +2236,10 @@
 #define KT_CMD_RES_SAVEMODE_NOINI                    "Savemode is \"%s\" for this window only: there is no kitty.ini to store it in"
 #define KT_CMD_RES_SAVEMODE_NOT_STORED               "Savemode is \"%s\" for this window only: %s could not be written: %s"
 #define KT_CMD_RES_SAVEMODE_READONLY                 "Savemode is \"%s\" for this window only: %s is read-only (readonly=yes)"
+#define KT_CMD_RES_SAVEMODE_READONLY_POLICY          "Savemode is \"%s\" for this window only: the settings store is read-only (set by your administrator)"
+#define KT_CMD_RES_SAVEMODE_POLICY                   "Savemode is \"%s\": set by your administrator"
+/* /help: the end of a command's line when a policy key refuses it */
+#define KT_CMD_HELP_POLICY_HELD                      " (set by your administrator)"
 #define KT_CMD_DELREG_QUESTION                       "Delete KiTTY++'s registry hive?\n\n" \
         "    HKEY_CURRENT_USER\\%s\n\n" \
         "This removes every saved session, named proxy, cached host key and " \
@@ -2596,6 +2603,9 @@
         "for your account only."
 #define KT_REG_URL_WHAT                              "the telnet://, ssh:// and kitty:// handlers"
 #define KT_REG_ASSOC_WHAT                            "the %s file association"
+/* a policy key's readonly=yes: nothing registered */
+#define KT_REG_ASSOC_POLICY_RO                       "Not registered: the settings store is read-only " \
+        "(set by your administrator)."
 #define KT_REG_FOR_ALL_USERS                         "For all users of this machine (HKEY_LOCAL_MACHINE)."
 #define KT_REG_FOR_YOUR_ACCOUNT                      "For your account only (HKEY_CURRENT_USER)."
 #define KT_REG_YOUR_ACCOUNT                          "your account"
@@ -3855,6 +3865,8 @@
 #define KT_KARULES_DMG_CONTENT_FMT                   "%s is damaged (%s)"
 #define KT_KARULES_ERR_READONLY                      "Not saved: readonly=yes in kitty.ini. " \
         "The rules apply until kageant stops."
+#define KT_KARULES_ERR_READONLY_POLICY               "Not saved: the settings store is read-only " \
+        "(set by your administrator). The rules apply until kageant stops."
 #define KT_KARULES_ERR_NOPLACE                       "Not saved: no folder for the rule file (APPDATA not set)."
 #define KT_KARULES_ERR_DPAPI_FMT                     "Not saved: the rules cannot be encrypted for this Windows account: %s"
 #define KT_KARULES_ERR_WRITE_FMT                     "Not saved: %s: %s"
@@ -5210,6 +5222,9 @@
 #define KT_STOREMOVE_COPY_DPAPI                      "\n\nIts passwords are readable by this Windows " \
         "account on this PC only."
 #define KT_STOREMOVE_COPY_FAILED                     "\n\n%d item%s could not be written."
+/* a policy key's savemode other than dir: it holds on this computer */
+#define KT_STOREMOVE_COPY_POLICY_MODE                "\n\nOn this computer the copy uses savemode=%s: " \
+        "set by your administrator."
 #define KT_STOREMOVE_COPY_BLOCKED                    "Nothing was written to\n%s\n\n%s"
 #define KT_STOREMOVE_NO_TEMP                         "No temporary folder could be created. Nothing " \
         "was taken."

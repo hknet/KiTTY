@@ -364,7 +364,7 @@ bool kitty_far2l_save_client_ids(Terminal *term)
     if (kitty_store_readonly()) {
         /* readonly=yes: not saved - the Event Log has the refusal, and the
          * ID holds for this window */
-        char *msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+        char *msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_reason());
         logevent(term->logctx, msg);
         sfree(msg);
         return false;

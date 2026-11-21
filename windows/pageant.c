@@ -5032,6 +5032,7 @@ static void kageant_rules_changed(void)
 {
     char *err = kageant_rules_save();
     if (err) {
+        kageant_trace_notice(KT_KARULES_NOTICE_NOT_SAVED, err);
         kitty_notice_show(KT_KARULES_NOTICE_NOT_SAVED, err,
                           KAGEANT_NOTICE_WARN, kageant_notice_seconds(12),
                           traywindow, KAGEANT_WM_NOTICE_CLICK);

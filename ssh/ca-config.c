@@ -19,7 +19,7 @@ static bool ca_store_refused(dlgparam *dp)
 {
     if (!kitty_store_readonly())
         return false;
-    char *msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile());
+    char *msg = dupprintf(KT_STORE_RO_NOT_SAVED, kitty_store_ro_reason());
     dlg_error_msg(dp, msg);
     sfree(msg);
     return true;

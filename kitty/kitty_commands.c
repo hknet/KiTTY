@@ -56,6 +56,7 @@
 #include "kitty_oldwin_reg.h"   /* XP: RegDeleteTree/RegGetValue via oldwin */
 #include "kitty_text.h"   /* shared captions and wordings (also for the .c files included below) */
 #include "kitty_inifile.h"   /* kitty_inifile_write_blocked: readonly=yes */
+#include "kitty_globalsettings.h"   /* a policy key's savemode */
 #include "kitty_inikeys.h"   /* KI_*: the kitty.ini key names */
 #include "kitty_notes.h"   /* the application notification, marked owed at startup */
 #include "kitty_pwmem.h"   /* passwords wrapped in memory (kitty_commands.c too) */
@@ -89,7 +90,7 @@ static int kitty_save_current_session( const char * newname, char ** out ) {
 	}
 	/* readonly=yes: nothing is saved, and the window keeps its session name */
 	if( GetReadOnlyFlag() ) {
-		*out = dupprintf( KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile() ) ;
+		*out = dupprintf( KT_STORE_RO_NOT_SAVED, kitty_store_ro_reason() ) ;
 		return 0 ;
 	}
 	if( newname != NULL ) conf_set_str( conf, CONF_sessionname, newname ) ;
@@ -122,7 +123,7 @@ void kitty_savenew_box( HWND hwnd ) {
 	if( GetReadOnlyFlag() ) {
 		/* readonly=yes: refused in the notice window, which leaves the
 		 * session running (a box would stop it) */
-		char * msg = dupprintf( KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile() ) ;
+		char * msg = dupprintf( KT_STORE_RO_NOT_SAVED, kitty_store_ro_reason() ) ;
 		kitty_notice_show( KT_CAP_SAVE_SESSION, msg, RGB(190, 110, 0),
 		                   GetNoticeSeconds(), NULL, 0 ) ;
 		sfree( msg ) ;
@@ -338,7 +339,7 @@ static int cmd_help( HWND hwnd, char * arg ) ;
  * result line, naming the kitty.ini that sets it. 1 = refused. */
 static int cmd_store_refused( void ) {
 	if( !GetReadOnlyFlag() ) return 0 ;
-	cmd_say( KT_STORE_RO_NOT_SAVED, kitty_store_ro_inifile() ) ;
+	cmd_say( KT_STORE_RO_NOT_SAVED, kitty_store_ro_reason() ) ;
 	return 1 ;
 }
 
@@ -421,10 +422,20 @@ static int cmd_savemode( HWND hwnd, char * arg ) {
 	int stored, have ;
 	DWORD err = 0 ;
 	(void)hwnd ; (void)arg ;
+	/* a policy key's savemode: the mode stays, this window's too */
+	if( kitty_settings_policy_source( KI_SAVEMODE, -1 ) != KS_SOURCE_NONE ) {
+		cmd_say( KT_CMD_RES_SAVEMODE_POLICY, IniFileFlag == SAVEMODE_FILE ? "file"
+		         : IniFileFlag == SAVEMODE_DIR ? "dir" : "registry" ) ;
+		return 1 ;
+	}
 	IniFileFlag++ ; if( IniFileFlag>SAVEMODE_DIR ) IniFileFlag = 0 ;
 	mode = IniFileFlag == SAVEMODE_FILE ? "file" : IniFileFlag == SAVEMODE_DIR ? "dir" : "registry" ;
 	if( NoKittyFileFlag || KittyIniFile == NULL || !KittyIniFile[0] ) {
 		cmd_say( KT_CMD_RES_SAVEMODE_NOINI, mode ) ;
+		return 1 ;
+	}
+	if( kitty_store_ro_by_policy() ) {
+		cmd_say( KT_CMD_RES_SAVEMODE_READONLY_POLICY, mode ) ;
 		return 1 ;
 	}
 	if( kitty_inifile_write_blocked( KittyIniFile ) ) {
@@ -1049,6 +1060,18 @@ int kitty_cli_help_box( const char * caption, const char * text ) {
 	return 1 ;
 }
 
+/* 1: a policy key refuses the command - /savemode on its savemode, the
+ * commands refused under readonly=yes on its readonly. */
+static int cmd_policy_held( const struct InternalCmdDef * c ) {
+	if( c->handler == cmd_savemode )
+		return kitty_settings_policy_source( KI_SAVEMODE, -1 ) != KS_SOURCE_NONE ;
+	return kitty_store_ro_by_policy() &&
+	       ( c->handler == cmd_save || c->handler == cmd_savenew ||
+	         c->handler == cmd_savereg || c->handler == cmd_loadreg ||
+	         c->handler == cmd_delreg || c->handler == cmd_delfolder ||
+	         c->handler == cmd_fileassoc ) ;
+}
+
 static int cmd_help( HWND hwnd, char * arg ) {
 	strbuf * buffer ;   /* the list in full: it outgrew a fixed 8 KB */
 	const char * cat = NULL ;
@@ -1078,6 +1101,7 @@ static int cmd_help( HWND hwnd, char * arg ) {
 			sfree( h ) ;
 		} else
 			HCAT( c->help ) ;
+		if( cmd_policy_held( c ) ) HCAT( KT_CMD_HELP_POLICY_HELD ) ;
 		HCAT( "\r\n" ) ;
 	}
 #undef HCAT
