@@ -6334,6 +6334,168 @@ static void keysettings_knownhosts_on(HWND hwnd)
     sfree(path);
 }
 
+/*
+ * KiTTY: the settings whose control shows one stored value and stores it
+ * back, one row each - filled at WM_INITDIALOG and collected at OK by the
+ * same two loops (keysettings_fill, keysettings_collect). A row without a
+ * setter is only filled here: OK stores it by hand (the agent log's numbers
+ * go in as one set, its switch after them, the load-keys switch through the
+ * tray handler). The controls with more to them - OpenSSH integration,
+ * autostart, Hello, the idle re-encrypt row, the theme, the pipe name, the
+ * log file and destination - stay written out in KeySettingsProc.
+ */
+enum kas_kind { KAS_BOOL, KAS_NUMBER, KAS_CHOICE };
+struct kas_row {
+    int id;
+    enum kas_kind kind;
+    int (*get)(void);
+    int (*set)(int);
+    int deflt;                  /* KAS_NUMBER: what an empty box stores */
+    int limit;                  /* KAS_NUMBER: characters, 0 = no limit */
+    bool blank_zero;            /* KAS_NUMBER: 0 shown as an empty box */
+    const char *const *items;   /* KAS_CHOICE: the item index is the value */
+    int nitems;
+    int fallback;               /* KAS_CHOICE: shown for a value out of
+                                 * range, -1 = the value as it is */
+};
+
+/* Retry is THREE-valued (item index == stored value 0/1/2), so it is a
+ * droplist, not a checkbox - and it must never travel through anything
+ * boolean on the way to the store, or the third state collapses to "yes"
+ * silently. */
+static const char *const kas_retry_items[] = {
+    KT_KASET_RETRY_NEVER, KT_KASET_RETRY_DRIVE, KT_KASET_RETRY_ANYDRIVE,
+};
+/* When Windows locks - the list index is the stored value */
+static const char *const kas_winlock_items[] = {
+    KT_KASET_WINLOCK_KEEP, KT_KASET_WINLOCK_LOCK, KT_KASET_WINLOCK_REENCRYPT,
+};
+
+static const struct kas_row kas_rows[] = {
+    { .id = IDC_SET_KNOWNHOSTS, .kind = KAS_BOOL,
+      .get = kageant_readknownhosts_get, .set = kageant_readknownhosts_set },
+    { .id = IDC_SET_LOADKEYS, .kind = KAS_BOOL, .get = kageant_startup_get },
+    { .id = IDC_SET_NOTIFY, .kind = KAS_BOOL,
+      .get = kageant_notify_get, .set = kageant_notify_set },
+    { .id = IDC_SET_ARRIVAL, .kind = KAS_BOOL,
+      .get = kageant_arrival_notice_get, .set = kageant_arrival_notice_set },
+    { .id = IDC_SET_RETRY, .kind = KAS_CHOICE,
+      .get = kageant_retry_keys, .set = kageant_retry_keys_set,
+      .items = kas_retry_items, .nitems = lenof(kas_retry_items),
+      .fallback = 1 },
+    { .id = IDC_SET_UNLOAD, .kind = KAS_BOOL,
+      .get = kageant_unload_on_remove, .set = kageant_unload_on_remove_set },
+    { .id = IDC_SET_QUIET, .kind = KAS_BOOL,
+      .get = kageant_quiet_missing, .set = kageant_quiet_missing_set },
+    { .id = IDC_SET_TTL, .kind = KAS_NUMBER,
+      .get = kageant_passphrase_ttl, .set = kageant_passphrase_ttl_set,
+      .deflt = KAGEANT_TTL_DEFAULT, .limit = 3 },
+    { .id = IDC_SET_HELLOTTL, .kind = KAS_NUMBER,
+      .get = kageant_hello_ttl, .set = kageant_hello_ttl_set,
+      .deflt = KAGEANT_TTL_DEFAULT, .limit = 3 },
+    { .id = IDC_SET_LOCKDOWN, .kind = KAS_BOOL,
+      .get = kageant_lockdown_get, .set = kageant_lockdown_set },
+    { .id = IDC_SET_BLOCKADD, .kind = KAS_BOOL,
+      .get = kageant_blockadd_get, .set = kageant_blockadd_set },
+    { .id = IDC_SET_BLOCKREMOVE, .kind = KAS_BOOL,
+      .get = kageant_blockremove_get, .set = kageant_blockremove_set },
+    { .id = IDC_SET_ALLOWIPCLOCK, .kind = KAS_BOOL,
+      .get = kageant_allowipclock_get, .set = kageant_allowipclock_set },
+    { .id = IDC_SET_BLOCKFWD, .kind = KAS_BOOL,
+      .get = kageant_blockforwarded_get, .set = kageant_blockforwarded_set },
+    { .id = IDC_SET_ALLOWWMCD, .kind = KAS_BOOL,
+      .get = kageant_allowwmcopydata_get, .set = kageant_allowwmcopydata_set },
+    { .id = IDC_SET_OPENSSHPIPE, .kind = KAS_BOOL,
+      .get = kageant_opensshpipe_get, .set = kageant_opensshpipe_set },
+    { .id = IDC_SET_SSHAUTHSOCK, .kind = KAS_BOOL,
+      .get = kageant_setsshauthsock_get, .set = kageant_setsshauthsock_set },
+    { .id = IDC_SET_WINLOCK, .kind = KAS_CHOICE,
+      .get = kageant_winlock_mode, .set = kageant_winlock_mode_set,
+      .items = kas_winlock_items, .nitems = lenof(kas_winlock_items),
+      .fallback = -1 },
+    /* This field's default IS 0 - "each notice's own timing" - and 0 is
+     * displayed as an empty box, so it round-trips. */
+    { .id = IDC_SET_NOTICESECS, .kind = KAS_NUMBER,
+      .get = kageant_notice_timeout_get, .set = kageant_notice_timeout_set,
+      .deflt = KAGEANT_NOTICESECS_DEFAULT, .limit = 3, .blank_zero = true },
+    { .id = IDC_SET_AGENTLOG, .kind = KAS_BOOL, .get = kageant_audit_get },
+    { .id = IDC_SET_AGENTLOGKB, .kind = KAS_NUMBER,
+      .get = kageant_audit_maxkb_get, .deflt = KAGEANT_AGENTLOG_KB_DEFAULT },
+    { .id = IDC_SET_AGENTLOGKEEP, .kind = KAS_NUMBER,
+      .get = kageant_audit_keep_get, .deflt = KAGEANT_AGENTLOG_KEEP_DEFAULT },
+    { .id = IDC_SET_AGENTLOGDAYS, .kind = KAS_NUMBER,
+      .get = kageant_audit_expire_get, .deflt = KAGEANT_AGENTLOG_DAYS_DEFAULT },
+};
+
+/* The row of a control, NULL when it has none. */
+static const struct kas_row *kas_row_of(int id)
+{
+    for (size_t i = 0; i < lenof(kas_rows); i++)
+        if (kas_rows[i].id == id)
+            return &kas_rows[i];
+    return NULL;
+}
+
+/* A number row's box as OK reads it (keysettings_number). */
+static int kas_number(HWND hwnd, int id)
+{
+    const struct kas_row *r = kas_row_of(id);
+    return r ? keysettings_number(hwnd, id, r->deflt, r->get()) : 0;
+}
+
+static void keysettings_fill(HWND hwnd)
+{
+    for (size_t i = 0; i < lenof(kas_rows); i++) {
+        const struct kas_row *r = &kas_rows[i];
+        int v = r->get();
+        switch (r->kind) {
+          case KAS_BOOL:
+            CheckDlgButton(hwnd, r->id, v ? BST_CHECKED : BST_UNCHECKED);
+            break;
+          case KAS_NUMBER:
+            if (!r->blank_zero || v > 0)
+                SetDlgItemInt(hwnd, r->id, v, FALSE);
+            if (r->limit)
+                SendDlgItemMessage(hwnd, r->id, EM_SETLIMITTEXT, r->limit, 0);
+            break;
+          case KAS_CHOICE:
+            for (int j = 0; j < r->nitems; j++)
+                SendDlgItemMessage(hwnd, r->id, CB_ADDSTRING, 0,
+                                   (LPARAM)r->items[j]);
+            if (r->fallback >= 0 && (v < 0 || v >= r->nitems))
+                v = r->fallback;
+            SendDlgItemMessage(hwnd, r->id, CB_SETCURSEL, v, 0);
+            break;
+        }
+    }
+}
+
+/* OK: every row with a setter, from its control. A droplist with nothing
+ * selected stores nothing. */
+static void keysettings_collect(HWND hwnd)
+{
+    for (size_t i = 0; i < lenof(kas_rows); i++) {
+        const struct kas_row *r = &kas_rows[i];
+        if (!r->set)
+            continue;
+        switch (r->kind) {
+          case KAS_BOOL:
+            r->set(IsDlgButtonChecked(hwnd, r->id) == BST_CHECKED);
+            break;
+          case KAS_NUMBER:
+            /* Blank puts the default back, the setters clamp. */
+            r->set(kas_number(hwnd, r->id));
+            break;
+          case KAS_CHOICE: {
+            int sel = (int)SendDlgItemMessage(hwnd, r->id, CB_GETCURSEL, 0, 0);
+            if (sel >= 0 && sel < r->nitems)
+                r->set(sel);
+            break;
+          }
+        }
+    }
+}
+
 static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                                         WPARAM wParam, LPARAM lParam)
 {
@@ -6349,44 +6511,9 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         }
         CheckDlgButton(hwnd, IDC_SET_OPENSSH,
             kageant_openssh_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_KNOWNHOSTS,
-            kageant_readknownhosts_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_LOADKEYS,
-                       kageant_startup_get() ? BST_CHECKED : BST_UNCHECKED);
         CheckDlgButton(hwnd, IDC_SET_STARTUP,
             kageant_autostart_active() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_NOTIFY,
-            kageant_notify_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_ARRIVAL,
-            kageant_arrival_notice_get() ? BST_CHECKED : BST_UNCHECKED);
-        {
-            /*
-             * Retry is THREE-valued (item index == stored value 0/1/2), so it
-             * is a droplist, not a checkbox - and it must never travel
-             * through anything boolean on the way to the store, or the third
-             * state collapses to "yes" silently.
-             */
-            static const char *const retry_modes[] = {
-                KT_KASET_RETRY_NEVER,
-                KT_KASET_RETRY_DRIVE,
-                KT_KASET_RETRY_ANYDRIVE,
-            };
-            int rm, cur = kageant_retry_keys();
-            for (rm = 0; rm < (int)lenof(retry_modes); rm++)
-                SendDlgItemMessage(hwnd, IDC_SET_RETRY, CB_ADDSTRING, 0,
-                                   (LPARAM)retry_modes[rm]);
-            SendDlgItemMessage(hwnd, IDC_SET_RETRY, CB_SETCURSEL,
-                               (cur >= 0 && cur <= KAGEANT_RETRY_ANYDRIVE) ?
-                               cur : 1, 0);
-        }
-        CheckDlgButton(hwnd, IDC_SET_UNLOAD,
-            kageant_unload_on_remove() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_QUIET,
-            kageant_quiet_missing() ? BST_CHECKED : BST_UNCHECKED);
-        SetDlgItemInt(hwnd, IDC_SET_TTL, kageant_passphrase_ttl(), FALSE);
-        SendDlgItemMessage(hwnd, IDC_SET_TTL, EM_SETLIMITTEXT, 3, 0);
-        SetDlgItemInt(hwnd, IDC_SET_HELLOTTL, kageant_hello_ttl(), FALSE);
-        SendDlgItemMessage(hwnd, IDC_SET_HELLOTTL, EM_SETLIMITTEXT, 3, 0);
+        keysettings_fill(hwnd);       /* every row of kas_rows */
         /* Re-encrypt keys after idle: mode + time. The time field is live
          * only while a mode uses it. */
         {
@@ -6439,47 +6566,13 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 SetDlgItemText(hwnd, IDC_SET_HELLO,
                                KT_KASET_HELLO_UNAVAILABLE);
         }
-        CheckDlgButton(hwnd, IDC_SET_LOCKDOWN,
-            kageant_lockdown_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_BLOCKADD,
-            kageant_blockadd_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_BLOCKREMOVE,
-            kageant_blockremove_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_ALLOWIPCLOCK,
-            kageant_allowipclock_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_BLOCKFWD,
-            kageant_blockforwarded_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_ALLOWWMCD,
-            kageant_allowwmcopydata_get() ? BST_CHECKED : BST_UNCHECKED);
-        CheckDlgButton(hwnd, IDC_SET_OPENSSHPIPE,
-            kageant_opensshpipe_get() ? BST_CHECKED : BST_UNCHECKED);
         {
             char *xp = kageant_extrapipe_dup();
             SetDlgItemText(hwnd, IDC_SET_EXTRAPIPE, xp ? xp : "");
             sfree(xp);
             SendDlgItemMessage(hwnd, IDC_SET_EXTRAPIPE, EM_SETLIMITTEXT, 200, 0);
         }
-        CheckDlgButton(hwnd, IDC_SET_SSHAUTHSOCK,
-            kageant_setsshauthsock_get() ? BST_CHECKED : BST_UNCHECKED);
-        /* KiTTY: When Windows locks - the list index is the stored value */
-        {
-            static const char *const wl[] = {
-                KT_KASET_WINLOCK_KEEP, KT_KASET_WINLOCK_LOCK, KT_KASET_WINLOCK_REENCRYPT,
-            };
-            int i;
-            for (i = 0; i < (int)lenof(wl); i++)
-                SendDlgItemMessage(hwnd, IDC_SET_WINLOCK, CB_ADDSTRING, 0, (LPARAM)wl[i]);
-            SendDlgItemMessage(hwnd, IDC_SET_WINLOCK, CB_SETCURSEL, kageant_winlock_mode(), 0);
-        }
-        {
-            int ns = kageant_notice_timeout_get();
-            if (ns > 0)
-                SetDlgItemInt(hwnd, IDC_SET_NOTICESECS, ns, FALSE);
-        }
-        SendDlgItemMessage(hwnd, IDC_SET_NOTICESECS, EM_SETLIMITTEXT, 3, 0);
-        /* KiTTY: the agent log's knobs. */
-        CheckDlgButton(hwnd, IDC_SET_AGENTLOG,
-                       kageant_audit_get() ? BST_CHECKED : BST_UNCHECKED);
+        /* KiTTY: the agent log's file (its switch and numbers are rows) */
         {
             char *lp = kageant_audit_pathsetting_dup();
             SetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp ? lp : "");
@@ -6497,12 +6590,6 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 sfree(dp);
             }
         }
-        SetDlgItemInt(hwnd, IDC_SET_AGENTLOGKB,
-                      kageant_audit_maxkb_get(), FALSE);
-        SetDlgItemInt(hwnd, IDC_SET_AGENTLOGKEEP,
-                      kageant_audit_keep_get(), FALSE);
-        SetDlgItemInt(hwnd, IDC_SET_AGENTLOGDAYS,
-                      kageant_audit_expire_get(), FALSE);
         /* Destination: the item index + 1 is the KITTY_AUDIT_SINK_* value
          * (file 1, Event Log 2, both 3). It shows the sink in force, the
          * default included; OK stores it only when it was changed here, so
@@ -6643,18 +6730,15 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                     return 0;
                 }
             }
-            kageant_notify_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_NOTIFY) == BST_CHECKED);
-            kageant_arrival_notice_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_ARRIVAL) == BST_CHECKED);
+            /* off before, on now: the file is checked once OK has stored
+             * everything (keysettings_knownhosts_on below) - a plain OK
+             * with the box already ticked does not repeat it */
+            bool kh_turned_on = !kageant_readknownhosts_get();
             /* Every agent setting goes to the store in charge, so these
              * apply in either mode - no kitty.ini gate. */
-            {
-                int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_RETRY,
-                                                  CB_GETCURSEL, 0, 0);
-                if (sel >= 0 && sel <= KAGEANT_RETRY_ANYDRIVE)
-                    kageant_retry_keys_set(sel);
-            }
+            keysettings_collect(hwnd);    /* every row of kas_rows with a setter */
+            kitty_hello_cache_ttl_set(kageant_hello_ttl());
+            kh_turned_on = kh_turned_on && kageant_readknownhosts_get();
             /* Only writable while the control is live: on a Windows with no
              * dark mode the droplist is greyed at "Follow the system", and
              * writing that would overwrite a preference set elsewhere. */
@@ -6669,22 +6753,6 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                      * window makes. */
                     kitty_theme_announce_change();
                 }
-            }
-            kageant_unload_on_remove_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_UNLOAD) == BST_CHECKED);
-            kageant_quiet_missing_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_QUIET) == BST_CHECKED);
-            {
-                /* Blank puts the default back; the setters clamp. */
-                kageant_passphrase_ttl_set(
-                    keysettings_number(hwnd, IDC_SET_TTL,
-                                       KAGEANT_TTL_DEFAULT,
-                                       kageant_passphrase_ttl()));
-                kageant_hello_ttl_set(
-                    keysettings_number(hwnd, IDC_SET_HELLOTTL,
-                                       KAGEANT_TTL_DEFAULT,
-                                       kageant_hello_ttl()));
-                kitty_hello_cache_ttl_set(kageant_hello_ttl());
             }
             {
                 char t[32];
@@ -6706,47 +6774,12 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             if (IsWindowEnabled(GetDlgItem(hwnd, IDC_SET_HELLO)))
                 kageant_hello_set(
                     IsDlgButtonChecked(hwnd, IDC_SET_HELLO) == BST_CHECKED);
-            kageant_lockdown_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_LOCKDOWN) == BST_CHECKED);
-            kageant_blockadd_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_BLOCKADD) == BST_CHECKED);
-            kageant_blockremove_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_BLOCKREMOVE) == BST_CHECKED);
-            kageant_allowipclock_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_ALLOWIPCLOCK) == BST_CHECKED);
-            kageant_blockforwarded_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_BLOCKFWD) == BST_CHECKED);
-            kageant_allowwmcopydata_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_ALLOWWMCD) == BST_CHECKED);
-            kageant_opensshpipe_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_OPENSSHPIPE) == BST_CHECKED);
             {
                 char xp[208];
                 GetDlgItemTextA(hwnd, IDC_SET_EXTRAPIPE, xp, sizeof(xp));
                 kageant_extrapipe_set(xp);
             }
-            kageant_setsshauthsock_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_SSHAUTHSOCK) == BST_CHECKED);
             kageant_opensshpipe_apply();   /* KiTTY: live, on or off */
-            /* off before, on now: the file is checked once OK has stored
-             * everything (keysettings_knownhosts_on below) - a plain OK
-             * with the box already ticked does not repeat it */
-            bool kh_turned_on = !kageant_readknownhosts_get();
-            kageant_readknownhosts_set(
-                IsDlgButtonChecked(hwnd, IDC_SET_KNOWNHOSTS) == BST_CHECKED);
-            kh_turned_on = kh_turned_on && kageant_readknownhosts_get();
-            {
-                int wl = (int)SendDlgItemMessage(hwnd, IDC_SET_WINLOCK, CB_GETCURSEL, 0, 0);
-                kageant_winlock_mode_set(wl >= 0 && wl <= 2 ? wl : 0);
-            }
-            {
-                /* This field's default IS 0 - "each notice's own timing" -
-                 * and 0 is displayed as an empty box, so it round-trips. */
-                kageant_notice_timeout_set(
-                    keysettings_number(hwnd, IDC_SET_NOTICESECS,
-                                       KAGEANT_NOTICESECS_DEFAULT,
-                                       kageant_notice_timeout_get()));
-            }
             /* KiTTY: the agent log's knobs - written as a set (the setter
              * clamps and re-arms the sink), then the on/off switch. */
             {
@@ -6758,15 +6791,9 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 GetDlgItemText(hwnd, IDC_SET_AGENTLOGPATH, lp, lplen + 1);
                 kageant_audit_cfg_set(
                     lp,
-                    keysettings_number(hwnd, IDC_SET_AGENTLOGKB,
-                                       KAGEANT_AGENTLOG_KB_DEFAULT,
-                                       kageant_audit_maxkb_get()),
-                    keysettings_number(hwnd, IDC_SET_AGENTLOGKEEP,
-                                       KAGEANT_AGENTLOG_KEEP_DEFAULT,
-                                       kageant_audit_keep_get()),
-                    keysettings_number(hwnd, IDC_SET_AGENTLOGDAYS,
-                                       KAGEANT_AGENTLOG_DAYS_DEFAULT,
-                                       kageant_audit_expire_get()));
+                    kas_number(hwnd, IDC_SET_AGENTLOGKB),
+                    kas_number(hwnd, IDC_SET_AGENTLOGKEEP),
+                    kas_number(hwnd, IDC_SET_AGENTLOGDAYS));
                 sfree(lp);
                 kageant_audit_set(
                     IsDlgButtonChecked(hwnd, IDC_SET_AGENTLOG)
