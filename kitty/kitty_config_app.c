@@ -28,6 +28,9 @@
 #include "kitty_migrate.h" /* Application > Migration: the session importer */
 #include "kitty_text.h"    /* the words the panels show */
 #include "kitty_inikeys.h" /* KI_*: the kitty.ini key names */
+#include "kitty_globalsettings.h"   /* a policy key's savemode */
+#include "kitty_inifile.h"          /* kitty_store_ro_by_policy */
+static void scb_policy_lines(struct controlbox *b);
 #include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
@@ -2421,7 +2424,9 @@ static void kset_master_handler(dlgcontrol *ctrl, dlgparam *dlg,
     if (k && ctrl->context2.p &&
         (event == EVENT_REFRESH || event == EVENT_VALCHANGE))
         kitty_dlg_enable((dlgcontrol *)ctrl->context2.p, dlg,
-                         kset_get_int(k) != 0);
+                         kset_get_int(k) != 0 &&
+                         !kitty_kset_policy_held(
+                             ((dlgcontrol *)ctrl->context2.p)->context.p));
 }
 
 /* KSET_CHECKBOX for such a switch; the caller sets context2 to the field once
@@ -5594,6 +5599,8 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     else
         snprintf(line, sizeof(line), KT_KSET_STORAGE_STORE_REGISTRY,
                  kitty_registry_base());
+    if (kitty_settings_policy_source(KI_SAVEMODE, -1) != KS_SOURCE_NONE)
+        strncat(line, KT_KSET_STORAGE_POLICY_HELD, sizeof(line) - strlen(line) - 1);
     ctrl_text(s, line, HELPCTX(kitty_storage));
     if (GetNoKittyFileFlag() || !ini || !ini[0])
         snprintf(line, sizeof(line), "%s", KT_KSET_STORAGE_INI_NONE);
@@ -5653,7 +5660,9 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     ksp_comment_btn->align_next_to = ksp_nondefault_cb;
     ctrl_columns(s, 1, 100);
     if (GetReadOnlyFlag())
-        ctrl_text(s, KT_KSET_STORAGE_READONLY, HELPCTX(kitty_storage));
+        ctrl_text(s, kitty_store_ro_by_policy() ? KT_KSET_STORAGE_READONLY_POLICY
+                                                : KT_KSET_STORAGE_READONLY,
+                  HELPCTX(kitty_storage));
     if (GetNoKittyFileFlag())
         ctrl_text(s, KT_KSET_STORAGE_NOCONF, HELPCTX(kitty_storage));
 
@@ -6821,6 +6830,46 @@ void scb_panel_application(struct controlbox *b, bool midsession)
             }
             if (editable)
                 scb_app_footer(b, path);
+        }
+    }
+
+    scb_policy_lines(b);
+}
+
+/* KiTTY: a panel with a setting a policy key holds (kitty_kset_policy_held)
+ * gets one line at its top - under its title, above its first group. The
+ * settings themselves are greyed by their handler. */
+static void scb_policy_lines(struct controlbox *b)
+{
+    for (int i = 0; i < b->nctrlsets; i++) {
+        const char *path = b->ctrlsets[i]->pathname;
+        bool held = false;
+        struct controlset *s;
+        int at, k;
+
+        if (i > 0 && !strcmp(b->ctrlsets[i - 1]->pathname, path))
+            continue;                  /* a path once, at its first set */
+        for (int j = i; j < b->nctrlsets && !held &&
+                 !strcmp(b->ctrlsets[j]->pathname, path); j++)
+            for (size_t c = 0; c < b->ctrlsets[j]->ncontrols && !held; c++) {
+                dlgcontrol *ct = b->ctrlsets[j]->ctrls[c];
+                if ((ct->handler == kitty_kset_handler ||
+                     ct->handler == kset_master_handler) &&
+                    kitty_kset_policy_held(ct->context.p))
+                    held = true;
+            }
+        if (!held)
+            continue;
+        s = ctrl_getset(b, path, "kitty-policy", NULL);   /* the path's last set */
+        ctrl_text(s, KT_KSET_POLICY_PANEL, HELPCTX(kitty_application_tab));
+        /* moved up: right after the title set (ncolumns 0), else first */
+        at = i + (b->ctrlsets[i]->ncolumns == 0 ? 1 : 0);
+        for (k = at; k < b->nctrlsets && b->ctrlsets[k] != s; k++)
+            ;
+        if (k < b->nctrlsets && k > at) {
+            memmove(&b->ctrlsets[at + 1], &b->ctrlsets[at],
+                    (size_t)(k - at) * sizeof(*b->ctrlsets));
+            b->ctrlsets[at] = s;
         }
     }
 }

@@ -26,6 +26,7 @@
 #include "kitty_migrate.h" /* Application > Migration: the session importer */
 #include "kitty_text.h"    /* the words the panels show */
 #include "kitty_inikeys.h" /* KI_*: the kitty.ini key names */
+#include "kitty_globalsettings.h"   /* a policy key's settings: greyed */
 #include "kitty_notes.h"   /* the application notification: its escapes and its notice */
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_winpos.h"   /* the remembered window position, per session and monitor layout */
@@ -1201,6 +1202,15 @@ static void kset_set_int(const struct kset_key *k, int v)
     else if (k->var) *k->var = v;
 }
 
+/* The registry name is the key (the flat store). A kitty.ini-only key is
+ * not in a policy yet. */
+bool kitty_kset_policy_held(const void *kset_key)
+{
+    const struct kset_key *k = (const struct kset_key *)kset_key;
+    return k && !k->file_only &&
+           kitty_settings_policy_source(k->key, -1) != KS_SOURCE_NONE;
+}
+
 void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
 {
     const struct kset_key *k = (const struct kset_key *)ctrl->context.p;
@@ -1309,6 +1319,14 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
           }
         }
         cfgwin_refreshing = 0;
+        /* a policy key's value: shown, greyed (label included) */
+        if (kitty_kset_policy_held(k))
+            kitty_dlg_enable(ctrl, dlg, false);
+    } else if (event == EVENT_VALCHANGE && !cfgwin_refreshing &&
+               kitty_kset_policy_held(k)) {
+        /* a held setting: nothing written, the policy's value shown again
+         * (a click sent to the greyed control still flips it on screen) */
+        dlg_refresh(ctrl, dlg);
     } else if (event == EVENT_VALCHANGE && !cfgwin_refreshing) {
         /* A write that fails changes nothing: the running value stays, and
          * the control shows the stored value again (dlg_refresh re-enters

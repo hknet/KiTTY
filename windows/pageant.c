@@ -6106,7 +6106,7 @@ static void keysettings_align_rows(HWND hwnd)
  * height and the dialog grows by the same; the line is made after the move,
  * with the dialog's font, and the theme reaches it with the rest.
  */
-static void keysettings_readonly_line(HWND hwnd)
+static void keysettings_top_line(HWND hwnd, const char *text)
 {
     RECT step = { 0, 0, 0, 14 };       /* the line's row, dialog units */
     RECT line = { 6, 5, 294, 15 };
@@ -6114,8 +6114,6 @@ static void keysettings_readonly_line(HWND hwnd)
     HWND c, st;
     int dy;
 
-    if (!kitty_store_readonly())
-        return;
     MapDialogRect(hwnd, &step);
     MapDialogRect(hwnd, &line);
     dy = step.bottom;
@@ -6130,7 +6128,7 @@ static void keysettings_readonly_line(HWND hwnd)
         SetWindowPos(hwnd, NULL, 0, 0, r.right - r.left,
                      r.bottom - r.top + dy,
                      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-    st = CreateWindowExA(0, "STATIC", KT_KASET_READONLY,
+    st = CreateWindowExA(0, "STATIC", text,
                          WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
                          line.left, line.top, line.right - line.left,
                          line.bottom - line.top, hwnd, (HMENU)(INT_PTR)-1,
@@ -6427,6 +6425,77 @@ static const struct kas_row kas_rows[] = {
       .get = kageant_audit_expire_get, .deflt = KAGEANT_AGENTLOG_DAYS_DEFAULT },
 };
 
+/*
+ * KiTTY: every setting control of the dialog with its registry name - a
+ * policy key holding the name (kitty_globalsettings.h) greys the control
+ * with its labels. OK leaves it alone: its value is the policy's, a write
+ * of it would be refused. dword: the name's reader (a number or a
+ * text).
+ */
+static const struct kas_lock {
+    int id;
+    const char *reg;
+    bool dword;
+    int labels[3];
+} kas_locks[] = {
+    { IDC_SET_KNOWNHOSTS,   "ReadKnownHosts",         true,  { 0 } },
+    { IDC_SET_LOADKEYS,     "LoadKeysOnStartup",      true,  { 0 } },
+    { IDC_SET_NOTIFY,       "NotifyOnKeyUse",         true,  { 0 } },
+    { IDC_SET_ARRIVAL,      "NotifyOnKeyArrival",     true,  { 0 } },
+    { IDC_SET_RETRY,        "RetryKeys",              true,  { IDC_SET_L_RETRY, 0 } },
+    { IDC_SET_UNLOAD,       "UnloadOnRemove",         true,  { 0 } },
+    { IDC_SET_QUIET,        "QuietMissingKeys",       true,  { 0 } },
+    { IDC_SET_TTL,          "PassphraseCacheSeconds", true,  { IDC_SET_L_TTL, IDC_SET_L_TTLHINT, 0 } },
+    { IDC_SET_HELLOTTL,     "HelloCacheSeconds",      true,  { IDC_SET_L_HELLOTTL, IDC_SET_L_HELLOTTLHINT, 0 } },
+    { IDC_SET_LOCKDOWN,     "LockdownMode",           true,  { 0 } },
+    { IDC_SET_BLOCKADD,     "BlockIpcAdd",            true,  { 0 } },
+    { IDC_SET_BLOCKREMOVE,  "BlockIpcRemove",         true,  { 0 } },
+    { IDC_SET_ALLOWIPCLOCK, "AllowIpcLock",           true,  { 0 } },
+    { IDC_SET_BLOCKFWD,     "BlockForwardedChanges",  true,  { 0 } },
+    { IDC_SET_ALLOWWMCD,    "AllowWmCopyData",        true,  { 0 } },
+    { IDC_SET_OPENSSHPIPE,  "OpenSSHPipe",            true,  { 0 } },
+    { IDC_SET_SSHAUTHSOCK,  "SetSshAuthSock",         true,  { 0 } },
+    { IDC_SET_WINLOCK,      "LockWithWindows",        true,  { IDC_SET_L_WINLOCK, 0 } },
+    { IDC_SET_NOTICESECS,   "NoticeTimeout",          true,  { IDC_SET_L_NOTICE, IDC_SET_L_NOTICEHINT, 0 } },
+    { IDC_SET_AGENTLOG,     "AgentLog",               true,  { 0 } },
+    { IDC_SET_AGENTLOGKB,   "AgentLogMaxKB",          true,  { IDC_SET_L_LOGKB, 0 } },
+    { IDC_SET_AGENTLOGKEEP, "AgentLogKeep",           true,  { IDC_SET_L_LOGKEEP, 0 } },
+    { IDC_SET_AGENTLOGDAYS, "AgentLogExpireDays",     true,  { IDC_SET_L_LOGDAYS, 0 } },
+    { IDC_SET_HELLO,        "HelloConfirm",           true,  { 0 } },
+    { IDC_SET_AUTOENCMODE,  "AutoEncryptMode",        true,  { IDC_SET_L_AUTOENC, 0 } },
+    { IDC_SET_AUTOENC,      "AutoEncryptSeconds",     true,  { IDC_SET_L_AUTOENCHINT, 0 } },
+    { IDC_SET_EXTRAPIPE,    "ExtraPipe",              false, { IDC_SET_L_EXTRAPIPE, 0 } },
+    { IDC_SET_AGENTLOGPATH, "AgentLogPath",           false, { IDC_SET_L_LOGPATH, 0 } },
+    { IDC_SET_AGENTLOGSINK, "AgentLogSink",           false, { IDC_SET_L_LOGSINK, IDC_SET_L_LOGSINKHINT, 0 } },
+    { IDC_SET_THEME,        KI_THEME,                 false, { IDC_SET_L_THEME, 0 } },
+};
+
+/* A policy key holds the control's setting. */
+static bool keysettings_held(int id)
+{
+    for (size_t i = 0; i < lenof(kas_locks); i++)
+        if (kas_locks[i].id == id)
+            return kitty_settings_policy_source(kas_locks[i].reg,
+                                                kas_locks[i].dword ? 1 : -1)
+                   != KS_SOURCE_NONE;
+    return false;
+}
+
+/* Every held control greyed, its labels too. Returns how many. */
+static int keysettings_policy_grey(HWND hwnd)
+{
+    int n = 0;
+    for (size_t i = 0; i < lenof(kas_locks); i++) {
+        if (!keysettings_held(kas_locks[i].id))
+            continue;
+        EnableWindow(GetDlgItem(hwnd, kas_locks[i].id), FALSE);
+        for (int j = 0; j < 3 && kas_locks[i].labels[j]; j++)
+            EnableWindow(GetDlgItem(hwnd, kas_locks[i].labels[j]), FALSE);
+        n++;
+    }
+    return n;
+}
+
 /* The row of a control, NULL when it has none. */
 static const struct kas_row *kas_row_of(int id)
 {
@@ -6476,7 +6545,7 @@ static void keysettings_collect(HWND hwnd)
 {
     for (size_t i = 0; i < lenof(kas_rows); i++) {
         const struct kas_row *r = &kas_rows[i];
-        if (!r->set)
+        if (!r->set || keysettings_held(r->id))
             continue;
         switch (r->kind) {
           case KAS_BOOL:
@@ -6659,7 +6728,14 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                                KT_KASET_THEME_UNAVAILABLE);
             }
         }
-        keysettings_readonly_line(hwnd);
+        /* A policy key's settings greyed, after every other greying. The
+         * lines above the tabs: readonly=yes on top, then the policy's */
+        if (keysettings_policy_grey(hwnd) > 0)
+            keysettings_top_line(hwnd, KT_KASET_POLICY_HELD);
+        if (kitty_store_readonly())
+            keysettings_top_line(hwnd, kitty_store_ro_by_policy()
+                                     ? KT_KASET_READONLY_POLICY
+                                     : KT_KASET_READONLY);
         keysettings_apply_theme(hwnd);
         kitty_auxpos_apply(hwnd, KR_DLGPOS_KA_SETTINGS,
                            GetWindow(hwnd, GW_OWNER), 0);
@@ -6700,7 +6776,8 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             if (HIWORD(wParam) == CBN_SELCHANGE)
                 EnableWindow(GetDlgItem(hwnd, IDC_SET_AUTOENC),
                              SendDlgItemMessage(hwnd, IDC_SET_AUTOENCMODE,
-                                                CB_GETCURSEL, 0, 0) != 0);
+                                                CB_GETCURSEL, 0, 0) != 0 &&
+                             !keysettings_held(IDC_SET_AUTOENC));
             return 0;
           case IDC_SET_EVENTVIEWER:
             kageant_eventviewer_open(hwnd);
@@ -6723,7 +6800,8 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             {
                 char xp[208];
                 GetDlgItemTextA(hwnd, IDC_SET_EXTRAPIPE, xp, sizeof(xp));
-                if (xp[0] && !kageant_extrapipe_valid(xp)) {
+                if (xp[0] && !kageant_extrapipe_valid(xp) &&
+                    !keysettings_held(IDC_SET_EXTRAPIPE)) {
                     kitty_message_box(hwnd, KT_KA_EXTRAPIPE_BAD, KT_CAP_KA_ERROR,
                                       MB_ICONERROR | MB_OK);
                     SetFocus(GetDlgItem(hwnd, IDC_SET_EXTRAPIPE));
@@ -6764,8 +6842,10 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                 /* Garbage keeps the old value; blank means the default. */
                 if (v < 0) v = t[0] ? kageant_autoenc_seconds() : 600;
                 if (v == 0) v = kageant_autoenc_seconds();   /* "off" is the mode's job */
-                kageant_autoenc_seconds_set(v);
-                kageant_autoenc_mode_set(mode >= 0 && mode <= 2 ? mode : 0);
+                if (!keysettings_held(IDC_SET_AUTOENC))
+                    kageant_autoenc_seconds_set(v);
+                if (!keysettings_held(IDC_SET_AUTOENCMODE))
+                    kageant_autoenc_mode_set(mode >= 0 && mode <= 2 ? mode : 0);
             }
             /* KiTTY: IPC access control + notice timeout work in either store,
              * so they are always applied (not gated on a kitty.ini). */
@@ -6777,7 +6857,8 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
             {
                 char xp[208];
                 GetDlgItemTextA(hwnd, IDC_SET_EXTRAPIPE, xp, sizeof(xp));
-                kageant_extrapipe_set(xp);
+                if (!keysettings_held(IDC_SET_EXTRAPIPE))
+                    kageant_extrapipe_set(xp);
             }
             kageant_opensshpipe_apply();   /* KiTTY: live, on or off */
             /* KiTTY: the agent log's knobs - written as a set (the setter
@@ -6795,9 +6876,10 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
                     kas_number(hwnd, IDC_SET_AGENTLOGKEEP),
                     kas_number(hwnd, IDC_SET_AGENTLOGDAYS));
                 sfree(lp);
-                kageant_audit_set(
-                    IsDlgButtonChecked(hwnd, IDC_SET_AGENTLOG)
-                        == BST_CHECKED);
+                if (!keysettings_held(IDC_SET_AGENTLOG))
+                    kageant_audit_set(
+                        IsDlgButtonChecked(hwnd, IDC_SET_AGENTLOG)
+                            == BST_CHECKED);
             }
             {
                 int sel = (int)SendDlgItemMessage(hwnd, IDC_SET_AGENTLOGSINK,

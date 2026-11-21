@@ -1327,6 +1327,12 @@
 #define KT_KSET_STORAGE_INI_NONE                     "Configuration file: none (conf=no)"
 #define KT_KSET_STORAGE_READONLY                     "Read-only (readonly=yes): sessions, settings, host keys " \
         "and backups are not written."
+#define KT_KSET_STORAGE_READONLY_POLICY              "Read-only (set by your administrator): sessions, settings, " \
+        "host keys and backups are not written."
+/* the store line's end when a policy key holds savemode */
+#define KT_KSET_STORAGE_POLICY_HELD                  " (set by your administrator)"
+/* a panel with a setting a policy key holds: its top line */
+#define KT_KSET_POLICY_PANEL                         "Some settings on this panel are set by your administrator."
 /* readonly=yes: an explicit storing action that has no control to grey (the
  * window menu's Save, /commands, command-line switches); %s = the reason,
  * kitty_store_ro_reason(): KT_STORE_RO_BY_INI or KT_STORE_RO_BY_POLICY */
@@ -3736,6 +3742,8 @@
         "windows; the light theme is the only one."
 /* the dialog's top line under readonly=yes */
 #define KT_KASET_READONLY                            "Read-only (readonly=yes): changes apply until kageant exits."
+#define KT_KASET_READONLY_POLICY                     "Read-only (set by your administrator): changes apply until kageant exits."
+#define KT_KASET_POLICY_HELD                         "Some settings are set by your administrator."
 
 /* kageant: notices and prompts raised by the agent core (kitty/kitty_pageant.c) */
 #define KT_KA_WHO_PROGRAM_FMT                        " a program (pid %lu)"

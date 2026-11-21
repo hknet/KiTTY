@@ -210,6 +210,9 @@ int kset_write(const struct kset_key *k, const char *text);   /* kitty_config_sh
 void kset_defer_write(const struct kset_key *k, const char *text);   /* kitty_config_shared.c */
 int kset_get_int(const struct kset_key *k);   /* kitty_config_shared.c */
 void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event);   /* kitty_config_shared.c */
+/* A kset control's setting (its context.p) held by a policy key: shown
+ * greyed, never written (kitty_globalsettings.h). kitty_config_shared.c */
+bool kitty_kset_policy_held(const void *kset_key);
 const char *kitty_pxload_name_at(int row);   /* kitty_config_session.c */
 struct sessionsaver_data {
     dlgcontrol *editbox, *listbox, *loadbutton, *savebutton, *delbutton;

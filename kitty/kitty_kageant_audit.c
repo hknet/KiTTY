@@ -19,6 +19,7 @@
 #include "kitty_kageant_openssh.h"  /* the Windows OpenSSH client integration */
 #include "kitty_notice.h"   /* KiTTY: near-the-clock notice window (not a balloon) */
 #include "kitty_inifile.h"
+#include "kitty_globalsettings.h"   /* a policy key's value is not written over */
 
 /* KiTTY: notice accents. Kitty's own notices are green (workplace proxy), so
  * kageant uses two distinct colours: an amber WARNING for key-load problems,
@@ -211,15 +212,21 @@ void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
         }
         sfree(was);
     }
-    kageant_setting_str_set(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
-                            path ? path : "");
+    /* the set's values a policy key holds are left alone: a write of them
+     * is refused (KITTY_POLICY_REFUSED) and would be reported */
+    if (!kitty_settings_policy_source("AgentLogPath", -1))
+        kageant_setting_str_set(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
+                                path ? path : "");
     snprintf(num, sizeof(num), "%d", maxkb);
-    kageant_setting_write(KI_AGENT_AGENTLOGMAXKB, num, "AgentLogMaxKB", maxkb);
+    if (!kitty_settings_policy_source("AgentLogMaxKB", 1))
+        kageant_setting_write(KI_AGENT_AGENTLOGMAXKB, num, "AgentLogMaxKB", maxkb);
     snprintf(num, sizeof(num), "%d", keep);
-    kageant_setting_write(KI_AGENT_AGENTLOGKEEP, num, "AgentLogKeep", keep);
+    if (!kitty_settings_policy_source("AgentLogKeep", 1))
+        kageant_setting_write(KI_AGENT_AGENTLOGKEEP, num, "AgentLogKeep", keep);
     snprintf(num, sizeof(num), "%d", expiredays);
-    kageant_setting_write(KI_AGENT_AGENTLOGEXPIREDAYS, num,
-                          "AgentLogExpireDays", expiredays);
+    if (!kitty_settings_policy_source("AgentLogExpireDays", 1))
+        kageant_setting_write(KI_AGENT_AGENTLOGEXPIREDAYS, num,
+                              "AgentLogExpireDays", expiredays);
     kageant_audit_setup();
 }
 
