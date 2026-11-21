@@ -925,6 +925,26 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking registry calls against tools/raw-registry.allow")
   add_custom_target(check_raw_registry ALL DEPENDS ${KITTY_RAWREG_CHECK_STAMP})
 
+  # The settings files, kitty.exe's kitty.ini wrappers on a global section and
+  # the store's decisions (readonly, conf=no, a policy, a recommendation)
+  # outside the settings module, in a function not listed with its reason in
+  # tools/settings-access.allow. A stale line fails. Self-test first.
+  set(KITTY_SETACC_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_setacc_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_SETACC_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-settings-access.py --self-test
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-settings-access.py
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_SETACC_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-settings-access.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/check-raw-registry.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/settings-access.allow
+            ${KITTY_CONF_CHECK_SOURCES}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking settings access against tools/settings-access.allow")
+  add_custom_target(check_settings_access ALL DEPENDS ${KITTY_SETACC_CHECK_STAMP})
+
   # A command of the terminal window's menus without a shortcut action (no
   # key can reach it), or an action whose menu command is on no menu. The
   # menus: windows/window.c and the kitty menu builders it calls. The
@@ -1006,7 +1026,7 @@ if(KITTY_INI_CHECK_PYTHON)
     check_kitty_ini check_features_toc check_menu_ids check_kitty_events
     check_conf_types check_dialog_accelerators check_fixed_arrays
     check_kitty_text check_secure_wipe check_store_pairs check_menu_shortcuts
-    check_test_doors check_raw_registry)
+    check_test_doors check_raw_registry check_settings_access)
 endif()
 
 configure_file(cmake/cmake.h.in ${GENERATED_SOURCES_DIR}/cmake.h)

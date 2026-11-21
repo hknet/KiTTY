@@ -1,0 +1,179 @@
+# tools/check-settings-access.py: the calls outside the settings module
+# (kitty/kitty_globalsettings.c, kitty/kitty_inifile.c, kitty/mini/mini.c)
+# that touch a settings file, read kitty.ini past the store in charge, or
+# decide what may be written. KIND | file | function | reason.
+
+FILE | kitty/kitty_startup.c | InitNameConfigFile | kitty.ini named and moved into place at start, before the module is pinned to it
+FLAG | kitty/kitty.c | CreateIniFile | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty.c | InitFolderList | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_auxpos.c | kitty_auxpos_write | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_commands.c | cmd_policy_held | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_commands.c | cmd_savemode | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_commands.c | cmd_store_refused | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_commands.c | kitty_save_current_session | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_commands.c | kitty_savenew_box | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_common.c | GetReadOnlyFlag | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_config_app.c | khard_btn_handler | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_app.c | khard_cb_handler | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_app.c | khard_refresh | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_app.c | kitty_reset_default_answer | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_app.c | kitty_sp_comment_defaults_handler | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_app.c | kitty_sp_folder_store_writable | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_app.c | sc_can_write | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_app.c | scb_panel_kitty_settings | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_session.c | kcs_bad_rename | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_session.c | kcs_lockdown_handler | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_session.c | kcs_row_action | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_session.c | kcs_row_menu | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_session.c | sessionsaver_offer_hide_default | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_session.c | sessionsaver_update_save_button | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_shared.c | kitty_cfg_ro_control | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_shared.c | kitty_kset_policy_held | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_config_shared.c | kset_write | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_exportbundle.c | kitty_import_one_ktx | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_far2l.c | kitty_far2l_save_client_ids | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_hostkeys.c | hk00_readonly | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_kageant_audit.c | kageant_audit_cfg_set | kageant's settings layer over the module: its own names refused under readonly=yes or a policy
+FLAG | kitty/kitty_kageant_rules.c | kageant_rules_replace | kageant's settings layer over the module: its own names refused under readonly=yes or a policy
+FLAG | kitty/kitty_kageant_rules.c | rules_write | kageant's settings layer over the module: its own names refused under readonly=yes or a policy
+FLAG | kitty/kitty_kageant_settings.c | kageant_reg_first | kageant's settings layer over the module: its own names refused under readonly=yes or a policy
+FLAG | kitty/kitty_kageant_settings.c | kageant_setting_str_set | kageant's settings layer over the module: its own names refused under readonly=yes or a policy
+FLAG | kitty/kitty_kageant_settings.c | kageant_setting_write | kageant's settings layer over the module: its own names refused under readonly=yes or a policy
+FLAG | kitty/kitty_migrate.c | kitty_import_file_session | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_migrate.c | kitty_import_foreign_session | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_mpw_gui.c | gui_master_pw_prompt | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_osc52.c | kitty_osc52_save_deny_for_host | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_osc52.c | kitty_osc52_store_readonly | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_pageant.c | kageant_forget_startup_key | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_pageant.c | kageant_save_key_order | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_pageant.c | kageant_save_startup_keys | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_pageant.c | kageant_track_keypath | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_params.c | CreateDefaultIniFile | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_params.c | DelParameter | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_params.c | LoadParameters | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_params.c | load_ini_params | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_params.c | write_parameter | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_proxy.c | DeleteProxyInfo | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_proxy.c | SaveProxyInfo | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_proxy.c | kitty_migrate_old_proxies | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_regbackup.c | RetireConfigPasswordLeftovers | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_regbackup.c | RetireCountUpLeftovers | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_regbackup.c | SavePortableDirBackupEx | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_regbackup.c | kitty_sav_backup_report_dup | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_regbackup.c | sav_backup | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_registry.c | CreateFileAssoc | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_secretstore.c | kitty_migrate_portable_mpw_state | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_secretstore.c | mpw_ensure_unlocked | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_secretstore.c | mpw_state_set | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessionrename.c | kitty_session_order_forget | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessionrename.c | kitty_session_rename_many | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorder.c | ksp_order_commit | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorder.c | ksp_order_copy_all | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorder.c | ksp_order_folder_moved | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | kitty_sessorg_arrange | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | kitty_sessorg_arrange_pending | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | kitty_sessorg_delete_any_folder | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | kitty_sessorg_rename | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_clone | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_delete_sessions | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_delete_sessions_answer | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_folder_drop_answer | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_key | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_list_menu | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_order_drop | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_proc | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_reset_order | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_tag_drop | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_tag_menu | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_tree_menu | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_untag | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_sessorg.c | so_untag_answer | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_shortcuts.c | ShortcutsRenameOldKeys | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_startup.c | AutoTextFromRegistry | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_startup.c | ConfNoBackupCountOnce | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_startup.c | InitNameConfigFile | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_startup.c | InitWinMain | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_startup.c | LauncherKeysRename | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_startup.c | PortableWriteSaveMode | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
+FLAG | kitty/kitty_storage.c | kitty_dword_store | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | kitty_portable_store_state_string | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | kitty_session_suffix_rename | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | kitty_set_last_folder | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | kitty_set_last_session | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | kitty_state_set_string | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | ksf_make_parent_dirs | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | ksf_prune_empty_dirs | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | ksf_save_x | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | portable_read_text_file | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storage.c | portable_write_text_file | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_store.c | createPath | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_store.c | kitty_store_ending_mark | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_store.c | kitty_store_hostkey_rename | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_store.c | kitty_store_ini_takeover | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_store.c | loadPath | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_store_acl.c | kitty_store_acl_report | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storemove.c | kitty_portable_copy_core | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storemove.c | kitty_take_folder_core | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storemove.c | kitty_take_folder_store | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_storemove.c | ksm_globals_from_ini | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_termenv_hint.c | kth_mark | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_theme_pref.c | kitty_theme_pref_get | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_updater.c | kitty_update_worker | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_win.c | kts_kg_policy | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_win.c | kts_kg_ro | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_winpos.c | kitty_winpos_shared_set | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_winpos.c | kwp_shared_walk | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | kitty/kitty_xfer.c | kh_store_put | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | ssh/ca-config.c | ca_store_refused | the SSH layer's host-key and CA store: the refusal named in the prompt or the Event Log
+FLAG | ssh/common.c | verify_ssh_host_key | the SSH layer's host-key and CA store: the refusal named in the prompt or the Event Log
+FLAG | ssh/kex2-client.c | ssh2kex_coroutine | the SSH layer's host-key and CA store: the refusal named in the prompt or the Event Log
+FLAG | windows/console.c | console_confirm_ssh_host_key | the SSH layer's host-key and CA store: the refusal named in the prompt or the Event Log
+FLAG | windows/dialog.c | kitty_cfgbox_restore_pos | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | windows/dialog.c | kitty_inline_confirm | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | windows/dialog.c | kitty_inline_confirm_changed | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | windows/dialog.c | win_seat_confirm_ssh_host_key | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | windows/pageant.c | KeySettingsProc | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | windows/pageant.c | WinMain | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | windows/pageant.c | ka_policy_holds | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | windows/pageant.c | keysettings_held | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | windows/putty.c | kitty_cli_store_refused | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | windows/storage.c | access_random_seed | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | check_stored_host_key | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | cleanup_all | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | del_settings | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | host_ca_delete | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | host_ca_save | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | kitty_hostkey_slot_delete | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | kitty_hostkey_slot_write | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | kitty_hostkey_type_delete | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | kitty_reg_defaults_pass | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | kitty_session_file_save | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | kitty_store_defaults_pass | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | open_settings_w | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | store_host_key | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | transform_jumplist_registry | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/storage.c | write_random_seed | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
+FLAG | windows/window.c | do_text_internal | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+INI | kitty/kitty_commands.c | cmd_savemode | savemode: a key that decides the store, kept in kitty.ini
+INI | kitty/kitty_config_app.c | khard_cb_handler | restrictacl: kitty.ini only by design, never the user's registry
+INI | kitty/kitty_config_app.c | khard_refresh | restrictacl: kitty.ini only by design, never the user's registry
+INI | kitty/kitty_config_app.c | kitty_sp_hostkeys_handler | the folder store's layout (its host-key folder): kitty.ini only
+INI | kitty/kitty_config_app.c | kitty_sp_keyext_apply_handler | the folder store's layout (the host-key file ending): kitty.ini only
+INI | kitty/kitty_config_app.c | kitty_sp_suffix_apply_handler | the folder store's layout (the session file ending): kitty.ini only
+INI | kitty/kitty_config_app.c | scb_panel_kitty_settings | the folder store's layout shown (fileextension): kitty.ini only
+INI | kitty/kitty_mpw_gui.c | gui_master_pw_prompt | the folder store's password protection: kitty.ini only
+INI | kitty/kitty_params.c | LoadParameters | the folder store's layout (fileextension): kitty.ini only
+INI | kitty/kitty_regbackup.c | RetireConfigPasswordLeftovers | one-time cleanup of a retired kitty.ini value
+INI | kitty/kitty_regbackup.c | RetireCountUpLeftovers | one-time cleanup of a retired kitty.ini value
+INI | kitty/kitty_regbackup.c | retire_ini_value_present | one-time cleanup of a retired kitty.ini value
+INI | kitty/kitty_startup.c | InitWinMain | the folder store's password protection: kitty.ini only
+INI | kitty/kitty_startup.c | LauncherKeysRename | one-time migration: [Launcher] dblclick/noticeseconds renamed in kitty.ini
+INI | kitty/kitty_startup.c | PortableWriteSaveMode | savemode: the portable build writes its key once into kitty.ini
+INI | kitty/kitty_store.c | kitty_store_ending_applied | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
+INI | kitty/kitty_store.c | kitty_store_ending_mark | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
+INI | kitty/kitty_store.c | kitty_store_hostkey_rename | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
+INI | kitty/kitty_store.c | kitty_store_ini_takeover | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
+INI | kitty/kitty_store.c | kstore_ini_dup | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
+INI | kitty/kitty_store.c | kstore_store_endings | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
+INI | kitty/kitty_store.c | loadPath | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
+INI | kitty/kitty_storemove.c | ksm_globals_from_ini | the store move: the source kitty.ini read whole

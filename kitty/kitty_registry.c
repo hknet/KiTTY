@@ -42,21 +42,13 @@
  * Folders list or a path past that length was replaced by the kitty.ini
  * value, or by nothing. */
 char * GetValueDataDup( HKEY hkTopKey, const char * lpSubKey, const char * lpValueName ) {
-	HKEY hkKey ;
 	DWORD type = 0, len = 0 ;
 	unsigned char * data ;
 	char * out ;
-	int module = 0 ;
-	if( hkTopKey == HKEY_CURRENT_USER && lpSubKey != NULL && lpValueName != NULL ) {
-		/* the store's values through the settings module, as the hive holds
-		 * them */
-		data = kitty_settings_reg_stored_dup_at( lpSubKey, lpValueName, &type, &len ) ;
-		module = 1 ;
-	} else {
-		if( RegOpenKeyEx( hkTopKey, lpSubKey, 0, KEY_READ, &hkKey ) != ERROR_SUCCESS ) return NULL ;
-		data = kitty_reg_query_dup( hkKey, lpValueName, &type, &len ) ;
-		RegCloseKey( hkKey ) ;
-	}
+	/* HKCU only, through the settings module (every caller passes HKCU: the
+	 * branch for another top key, a raw read, is gone) */
+	if( hkTopKey != HKEY_CURRENT_USER || lpSubKey == NULL || lpValueName == NULL ) return NULL ;
+	data = kitty_settings_reg_stored_dup_at( lpSubKey, lpValueName, &type, &len ) ;
 	if( data == NULL ) return NULL ;
 	switch( (int)type ) {
 	  case REG_BINARY:
@@ -78,8 +70,7 @@ char * GetValueDataDup( HKEY hkTopKey, const char * lpSubKey, const char * lpVal
 		out = dupstr( "" ) ;
 		break ;
 	}
-	if( module ) free( data ) ;
-	else sfree( data ) ;
+	free( data ) ;
 	return out ;
 }
 
@@ -273,15 +264,15 @@ void InitAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char *
 // there; FALSE with the reason in GetLastError() when it is still there.
 // It returned TRUE whatever happened.
 BOOL RegDelValue (HKEY hKeyRoot, LPCTSTR lpSubKey, LPCTSTR lpValue ) {
-	HKEY hKey;
 	LONG lResult;
 	if( kitty_store_ro_regpath( hKeyRoot == HKEY_CURRENT_USER, lpSubKey ) ) return KITTY_RO_REFUSED ;
-	if( hKeyRoot == HKEY_CURRENT_USER && lpSubKey != NULL )   /* through the settings module */
-		lResult = kitty_settings_reg_stored_del_at( lpSubKey, lpValue ) ;
-	else if( (lResult = RegOpenKeyEx (hKeyRoot, lpSubKey, 0, KEY_WRITE, &hKey)) == ERROR_SUCCESS ) {
-		lResult = RegDeleteValue( hKey, lpValue ) ;
-		RegCloseKey(hKey) ;
+	/* HKCU only, through the settings module (every caller passes HKCU: the
+	 * branch for another top key, a raw delete, is gone) */
+	if( hKeyRoot != HKEY_CURRENT_USER || lpSubKey == NULL ) {
+		SetLastError( ERROR_INVALID_PARAMETER ) ;
+		return FALSE ;
 		}
+	lResult = kitty_settings_reg_stored_del_at( lpSubKey, lpValue ) ;
 	if( lResult == ERROR_SUCCESS || lResult == ERROR_FILE_NOT_FOUND ) return TRUE ;
 	SetLastError( (DWORD)lResult ) ;
 	return FALSE ;

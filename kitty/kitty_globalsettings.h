@@ -211,6 +211,13 @@ DWORD kitty_settings_file_get(const char *file, const char *section,
  * For the writers that handle readonly=yes themselves. */
 int kitty_settings_file_put(const char *file, const char *section,
                             const char *key, const char *value);
+/* Every "key=value" pair of one section of an ini file, whole (a large
+ * section is read in full), through a callback. Comment lines (';' '#')
+ * left out. */
+void kitty_settings_file_section_walk(const char *file, const char *section,
+                                      void (*fn)(const char *key,
+                                                 const char *val, void *ctx),
+                                      void *ctx);
 char *kitty_settings_file_read_dup(const char *file, const char *section,
                                    const char *key);
 int kitty_settings_file_write(const char *file, const char *section,

@@ -530,6 +530,37 @@ int kitty_settings_file_put(const char *file, const char *section,
 {
     return WritePrivateProfileStringA(section, key, value, file) ? 1 : 0;
 }
+void kitty_settings_file_section_walk(const char *file, const char *section,
+                                      void (*fn)(const char *key,
+                                                 const char *val, void *ctx),
+                                      void *ctx)
+{
+    /* the whole section: one read into 64 KB cut a large one silently */
+    DWORD cap = 65536, got = 0;
+    char *buf = NULL, *p;
+    if (!file || !file[0] || !section || !fn)
+        return;
+    for (;;) {
+        free(buf);
+        if ((buf = malloc(cap)) == NULL)
+            return;
+        got = GetPrivateProfileSectionA(section, buf, cap, file);
+        if (got + 2 < cap || cap >= (1u << 24))
+            break;
+        cap *= 2;
+    }
+    buf[got < cap ? got : cap - 1] = '\0';
+    for (p = buf; got && *p; p += strlen(p) + 1) {
+        char *eq = strchr(p, '=');
+        if (!eq || p[0] == ';' || p[0] == '#')
+            continue;
+        *eq = '\0';
+        fn(p, eq + 1, ctx);
+        *eq = '=';
+    }
+    free(buf);
+}
+
 char *kitty_settings_file_read_dup(const char *file, const char *section,
                                    const char *key)
 {

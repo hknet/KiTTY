@@ -44,10 +44,8 @@ kitty/kitty_registry.c | kitty_RegCopyTree | the store's tree: a key copied whol
 kitty/kitty_registry.c | RegTestKey | the store's tree: whether a key exists
 kitty/kitty_registry.c | RegCountKey | the store's tree: how many subkeys a key has
 kitty/kitty_registry.c | RegCleanPuTTY | the store's tree: -cleanup of PuTTY's key
-kitty/kitty_registry.c | GetValueDataDup | another top key than HKCU (the HKCU leg reads through the settings module)
 kitty/kitty_registry.c | RegTestOrCreate | another top key than HKCU (the HKCU leg writes through the settings module)
 kitty/kitty_registry.c | RegTestOrCreateDWORD | another top key than HKCU (the HKCU leg writes through the settings module)
-kitty/kitty_registry.c | RegDelValue | another top key than HKCU (the HKCU leg deletes through the settings module)
 
 # ---- one-time migrations from older versions and other programs -----------
 kitty/kitty_registry.c | RepairSharrowDefaults | one-time migration: the shifted arrow keys' default
@@ -91,13 +89,6 @@ kitty/kitty_oldwin.c | reg_deltree_fallback | the stand-ins for APIs newer than 
 kitty/kitty_oldwin.c | kitty_oldwin_RegGetValueA | the stand-ins for APIs newer than Windows XP: RegGetValue
 
 # ---- kitty.ini written whole: the store move and kitty.ini's own upkeep ------
-kitty/kitty_storemove.c | ksm_walk_section | the store move: a kitty.ini section read whole
-kitty/kitty_storemove.c | ksm_copy_pair | the store move: a kitty.ini key copied to the new kitty.ini
-kitty/kitty_storemove.c | ksm_reg_copy_one | the store move: a hive value written to the new kitty.ini
-kitty/kitty_storemove.c | ksm_sub_copy_one | the store move: a [Print] / [FontFallback] subkey value written to the new kitty.ini
-kitty/kitty_storemove.c | ksm_globals_from_ini | the store move: restrictacl written to the kitty.ini left behind
-kitty/kitty_storemove.c | ksm_own_kscp_check | the store move: pscppath removed from the new kitty.ini
-kitty/kitty_storemove.c | kitty_portable_copy_core | the store move: savemode and the password protection of a new portable copy
 kitty/kitty_startup.c | ConsolidateKittyIniLocked | kitty.ini rewritten whole: Windows' ini cache of the file flushed
 kitty/kitty_startup.c | MigratePuttyIni | one-time migration: putty.ini's [KiTTY] section
 kitty/kitty_oldwin.c | kitty_profile_string_dup | a kitty.ini value whole, the settings module's file reader built on it

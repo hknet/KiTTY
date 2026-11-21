@@ -373,32 +373,13 @@ static int ksm_hostkeys_from_dir(const char *src, int *fail)
 
 /* ---- globals --------------------------------------------------------- */
 
-/* Every "key=value" pair of one section of an ini file, through a callback.
- * GetPrivateProfileSection hands the section over as a double-NUL list. */
+/* Every "key=value" pair of one section of an ini file, through a callback
+ * (the settings module reads the section whole). */
 typedef void (*ksm_pair_fn)(const char *key, const char *val, void *ctx);
 static void ksm_walk_section(const char *ini, const char *section,
                              ksm_pair_fn fn, void *ctx)
 {
-    /* the whole section: one read into 64 KB cut a large one silently */
-    DWORD cap = 65536, got;
-    char *buf, *p;
-    for (;;) {
-        buf = snewn(cap, char);
-        got = GetPrivateProfileSectionA(section, buf, cap, ini);
-        if (got + 2 < cap || cap >= (1u << 24))
-            break;
-        sfree(buf);
-        cap *= 2;
-    }
-    buf[got < cap ? got : cap - 1] = '\0';
-    for (p = buf; got && *p; p += strlen(p) + 1) {
-        char *eq = strchr(p, '=');
-        if (!eq || p[0] == ';' || p[0] == '#') continue;
-        *eq = '\0';
-        fn(p, eq + 1, ctx);
-        *eq = '=';
-    }
-    sfree(buf);
+    kitty_settings_file_section_walk(ini, section, fn, ctx);
 }
 
 struct ksm_ini_copy {
@@ -411,12 +392,11 @@ static void ksm_copy_pair(const char *key, const char *val, void *vctx)
     char have[4];
     if (c->skip_layout && ksm_layout_key(key)) return;
     if (c->only_missing &&
-        GetPrivateProfileStringA(c->section, key, "", have, sizeof(have),
-                                 c->dst) > 0)
+        kitty_settings_file_get(c->dst, c->section, key, have, sizeof(have)) > 0)
         return;                                 /* the registry value won */
     /* store-pairs: write file Shortcuts * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
     /* store-pairs: write file Agent * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
-    if (WritePrivateProfileStringA(c->section, key, val, c->dst)) (*c->n)++;
+    if (kitty_settings_file_write(c->dst, c->section, key, val) == 1) (*c->n)++;
     else (*c->fail)++;
 }
 
@@ -475,7 +455,7 @@ static int ksm_sub_copy_one(const char *name, void *ctx)
     char *val = kitty_settings_reg_stored_dup_at(c->path, name, &type, &len);
     if (!val) { (*c->fail)++; return 1; }
     if (type == REG_SZ) {
-        if (WritePrivateProfileStringA(c->section, name, val, c->dst))
+        if (kitty_settings_file_write(c->dst, c->section, name, val) == 1)
             (*c->n)++;
         else
             (*c->fail)++;
@@ -499,7 +479,7 @@ static int ksm_reg_copy_one(const char *name, void *ctx)
                                                  &type, &len);
     if (!val) { (*c->fail)++; return 1; }
     if (type == REG_SZ && !ksm_layout_key(name)) {
-        if (WritePrivateProfileStringA(ksm_section_of(name), name, val, c->dst))
+        if (kitty_settings_file_write(c->dst, ksm_section_of(name), name, val) == 1)
             (*c->n)++;
         else
             (*c->fail)++;
@@ -609,7 +589,7 @@ static int ksm_globals_from_ini(const char *src, int *fail)
         char *ra = kitty_read_ini_dup(src, INIT_SECTION, KI_RESTRICTACL);
         char *have = kitty_read_ini_dup(cur, INIT_SECTION, KI_RESTRICTACL);
         if (ra && ra[0] && !have) {
-            if (WritePrivateProfileStringA(INIT_SECTION, KI_RESTRICTACL, ra, cur)) n++;
+            if (kitty_settings_file_write(cur, INIT_SECTION, KI_RESTRICTACL, ra) == 1) n++;
             else (*fail)++;
         }
         sfree(ra);
@@ -679,7 +659,7 @@ static void ksm_own_kscp_check(const char *ini, const char *exe, char *val)
     if (_stricmp(v, exe)) return;
     for (i = 0; ksm_companions[i]; i++)
         if (!_stricmp(bs + 1, ksm_companions[i])) {
-            WritePrivateProfileStringA(INIT_SECTION, KI_PSCPPATH, NULL, ini);
+            kitty_settings_file_del(ini, INIT_SECTION, KI_PSCPPATH);
             return;
         }
 }
@@ -1042,10 +1022,10 @@ int kitty_portable_copy_core(const char *dir, const char *pw, int dpapi,
     ksm_own_kscp_path(ini);
     /* without savemode=dir the copy is not a folder store: counted, so
      * the box does not report a copy that will not work as done */
-    if (!WritePrivateProfileStringA(INIT_SECTION, KI_SAVEMODE, "dir", ini))
+    if (kitty_settings_file_write(ini, INIT_SECTION, KI_SAVEMODE, "dir") != 1)
         r->fail++;
-    if (!WritePrivateProfileStringA(INIT_SECTION, KI_PORTABLEPASSWORDPROTECTION,
-                                    dpapi ? "dpapi" : "master", ini))
+    if (kitty_settings_file_write(ini, INIT_SECTION, KI_PORTABLEPASSWORDPROTECTION,
+                                  dpapi ? "dpapi" : "master") != 1)
         r->fail++;
 
     r->programs = ksm_copy_programs(dir, &r->fail);
