@@ -820,10 +820,10 @@ static const IniParam ini_params[] = {
 	INIP_NUM( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_HEIGHT,		IGN,		&ConfigBoxHeight, NULL ),
 	INIP_NUM( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_WINDOWHEIGHT,	IGN,		&ConfigBoxWindowHeight, NULL ),
 	INIP_NUM( KI_SECTION_CONFIGBOX, 0, KI_CONFIGBOX_WINDOWWIDTH,	IGN,		&ConfigBoxWindowWidth, NULL ),
-	INIP_NUM( KI_SECTION_PRINT, 1, KI_PRINT_HEIGHT,			IGN,		&PrintCharSize, NULL ),
-	INIP_NUM( KI_SECTION_PRINT, 1, KI_PRINT_MAXLINE,		IGN,		&PrintMaxLinePerPage, NULL ),
-	INIP_NUM( KI_SECTION_PRINT, 1, KI_PRINT_MAXCHAR,		IGN,		&PrintMaxCharPerLine, NULL ),
-	INIP_KW( KI_SECTION_FONTFALLBACK, 1, KI_FONTFALLBACK_ACTIVE,		1, 0, IGN,	NULL, SetFontFallbackFlag ),
+	INIP_NUM( KI_SECTION_PRINT, 0, KI_PRINT_HEIGHT,			IGN,		&PrintCharSize, NULL ),
+	INIP_NUM( KI_SECTION_PRINT, 0, KI_PRINT_MAXLINE,		IGN,		&PrintMaxLinePerPage, NULL ),
+	INIP_NUM( KI_SECTION_PRINT, 0, KI_PRINT_MAXCHAR,		IGN,		&PrintMaxCharPerLine, NULL ),
+	INIP_KW( KI_SECTION_FONTFALLBACK, 0, KI_FONTFALLBACK_ACTIVE,		1, 0, IGN,	NULL, SetFontFallbackFlag ),
 } ;
 #undef IGN
 
@@ -832,10 +832,22 @@ static void load_ini_params( void ) {
 	size_t i ;
 	for( i = 0 ; i < lenof(ini_params) ; i++ ) {
 		const IniParam *p = &ini_params[i] ;
-		int v ;
-		int found = p->use_readini
-			? readINI( KittyIniFile, p->section, p->key, buffer, sizeof(buffer) )
-			: ReadParameterN( p->section, p->key, buffer, sizeof(buffer) ) ;
+		int v, found ;
+		if( p->use_readini ) {
+			/* kitty.ini only, never the user's registry (restrictacl,
+			 * applicationsettings) - but a policy key first. The
+			 * hardening switch reads the machine key ("Lock for all users") next */
+			char * pv = !stricmp( p->key, KI_RESTRICTACL )
+				? kitty_settings_hardening_dup( p->key, NULL )
+				: kitty_settings_policy_text_dup( p->key ) ;
+			if( pv ) {
+				snprintf( buffer, sizeof(buffer), "%s", pv ) ;
+				free( pv ) ;
+				found = 1 ;
+			} else
+				found = readINI( KittyIniFile, p->section, p->key, buffer, sizeof(buffer) ) ;
+		} else
+			found = ReadParameterN( p->section, p->key, buffer, sizeof(buffer) ) ;
 		if( !found ) continue ;
 		if( p->is_int ) {
 			v = atoi( buffer ) ;
@@ -1144,16 +1156,17 @@ void LoadParameters( void ) {
 	}
 	/* [FontFallback] string settings (kitty/winfont_fallback.c). The
 	 * "active" master switch is handled by the ini_params table above;
-	 * the free-form keys are read here and handed over in one shot.
-	 * NB the mini ini parser matches section/key names case-SENSITIVELY. */
+	 * the free-form keys are read here and handed over in one shot. The
+	 * store in charge: the section's own registry subkey in registry mode
+	 * (kitty_settings_section_subkey), then kitty.ini. */
 	{
 	char fbLog[64]="", *fbList, *fbOvr, *fbLogFile ;
 	/* the lists and the log file in full: cut, a list lost its last
 	 * entries and the log file named another file */
-	fbList = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_FALLBACK ) ;
-	fbOvr = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE ) ;
-	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
-	fbLogFile = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE ) ;
+	fbList = ReadParameterDup( KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_FALLBACK ) ;
+	fbOvr = ReadParameterDup( KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE ) ;
+	ReadParameterN( KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
+	fbLogFile = ReadParameterDup( KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE ) ;
 	winfb_config_set( fbList ? fbList : "", fbOvr ? fbOvr : "", fbLog, fbLogFile ? fbLogFile : "" ) ;
 	sfree( fbList ) ; sfree( fbOvr ) ; sfree( fbLogFile ) ;
 	}

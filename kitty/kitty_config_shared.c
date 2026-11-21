@@ -943,11 +943,11 @@ static const struct kset_key kset_keys[] = {
      * (kitty_session_icons_on), so a change shows in the next one. The
      * Session panel's list follows at once (a new layout). */
     { INIT_SECTION, KI_SESSIONICONS,   KSET_BOOL, false, NULL, kitty_config_session_icons_changed, NULL, 0, 0, 0 },
-    { KI_SECTION_PRINT, KI_PRINT_HEIGHT,              KSET_INT, true, NULL, NULL, &PrintCharSize, 1, 10000, 100 },
-    { KI_SECTION_PRINT, KI_PRINT_MAXLINE,             KSET_INT, true, NULL, NULL, &PrintMaxLinePerPage, 1, 1000, 60 },
-    { KI_SECTION_PRINT, KI_PRINT_MAXCHAR,             KSET_INT, true, NULL, NULL, &PrintMaxCharPerLine, 1, 1000, 85 },
-    { KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_ACTIVE,       KSET_BOOL, true, GetFontFallbackFlag, SetFontFallbackFlag, NULL, 0, 0, 1 },
-    { KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_FALLBACK,     KSET_TEXT, true, NULL, NULL, NULL, 0, 0, 0, NULL, kitty_fontfallback_apply_list },
+    { KI_SECTION_PRINT, KI_PRINT_HEIGHT,              KSET_INT, false, NULL, NULL, &PrintCharSize, 1, 10000, 100 },
+    { KI_SECTION_PRINT, KI_PRINT_MAXLINE,             KSET_INT, false, NULL, NULL, &PrintMaxLinePerPage, 1, 1000, 60 },
+    { KI_SECTION_PRINT, KI_PRINT_MAXCHAR,             KSET_INT, false, NULL, NULL, &PrintMaxCharPerLine, 1, 1000, 85 },
+    { KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_ACTIVE,       KSET_BOOL, false, GetFontFallbackFlag, SetFontFallbackFlag, NULL, 0, 0, 1 },
+    { KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_FALLBACK,     KSET_TEXT, false, NULL, NULL, NULL, 0, 0, 0, NULL, kitty_fontfallback_apply_list },
     /* Connection & reconnect */
     { INIT_SECTION, KI_AUTORECONNECT,  KSET_BOOL, false, GetAutoreconnectFlag, SetAutoreconnectFlag, NULL, 0, 0, 1 },
     { INIT_SECTION, KI_RECONNECTDELAY, KSET_INT, false, GetReconnectDelay, SetReconnectDelay, NULL, 1, 3600, 5 },
@@ -1202,13 +1202,15 @@ static void kset_set_int(const struct kset_key *k, int v)
     else if (k->var) *k->var = v;
 }
 
-/* The registry name is the key (the flat store). A kitty.ini-only key is
- * not in a policy yet. */
+/* The registry name is the key, in its section's subkey for a sectioned
+ * section (kitty_settings_section_subkey). A kitty.ini-only key is not in a
+ * policy yet. */
 bool kitty_kset_policy_held(const void *kset_key)
 {
     const struct kset_key *k = (const struct kset_key *)kset_key;
     return k && !k->file_only &&
-           kitty_settings_policy_source(k->key, -1) != KS_SOURCE_NONE;
+           kitty_settings_policy_source_in(k->section, k->key, -1) !=
+               KS_SOURCE_NONE;
 }
 
 void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)

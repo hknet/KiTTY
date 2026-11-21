@@ -1566,15 +1566,15 @@ char *dirname(char *path);
 
 
 /* The settings tree changed the [FontFallback] fallback list: hand it over
- * together with the three keys it does not edit, read again from the file
- * (they are file-only, and winfb_config_set takes all four at once). */
+ * together with the three keys it does not edit, read again from the store
+ * in charge (winfb_config_set takes all four at once). */
 void kitty_fontfallback_apply_list( const char * list ) {
 	char fbLog[64]="", *fbOvr, *fbLogFile ;
 	/* the override list and the log file in full: cut, the list lost its
 	 * last ranges and the log file named another file */
-	fbOvr = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE ) ;
-	readINI( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
-	fbLogFile = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE ) ;
+	fbOvr = ReadParameterDup( KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_OVERRIDE ) ;
+	ReadParameterN( KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOG, fbLog, sizeof(fbLog) ) ;
+	fbLogFile = ReadParameterDup( KI_SECTION_FONTFALLBACK, KI_FONTFALLBACK_LOGFILE ) ;
 	winfb_config_set( list ? list : "", fbOvr ? fbOvr : "", fbLog, fbLogFile ? fbLogFile : "" ) ;
 	sfree( fbOvr ) ; sfree( fbLogFile ) ;
 }

@@ -1163,6 +1163,19 @@
 
 /* Application/Security */
 #define KT_SECURITY_SECURITY                         "Security"
+/* Application > Security > Hardening: [KiTTY] restrictacl. The checkbox is
+ * kitty.ini's key. Lock for all users writes it, elevated, into the machine
+ * key (kitty_globalsettings.h KS_MACHINE_PATH). */
+#define KT_SEC_HARDENING                             "Hardening"
+#define KT_SEC_HARD_RESTRICTACL                      "Restrict access to KiTTY++'s memory (restrictacl)"
+#define KT_SEC_HARD_NEXTSTART                        "Applies from the next start. Stored in kitty.ini."
+#define KT_SEC_HARD_LOCKED                           "Locked for all users of this PC."
+#define KT_SEC_HARD_ADMIN                            "Set by your administrator."
+#define KT_SEC_HARD_NOINI                            "No kitty.ini (conf=no): nothing to store it in."
+#define KT_SEC_HARD_LOCK                             "Lock for all users..."
+#define KT_SEC_HARD_UNLOCK                           "Unlock..."
+#define KT_SEC_HARD_CANCELLED                        "Nothing changed: the Windows prompt was cancelled."
+#define KT_SEC_HARD_FAILED_FMT                       "Nothing changed: %s"
 #define KT_SECURITY_SSH_AGENT                        "SSH key authentication"
 #define KT_SECURITY_WARN_WHEN_AN_UNVERIFIED_AGENT    "Warn if an unknown agent serves our SSH keys"
 #define KT_SECURITY_WINDOWS_SUPPORTED_FEATURES       "Windows: supported features"
@@ -1364,11 +1377,6 @@
 #define KT_KSET_BACKUPS_DIR_SHOWN                    "Folder-store backups to keep: %d"
 #define KT_KSET_BACKUPS_SAV_PATH                     "Backup file base path: %s"
 #define KT_KSET_BACKUPS_DIR_PATH                     "Backup folder: %s\\Backups"
-#define KT_KSET_HARDENING                            "Hardening"
-#define KT_KSET_RESTRICTACL_ON                       "Restricted process ACL (restrictacl): on"
-#define KT_KSET_RESTRICTACL_OFF                      "Restricted process ACL (restrictacl): off"
-#define KT_KSET_RESTRICTACL_NOTE                     "Read from kitty.ini only, never the registry. Edit the file " \
-        "to change it."
 #define KT_KSET_STORAGE_KICLASS                      "Hive selector (KiClassName): %s"
 #define KT_KSET_STORAGE_KICLASS_DEFAULT              "(default)"
 #define KT_KSET_STORAGE_FILEEXT                      "Session file extension: %s"
@@ -1795,9 +1803,6 @@
 #define KT_KSET_WD_FONTFB_LIST                       "Fonts to try first (comma-separated):"
 #define KT_KSET_WD_FONTFB_LIST_NOTE                  "Font names as Windows shows them, e.g. Symbols Nerd Font Mono, " \
         "JetBrains Mono. A leading ! replaces the built-in list instead of preceding it."
-#define KT_KSET_WD_FONTFB_FILEONLY                   "Kept in kitty.ini in every store mode, with its override and " \
-        "log keys."
-#define KT_KSET_WD_FILEONLY                          "Kept in kitty.ini whatever the store mode."
 
 /* Application/KiTTY++ Settings/Connection & reconnect */
 #define KT_KSET_CN_TITLE                             "Auto-Reconnect-Option and In-Line-Confirmations"

@@ -62,6 +62,7 @@ static void scb_policy_lines(struct controlbox *b);
 #include "kitty_sessorg.h"      /* Organize sessions (hknet/KiTTY#55) */
 #include "kitty_eventids.h"     /* the Event Viewer view: sources and log */
 #include "kitty_scriptbridge.h"  /* the Script bridge leaf: the installation's key */
+#include "kitty_winerr.h"       /* kitty_win_reason: the Hardening group's failure line */
 
 #define KITTY_WORKPLACE_STATE_ON  "Workplace proxy mode is ON for every connection."
 
@@ -2244,6 +2245,131 @@ static void scb_panel_config_window(struct controlbox *b, bool midsession)
  * setup_ca_config_box_at() in ssh/ca-config.c, without its Done button: the
  * configuration box has buttons of its own.
  */
+/*
+ * Application > Security > Hardening: [KiTTY] restrictacl (the restricted
+ * process ACL, kitty_params.c SetRestrictAclFlag). The checkbox is the
+ * kitty.ini key - read from kitty.ini only, never the user's registry, where
+ * a stale value could cancel it. "Lock for all users..." starts kitty.exe
+ * elevated (-machinelock) to write it into the machine key, "Unlock..."
+ * removes it there. A policy key or the machine key holding it greys the
+ * checkbox. Under a policy there is no button.
+ */
+static dlgcontrol *khard_cb, *khard_line, *khard_btn;
+static int khard_refreshing = 0;
+static char *khard_result = NULL;       /* the last Lock/Unlock's failure, or NULL */
+
+static void khard_refresh(dlgparam *dlg)
+{
+    int src = 0;
+    char buf[16] = "";
+    const char *ini = GetKittyIniFile();
+    char *h = kitty_settings_hardening_dup(KI_RESTRICTACL, &src);
+    bool noini = GetNoKittyFileFlag() || !ini || !ini[0];
+    bool on;
+    HWND bh;
+    if (h)
+        on = !stricmp(h, "yes");
+    else
+        /* store-pairs: read file KiTTY restrictacl - kitty.ini only (kitty_params.c rdini row) */
+        on = !noini && readINI(ini, INIT_SECTION, KI_RESTRICTACL, buf, sizeof(buf)) &&
+             !stricmp(buf, "yes");
+    free(h);
+    khard_refreshing = 1;
+    dlg_checkbox_set(khard_cb, dlg, on);
+    khard_refreshing = 0;
+    kitty_dlg_enable(khard_cb, dlg, !src && !noini && !GetReadOnlyFlag());
+    dlg_text_set(khard_line, dlg,
+                 khard_result ? khard_result :
+                 src == KS_SOURCE_MACHINE_KEY ? KT_SEC_HARD_LOCKED :
+                 src ? KT_SEC_HARD_ADMIN :
+                 noini ? KT_SEC_HARD_NOINI : KT_SEC_HARD_NEXTSTART);
+    dlg_label_change(khard_btn, dlg, src == KS_SOURCE_MACHINE_KEY ?
+                     KT_SEC_HARD_UNLOCK : KT_SEC_HARD_LOCK);
+    /* a policy decides: nothing for the machine key to add */
+    kitty_dlg_enable(khard_btn, dlg, src == 0 || src == KS_SOURCE_MACHINE_KEY);
+    /* the UAC shield, as Windows marks a button that needs it */
+    if ((bh = kitty_dlg_ctrl_hwnd(dlg, khard_btn)) != NULL)
+        SendMessage(bh, 0x160C /* BCM_SETSHIELD */, 0, TRUE);
+}
+
+static void khard_cb_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data,
+                             int event)
+{
+    (void)data;
+    if (event == EVENT_REFRESH) {
+        sfree(khard_result);
+        khard_result = NULL;
+        khard_refresh(dlg);
+    } else if (event == EVENT_VALCHANGE && !khard_refreshing) {
+        int src = 0;
+        char *h = kitty_settings_hardening_dup(KI_RESTRICTACL, &src);
+        free(h);
+        if (!src) {
+            /* store-pairs: write file KiTTY restrictacl - the checkbox writes kitty.ini only */
+            writeINI(GetKittyIniFile(), INIT_SECTION, KI_RESTRICTACL,
+                     dlg_checkbox_get(ctrl, dlg) ? "yes" : "no");
+        }
+        khard_refresh(dlg);
+    }
+}
+
+static void khard_line_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data,
+                               int event)
+{
+    (void)ctrl; (void)dlg; (void)data; (void)event;
+}
+
+static void khard_btn_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data,
+                              int event)
+{
+    SHELLEXECUTEINFOA sei;
+    char *exe, *params;
+    int src = 0;
+    char *h;
+    (void)data;
+    if (event != EVENT_ACTION)
+        return;
+    h = kitty_settings_hardening_dup(KI_RESTRICTACL, &src);
+    free(h);
+    if (src != 0 && src != KS_SOURCE_MACHINE_KEY)
+        return;                            /* a policy decides */
+    if ((exe = kitty_module_path_dup(NULL)) == NULL)
+        return;
+    params = dupprintf("-machinelock %s=%s", KI_RESTRICTACL,
+                       src == KS_SOURCE_MACHINE_KEY ? "" : "yes");
+    memset(&sei, 0, sizeof(sei));
+    sei.cbSize = sizeof(sei);
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.hwnd = dlg->hwnd;
+    sei.lpVerb = "runas";
+    sei.lpFile = exe;
+    sei.lpParameters = params;
+    sei.nShow = SW_HIDE;
+    sfree(khard_result);
+    khard_result = NULL;
+    if (ShellExecuteExA(&sei)) {
+        DWORD code = 1;
+        if (sei.hProcess) {
+            WaitForSingleObject(sei.hProcess, 30000);
+            if (!GetExitCodeProcess(sei.hProcess, &code))
+                code = 1;
+            CloseHandle(sei.hProcess);
+        }
+        if (code != 0)
+            khard_result = dupprintf(KT_SEC_HARD_FAILED_FMT,
+                                     kitty_win_reason(ERROR_ACCESS_DENIED));
+    } else if (GetLastError() == ERROR_CANCELLED) {
+        khard_result = dupstr(KT_SEC_HARD_CANCELLED);
+    } else {
+        khard_result = dupprintf(KT_SEC_HARD_FAILED_FMT,
+                                 kitty_win_reason(GetLastError()));
+    }
+    sfree(params);
+    sfree(exe);
+    (void)ctrl;
+    khard_refresh(dlg);
+}
+
 static void scb_panel_security(struct controlbox *b, bool midsession)
 {
     struct controlset *s;
@@ -2251,8 +2377,18 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
     if (midsession)
         return;
 
-    ctrl_settitle(b, "Application/Security", KT_SECURITY_SECURITY);
-    s = ctrl_getset(b, "Application/Security", "agent", KT_SECURITY_SSH_AGENT);
+    ctrl_settitle(b, KCFG_PATH_SECURITY, KT_SECURITY_SECURITY);
+    s = ctrl_getset(b, KCFG_PATH_SECURITY, "hardening", KT_SEC_HARDENING);
+    khard_cb = ctrl_checkbox(s, KT_SEC_HARD_RESTRICTACL, NO_SHORTCUT,
+                             HELPCTX(kitty_storage), khard_cb_handler, P(NULL));
+    khard_line = ctrl_text(s, KT_SEC_HARD_NEXTSTART, HELPCTX(kitty_storage));
+    khard_line->handler = khard_line_handler;
+    ctrl_columns(s, 2, 55, 45);
+    khard_btn = ctrl_pushbutton(s, KT_SEC_HARD_LOCK, NO_SHORTCUT,
+                                HELPCTX(kitty_storage), khard_btn_handler, P(NULL));
+    khard_btn->column = 1;
+    ctrl_columns(s, 1, 100);
+    s = ctrl_getset(b, KCFG_PATH_SECURITY, "agent", KT_SECURITY_SSH_AGENT);
     ctrl_checkbox(s, KT_SECURITY_WARN_WHEN_AN_UNVERIFIED_AGENT,
                   NO_SHORTCUT, HELPCTX(kitty_verifyagent),
                   kitty_verifyagent_handler, P(NULL));
@@ -2261,7 +2397,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
      * most of what goes missing on an old system protects something - Windows
      * Hello, encrypted memory for secrets - and because someone who has read
      * the line once needs somewhere to turn it off. */
-    s = ctrl_getset(b, "Application/Security", "thiswindows",
+    s = ctrl_getset(b, KCFG_PATH_SECURITY, "thiswindows",
                     KT_SECURITY_WINDOWS_SUPPORTED_FEATURES);
     ctrl_checkbox(s, KT_SECURITY_NOTIFY_UNSUPPORTED_LIBS,
                   NO_SHORTCUT, HELPCTX(kitty_missing_features),
@@ -2279,7 +2415,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
      * switch per program, each read when that program starts, and the
      * button that opens the Event Viewer on them. kageant's agent log has
      * its own switch in kageant (agentlogsink). */
-    s = ctrl_getset(b, "Application/Security", "winevent",
+    s = ctrl_getset(b, KCFG_PATH_SECURITY, "winevent",
                     KT_SECURITY_WINDOWS_EVENT_LOG);
     ctrl_checkbox(s, KT_SECURITY_EVLOG_SESSIONS, NO_SHORTCUT,
                   HELPCTX(kitty_windows_eventlog), kitty_kset_handler,
@@ -2298,7 +2434,7 @@ static void scb_panel_security(struct controlbox *b, bool midsession)
      * command lines - is not the automation's alone, so its group is here,
      * at the bottom of the panel. Same KiTTY++ Settings machinery
      * (kitty_kset_handler over the kset_keys table), only the panel moved. */
-    s = ctrl_getset(b, "Application/Security", "diag", KT_SECURITY_DIAGNOSTICS);
+    s = ctrl_getset(b, KCFG_PATH_SECURITY, "diag", KT_SECURITY_DIAGNOSTICS);
     ctrl_checkbox(s, KT_KSET_TW_DEBUG, NO_SHORTCUT, HELPCTX(kitty_verifyagent),
                   kitty_kset_handler, P((void *)kset_find(KI_DEBUG)));
 
@@ -3819,22 +3955,21 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_CHECKBOX(s, KT_KSET_WD_SESSIONICONS, KI_SESSIONICONS, kitty_appearance);
 
     /* Terminal > Font Fallback: the master switch greys the list below it.
-     * Both keys live in [FontFallback] of kitty.ini in every store mode. */
+     * [FontFallback] is stored as every setting is: the registry (its own
+     * subkey, kitty_settings_section_subkey) or kitty.ini. */
     ctrl_settitle(b, KSET_PATH("Terminal/Font Fallback"), KT_KSET_WD_FONTFB_TITLE);
     s = ctrl_getset(b, KSET_PATH("Terminal/Font Fallback"), "fontfb", KT_KSET_WD_FONTFB);
     m = KSET_MASTER_CHECKBOX(s, KT_KSET_WD_FONTFB_ACTIVE, KI_FONTFALLBACK_ACTIVE, kitty_kset_fontfb);
     m->context2 = P(KSET_TEXTBOX(s, KT_KSET_WD_FONTFB_LIST, KI_FONTFALLBACK_FALLBACK, kitty_kset_fontfb));
     ctrl_text(s, KT_KSET_WD_FONTFB_LIST_NOTE, HELPCTX(kitty_kset_fontfb));
-    ctrl_text(s, KT_KSET_WD_FONTFB_FILEONLY, HELPCTX(kitty_kset_fontfb));
 
-    /* Terminal > Printing: the layout of KiTTY's own text printout ([Print]
-     * in kitty.ini whatever the store mode). */
+    /* Terminal > Printing: the layout of KiTTY's own text printout ([Print],
+     * its own registry subkey in registry mode). */
     ctrl_settitle(b, KSET_PATH("Terminal/Printing"), KT_KSET_WD_PRINTING_TITLE);
     s = ctrl_getset(b, KSET_PATH("Terminal/Printing"), "printing", KT_KSET_WD_PRINTING);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_PITCH, KI_PRINT_HEIGHT, kitty_kset_printing);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_LINES, KI_PRINT_MAXLINE, kitty_kset_printing);
     KSET_NUMBER(s, KT_KSET_WD_PRINT_CHARS, KI_PRINT_MAXCHAR, kitty_kset_printing);
-    ctrl_text(s, KT_KSET_WD_FILEONLY, HELPCTX(kitty_kset_printing));
 
     /* ---- Connection & reconnect ---- */
     ctrl_settitle(b, KSET_PATH("Reconnect & Prompts"), KT_KSET_CN_TITLE);
@@ -5701,11 +5836,6 @@ static void scb_panel_kitty_settings(struct controlbox *b, bool midsession)
     /* restrictacl: display only, on purpose. It is the one key read from
      * kitty.ini alone so that a stale registry value can never cancel a
      * hardening switch, and a control here would write to the registry. */
-    s = ctrl_getset(b, storage, "hardening", KT_KSET_HARDENING);
-    ctrl_text(s, restricted_acl() ? KT_KSET_RESTRICTACL_ON
-                                  : KT_KSET_RESTRICTACL_OFF,
-              HELPCTX(kitty_storage));
-    ctrl_text(s, KT_KSET_RESTRICTACL_NOTE, HELPCTX(kitty_storage));
 
     /* The rest of what the store is: which hive, which session-file
      * extension, which legacy salt - display only, each would move or

@@ -678,6 +678,12 @@ static char *kts_kg_base(void) { return dupstr(kitty_registry_base()); }
 static char *kts_kg_theme_eff(void) { return kitty_testdoor_int_dup(kitty_theme_app_pref()); }
 static char *kts_kg_cu_eff(void) { return kitty_testdoor_int_dup(kitty_check_update_enabled()); }
 static char *kts_kg_print_h(void) { return kitty_testdoor_int_dup(PrintCharSize); }
+/* [Print] height into the store in charge: its own registry subkey in
+ * registry mode (kitty_settings_section_subkey) */
+static int kts_ks_print_h(const char *v) { return WriteParameter(KI_SECTION_PRINT, KI_PRINT_HEIGHT, (char *)v); }
+/* the process ACL restricted (restrictacl from a policy, the machine key or
+ * kitty.ini, or -restrict-acl) */
+static char *kts_kg_restrictacl(void) { return kitty_testdoor_int_dup(restricted_acl() ? 1 : 0); }
 static char *kts_kg_cfgbox_h(void) { return kitty_testdoor_int_dup(GetConfigBoxHeight()); }
 /* a state value (KiTTYState file or the hive) and a window position */
 static char *kts_kg_state(void) { char *v = kitty_state_get_dup("QaProbeState"); return v ? v : dupstr("<null>"); }
@@ -911,7 +917,8 @@ void kitty_testdoor_settings_kitty(void)
         { "showforeign.effective", kts_kg_showforeign_effective, kts_ks_showforeign_effective },
         { "theme.effective", kts_kg_theme_eff, NULL },
         { "checkupdate.effective", kts_kg_cu_eff, NULL },
-        { "print.height", kts_kg_print_h, NULL },
+        { "print.height", kts_kg_print_h, kts_ks_print_h },
+        { "restrictacl.state", kts_kg_restrictacl, NULL },
         { "configbox.height", kts_kg_cfgbox_h, NULL },
         { "state.QaProbeState", kts_kg_state, kts_ks_state },
         { "auxpos.QaProbe", NULL, kts_ks_auxpos },

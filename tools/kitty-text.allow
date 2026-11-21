@@ -165,11 +165,6 @@ hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Config Window"
 hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Config Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Config Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Config Window" | hard-coded before the check, move to kitty_text.h when the code is next changed
-hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
-hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
-hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
-hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
-hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Security/Certificate Authorities" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_app.c | ctrl_getset "Application/Security/Certificate Authorities" | hard-coded before the check, move to kitty_text.h when the code is next changed
 hardcoded | kitty/kitty_config_app.c | ctrl_settitle "Application/Security/Interactive Login" | hard-coded before the check, move to kitty_text.h when the code is next changed

@@ -81,11 +81,11 @@ static int ksm_layout_key(const char *name)
  * hive in registry mode). The others live in the file only, whatever the
  * save mode. */
 static const char *const ksm_param_sections[] = {
-    KI_SECTION_CONFIGBOX, KI_SECTION_LAUNCHER, NULL
+    KI_SECTION_CONFIGBOX, KI_SECTION_LAUNCHER, KI_SECTION_PRINT,
+    KI_SECTION_FONTFALLBACK, NULL
 };
 static const char *const ksm_file_sections[] = {
-    KI_SECTION_SHORTCUTS, KI_SECTION_PRINT, KI_SECTION_AGENT,
-    KI_SECTION_FONTFALLBACK, NULL
+    KI_SECTION_SHORTCUTS, KI_SECTION_AGENT, NULL
 };
 
 /* [KiTTY] keys read from kitty.ini only, whatever the save mode
@@ -415,9 +415,7 @@ static void ksm_copy_pair(const char *key, const char *val, void *vctx)
                                  c->dst) > 0)
         return;                                 /* the registry value won */
     /* store-pairs: write file Shortcuts * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
-    /* store-pairs: write file Print * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
     /* store-pairs: write file Agent * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
-    /* store-pairs: write file FontFallback * - ksm_globals_from_ini: a file-only section into the kitty.ini in use */
     if (WritePrivateProfileStringA(c->section, key, val, c->dst)) (*c->n)++;
     else (*c->fail)++;
 }
@@ -466,6 +464,26 @@ static const char *ksm_section_of(const char *name)
     return INIT_SECTION;
 }
 
+/* One value of a sectioned section's own registry subkey ([Print],
+ * [FontFallback]: kitty_settings_section_subkey) into that section of the
+ * copy's kitty.ini (ksm_globals_to_ini). */
+struct ksm_sub_copy { const char *dst, *section, *path; int *n, *fail; };
+static int ksm_sub_copy_one(const char *name, void *ctx)
+{
+    struct ksm_sub_copy *c = (struct ksm_sub_copy *)ctx;
+    DWORD type = 0, len = 0;
+    char *val = kitty_settings_reg_stored_dup_at(c->path, name, &type, &len);
+    if (!val) { (*c->fail)++; return 1; }
+    if (type == REG_SZ) {
+        if (WritePrivateProfileStringA(c->section, name, val, c->dst))
+            (*c->n)++;
+        else
+            (*c->fail)++;
+    }
+    free(val);
+    return 1;
+}
+
 /* Registry hive in use + kitty.ini in use -> <dst ini>. The registry wins
  * where both hold a key, as it does for the running copy (ReadParameterN).
  * In folder mode the store in use IS a kitty.ini, so its [KiTTY] section is
@@ -500,6 +518,20 @@ static int ksm_globals_to_ini(const char *dst, int *fail)
          * each whole */
         struct ksm_reg_copy rc = { dst, &n, fail };
         kitty_settings_reg_names_at(kitty_registry_base(), ksm_reg_copy_one, &rc);
+        /* the sectioned sections' subkeys, each into its section */
+        for (i = 0; ksm_param_sections[i]; i++) {
+            const char *sub = kitty_settings_section_subkey(ksm_param_sections[i]);
+            struct ksm_sub_copy sc = { dst, sub, NULL, &n, fail };
+            char *path;
+            if (!sub)
+                continue;
+            path = dupprintf("%s\\%s", kitty_registry_base(), sub);
+            sc.path = path;
+            /* store-pairs: read param Print * - ksm_globals_to_ini: the section's registry subkey into the copy */
+            /* store-pairs: read param FontFallback * - ksm_globals_to_ini: the section's registry subkey into the copy */
+            kitty_settings_reg_names_at(path, ksm_sub_copy_one, &sc);
+            sfree(path);
+        }
         c.only_missing = 1;
     }
     if (cur && cur[0] && ksm_file_exists(cur)) {
@@ -553,6 +585,8 @@ static void ksm_param_pair(const char *key, const char *val, void *vctx)
      *   (ksm_file_only_key) */
     /* store-pairs: write param ConfigBox * !KI_CONFIGBOX_APPLICATIONSETTINGS - a store move into the store in use (ksm_param_sections). applicationsettings is kitty.ini only */
     /* store-pairs: write param Launcher * !dblclick !noticeseconds - a store move into the store in use (ksm_param_sections). The old names are written under the new ones */
+    /* store-pairs: write param Print * - a store move into the store in use (ksm_param_sections): the section's own registry subkey */
+    /* store-pairs: write param FontFallback * - a store move into the store in use (ksm_param_sections): the section's own registry subkey */
     if (WriteParameter(c->section, key, v)) (*c->n)++;
     else (*c->fail)++;
     sfree(v);

@@ -94,6 +94,7 @@ kitty/kitty_oldwin.c | kitty_oldwin_RegGetValueA | the stand-ins for APIs newer 
 kitty/kitty_storemove.c | ksm_walk_section | the store move: a kitty.ini section read whole
 kitty/kitty_storemove.c | ksm_copy_pair | the store move: a kitty.ini key copied to the new kitty.ini
 kitty/kitty_storemove.c | ksm_reg_copy_one | the store move: a hive value written to the new kitty.ini
+kitty/kitty_storemove.c | ksm_sub_copy_one | the store move: a [Print] / [FontFallback] subkey value written to the new kitty.ini
 kitty/kitty_storemove.c | ksm_globals_from_ini | the store move: restrictacl written to the kitty.ini left behind
 kitty/kitty_storemove.c | ksm_own_kscp_check | the store move: pscppath removed from the new kitty.ini
 kitty/kitty_storemove.c | kitty_portable_copy_core | the store move: savemode and the password protection of a new portable copy

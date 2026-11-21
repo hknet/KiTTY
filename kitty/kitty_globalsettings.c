@@ -73,6 +73,27 @@ static void *ks_key_value_dup(HKEY root, const char *path, const char *name,
  * key for 32-bit and 64-bit programs (not redirected). */
 #define KS_POLICY_PATH "Software\\Policies\\kapper.net\\KiTTY++"
 
+const char *kitty_settings_section_subkey(const char *section)
+{
+    if (!section)
+        return NULL;
+    if (!_stricmp(section, KI_SECTION_PRINT))
+        return KI_SECTION_PRINT;
+    if (!_stricmp(section, KI_SECTION_FONTFALLBACK))
+        return KI_SECTION_FONTFALLBACK;
+    return NULL;
+}
+
+/* base, or base\sub (malloc'd, free() it), NULL without memory */
+static char *ks_path_dup(const char *base, const char *sub)
+{
+    size_t n = strlen(base) + (sub ? strlen(sub) + 1 : 0) + 1;
+    char *p = malloc(n);
+    if (p)
+        snprintf(p, n, sub ? "%s\\%s" : "%s", base, sub);
+    return p;
+}
+
 
 /* One reading of a policy value for every program: a REG_SZ not empty or a
  * REG_DWORD, as text (a DWORD as its decimal number) or as a number (a
@@ -81,18 +102,24 @@ static void *ks_key_value_dup(HKEY root, const char *path, const char *name,
  * the next key is read. */
 enum { KS_POL_TEXT, KS_POL_DWORD };
 
-/* The text whole (free() it) or, KS_POL_DWORD, a malloc'd DWORD. */
-static void *ks_policy_dup(const char *name, int want, int *src)
+/* The text whole (free() it) or, KS_POL_DWORD, a malloc'd DWORD. sub: the
+ * section's subkey of the policy key (kitty_settings_section_subkey), NULL
+ * for the key itself. */
+static void *ks_policy_dup_in(const char *sub, const char *name, int want,
+                              int *src)
 {
     static const HKEY roots[2] = { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER };
     int i;
+    char *path;
     if (!name || !name[0])
+        return NULL;
+    if ((path = ks_path_dup(KS_POLICY_PATH, sub)) == NULL)
         return NULL;
     for (i = 0; i < 2; i++) {
         DWORD t = 0, n = 0, num = 0;
         int have = 0;
         void *out = NULL;
-        unsigned char *v = ks_key_value_dup(roots[i], KS_POLICY_PATH, name,
+        unsigned char *v = ks_key_value_dup(roots[i], path, name,
                                             KEY_QUERY_VALUE, &t, &n);
         if (!v)
             continue;
@@ -121,20 +148,32 @@ static void *ks_policy_dup(const char *name, int want, int *src)
         free(v);
         if (out) {
             if (src) *src = i ? KS_SOURCE_USER_POLICY : KS_SOURCE_MACHINE_POLICY;
+            free(path);
             return out;
         }
     }
+    free(path);
     return NULL;
 }
 
-static int ks_policy_has(const char *name, int want)
+static void *ks_policy_dup(const char *name, int want, int *src)
+{
+    return ks_policy_dup_in(NULL, name, want, src);
+}
+
+static int ks_policy_has_in(const char *sub, const char *name, int want)
 {
     int src = 0;
-    void *v = ks_policy_dup(name, want, &src);
+    void *v = ks_policy_dup_in(sub, name, want, &src);
     if (!v)
         return 0;
     free(v);
     return src;
+}
+
+static int ks_policy_has(const char *name, int want)
+{
+    return ks_policy_has_in(NULL, name, want);
 }
 
 char *kitty_settings_policy_text_dup(const char *name)
@@ -145,6 +184,71 @@ char *kitty_settings_policy_text_dup(const char *name)
 int kitty_settings_policy_source(const char *name, int dword)
 {
     return ks_policy_has(name, dword > 0 ? KS_POL_DWORD : KS_POL_TEXT);
+}
+
+char *kitty_settings_hardening_dup(const char *name, int *src)
+{
+    DWORD t = 0, n = 0;
+    unsigned char *v;
+    char *out = ks_policy_dup(name, KS_POL_TEXT, src);
+    if (out)
+        return out;
+    v = ks_key_value_dup(HKEY_LOCAL_MACHINE, KS_MACHINE_PATH, name,
+                         KEY_QUERY_VALUE | KEY_WOW64_64KEY, &t, &n);
+    if (!v)
+        return NULL;
+    if (t == REG_SZ && v[0])
+        out = _strdup((const char *)v);
+    else if (t == REG_DWORD && n == 4) {
+        DWORD num;
+        char txt[16];
+        memcpy(&num, v, sizeof(num));
+        snprintf(txt, sizeof(txt), "%s", num ? "yes" : "no");
+        out = _strdup(txt);
+    }
+    free(v);
+    if (out && src)
+        *src = KS_SOURCE_MACHINE_KEY;
+    return out;
+}
+
+int kitty_settings_machine_set(const char *name, const char *value)
+{
+    HKEY k;
+    LONG rc;
+    if (value)
+        rc = RegCreateKeyExA(HKEY_LOCAL_MACHINE, KS_MACHINE_PATH, 0, NULL, 0,
+                             KEY_SET_VALUE | KEY_WOW64_64KEY, NULL, &k, NULL);
+    else
+        rc = RegOpenKeyExA(HKEY_LOCAL_MACHINE, KS_MACHINE_PATH, 0,
+                           KEY_SET_VALUE | KEY_WOW64_64KEY, &k);
+    if (rc != ERROR_SUCCESS) {
+        if (!value && rc == ERROR_FILE_NOT_FOUND)
+            return 1;                      /* nothing there to remove */
+        SetLastError((DWORD)rc);
+        return 0;
+    }
+    if (value)
+        rc = RegSetValueExA(k, name, 0, REG_SZ, (const BYTE *)value,
+                            (DWORD)(strlen(value) + 1));
+    else {
+        rc = RegDeleteValueA(k, name);
+        if (rc == ERROR_FILE_NOT_FOUND)
+            rc = ERROR_SUCCESS;
+    }
+    RegCloseKey(k);
+    if (rc != ERROR_SUCCESS) {
+        SetLastError((DWORD)rc);
+        return 0;
+    }
+    return 1;
+}
+
+int kitty_settings_policy_source_in(const char *section, const char *name,
+                                    int dword)
+{
+    return ks_policy_has_in(kitty_settings_section_subkey(section), name,
+                            dword > 0 ? KS_POL_DWORD : KS_POL_TEXT);
 }
 
 /* A REG_SZ value whole (free() it), NULL when it is absent, empty or of
@@ -460,14 +564,19 @@ int kitty_settings_file_del(const char *file, const char *section,
 char *kitty_settings_kitty_read_dup(const char *ini_path, int dir_mode,
                                     const char *section, const char *key)
 {
-    char *v = ks_policy_dup(key, KS_POL_TEXT, NULL);
+    const char *sub = kitty_settings_section_subkey(section);
+    char *v = ks_policy_dup_in(sub, key, KS_POL_TEXT, NULL), *path;
     if (v)                           /* a policy holds it: every save mode */
         return v;
     if (dir_mode)
         /* Portable directory mode is registry-independent: a stale HKCU
          * value of an installed copy is never read. */
         return kitty_settings_file_read_dup(ini_path, section, key);
-    v = ks_reg_any_dup(kitty_settings_hive(KS_HIVE_RUNTIME), key);
+    /* a flat section: the hive's own value, a sectioned one: its subkey's */
+    if ((path = ks_path_dup(kitty_settings_hive(KS_HIVE_RUNTIME), sub)) != NULL) {
+        v = ks_reg_any_dup(path, key);
+        free(path);
+    }
     if (!v)
         v = kitty_settings_file_read_dup(ini_path, section, key);
     return v;
@@ -477,30 +586,37 @@ int kitty_settings_kitty_write(const char *ini_path, int dir_mode,
                                const char *section, const char *key,
                                const char *value)
 {
-    const char *hive;
+    const char *sub = kitty_settings_section_subkey(section);
+    char *hive;
     HKEY k = NULL;
     LONG rc;
-    if (ks_policy_has(key, KS_POL_TEXT))
+    if (ks_policy_has_in(sub, key, KS_POL_TEXT))
         return KITTY_POLICY_REFUSED;
     if (dir_mode)
         return kitty_settings_file_write(ini_path, section, key, value);
-    /* The hive in use, the one the read side looks at, the section dropped
+    /* The hive in use, the one the read side looks at: the section dropped
      * (a write to the vendor key plus the section name, read from somewhere
-     * else, made a setting come back with its old value for ever). */
-    hive = kitty_settings_hive(KS_HIVE_RUNTIME);
-    if (!hive[0])
+     * else, made a setting come back with its old value for ever), but a
+     * sectioned section's own subkey (kitty_settings_section_subkey). */
+    if (!kitty_settings_hive(KS_HIVE_RUNTIME)[0])
         return 0;
-    if (kitty_store_ro_regpath(1, hive))
+    if ((hive = ks_path_dup(kitty_settings_hive(KS_HIVE_RUNTIME), sub)) == NULL)
+        return 0;
+    if (kitty_store_ro_regpath(1, hive)) {
+        free(hive);
         return KITTY_RO_REFUSED;
+    }
     if (RegOpenKeyExA(HKEY_CURRENT_USER, hive, 0, KEY_WRITE, &k) !=
             ERROR_SUCCESS) {
         /* the reason stays in GetLastError() for the caller's report */
         if ((rc = RegCreateKeyA(HKEY_CURRENT_USER, hive, &k)) !=
                 ERROR_SUCCESS) {
+            free(hive);
             SetLastError((DWORD)rc);
             return 0;
         }
     }
+    free(hive);
     rc = RegSetValueExA(k, key, 0, REG_SZ, (const BYTE *)value,
                         (DWORD)(strlen(value) + 1));
     RegCloseKey(k);

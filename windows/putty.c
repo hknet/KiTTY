@@ -35,6 +35,7 @@ void kitty_demo_templates(void);
 #include "../kitty/kitty_secretstore.h"
 #include "../kitty/kitty_commands.h"   /* kitty_cli_help_box */
 #include "../kitty/kitty_inifile.h"    /* kitty_store_readonly: readonly=yes */
+#include "../kitty/kitty_globalsettings.h"   /* -machinelock: the machine key */
 #include "../kitty/kitty_serialports.h"   /* quick connect to a serial line */
 #include "kitty_gui.h"
 #endif
@@ -686,6 +687,21 @@ void gui_term_process_cmdline(Conf *conf, char *cmdline)
                                KT_CAP_ERROR, MB_OK | MB_ICONERROR);
                 sfree(ef);
                 cleanup_exit(0);
+            } else if (!strcmp(p, "-machinelock") && arglistpos < arglist->nargs) {
+                /* KiTTY: Application > Security > Hardening, "Lock for all
+                 * users..." / "Unlock...", starts this elevated: one
+                 * hardening switch into the machine key (kitty_globalsettings.h
+                 * KS_MACHINE_PATH), "name=" removes it. Only the names and
+                 * values listed. Exit 0 done, 1 not done. */
+                const char *a = cmdline_arg_to_str(arglist->args[arglistpos++]);
+                const char *eq = a ? strchr(a, '=') : NULL;
+                size_t nl = strlen(KI_RESTRICTACL);
+                int ok = 0;
+                if (eq && (size_t)(eq - a) == nl && !strnicmp(a, KI_RESTRICTACL, nl) &&
+                    (!eq[1] || !stricmp(eq + 1, "yes")))
+                    ok = kitty_settings_machine_set(KI_RESTRICTACL,
+                                                    eq[1] ? eq + 1 : NULL);
+                cleanup_exit(ok ? 0 : 1);
             } else if (!strcmp(p, "-fileassoc")) {
                 /* Register the KiTTY .ktx file association, then quit. Same
                  * options and the same manners as -sshhandler below: machine

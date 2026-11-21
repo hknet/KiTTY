@@ -10475,9 +10475,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
      * both is harmless.
      */
     {
+        /* a policy key, then the machine key ("Lock for all users"), then
+         * kitty.ini - never the user's registry */
         char b[16];
-        if (kitty_inifile_read(KI_SECTION_KITTY, KI_RESTRICTACL, b, sizeof(b)) &&
-            !stricmp(b, "yes"))
+        char *h = kitty_settings_hardening_dup(KI_RESTRICTACL, NULL);
+        int on = h ? !stricmp(h, "yes")
+                   : (kitty_inifile_read(KI_SECTION_KITTY, KI_RESTRICTACL, b,
+                                         sizeof(b)) && !stricmp(b, "yes"));
+        free(h);
+        if (on)
             restrict_process_acl();
     }
 

@@ -29,11 +29,38 @@
 enum {
     KS_SOURCE_NONE,
     KS_SOURCE_MACHINE_POLICY,  /* HKLM\Software\Policies\... */
-    KS_SOURCE_USER_POLICY      /* HKCU\Software\Policies\... */
+    KS_SOURCE_USER_POLICY,     /* HKCU\Software\Policies\... */
+    KS_SOURCE_MACHINE_KEY      /* HKLM\Software\kapper.net\KiTTY++: a hardening
+                                * switch locked for all users */
 };
 /* Which policy key holds the registry name: KS_SOURCE_*. dword 1: for a
  * reader of numbers, else for a reader of text. */
 int kitty_settings_policy_source(const char *name, int dword);
+/* The same for a setting of a kitty.ini section: a sectioned one
+ * (kitty_settings_section_subkey) is read from its subkey of the policy
+ * key. */
+int kitty_settings_policy_source_in(const char *section, const char *name,
+                                    int dword);
+/* The registry subkey of a kitty.ini section that has one ([Print],
+ * [FontFallback]: the flat hive would hold [Print] height and [ConfigBox]
+ * height as one value), NULL for a flat section ([KiTTY], [ConfigBox], ...).
+ * The user's hive and the policy key use the same subkeys. */
+const char *kitty_settings_section_subkey(const char *section);
+
+/* The machine key of KiTTY++'s own (not a Policies key - those are Group
+ * Policy's): HKLM, the same 64-bit view for the 32-bit and the 64-bit
+ * programs. Written only by an elevated "Lock for all users", read only for
+ * the hardening switches. */
+#define KS_MACHINE_PATH "Software\\kapper.net\\KiTTY++"
+/* A hardening switch ([KiTTY] restrictacl): a policy key's value, else the
+ * machine key's, as text (free() it), NULL when neither holds it - the
+ * caller reads kitty.ini then, never the user's registry. src: KS_SOURCE_*
+ * of the answer (may be NULL). */
+char *kitty_settings_hardening_dup(const char *name, int *src);
+/* "Lock for all users": the value into the machine key (value NULL: the
+ * value removed). Needs an elevated process. 1 done, 0 failed (the reason
+ * in GetLastError()). */
+int kitty_settings_machine_set(const char *name, const char *value);
 /* A policy's value of the registry name as text (free() it), NULL when no
  * policy key holds one. */
 char *kitty_settings_policy_text_dup(const char *name);

@@ -15,6 +15,7 @@
 
 /* The panel paths more than one of these files uses. Everything under
  * "Application/" is the second tab; KSET_PATH is a KiTTY++ Settings leaf. */
+#define KCFG_PATH_SECURITY      "Application/Security"
 #define KCFG_PATH_HOSTKEYS      "Application/Security/Host Keys"
 #define KCFG_PATH_HOSTKEY_SETTINGS "Application/Security/Host Keys/Settings"
 #define KCFG_PATH_APPLICATIONS  "Application/Security/Applications"

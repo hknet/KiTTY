@@ -8,7 +8,8 @@ KiTTY++ keeps its global settings in two stores:
   (kitty/kitty_params.c). With savemode=dir that is kitty.ini only. Otherwise
   it is the registry hive in use first, with kitty.ini as the read fallback.
   The hive is FLAT: WriteParameter drops the section, so [A] x and [B] x are
-  one registry value.
+  one registry value - except [Print] and [FontFallback], which keep a
+  subkey of their own (kitty_settings_section_subkey, SUBKEY_SECTIONS).
 - file: kitty.ini only, in every save mode. readINI / writeINI / delINI /
   kitty_read_ini_dup, kitty_inifile_read / kitty_inifile_read_dup /
   kitty_inifile_write, kitty_profile_string_dup, Get/WritePrivateProfileString.
@@ -777,6 +778,11 @@ def collect(recs):
     return keys
 
 
+# The sections with a registry subkey of their own (kitty_globalsettings.c
+# kitty_settings_section_subkey): their keys never share a flat value.
+SUBKEY_SECTIONS = ("print", "fontfallback")
+
+
 def findings_of(keys):
     """[(id, text lines)]: store mismatches and flat-name collisions."""
     out = []
@@ -801,7 +807,7 @@ def findings_of(keys):
             out.append(((sec.lower(), key.lower()), lines))
     by_name = OrderedDict()
     for (s, k), e in keys.items():
-        if k == "*":
+        if k == "*" or s in SUBKEY_SECTIONS:
             continue
         if PARAM in e[R] or PARAM in e[W]:
             by_name.setdefault(k, []).append(e)
