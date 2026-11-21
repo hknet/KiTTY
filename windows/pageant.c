@@ -1537,6 +1537,14 @@ void kageant_keylist_flash_changed(void)
     SetTimer(keylist, KEYLIST_FLASH_TIMER, 150, NULL);
 }
 
+/* KiTTY: a policy key holds the setting of that registry name (a DWORD,
+ * kitty_globalsettings.h): its tray item and key-list radios are greyed,
+ * a click on them changes nothing. */
+static bool ka_policy_holds(const char *regname)
+{
+    return kitty_settings_policy_source(regname, 1) != KS_SOURCE_NONE;
+}
+
 static void keylist_sync_confirm_radios(void)
 {
     int m;
@@ -1547,6 +1555,13 @@ static void keylist_sync_confirm_radios(void)
                      m == KAGEANT_CONFIRM_YES ? IDC_KEYLIST_CONFIRM_YES :
                      m == KAGEANT_CONFIRM_NO  ? IDC_KEYLIST_CONFIRM_NO  :
                                                 IDC_KEYLIST_CONFIRM_AUTO);
+    {
+        BOOL live = !ka_policy_holds("ConfirmKeyUse");
+        EnableWindow(GetDlgItem(keylist, IDC_KEYLIST_CONFIRM_LABEL), live);
+        EnableWindow(GetDlgItem(keylist, IDC_KEYLIST_CONFIRM_YES), live);
+        EnableWindow(GetDlgItem(keylist, IDC_KEYLIST_CONFIRM_AUTO), live);
+        EnableWindow(GetDlgItem(keylist, IDC_KEYLIST_CONFIRM_NO), live);
+    }
 }
 
 static void tray_sync_confirm_check(void)
@@ -7134,11 +7149,17 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
          * line is filled only when the ini is the authoritative store. */
         {
             int m = kageant_confirm_mode();
+            BOOL live = !ka_policy_holds("ConfirmKeyUse");
             CheckRadioButton(hwnd, IDC_KEYLIST_CONFIRM_YES,
                 IDC_KEYLIST_CONFIRM_NO,
                 m == KAGEANT_CONFIRM_YES ? IDC_KEYLIST_CONFIRM_YES :
                 m == KAGEANT_CONFIRM_NO  ? IDC_KEYLIST_CONFIRM_NO  :
                                            IDC_KEYLIST_CONFIRM_AUTO);
+            /* a policy key's mode: greyed */
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_CONFIRM_LABEL), live);
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_CONFIRM_YES), live);
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_CONFIRM_AUTO), live);
+            EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_CONFIRM_NO), live);
         }
         if (kageant_ini_status()) {
             char *inimsg = dupprintf(KT_KAKEYS_INI_STATUS_FMT,
@@ -7475,18 +7496,30 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
             keylist_update();
             return 0;
           case IDC_KEYLIST_CONFIRM_YES:
+            if (ka_policy_holds("ConfirmKeyUse")) {   /* greyed */
+                keylist_sync_confirm_radios();
+                return 0;
+            }
             kageant_confirm_set_mode(KAGEANT_CONFIRM_YES);
             kageant_setting_failure_box(hwnd);
             keylist_sync_confirm_radios();   /* back to what is stored */
             tray_sync_confirm_check();
             return 0;
           case IDC_KEYLIST_CONFIRM_AUTO:
+            if (ka_policy_holds("ConfirmKeyUse")) {
+                keylist_sync_confirm_radios();
+                return 0;
+            }
             kageant_confirm_set_mode(KAGEANT_CONFIRM_AUTO);
             kageant_setting_failure_box(hwnd);
             keylist_sync_confirm_radios();
             tray_sync_confirm_check();
             return 0;
           case IDC_KEYLIST_CONFIRM_NO:
+            if (ka_policy_holds("ConfirmKeyUse")) {
+                keylist_sync_confirm_radios();
+                return 0;
+            }
             kageant_confirm_set_mode(KAGEANT_CONFIRM_NO);
             kageant_setting_failure_box(hwnd);
             keylist_sync_confirm_radios();
@@ -9041,6 +9074,15 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
             EnableMenuItem(systray_menu, IDM_RESUME_CONFIRM, MF_BYCOMMAND |
                            (kageant_confirm_suppressed() ? MF_ENABLED
                                                          : MF_GRAYED));
+            /* KiTTY: a setting a policy key holds: its item greyed */
+            CheckMenuItem(systray_menu, IDM_LOAD_KEYS, MF_BYCOMMAND |
+                          (kageant_startup_get() ? MF_CHECKED : MF_UNCHECKED));
+            EnableMenuItem(systray_menu, IDM_NOTIFY_KEYUSE, MF_BYCOMMAND |
+                           (ka_policy_holds("NotifyOnKeyUse") ? MF_GRAYED : MF_ENABLED));
+            EnableMenuItem(systray_menu, IDM_CONFIRM_KEYUSE, MF_BYCOMMAND |
+                           (ka_policy_holds("ConfirmKeyUse") ? MF_GRAYED : MF_ENABLED));
+            EnableMenuItem(systray_menu, IDM_LOAD_KEYS, MF_BYCOMMAND |
+                           (ka_policy_holds("LoadKeysOnStartup") ? MF_GRAYED : MF_ENABLED));
             /* KiTTY: Lock agent / Unlock agent, after the state. A Windows
              * lock still set here means its unlock was never announced (a
              * remote desktop reconnect can do that): Unlock clears it too. */
@@ -9289,6 +9331,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
              * item. Key FILE PATHS are stored, never passphrases or key
              * material, and they come back encrypted (deferred). */
             int on = !kageant_startup_get();
+            if (ka_policy_holds("LoadKeysOnStartup"))
+                break;                       /* greyed: the policy's value */
             if (!kageant_startup_set(on)) {
                 kageant_setting_failure_box(NULL);
                 break;
@@ -9308,6 +9352,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
           case IDM_NOTIFY_KEYUSE: {
             /* KiTTY: toggle the "a key was used to authenticate" tray balloon. */
             int on = !kageant_notify_get();
+            if (ka_policy_holds("NotifyOnKeyUse"))
+                break;                       /* greyed: the policy's value */
             if (!kageant_notify_set(on)) {
                 kageant_setting_failure_box(NULL);
                 break;
@@ -9319,6 +9365,8 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
           case IDM_CONFIRM_KEYUSE: {
             /* KiTTY: toggle the confirm-before-every-key-use prompt. */
             int on = !kageant_confirm_get();
+            if (ka_policy_holds("ConfirmKeyUse"))
+                break;                       /* greyed: the policy's value */
             if (!kageant_confirm_set(on)) {
                 kageant_setting_failure_box(NULL);
                 break;
