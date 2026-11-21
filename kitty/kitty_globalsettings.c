@@ -244,6 +244,20 @@ int kitty_settings_machine_set(const char *name, const char *value)
     return 1;
 }
 
+/* the policy key's Recommended subkey (and its section subkey) */
+static void *ks_recommended_dup(const char *sub, const char *name, int want)
+{
+    char path[64];
+    snprintf(path, sizeof(path), sub ? "Recommended\\%s" : "Recommended", sub);
+    return ks_policy_dup_in(path, name, want, NULL);
+}
+
+char *kitty_settings_recommended_text_dup(const char *section, const char *name)
+{
+    return ks_recommended_dup(kitty_settings_section_subkey(section), name,
+                              KS_POL_TEXT);
+}
+
 int kitty_settings_policy_source_in(const char *section, const char *name,
                                     int dword)
 {
@@ -568,17 +582,22 @@ char *kitty_settings_kitty_read_dup(const char *ini_path, int dir_mode,
     char *v = ks_policy_dup_in(sub, key, KS_POL_TEXT, NULL), *path;
     if (v)                           /* a policy holds it: every save mode */
         return v;
-    if (dir_mode)
+    if (dir_mode) {
         /* Portable directory mode is registry-independent: a stale HKCU
          * value of an installed copy is never read. */
-        return kitty_settings_file_read_dup(ini_path, section, key);
-    /* a flat section: the hive's own value, a sectioned one: its subkey's */
-    if ((path = ks_path_dup(kitty_settings_hive(KS_HIVE_RUNTIME), sub)) != NULL) {
-        v = ks_reg_any_dup(path, key);
-        free(path);
-    }
-    if (!v)
         v = kitty_settings_file_read_dup(ini_path, section, key);
+    } else {
+        /* a flat section: the hive's own value, a sectioned one: its subkey's */
+        if ((path = ks_path_dup(kitty_settings_hive(KS_HIVE_RUNTIME), sub)) != NULL) {
+            v = ks_reg_any_dup(path, key);
+            free(path);
+        }
+        if (!v)
+            v = kitty_settings_file_read_dup(ini_path, section, key);
+    }
+    /* the user's own value absent: an administrator's recommended one */
+    if (!v)
+        v = ks_recommended_dup(sub, key, KS_POL_TEXT);
     return v;
 }
 
@@ -903,7 +922,17 @@ int kitty_settings_reg_dword(int hive, const char *name, int *value)
         *value = (int)v;
         return 1;
     }
-    return kitty_settings_reg_dword_at(kitty_settings_hive(hive), name, value);
+    if (kitty_settings_reg_dword_at(kitty_settings_hive(hive), name, value))
+        return 1;
+    /* the user's own value absent: an administrator's recommended one */
+    if ((p = ks_recommended_dup(NULL, name, KS_POL_DWORD)) != NULL) {
+        DWORD v;
+        memcpy(&v, p, sizeof(v));
+        free(p);
+        *value = (int)v;
+        return 1;
+    }
+    return 0;
 }
 
 char *kitty_settings_reg_str_dup(int hive, const char *name)
@@ -911,7 +940,10 @@ char *kitty_settings_reg_str_dup(int hive, const char *name)
     char *p = ks_policy_dup(name, KS_POL_TEXT, NULL);
     if (p)
         return p;
-    return kitty_settings_reg_str_dup_at(kitty_settings_hive(hive), name);
+    if ((p = kitty_settings_reg_str_dup_at(kitty_settings_hive(hive), name)) != NULL)
+        return p;
+    /* the user's own value absent: an administrator's recommended one */
+    return ks_recommended_dup(NULL, name, KS_POL_TEXT);
 }
 
 int kitty_settings_reg_set(int hive, const char *name, DWORD type, const void *data, DWORD len)
@@ -1079,6 +1111,9 @@ char *kitty_settings_read_dup(const struct kitty_setting *s)
         if (!v && s->rule == KS_RULE_CHARGE_FIRST)
             v = ks_checked(s, ks_reg_sz_dup(hive, s->regname));
     }
+    /* the user's own value absent: an administrator's recommended one */
+    if (!v)
+        v = ks_checked(s, ks_recommended_dup(NULL, s->regname, KS_POL_TEXT));
     return v;
 }
 

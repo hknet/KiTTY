@@ -2271,10 +2271,18 @@ static void khard_refresh(dlgparam *dlg)
     HWND bh;
     if (h)
         on = !stricmp(h, "yes");
-    else
+    else {
         /* store-pairs: read file KiTTY restrictacl - kitty.ini only (kitty_params.c rdini row) */
-        on = !noini && readINI(ini, INIT_SECTION, KI_RESTRICTACL, buf, sizeof(buf)) &&
-             !stricmp(buf, "yes");
+        if (!noini && readINI(ini, INIT_SECTION, KI_RESTRICTACL, buf, sizeof(buf)))
+            on = !stricmp(buf, "yes");
+        else {
+            /* the user's own value absent: an administrator's recommended
+             * one, shown live - not a lock */
+            char *r = kitty_settings_recommended_text_dup(NULL, KI_RESTRICTACL);
+            on = r && !stricmp(r, "yes");
+            free(r);
+        }
+    }
     free(h);
     khard_refreshing = 1;
     dlg_checkbox_set(khard_cb, dlg, on);

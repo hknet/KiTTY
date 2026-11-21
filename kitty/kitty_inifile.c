@@ -400,6 +400,13 @@ static int inifile_boot_get(const char *file, const char *key, char *buf,
     buf[0] = '\0';
     if (file)
         kitty_settings_file_get(file, KI_SECTION_KITTY, key, buf, len);
+    if (!buf[0]) {                      /* an administrator's recommended one */
+        char *r = kitty_settings_recommended_text_dup(NULL, key);
+        if (r) {
+            snprintf(buf, len, "%s", r);
+            free(r);
+        }
+    }
     return 0;
 }
 
@@ -455,6 +462,11 @@ int kitty_inifile_read(const char *section, const char *key,
         return value[0] != '\0';
     }
     kitty_settings_file_get(f, section, key, value, (DWORD)len);
+    if (!value[0] && inifile_boot_key(section, key) &&
+        (p = kitty_settings_recommended_text_dup(NULL, key)) != NULL) {
+        snprintf(value, len, "%s", p);   /* an administrator's recommended one */
+        free(p);
+    }
     return value[0] != '\0';
 }
 
@@ -478,6 +490,8 @@ char *kitty_inifile_read_dup(const char *section, const char *key)
         free(v);
         v = NULL;
     }
+    if (!v && inifile_boot_key(section, key))
+        v = kitty_settings_recommended_text_dup(NULL, key);
     return v;
 }
 
@@ -496,6 +510,13 @@ static int inifile_readonly_read(void)
     if (f)
         kitty_settings_file_get(f, KI_SECTION_KITTY, KI_READONLY, buf,
                                 sizeof(buf));
+    if (!buf[0]) {                      /* an administrator's recommended one */
+        char *r = kitty_settings_recommended_text_dup(NULL, KI_READONLY);
+        if (r) {
+            snprintf(buf, sizeof(buf), "%s", r);
+            free(r);
+        }
+    }
     return !stricmp(buf, "YES");
 }
 
@@ -514,7 +535,7 @@ int kitty_inifile_readonly(void)
         return 0;
     if (!GetFileAttributesExA(inifile_path, GetFileExInfoStandard, &fa) ||
         (fa.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        return 0;                       /* no file: nothing reads readonly=yes */
+        return inifile_readonly_read(); /* no file: only a recommended one */
     if (ro_cached >= 0 && ro_path && !stricmp(ro_path, inifile_path) &&
         CompareFileTime(&fa.ftLastWriteTime, &ro_time) == 0 &&
         fa.nFileSizeLow == ro_size_lo && fa.nFileSizeHigh == ro_size_hi)
@@ -563,6 +584,10 @@ int kitty_inifile_noconf(void)
     buf[0] = '\0';
     if ((f = kitty_inifile_file()) != NULL)
         kitty_settings_file_get(f, KI_SECTION_KITTY, KI_CONF, buf, sizeof(buf));
+    if (!buf[0] && (p = kitty_settings_recommended_text_dup(NULL, KI_CONF)) != NULL) {
+        snprintf(buf, sizeof(buf), "%s", p);   /* an administrator's recommended one */
+        free(p);
+    }
     return !stricmp(buf, "NO");
 }
 

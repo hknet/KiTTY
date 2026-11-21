@@ -847,6 +847,12 @@ static void load_ini_params( void ) {
 				found = 1 ;
 			} else
 				found = readINI( KittyIniFile, p->section, p->key, buffer, sizeof(buffer) ) ;
+			if( !found && ( pv = kitty_settings_recommended_text_dup( NULL, p->key ) ) != NULL ) {
+				/* the user's own value absent: an administrator's recommended one */
+				snprintf( buffer, sizeof(buffer), "%s", pv ) ;
+				free( pv ) ;
+				found = 1 ;
+			}
 		} else
 			found = ReadParameterN( p->section, p->key, buffer, sizeof(buffer) ) ;
 		if( !found ) continue ;

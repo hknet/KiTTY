@@ -47,6 +47,13 @@ int kitty_settings_policy_source_in(const char *section, const char *name,
  * The user's hive and the policy key use the same subkeys. */
 const char *kitty_settings_section_subkey(const char *section);
 
+/* An administrator's recommended value (free() it): the policy key's
+ * Recommended subkey, HKLM then HKCU, the section's subkey below it for a
+ * sectioned section. Not a lock: read only where the user's own value is
+ * absent, never greyed, the user's own value written as ever. NULL when none
+ * is recommended. section may be NULL ([KiTTY], [ConfigBox]). */
+char *kitty_settings_recommended_text_dup(const char *section, const char *name);
+
 /* The machine key of KiTTY++'s own (not a Policies key - those are Group
  * Policy's): HKLM, the same 64-bit view for the 32-bit and the 64-bit
  * programs. Written only by an elevated "Lock for all users", read only for
