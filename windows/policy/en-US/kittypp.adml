@@ -1,0 +1,505 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <displayName>KiTTY++</displayName>
+  <description>Group Policy settings of KiTTY++ and its SSH agent kageant.</description>
+  <resources>
+    <stringTable>
+      <string id="SUPPORTED_KiTTYpp_0_85_1_22">KiTTY++ 0.85.1.22 and later</string>
+      <string id="Cat_KiTTYpp">KiTTY++</string>
+      <string id="Cat_Store">Settings store</string>
+      <string id="Cat_Hardening">Hardening</string>
+      <string id="Cat_Agent">kageant (SSH agent)</string>
+      <string id="Cat_AgentKeys">Keys and notifications</string>
+      <string id="Cat_AgentAccess">Requests from client programs</string>
+      <string id="Cat_AgentLog">Agent log</string>
+      <string id="Cat_KiTTYpp_Rec">KiTTY++ - Default Settings (users can override)</string>
+      <string id="Cat_Hardening_Rec">Hardening</string>
+      <string id="Cat_Agent_Rec">kageant (SSH agent)</string>
+      <string id="Cat_AgentKeys_Rec">Keys and notifications</string>
+      <string id="Cat_AgentAccess_Rec">Requests from client programs</string>
+      <string id="Cat_AgentLog_Rec">Agent log</string>
+      <string id="SaveMode">Settings store type</string>
+      <string id="SaveMode_Help">Specifies where KiTTY++ stores its sessions and settings.
+
+registry: the Windows registry (the default for kitty.exe).
+dir: one file per session in the program folder, the portable store (the default for kitty_portable.exe).
+file: the registry, with a .sav file imported at startup if the registry key is missing. Legacy mode.
+
+All KiTTY++ programs apply this policy setting, including kitty_portable.exe. The /savemode command and the store buttons are rejected.
+
+Registry value: savemode (REG_SZ).</string>
+      <string id="SaveMode_registry">registry</string>
+      <string id="SaveMode_dir">dir (portable)</string>
+      <string id="SaveMode_file">file (legacy)</string>
+      <string id="ReadOnly">Make the settings store read-only</string>
+      <string id="ReadOnly_Help">If you enable this policy setting, no KiTTY++ program writes to the settings store. Changes apply to the running process only. Saving a session and the store commands are rejected with &quot;Set by your administrator&quot;.
+
+If you disable this policy setting, the store is writable. A readonly=yes entry in kitty.ini is ignored.
+
+Registry value: readonly (REG_SZ yes or no).</string>
+      <string id="KiClassName">Window class name and registry key</string>
+      <string id="KiClassName_Help">PuTTY: KiTTY++ registers the PuTTY window class and stores its sessions under the PuTTY registry key (Software\SimonTatham\PuTTY), shared with an installed PuTTY.
+
+If you do not configure this policy setting, KiTTY++ uses its own window class and registry key (Software\kapper.net\KiTTY).
+
+Registry value: KiClassName (REG_SZ).</string>
+      <string id="RestrictAcl">Restrict access to KiTTY++ processes</string>
+      <string id="RestrictAcl_Help">If you enable this policy setting, kitty.exe and kageant restrict the access rights that other processes of the same user have to them (the process ACL), like the -restrict-acl command-line option.
+
+This policy setting takes precedence over the machine-wide lock an administrator sets in the program (Application &gt; Security &gt; Hardening).
+
+Registry value: restrictacl (REG_SZ yes or no).</string>
+      <string id="RestrictAcl_Recommended">Restrict access to KiTTY++ processes</string>
+      <string id="RestrictAcl_Recommended_Help">If you enable this policy setting, kitty.exe and kageant restrict the access rights that other processes of the same user have to them (the process ACL), like the -restrict-acl command-line option.
+
+This policy setting takes precedence over the machine-wide lock an administrator sets in the program (Application &gt; Security &gt; Hardening).
+
+Registry value: restrictacl (REG_SZ yes or no).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="HideApplicationTab">Hide the Application tab</string>
+      <string id="HideApplicationTab_Help">If you enable this policy setting, the configuration window has no Application tab. None of its panels is created. -cfgpanel Application/... and the buttons that link to it open the Session tab.
+
+If you disable this policy setting, the tab is shown.
+
+Registry value: applicationsettings (REG_SZ no to hide, yes to show).</string>
+      <string id="HideApplicationTab_Recommended">Hide the Application tab</string>
+      <string id="HideApplicationTab_Recommended_Help">If you enable this policy setting, the configuration window has no Application tab. None of its panels is created. -cfgpanel Application/... and the buttons that link to it open the Session tab.
+
+If you disable this policy setting, the tab is shown.
+
+Registry value: applicationsettings (REG_SZ no to hide, yes to show).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="ConfirmKeyUse">Require confirmation for key use</string>
+      <string id="ConfirmKeyUse_Help">Specifies which key uses require confirmation before the key signs.
+
+Keys that request it: only keys whose comment contains &quot;confirmation&quot; (the default).
+Every key use: confirmation for each signature.
+Never: no confirmation. Requests in key comments are ignored as well. A key set to confirm with Windows Hello still requires confirmation.
+
+Registry value: ConfirmKeyUse (REG_DWORD 0, 1 or 2).</string>
+      <string id="ConfirmKeyUse_ConfirmAuto">Keys that request it</string>
+      <string id="ConfirmKeyUse_ConfirmEvery">Every key use</string>
+      <string id="ConfirmKeyUse_ConfirmNever">Never</string>
+      <string id="ConfirmKeyUse_Recommended">Require confirmation for key use</string>
+      <string id="ConfirmKeyUse_Recommended_Help">Specifies which key uses require confirmation before the key signs.
+
+Keys that request it: only keys whose comment contains &quot;confirmation&quot; (the default).
+Every key use: confirmation for each signature.
+Never: no confirmation. Requests in key comments are ignored as well. A key set to confirm with Windows Hello still requires confirmation.
+
+Registry value: ConfirmKeyUse (REG_DWORD 0, 1 or 2).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="HelloConfirm">Confirm key use with Windows Hello</string>
+      <string id="HelloConfirm_Help">If you enable this policy setting, every key-use confirmation requires Windows Hello verification (biometrics or the device PIN) instead of a Yes button. If Windows Hello is not available, the request is rejected.
+
+Registry value: HelloConfirm (REG_DWORD).</string>
+      <string id="HelloConfirm_Recommended">Confirm key use with Windows Hello</string>
+      <string id="HelloConfirm_Recommended_Help">If you enable this policy setting, every key-use confirmation requires Windows Hello verification (biometrics or the device PIN) instead of a Yes button. If Windows Hello is not available, the request is rejected.
+
+Registry value: HelloConfirm (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="NotifyOnKeyUse">Notify on key use</string>
+      <string id="NotifyOnKeyUse_Help">If you enable this policy setting, a notification shows the key after each signature. A key that another program adds or removes triggers a notification that names that program.
+
+Registry value: NotifyOnKeyUse (REG_DWORD).</string>
+      <string id="NotifyOnKeyUse_Recommended">Notify on key use</string>
+      <string id="NotifyOnKeyUse_Recommended_Help">If you enable this policy setting, a notification shows the key after each signature. A key that another program adds or removes triggers a notification that names that program.
+
+Registry value: NotifyOnKeyUse (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="NotifyOnKeyArrival">Notify when startup keys become available</string>
+      <string id="NotifyOnKeyArrival_Help">If you enable this policy setting (the default), a notification appears when missing startup keys become available on a drive. The agent log records them in either case.
+
+Registry value: NotifyOnKeyArrival (REG_DWORD).</string>
+      <string id="NotifyOnKeyArrival_Recommended">Notify when startup keys become available</string>
+      <string id="NotifyOnKeyArrival_Recommended_Help">If you enable this policy setting (the default), a notification appears when missing startup keys become available on a drive. The agent log records them in either case.
+
+Registry value: NotifyOnKeyArrival (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="NoticeTimeout">Notification display time</string>
+      <string id="NoticeTimeout_Help">The number of seconds kageant's notifications are displayed (2 to 120). If you do not configure this policy setting, each notification uses its own default.
+
+Registry value: NoticeTimeout (REG_DWORD).</string>
+      <string id="NoticeTimeout_Recommended">Notification display time</string>
+      <string id="NoticeTimeout_Recommended_Help">The number of seconds kageant's notifications are displayed (2 to 120). If you do not configure this policy setting, each notification uses its own default.
+
+Registry value: NoticeTimeout (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="LoadKeysOnStartup">Load remembered keys at startup</string>
+      <string id="LoadKeysOnStartup_Help">If you enable this policy setting, kageant loads the remembered key files at startup in encrypted form. The passphrase is required at first use. Only the file paths are stored.
+
+Registry value: LoadKeysOnStartup (REG_DWORD).</string>
+      <string id="LoadKeysOnStartup_Recommended">Load remembered keys at startup</string>
+      <string id="LoadKeysOnStartup_Recommended_Help">If you enable this policy setting, kageant loads the remembered key files at startup in encrypted form. The passphrase is required at first use. Only the file paths are stored.
+
+Registry value: LoadKeysOnStartup (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="RetryKeys">Load startup keys from newly attached drives</string>
+      <string id="RetryKeys_Help">Specifies what kageant does with startup keys that were missing at startup when a drive is attached.
+
+Never: the keys remain missing.
+From the stored path: the keys are loaded from their stored drive and path (the default).
+From any drive letter: the keys are also searched for at their stored path on the newly attached drive. A key is loaded only if its fingerprint matches the stored one.
+
+Registry value: RetryKeys (REG_DWORD 0, 1 or 2).</string>
+      <string id="RetryKeys_RetryNever">Never</string>
+      <string id="RetryKeys_RetryPath">From the stored path</string>
+      <string id="RetryKeys_RetryAnyDrive">From any drive letter</string>
+      <string id="RetryKeys_Recommended">Load startup keys from newly attached drives</string>
+      <string id="RetryKeys_Recommended_Help">Specifies what kageant does with startup keys that were missing at startup when a drive is attached.
+
+Never: the keys remain missing.
+From the stored path: the keys are loaded from their stored drive and path (the default).
+From any drive letter: the keys are also searched for at their stored path on the newly attached drive. A key is loaded only if its fingerprint matches the stored one.
+
+Registry value: RetryKeys (REG_DWORD 0, 1 or 2).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="UnloadOnRemove">Unload keys when their drive is removed</string>
+      <string id="UnloadOnRemove_Help">If you enable this policy setting, a key whose drive is removed is unloaded from the agent until the drive is attached again. Disabled by default, so removing a USB drive does not interrupt a login in progress.
+
+Registry value: UnloadOnRemove (REG_DWORD).</string>
+      <string id="UnloadOnRemove_Recommended">Unload keys when their drive is removed</string>
+      <string id="UnloadOnRemove_Recommended_Help">If you enable this policy setting, a key whose drive is removed is unloaded from the agent until the drive is attached again. Disabled by default, so removing a USB drive does not interrupt a login in progress.
+
+Registry value: UnloadOnRemove (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="QuietMissingKeys">Suppress notifications for missing startup keys</string>
+      <string id="QuietMissingKeys_Help">If you enable this policy setting, no notification appears at startup for startup keys whose drive is not present. A key file that exists but fails to load is still reported.
+
+Registry value: QuietMissingKeys (REG_DWORD).</string>
+      <string id="QuietMissingKeys_Recommended">Suppress notifications for missing startup keys</string>
+      <string id="QuietMissingKeys_Recommended_Help">If you enable this policy setting, no notification appears at startup for startup keys whose drive is not present. A key file that exists but fails to load is still reported.
+
+Registry value: QuietMissingKeys (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="PassphraseCacheSeconds">Passphrase cache time</string>
+      <string id="PassphraseCacheSeconds_Help">The number of seconds an entered passphrase is kept, encrypted in memory, to unlock further keys of the same batch (0 to 300, 0 = not cached). Default: 60.
+
+Registry value: PassphraseCacheSeconds (REG_DWORD).</string>
+      <string id="PassphraseCacheSeconds_Recommended">Passphrase cache time</string>
+      <string id="PassphraseCacheSeconds_Recommended_Help">The number of seconds an entered passphrase is kept, encrypted in memory, to unlock further keys of the same batch (0 to 300, 0 = not cached). Default: 60.
+
+Registry value: PassphraseCacheSeconds (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="HelloCacheSeconds">Windows Hello cache time</string>
+      <string id="HelloCacheSeconds_Help">The number of seconds one Windows Hello verification also unlocks further protected keys (0 to 300, 0 = verification each time). Default: 60.
+
+Registry value: HelloCacheSeconds (REG_DWORD).</string>
+      <string id="HelloCacheSeconds_Recommended">Windows Hello cache time</string>
+      <string id="HelloCacheSeconds_Recommended_Help">The number of seconds one Windows Hello verification also unlocks further protected keys (0 to 300, 0 = verification each time). Default: 60.
+
+Registry value: HelloCacheSeconds (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AutoEncryptMode">Re-encrypt idle keys</string>
+      <string id="AutoEncryptMode_Help">Passphrase-protected keys are re-encrypted after the timeout of &quot;Re-encryption timeout&quot;.
+
+Off: no timeout (the default).
+Keys without their own timeout: the timeout applies to keys that set none.
+All keys: the timeout applies to every key.
+
+Registry value: AutoEncryptMode (REG_DWORD 0, 1 or 2).</string>
+      <string id="AutoEncryptMode_AutoEncOff">Off</string>
+      <string id="AutoEncryptMode_AutoEncDefault">Keys without their own timeout</string>
+      <string id="AutoEncryptMode_AutoEncEnforce">All keys</string>
+      <string id="AutoEncryptMode_Recommended">Re-encrypt idle keys</string>
+      <string id="AutoEncryptMode_Recommended_Help">Passphrase-protected keys are re-encrypted after the timeout of &quot;Re-encryption timeout&quot;.
+
+Off: no timeout (the default).
+Keys without their own timeout: the timeout applies to keys that set none.
+All keys: the timeout applies to every key.
+
+Registry value: AutoEncryptMode (REG_DWORD 0, 1 or 2).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AutoEncryptSeconds">Re-encryption timeout</string>
+      <string id="AutoEncryptSeconds_Help">The number of seconds after a key was decrypted or last used for a signature before it is encrypted again: 1 = immediately after each signature, otherwise 30 to 604800 (7 days). Values from 2 to 29 are treated as 30. Default: 600.
+
+Registry value: AutoEncryptSeconds (REG_DWORD).</string>
+      <string id="AutoEncryptSeconds_Recommended">Re-encryption timeout</string>
+      <string id="AutoEncryptSeconds_Recommended_Help">The number of seconds after a key was decrypted or last used for a signature before it is encrypted again: 1 = immediately after each signature, otherwise 30 to 604800 (7 days). Values from 2 to 29 are treated as 30. Default: 600.
+
+Registry value: AutoEncryptSeconds (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="LockWithWindows">Action when Windows is locked</string>
+      <string id="LockWithWindows_Help">Specifies what happens to the agent when Windows is locked.
+
+No action (the default).
+Lock the agent.
+Re-encrypt the keys.
+
+Registry value: LockWithWindows (REG_DWORD 0, 1 or 2).</string>
+      <string id="LockWithWindows_WinLockKeep">No action</string>
+      <string id="LockWithWindows_WinLockLock">Lock the agent</string>
+      <string id="LockWithWindows_WinLockReencrypt">Re-encrypt the keys</string>
+      <string id="LockWithWindows_Recommended">Action when Windows is locked</string>
+      <string id="LockWithWindows_Recommended_Help">Specifies what happens to the agent when Windows is locked.
+
+No action (the default).
+Lock the agent.
+Re-encrypt the keys.
+
+Registry value: LockWithWindows (REG_DWORD 0, 1 or 2).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="ReadKnownHosts">Read the OpenSSH known_hosts file</string>
+      <string id="ReadKnownHosts_Help">If you enable this policy setting, %USERPROFILE%\.ssh\known_hosts is a source of host names for the agent log, the confirmation dialog and the rule editor. If you disable this policy setting (the default), kageant never opens the file. KiTTY++ never writes to it.
+
+Registry value: ReadKnownHosts (REG_DWORD).</string>
+      <string id="ReadKnownHosts_Recommended">Read the OpenSSH known_hosts file</string>
+      <string id="ReadKnownHosts_Recommended_Help">If you enable this policy setting, %USERPROFILE%\.ssh\known_hosts is a source of host names for the agent log, the confirmation dialog and the rule editor. If you disable this policy setting (the default), kageant never opens the file. KiTTY++ never writes to it.
+
+Registry value: ReadKnownHosts (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="BlockIpcAdd">Block keys added by client programs</string>
+      <string id="BlockIpcAdd_Help">If you enable this policy setting, a key that another program adds is rejected. Together with &quot;Block key removal by client programs&quot;, no program can change the loaded keys. kageant's own buttons are not affected.
+
+Registry value: BlockIpcAdd (REG_DWORD).</string>
+      <string id="BlockIpcAdd_Recommended">Block keys added by client programs</string>
+      <string id="BlockIpcAdd_Recommended_Help">If you enable this policy setting, a key that another program adds is rejected. Together with &quot;Block key removal by client programs&quot;, no program can change the loaded keys. kageant's own buttons are not affected.
+
+Registry value: BlockIpcAdd (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="BlockIpcRemove">Block key removal by client programs</string>
+      <string id="BlockIpcRemove_Help">If you enable this policy setting, a remove or remove-all request from another program is rejected. Signing and listing keys are not affected.
+
+Registry value: BlockIpcRemove (REG_DWORD).</string>
+      <string id="BlockIpcRemove_Recommended">Block key removal by client programs</string>
+      <string id="BlockIpcRemove_Recommended_Help">If you enable this policy setting, a remove or remove-all request from another program is rejected. Signing and listing keys are not affected.
+
+Registry value: BlockIpcRemove (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AllowIpcLock">Allow client programs to lock the agent</string>
+      <string id="AllowIpcLock_Help">If you enable this policy setting, programs can lock and unlock the agent (ssh-add -x and -X). If you disable this policy setting (the default), only the tray menu locks and unlocks it.
+
+Registry value: AllowIpcLock (REG_DWORD).</string>
+      <string id="AllowIpcLock_Recommended">Allow client programs to lock the agent</string>
+      <string id="AllowIpcLock_Recommended_Help">If you enable this policy setting, programs can lock and unlock the agent (ssh-add -x and -X). If you disable this policy setting (the default), only the tray menu locks and unlocks it.
+
+Registry value: AllowIpcLock (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="BlockForwardedChanges">Block changes through agent forwarding</string>
+      <string id="BlockForwardedChanges_Help">If you enable this policy setting (the default), add, remove, lock and unlock requests from a program on a server the agent is forwarded to are rejected. Listing and signing are not affected. A connection counts as forwarded only if its client sends session-bind marked for forwarding.
+
+Registry value: BlockForwardedChanges (REG_DWORD).</string>
+      <string id="BlockForwardedChanges_Recommended">Block changes through agent forwarding</string>
+      <string id="BlockForwardedChanges_Recommended_Help">If you enable this policy setting (the default), add, remove, lock and unlock requests from a program on a server the agent is forwarded to are rejected. Listing and signing are not affected. A connection counts as forwarded only if its client sends session-bind marked for forwarding.
+
+Registry value: BlockForwardedChanges (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AllowWmCopyData">Allow requests by window messages</string>
+      <string id="AllowWmCopyData_Help">If you enable this policy setting, requests by window messages (WM_COPYDATA) are accepted. Programs built on PuTTY before 0.75 connect to the agent this way. kageant cannot identify the program that sends such a request. If you disable this policy setting (the default), they are rejected.
+
+Registry value: AllowWmCopyData (REG_DWORD).</string>
+      <string id="AllowWmCopyData_Recommended">Allow requests by window messages</string>
+      <string id="AllowWmCopyData_Recommended_Help">If you enable this policy setting, requests by window messages (WM_COPYDATA) are accepted. Programs built on PuTTY before 0.75 connect to the agent this way. kageant cannot identify the program that sends such a request. If you disable this policy setting (the default), they are rejected.
+
+Registry value: AllowWmCopyData (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="OpenSSHPipe">Serve the Windows OpenSSH agent pipe</string>
+      <string id="OpenSSHPipe_Help">If you enable this policy setting, kageant also serves \\.\pipe\openssh-ssh-agent for ssh.exe, ssh-add and other OpenSSH clients. If another program already owns that pipe, kageant serves only its own pipe.
+
+Registry value: OpenSSHPipe (REG_DWORD).</string>
+      <string id="OpenSSHPipe_Recommended">Serve the Windows OpenSSH agent pipe</string>
+      <string id="OpenSSHPipe_Recommended_Help">If you enable this policy setting, kageant also serves \\.\pipe\openssh-ssh-agent for ssh.exe, ssh-add and other OpenSSH clients. If another program already owns that pipe, kageant serves only its own pipe.
+
+Registry value: OpenSSHPipe (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="ExtraPipe">Additional named pipe</string>
+      <string id="ExtraPipe_Help">An additional pipe name that kageant serves as \\.\pipe\&lt;name&gt;. The name persists across restarts. Allowed characters: letters, digits, '.', '_' and '-', up to 200.
+
+Registry value: ExtraPipe (REG_SZ).</string>
+      <string id="ExtraPipe_Recommended">Additional named pipe</string>
+      <string id="ExtraPipe_Recommended_Help">An additional pipe name that kageant serves as \\.\pipe\&lt;name&gt;. The name persists across restarts. Allowed characters: letters, digits, '.', '_' and '-', up to 200.
+
+Registry value: ExtraPipe (REG_SZ).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="SetSshAuthSock">Set SSH_AUTH_SOCK</string>
+      <string id="SetSshAuthSock_Help">If you enable this policy setting, the user's SSH_AUTH_SOCK environment variable points to the additional named pipe. Programs started afterwards use it. A value set by someone else is not overwritten.
+
+Registry value: SetSshAuthSock (REG_DWORD).</string>
+      <string id="SetSshAuthSock_Recommended">Set SSH_AUTH_SOCK</string>
+      <string id="SetSshAuthSock_Recommended_Help">If you enable this policy setting, the user's SSH_AUTH_SOCK environment variable points to the additional named pipe. Programs started afterwards use it. A value set by someone else is not overwritten.
+
+Registry value: SetSshAuthSock (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AgentLog">Enable the agent log</string>
+      <string id="AgentLog_Help">If you enable this policy setting (the default), kageant records what it does with keys, as signed and chained entries, at the destination set by &quot;Agent log destination&quot;.
+
+Registry value: AgentLog (REG_DWORD).</string>
+      <string id="AgentLog_Recommended">Enable the agent log</string>
+      <string id="AgentLog_Recommended_Help">If you enable this policy setting (the default), kageant records what it does with keys, as signed and chained entries, at the destination set by &quot;Agent log destination&quot;.
+
+Registry value: AgentLog (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AgentLogPath">Agent log file path</string>
+      <string id="AgentLogPath_Help">The full path of the log file. If you do not configure this policy setting: next to kitty.ini for a portable copy, otherwise %LOCALAPPDATA%\kapper.net\KiTTY\kageant.log. Environment variables are not expanded.
+
+Registry value: AgentLogPath (REG_SZ).</string>
+      <string id="AgentLogPath_Recommended">Agent log file path</string>
+      <string id="AgentLogPath_Recommended_Help">The full path of the log file. If you do not configure this policy setting: next to kitty.ini for a portable copy, otherwise %LOCALAPPDATA%\kapper.net\KiTTY\kageant.log. Environment variables are not expanded.
+
+Registry value: AgentLogPath (REG_SZ).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AgentLogSink">Agent log destination</string>
+      <string id="AgentLogSink_Help">File, Windows Event Log, or both. If you do not configure this policy setting: both if the KiTTY++_Agent event log exists (an all-users installation), otherwise the file.
+
+Registry value: AgentLogSink (REG_SZ).</string>
+      <string id="AgentLogSink_SinkFile">File</string>
+      <string id="AgentLogSink_SinkEventLog">Windows Event Log</string>
+      <string id="AgentLogSink_SinkBoth">File and Windows Event Log</string>
+      <string id="AgentLogSink_Recommended">Agent log destination</string>
+      <string id="AgentLogSink_Recommended_Help">File, Windows Event Log, or both. If you do not configure this policy setting: both if the KiTTY++_Agent event log exists (an all-users installation), otherwise the file.
+
+Registry value: AgentLogSink (REG_SZ).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AgentLogMaxKB">Maximum log file size</string>
+      <string id="AgentLogMaxKB_Help">The size in KB at which the log file is rotated (16 to 1048576). Default: 5120.
+
+Registry value: AgentLogMaxKB (REG_DWORD).</string>
+      <string id="AgentLogMaxKB_Recommended">Maximum log file size</string>
+      <string id="AgentLogMaxKB_Recommended_Help">The size in KB at which the log file is rotated (16 to 1048576). Default: 5120.
+
+Registry value: AgentLogMaxKB (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AgentLogKeep">Number of rotated files to keep</string>
+      <string id="AgentLogKeep_Help">The number of rotated log files to keep (1 to 99). Default: 3.
+
+Registry value: AgentLogKeep (REG_DWORD).</string>
+      <string id="AgentLogKeep_Recommended">Number of rotated files to keep</string>
+      <string id="AgentLogKeep_Recommended_Help">The number of rotated log files to keep (1 to 99). Default: 3.
+
+Registry value: AgentLogKeep (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+      <string id="AgentLogExpireDays">Rotated file retention</string>
+      <string id="AgentLogExpireDays_Help">The number of days after which rotated log files are deleted at the next rotation (0 to 3650, 0 = never deleted). Default: 90.
+
+Registry value: AgentLogExpireDays (REG_DWORD).</string>
+      <string id="AgentLogExpireDays_Recommended">Rotated file retention</string>
+      <string id="AgentLogExpireDays_Recommended_Help">The number of days after which rotated log files are deleted at the next rotation (0 to 3650, 0 = never deleted). Default: 90.
+
+Registry value: AgentLogExpireDays (REG_DWORD).
+
+Recommended policy: applies while the user has no value of their own. The mandatory policy of the same name under &quot;KiTTY++&quot; overrides it.</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="SaveMode">
+        <dropdownList refId="SaveMode_Value" noSort="true" defaultItem="0">Settings store type</dropdownList>
+      </presentation>
+      <presentation id="KiClassName">
+        <textBox refId="KiClassName_Value"><label>Window class name and registry key</label></textBox>
+      </presentation>
+      <presentation id="ConfirmKeyUse">
+        <dropdownList refId="ConfirmKeyUse_Value" noSort="true" defaultItem="0">Require confirmation for key use</dropdownList>
+      </presentation>
+      <presentation id="ConfirmKeyUse_Recommended">
+        <dropdownList refId="ConfirmKeyUse_Value" noSort="true" defaultItem="0">Require confirmation for key use</dropdownList>
+      </presentation>
+      <presentation id="NoticeTimeout">
+        <decimalTextBox refId="NoticeTimeout_Value" defaultValue="8">Notification display time</decimalTextBox>
+      </presentation>
+      <presentation id="NoticeTimeout_Recommended">
+        <decimalTextBox refId="NoticeTimeout_Value" defaultValue="8">Notification display time</decimalTextBox>
+      </presentation>
+      <presentation id="RetryKeys">
+        <dropdownList refId="RetryKeys_Value" noSort="true" defaultItem="0">Load startup keys from newly attached drives</dropdownList>
+      </presentation>
+      <presentation id="RetryKeys_Recommended">
+        <dropdownList refId="RetryKeys_Value" noSort="true" defaultItem="0">Load startup keys from newly attached drives</dropdownList>
+      </presentation>
+      <presentation id="PassphraseCacheSeconds">
+        <decimalTextBox refId="PassphraseCacheSeconds_Value" defaultValue="60">Passphrase cache time</decimalTextBox>
+      </presentation>
+      <presentation id="PassphraseCacheSeconds_Recommended">
+        <decimalTextBox refId="PassphraseCacheSeconds_Value" defaultValue="60">Passphrase cache time</decimalTextBox>
+      </presentation>
+      <presentation id="HelloCacheSeconds">
+        <decimalTextBox refId="HelloCacheSeconds_Value" defaultValue="60">Windows Hello cache time</decimalTextBox>
+      </presentation>
+      <presentation id="HelloCacheSeconds_Recommended">
+        <decimalTextBox refId="HelloCacheSeconds_Value" defaultValue="60">Windows Hello cache time</decimalTextBox>
+      </presentation>
+      <presentation id="AutoEncryptMode">
+        <dropdownList refId="AutoEncryptMode_Value" noSort="true" defaultItem="0">Re-encrypt idle keys</dropdownList>
+      </presentation>
+      <presentation id="AutoEncryptMode_Recommended">
+        <dropdownList refId="AutoEncryptMode_Value" noSort="true" defaultItem="0">Re-encrypt idle keys</dropdownList>
+      </presentation>
+      <presentation id="AutoEncryptSeconds">
+        <decimalTextBox refId="AutoEncryptSeconds_Value" defaultValue="600">Re-encryption timeout</decimalTextBox>
+      </presentation>
+      <presentation id="AutoEncryptSeconds_Recommended">
+        <decimalTextBox refId="AutoEncryptSeconds_Value" defaultValue="600">Re-encryption timeout</decimalTextBox>
+      </presentation>
+      <presentation id="LockWithWindows">
+        <dropdownList refId="LockWithWindows_Value" noSort="true" defaultItem="0">Action when Windows is locked</dropdownList>
+      </presentation>
+      <presentation id="LockWithWindows_Recommended">
+        <dropdownList refId="LockWithWindows_Value" noSort="true" defaultItem="0">Action when Windows is locked</dropdownList>
+      </presentation>
+      <presentation id="ExtraPipe">
+        <textBox refId="ExtraPipe_Value"><label>Additional named pipe</label></textBox>
+      </presentation>
+      <presentation id="ExtraPipe_Recommended">
+        <textBox refId="ExtraPipe_Value"><label>Additional named pipe</label></textBox>
+      </presentation>
+      <presentation id="AgentLogPath">
+        <textBox refId="AgentLogPath_Value"><label>Agent log file path</label></textBox>
+      </presentation>
+      <presentation id="AgentLogPath_Recommended">
+        <textBox refId="AgentLogPath_Value"><label>Agent log file path</label></textBox>
+      </presentation>
+      <presentation id="AgentLogSink">
+        <dropdownList refId="AgentLogSink_Value" noSort="true" defaultItem="0">Agent log destination</dropdownList>
+      </presentation>
+      <presentation id="AgentLogSink_Recommended">
+        <dropdownList refId="AgentLogSink_Value" noSort="true" defaultItem="0">Agent log destination</dropdownList>
+      </presentation>
+      <presentation id="AgentLogMaxKB">
+        <decimalTextBox refId="AgentLogMaxKB_Value" defaultValue="5120">Maximum log file size</decimalTextBox>
+      </presentation>
+      <presentation id="AgentLogMaxKB_Recommended">
+        <decimalTextBox refId="AgentLogMaxKB_Value" defaultValue="5120">Maximum log file size</decimalTextBox>
+      </presentation>
+      <presentation id="AgentLogKeep">
+        <decimalTextBox refId="AgentLogKeep_Value" defaultValue="3">Number of rotated files to keep</decimalTextBox>
+      </presentation>
+      <presentation id="AgentLogKeep_Recommended">
+        <decimalTextBox refId="AgentLogKeep_Value" defaultValue="3">Number of rotated files to keep</decimalTextBox>
+      </presentation>
+      <presentation id="AgentLogExpireDays">
+        <decimalTextBox refId="AgentLogExpireDays_Value" defaultValue="90">Rotated file retention</decimalTextBox>
+      </presentation>
+      <presentation id="AgentLogExpireDays_Recommended">
+        <decimalTextBox refId="AgentLogExpireDays_Value" defaultValue="90">Rotated file retention</decimalTextBox>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>

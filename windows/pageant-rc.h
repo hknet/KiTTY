@@ -73,7 +73,7 @@
 #define IDC_SET_L_AUTOENC 347
 #define IDC_SET_L_AUTOENCHINT 348
 #define IDC_SET_ALLOWIPCLOCK 349  /* ssh-add -x / -X allowed */
-#define IDC_SET_WINLOCK 350       /* When Windows locks: keep / lock / re-encrypt */
+#define IDC_SET_WINLOCK 350       /* Action when Windows is locked */
 #define IDC_SET_L_WINLOCK 351
 #define IDC_SET_L_RETRY 338
 #define IDC_SET_L_LOGPATH 339
@@ -90,10 +90,10 @@
 #define IDC_SET_BLOCKFWD 357      /* key changes refused over a forwarded agent */
 #define IDC_SET_ALLOWWMCD 360     /* requests by window messages (WM_COPYDATA) */
 #define IDC_SET_L_LOGCHAINHINT 361  /* the anchors go to the Windows Event Log */
-#define IDC_SET_ARRIVAL 362       /* the notice when startup keys arrive */
+#define IDC_SET_ARRIVAL 362       /* [Agent] messageonkeyarrival */
 #define IDC_SET_OPENSSHPIPE 363   /* serve \\.\pipe\openssh-ssh-agent too */
 #define IDC_SET_OSSHSERVICE 364   /* the Windows OpenSSH agent service box */
-#define IDC_SET_L_EXTRAPIPE 365   /* "Also serve the pipe" */
+#define IDC_SET_L_EXTRAPIPE 365   /* "Additional named pipe" */
 #define IDC_SET_EXTRAPIPE 366     /* [Agent] extrapipe */
 #define IDC_SET_SSHAUTHSOCK 367   /* [Agent] setsshauthsock */
 

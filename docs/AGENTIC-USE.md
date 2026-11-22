@@ -316,7 +316,7 @@ one key: kageant key list > the key > key details > "Confirm each use:"
   the Windows Hello entry:   a Windows Hello gesture per signature,
                              also with askconfirmation=no
 every confirmation by Windows Hello: kageant Settings >
-  "Confirmations require Windows Hello" (kitty.ini [Agent] helloconfirm=yes)
+  "Confirm key use with Windows Hello" (kitty.ini [Agent] helloconfirm=yes)
 ```
 
 ```ini
@@ -353,7 +353,7 @@ the same Windows user.
 - `<host>`: a server of the job, e.g. `web01`. Its host key must be known:
   in the KiTTY++ host-key store, signed by a host CA of the CA store
   ([block 11](#11-host-keys-set-up-the-three-layers)), or in known_hosts when kageant reads that file (Settings > Agent >
-  "Use OpenSSH's known_hosts as a host-key source", default off).
+  "Read the OpenSSH known_hosts file", default off).
 - `<port>`: the SSH port of `<host>` when it is not 22, e.g. `2222`.
 - `<jump>`: a jump host the job goes through, e.g. `jump01`.
 - kageant key details: double-click the key in kageant's key list.

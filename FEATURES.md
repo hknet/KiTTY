@@ -128,6 +128,7 @@ AI agentic use cases: [docs/AGENTIC-USE.md](docs/AGENTIC-USE.md) is for the huma
   - [A note on a session](#a-note-on-a-session)
   - [The configuration window remembers how you use it](#the-configuration-window-remembers-how-you-use-it)
   - [The KiTTY++ Settings tree](#the-kitty-settings-tree)
+  - [Group Policy: centrally managed settings](#group-policy-centrally-managed-settings)
   - [A portable copy, and back into the registry](#a-portable-copy-and-back-into-the-registry)
   - [A session note at login](#a-session-note-at-login)
 - **Bonus**
@@ -654,7 +655,7 @@ A PPK key file a login uses - the session's own or a jump host's - in the old ve
 
 When you store private keys in KiTTY++'s key agent (kageant), you can require an explicit confirmation each time a key is used. With this enabled, every session that needs the key triggers a pop-up requiring you to approve its use before authentication proceeds, giving you a clear chance to spot and refuse unexpected sign-in attempts. This adds a helpful safeguard against a loaded key being used without your knowledge. Thanks to [Patrick Cernko](https://people.mpi-klsb.mpg.de/~pcernko/pageant.html) for the original patch.
 
-**How to enable:** For all keys at once, tick **"Ask confirmation before each key use"** in the kageant tray menu (persisted, default off): every signing request then pops an allow/deny prompt showing the key. Or per key: generate a key whose **comment contains the word `confirmation`** (in kittygen the **Add confirmation** button beside the comment field appends it for you), then load it into **kageant.exe** — only that key requires confirmation. Or from **kitty.ini**: `[Agent] askconfirmation=` with the classic three states — `yes` (every use), `auto` (per-key comments only; the default), `no` (never — also silences the per-key prompts, for automation). A key set to **ask with Windows Hello** in its key details (**Confirm each use:**) gets the Hello check in every mode, `no` included: the global mode is a plain setting any program of the same user can write. kageant finds the ini on its own (`KITTY_INI_FILE`, else next to the exe, else `%APPDATA%`); when that file sets `[KiTTY] savemode=file` or `dir` — or, with no savemode line, when a portable layout (a `Sessions` folder or `KiTTYState` file) sits beside it — the ini is the authoritative store and the tray toggle writes back to it, so a **portable** kageant never touches the registry; the key-list window and the tray tooltip show *kitty.ini mode* when this is in effect. The related **“Notify when a key is used”** tray balloon (default on) is controllable the same way with `[Agent] messageonkeyusage=yes/no`.
+**How to enable:** For all keys at once, tick **"Require confirmation for every key use"** in the kageant tray menu (persisted, default off): every signing request then pops an allow/deny prompt showing the key. Or per key: generate a key whose **comment contains the word `confirmation`** (in kittygen the **Add confirmation** button beside the comment field appends it for you), then load it into **kageant.exe** — only that key requires confirmation. Or from **kitty.ini**: `[Agent] askconfirmation=` with the classic three states — `yes` (every use), `auto` (per-key comments only; the default), `no` (never — also silences the per-key prompts, for automation). A key set to **ask with Windows Hello** in its key details (**Confirm each use:**) gets the Hello check in every mode, `no` included: the global mode is a plain setting any program of the same user can write. kageant finds the ini on its own (`KITTY_INI_FILE`, else next to the exe, else `%APPDATA%`); when that file sets `[KiTTY] savemode=file` or `dir` — or, with no savemode line, when a portable layout (a `Sessions` folder or `KiTTYState` file) sits beside it — the ini is the authoritative store and the tray toggle writes back to it, so a **portable** kageant never touches the registry; the key-list window and the tray tooltip show *kitty.ini mode* when this is in effect. The related **“Notify on key use”** notification (default on) is controllable the same way with `[Agent] messageonkeyusage=yes/no`.
 
 <img src="docs/features/img/config_kittygen.png" width="653" height="590" alt="kittygen with an Ed25519 key loaded">
 <img src="docs/features/img/ex_kageant.png" width="732" height="488" alt="kageant key list with a key loaded">
@@ -708,17 +709,17 @@ Windows Hello…*; in **kittygen**, tick *Protect with Windows Hello* when
 generating, or use *Windows Hello doors…* on a key you already have. From
 **kitty.ini**: `[Agent] hellocacheseconds=` sets how long one gesture keeps
 covering further unlocks (default 60, `0` requires a gesture every time).
-**Confirmations require Windows Hello** on kageant's Settings > Security
+**Confirm key use with Windows Hello** on kageant's Settings > Security
 (`[Agent] helloconfirm=yes`) demands a Hello gesture for every key-use
 confirmation rather than a click. Windows Hello must be set up in Windows; on
 a machine without it, protected keys open through their recovery door.
 
-**Re-encrypt keys after idle** (kageant): a decrypted key goes back to its
+**Re-encrypt idle keys** (kageant): a decrypted key goes back to its
 encrypted state a set time after it was decrypted or last signed, whichever
 is later; the next use requires the passphrase and the clock restarts. The encrypted copy stays in memory, so
 no file is re-read and the key stays listed. Settings, Security page: the
-mode - *Off*, *Default for keys without their own setting*, or *Enforced for
-every key* (per-key values ignored, for a site whose rules demand it) - and the
+mode - *Off*, *Keys without their own timeout*, or *All keys* (per-key
+values ignored, for a site whose rules demand it) - and the
 time; a key's own time lives in its key details. From **kitty.ini**:
 `[Agent] autoencryptmode=off|default|enforce` and `autoencryptseconds=` (seconds,
 `10m`, `2h`, `1d`, or `use` / `immediately` for right after each signature; 30 s to 7 d). In kageant both time fields are combo boxes listing these values; any other time can be typed.
@@ -731,7 +732,7 @@ In a **portable** install (kitty.ini authoritative — see the confirmation sect
 
 A key that was not there at startup stays on the list and is loaded when its file turns up — when a drive is plugged in, when a key that was unloaded with its media comes back, or when you press **Retry unavailable keys** in the key-list window, beside *Show unavailable keys* (useful for a file that came back over the network, or a stick that was already in when kageant started; the button is greyed out when no key is waiting). Either way the key is checked against the fingerprint kageant recorded for that path — the check is made on the key the agent actually ends up holding, not on a separate look at the file beforehand — and a key that is **not** the one it remembers is refused rather than kept: the key list shows its State as *mismatch* (the details of that key spell out what happened), and a tray notice reports it. No question is put up while you are logging in or plugging something in. If **you** replaced the key, open that row in the key list and use **Accept this key**: it shows the fingerprint recorded against the one the file holds now, and only then remembers the new one. A key with no fingerprint on record — one remembered by a version before 0.84.1.74 — is not loaded, at its own path or on another drive letter: it shows as *unverified* with a notice, and **Accept this key** loads it and records its fingerprint.
 
-Keys that come back on a drive can sign again at once, so one notice reports them: "kageant: keys available again", with the count and the drive. A click opens the key list. The agent log records each key with its fingerprint, comment, file and trigger (event ID 117). **Settings > Agent > Notify when startup keys arrive** (on by default, `[Agent] messageonkeyarrival`) silences the notice only.
+Keys that come back on a drive can sign again at once, so one notification reports them: "kageant: keys available again", with the count and the drive. A click opens the key list. The agent log records each key with its fingerprint, comment, file and trigger (event ID 117). **Settings > Agent > Notify when startup keys become available** (on by default, `[Agent] messageonkeyarrival`) silences the notification only.
 
 **How to enable:** right-click the kageant tray icon → **Load remembered keys at startup**.
 
@@ -749,15 +750,15 @@ To have a session use one key only, set that key's file in the session's **Conne
 
 ### kageant — lock the agent
 
-The tray menu's **Lock agent** keeps the keys loaded but neither offers nor uses them until **Unlock agent**. Settings > Security, **When Windows locks**: **Keep the agent working** (the default), **Lock the agent**, or **Re-encrypt the keys**. A disconnected remote desktop counts as locked. Re-encrypted keys that have a key file require their passphrase when Windows unlocks, the others on first use.
+The tray menu's **Lock agent** keeps the keys loaded but neither offers nor uses them until **Unlock agent**. Settings > Security, **Action when Windows is locked**: **No action** (the default), **Lock the agent**, or **Re-encrypt the keys**. A disconnected remote desktop counts as locked. Re-encrypted keys that have a key file require their passphrase when Windows unlocks, the others on first use.
 
-`ssh-add -x` / `-X` lock and unlock kageant, when Settings > Security **Allow locking the agent over IPC (ssh-add -x / -X)** is ticked (off by default). A notice shows the program that locked, and the tray's Unlock agent clears its lock. After each wrong passphrase the next unlock is refused for 0.1 s per wrong passphrase so far, at most 10 s. After the tenth wrong passphrase programs can no longer unlock the agent, the right passphrase included, until Unlock agent in the tray menu; the keys stay loaded. The lock does not survive a restart of kageant.
+`ssh-add -x` / `-X` lock and unlock kageant, when Settings > Security **Allow client programs to lock the agent (ssh-add -x / -X)** is ticked (off by default). A notification shows the program that locked, and the tray's Unlock agent clears its lock. After each wrong passphrase the next unlock is refused for 0.1 s per wrong passphrase so far, at most 10 s. After the tenth wrong passphrase programs can no longer unlock the agent, the right passphrase included, until Unlock agent in the tray menu; the keys stay loaded. The lock does not survive a restart of kageant.
 
 **How to enable:** right-click the kageant tray icon → **Lock agent**; Settings > Security for the rest. From **kitty.ini**: `[Agent] lockwithwindows=keep|lock|reencrypt` and `allowipclock=yes`.
 
-**Key changes from a forwarded agent.** A program on a server the agent is forwarded to may list the keys and log in with them, but by default it cannot add a key, remove one, or lock or unlock the agent: **Settings > Security > Refuse key changes from a forwarded agent (add, remove, lock)**, `[Agent] blockforwardedchanges=yes` (the default). A refused request is recorded with reason `forwarded`. kageant knows a forwarded agent by the binding its forwarding client sends (session-bind marked for forwarding: KiTTY++'s kitty.exe and klink, OpenSSH's ssh from 8.9). A client without it is not recognised.
+**Changes through agent forwarding.** A program on a server the agent is forwarded to may list the keys and log in with them, but by default it cannot add a key, remove one, or lock or unlock the agent: **Settings > Security > Block changes through agent forwarding (add, remove, lock)**, `[Agent] blockforwardedchanges=yes` (the default). A refused request is recorded with reason `forwarded`. kageant knows a forwarded agent by the binding its forwarding client sends (session-bind marked for forwarding: KiTTY++'s kitty.exe and klink, OpenSSH's ssh from 8.9). A client without it is not recognised.
 
-**Programs built on PuTTY before 0.75.** They reach the agent through window messages (WM_COPYDATA) instead of the named pipe. kageant does not identify the program that sends such a request: any program can hand the request's file mapping to another program and pose as it. **Accept requests by window messages (PuTTY before 0.75)** on **Settings > Security** (`[Agent] allowwmcopydata`) is a legacy option and off by default. Such a request counts as coming from an unknown program: it never gets a key unlocked for another program. A notice appears once per run. A click on it opens that page. KiTTY++'s own programs use window messages only when the named pipe cannot be opened.
+**Programs built on PuTTY before 0.75.** They reach the agent through window messages (WM_COPYDATA) instead of the named pipe. kageant does not identify the program that sends such a request: any program can hand the request's file mapping to another program and pose as it. **Allow requests by window messages (PuTTY before 0.75)** on **Settings > Security** (`[Agent] allowwmcopydata`) is a legacy option and off by default. Such a request counts as coming from an unknown program: it never gets a key unlocked for another program. A notification appears once per run. A click on it opens that page. KiTTY++'s own programs use window messages only when the named pipe cannot be opened.
 
 **The Windows OpenSSH agent pipe.** *Serve the Windows OpenSSH agent pipe* on kageant's **Settings > Agent** (`[Agent] opensshpipe`, off by default) makes kageant serve `\\.\pipe\openssh-ssh-agent` beside its own pipe: Windows' ssh.exe and ssh-add reach kageant with nothing else set. KeePassXC with "Use OpenSSH" hands its keys to kageant over that pipe, as a known program under kageant's normal rules. When another program holds the pipe (the Windows service OpenSSH Authentication Agent, Bitwarden, gpg-agent), a notice shows it and kageant serves its own pipe only. A click on that notice, or **Windows OpenSSH service...** under the checkbox, opens the service box: the service's state, then **Run as administrator** to stop it (and to disable it when kageant starts at login) or to turn it back on with its former start type. **Copy commands** puts the commands on the clipboard for a PowerShell started as administrator. The agent log records it (`agent-pipe`, event ID 162).
 
@@ -781,9 +782,9 @@ A binding whose signature does not verify is refused and logged as a refused req
 
 **A key's certificates.** A key and each OpenSSH certificate of it are separate entries in the agent (`ssh-add` adds both when the certificate file lies beside the key), but they sign with the same private key. Destination rules and **Confirm each use** belong to the private key: a certificate signs only where the key may, with the strictest confirmation set on any of them. The key list shows the key and its certificates as one row. Its **Certificate** column reads "certificate" or "2 certificates" while every one is valid, amber "expires in 3 days" for one that expires within 14 days, red "EXPIRED since <date>" or "valid from <date>" for one servers refuse, the most urgent first with "(+1)" for the others. Remove, Move up, Move down and dragging act on the key and every certificate of it. Key details lists each certificate: the CA's fingerprint, the principals, the validity, its status and its critical options. Several certificates each start with "Certificate N of M". Its **Fingerprints:** show SHA-256 and MD5, the forms including the certificate only where they differ from these. kageant checks the certificates shortly after keys are added or removed, once a day and after a resume from sleep: an amber notice for one that expires within 14 days, a red one that stays until clicked for one that is expired or not valid yet, each once per run, each on the agent log as event 141 (`ev="certificate"`). The rule editor's panel of a key with a certificate notes that the rules apply to the key and every certificate of it.
 
-**OpenSSH's known_hosts, on opt-in.** kageant reads `%USERPROFILE%\.ssh\known_hosts` only while **Settings > Agent > Use OpenSSH's known_hosts as a host-key source** is ticked (`[Agent] readknownhosts=yes`, default off). Off, kageant never opens the file. On, it gives host names for `dest=` / `fwd=` and the confirmation (marked `(known_hosts)`), keys for **Look up host keys** (plain, hashed and `@cert-authority` entries, source `known_hosts`) and names for **Checked at each login** destinations. A signature permitted only through such a name carries `reason="known_hosts"` in the agent log. KiTTY++ never writes the file.
+**OpenSSH's known_hosts, on opt-in.** kageant reads `%USERPROFILE%\.ssh\known_hosts` only while **Settings > Agent > Read the OpenSSH known_hosts file** is ticked (`[Agent] readknownhosts=yes`, default off). Off, kageant never opens the file. On, it gives host names for `dest=` / `fwd=` and the confirmation (marked `(known_hosts)`), keys for **Look up host keys** (plain, hashed and `@cert-authority` entries, source `known_hosts`) and names for **Checked at each login** destinations. A signature permitted only through such a name carries `reason="known_hosts"` in the agent log. KiTTY++ never writes the file.
 
-**How to enable:** always on, nothing to configure. OpenSSH's known_hosts as a source: **Settings > Agent > Use OpenSSH's known_hosts as a host-key source**.
+**How to enable:** always on, nothing to configure. OpenSSH's known_hosts as a source: **Settings > Agent > Read the OpenSSH known_hosts file**.
 
 (no screenshot)
 
@@ -1110,9 +1111,9 @@ Per shortcut, add `-restrict-acl` to the command line, typically in your shortcu
 
 All of them report the process's real state, not the setting, so a `-restrict-acl` shortcut, an inherited restriction and `restrictacl=yes` all show identically. It means "this process's ACL is locked down" — nothing wider. `kittygen` never shows it, because it does not read the `kitty.ini` key.
 
-Globally, put `restrictacl=yes` in the `[KiTTY]` section of your `kitty.ini`. That applies the restriction to every KiTTY++ process that reads the file, so you do not have to edit each shortcut target, and it is applied early in startup — before the command-line switch would be. **`kageant` honours the same key**, so the process that actually holds your loaded private keys is covered by the one setting; it applies the ACL at the top of its startup, before any key is loaded. `kittygen` does not read it — pass it `-restrict-acl` if you want it hardened. `yes` is the only value that does anything: a process cannot un-restrict itself, so `restrictacl=no` does not lift a restriction that `-restrict-acl` or a parent window already applied. If the ACL cannot be applied, KiTTY++ reports the error and exits rather than run unprotected — the same fail-closed behaviour as the switch.
+Globally, tick **Application > Security > Hardening > Restrict access to KiTTY++ processes (restrictacl)**, or put `restrictacl=yes` in the `[KiTTY]` section of your `kitty.ini`. That applies the restriction to every KiTTY++ process that reads the file, so you do not have to edit each shortcut target, and it is applied early in startup — before the command-line switch would be. **`kageant` honours the same key**, so the process that actually holds your loaded private keys is covered by the one setting; it applies the ACL at the top of its startup, before any key is loaded. `kittygen` does not read it — pass it `-restrict-acl` if you want it hardened. `yes` is the only value that does anything: a process cannot un-restrict itself, so `restrictacl=no` does not lift a restriction that `-restrict-acl` or a parent window already applied. If the ACL cannot be applied, KiTTY++ reports the error and exits rather than run unprotected — the same fail-closed behaviour as the switch.
 
-Unlike most `[KiTTY]` settings, `restrictacl` is read from `kitty.ini` only and never from the registry. Global settings are normally looked up in the registry first and in `kitty.ini` only as a fallback; for a hardening switch that order fails open, because a leftover registry value would silently cancel the `restrictacl=yes` you wrote in the file.
+Unlike most `[KiTTY]` settings, `restrictacl` is never read from the user's registry: a leftover value there would silently cancel the `restrictacl=yes` you wrote in the file. Precedence: a mandatory Group Policy, then the machine lock (**Lock for all users...** next to the check box, `HKLM\Software\kapper.net\KiTTY++`, for all users of the computer), then `kitty.ini`, then a recommended policy. The policy and the machine lock are described in [docs/GROUP-POLICY.md](docs/GROUP-POLICY.md#the-machine-lock-for-restrictacl).
 
 Note that enabling it globally also applies the upgrade trade-off above to every window: an in-place MSI upgrade will close your sessions without reopening them, because the Restart Manager cannot inspect a restricted process.
 
@@ -1706,7 +1707,7 @@ Programs find Sixel through the device-attributes answer, which lists `4` while 
 
 Pasting into a terminal executes whatever the clipboard contains, line by line — so an accidental paste of the wrong (or huge) clipboard can flood the shell with unintended commands. KiTTY++ can require a confirmation before pasting more than a configurable number of characters, showing how large the clipboard is so you can abort a mis-aimed paste.
 
-**How to enable:** on by default since 0.84.1.73-beta — a paste of more than 5120 characters requires a confirmation first, as Windows Terminal does. The row lives on **Application > Security > Clipboard** as *"Warn before pasting more than [ ] characters"*; in `kitty.ini` it is `pastesize=<N>` in the `[KiTTY]` section. 0 never warns.
+**How to enable:** on by default since 0.84.1.73-beta — a paste of more than 5120 characters requires a confirmation first, as Windows Terminal does. Its **Yes** button has the focus, so Enter pastes. The row lives on **Application > Security > Clipboard** as *"Warn before pasting more than [ ] characters"*; in `kitty.ini` it is `pastesize=<N>` in the `[KiTTY]` section. 0 never warns.
 
 (no screenshot)
 
@@ -2073,6 +2074,23 @@ KiTTY++ folder to the user PATH*, makes `klink`, `kscp`, `ksftp` and the other
 tools callable by name from any newly opened shell.
 
 (no screenshot)
+
+### Group Policy: centrally managed settings
+
+An administrator can manage the global settings of KiTTY++ and kageant for
+a computer or a user under `Software\Policies\kapper.net\KiTTY++`: with the
+Administrative Template `windows/policy/kittypp.admx` (the Group Policy
+editors, Intune), or with plain registry values. A mandatory policy greys
+out its control, with a note that the administrator set it. Commands that
+would change it are rejected. The `Recommended` subkey holds recommended
+policies: defaults the user can override. They apply while the user has not
+set a value. The settings store itself (`savemode`, `readonly`,
+`KiClassName`) can be enforced the same way.
+
+How to install the template, deploy it in a domain or with Intune, set the
+values from a script, what users see: [docs/GROUP-POLICY.md](docs/GROUP-POLICY.md).
+
+![Application > Security, the Hardening group set by policy](docs/features/img/policy_held_security.png)
 
 ### A portable copy, and back into the registry
 

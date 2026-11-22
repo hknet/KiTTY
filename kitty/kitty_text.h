@@ -1167,7 +1167,7 @@
  * kitty.ini's key. Lock for all users writes it, elevated, into the machine
  * key (kitty_globalsettings.h KS_MACHINE_PATH). */
 #define KT_SEC_HARDENING                             "Hardening"
-#define KT_SEC_HARD_RESTRICTACL                      "Restrict access to KiTTY++'s memory (restrictacl)"
+#define KT_SEC_HARD_RESTRICTACL                      "Restrict access to KiTTY++ processes (restrictacl)"
 #define KT_SEC_HARD_NEXTSTART                        "Applies from the next start. Stored in kitty.ini."
 #define KT_SEC_HARD_LOCKED                           "Locked for all users of this PC."
 #define KT_SEC_HARD_ADMIN                            "Set by your administrator."
@@ -1377,7 +1377,7 @@
 #define KT_KSET_BACKUPS_DIR_SHOWN                    "Folder-store backups to keep: %d"
 #define KT_KSET_BACKUPS_SAV_PATH                     "Backup file base path: %s"
 #define KT_KSET_BACKUPS_DIR_PATH                     "Backup folder: %s\\Backups"
-#define KT_KSET_STORAGE_KICLASS                      "Hive selector (KiClassName): %s"
+#define KT_KSET_STORAGE_KICLASS                      "Window class name and registry key (KiClassName): %s"
 #define KT_KSET_STORAGE_KICLASS_DEFAULT              "(default)"
 #define KT_KSET_STORAGE_FILEEXT                      "Session file extension: %s"
 #define KT_KSET_STORAGE_CRYPTSALT                    "Legacy password salt variant: %s"
@@ -3122,7 +3122,7 @@
 #define KT_KA_WMCD_TEXT                             "A program reached kageant through window messages, the way programs built on PuTTY before 0.75 do. " \
         "kageant cannot identify the program that sent it. Update it to a current version. Click here for kageant's security settings."
 #define KT_KA_WMCD_REFUSED_TEXT                      "A request through window messages was refused: programs built on PuTTY before 0.75 connect this way, " \
-        "and kageant cannot identify the program that sent it. Update the program, or turn on \"Accept requests by window messages\" " \
+        "and kageant cannot identify the program that sent it. Update the program, or turn on \"Allow requests by window messages\" " \
         "in kageant's security settings (click here)."
 
 /* kageant: tray menu items */
@@ -3142,8 +3142,8 @@
 #define KT_KA_MENU_OPENSSH                           "Register as Windows &OpenSSH agent"
 #define KT_KA_MENU_START_AT_LOGIN                    "&Start kageant at login"
 #define KT_KA_MENU_LOAD_KEYS                         "&Load remembered keys at startup"
-#define KT_KA_MENU_NOTIFY                            "&Notify when a key is used"
-#define KT_KA_MENU_CONFIRM                           "Ask &confirmation before each key use"
+#define KT_KA_MENU_NOTIFY                            "&Notify on key use"
+#define KT_KA_MENU_CONFIRM                           "Require &confirmation for every key use"
 #define KT_KA_MENU_RESUME                            "Res&ume key-use confirmations"
 #define KT_KA_MENU_SETTINGS                          "Settin&gs..."
 #define KT_KA_MENU_AGENT_LOG                         "Agent lo&g..."
@@ -3430,8 +3430,8 @@
  * Settings dialog may be closed already, so the setting by label and page
  * (the label is KT_RC_KEYSETTINGS_KNOWNHOSTS: change both together) */
 #define KT_KA_OPENSSH_KH_HINT                        "\n\nPattern destinations with ssh.exe need " \
-        "\"Use OpenSSH's known_hosts as a host-key source\" (Settings, Agent page)."
-/* Settings OK with "Use OpenSSH's known_hosts as a host-key source" newly
+        "\"Read the OpenSSH known_hosts file\" (Settings, Agent page)."
+/* Settings OK with "Read the OpenSSH known_hosts file" newly
  * ticked: the file checked at once, one box (Help: the known_hosts
  * section of the manual). First line: one of MISSING / UNREADABLE / READ. */
 #define KT_CAP_KA_KNOWNHOSTS                         "kageant - known_hosts"
@@ -3729,16 +3729,16 @@
 #define KT_KASET_TAB_SECURITY                        KT_SECURITY_SECURITY  /* "Security" */
 #define KT_KASET_TAB_MEDIA                           "Removable media"
 #define KT_KASET_TAB_LOG                             "Log"
-#define KT_KASET_RETRY_NEVER                         KT_PROXYGUI_LOG_NEVER  /* "never" */
-#define KT_KASET_RETRY_DRIVE                         "from their stored drive and path"
-#define KT_KASET_RETRY_ANYDRIVE                      "from their stored path on any drive"
-#define KT_KASET_WINLOCK_KEEP                        "Keep the agent working"
+#define KT_KASET_RETRY_NEVER                         KT_SESSION_NEVER  /* "Never" */
+#define KT_KASET_RETRY_DRIVE                         "From the stored path"
+#define KT_KASET_RETRY_ANYDRIVE                      "From any drive letter"
+#define KT_KASET_WINLOCK_KEEP                        KT_CFG_CLIP_NO_ACTION  /* "No action" */
 #define KT_KASET_WINLOCK_LOCK                        "Lock the agent"
 #define KT_KASET_WINLOCK_REENCRYPT                   "Re-encrypt the keys"
 #define KT_KASET_AUTOENC_OFF                         KT_SCRIPTING_OFF  /* "Off" */
-#define KT_KASET_AUTOENC_DEFAULT                     "Default for keys without their own setting"
-#define KT_KASET_AUTOENC_ENFORCED                    "Enforced for every key"
-#define KT_KASET_HELLO_UNAVAILABLE                   "Confirmations require Windows Hello " \
+#define KT_KASET_AUTOENC_DEFAULT                     "Keys without their own timeout"
+#define KT_KASET_AUTOENC_ENFORCED                    "All keys"
+#define KT_KASET_HELLO_UNAVAILABLE                   "Confirm key use with Windows Hello " \
         "(not set up on this system)"
 #define KT_KASET_LOG_DEFAULT_FMT                     "Default: %s"
 #define KT_KASET_THEME_SYSTEM                        "Follow the system"
@@ -5610,50 +5610,50 @@
 #define KT_RC_KEYRULES_CA_IGNORE_PORT                "Ignore the port for clients that send none (OpenSSH's ssh.exe)"
 
 /* pageant.rc: IDD_KEYSETTINGS (caption = KT_CAP_KA_SETTINGS) */
-#define KT_RC_KEYSETTINGS_NOTICE_LABEL               "Notice &display (seconds):"
-#define KT_RC_KEYSETTINGS_NOTICE_HINT                "blank = each notice's own default"
+#define KT_RC_KEYSETTINGS_NOTICE_LABEL               "Notification &display time (seconds):"
+#define KT_RC_KEYSETTINGS_NOTICE_HINT                "blank = each notification's own default"
 #define KT_RC_KEYSETTINGS_THEME_LABEL                "&Colour theme:"
 #define KT_RC_KEYSETTINGS_THEME_HINT                 "Dark needs Windows 10 1809 or newer; anything older stays light."
-#define KT_RC_KEYSETTINGS_BLOCKADD                   "Refuse keys &added by other programs"
-#define KT_RC_KEYSETTINGS_BLOCKREMOVE                "Refuse key re&movals by other programs"
-/* No accelerator on these two: the letters are unique per DIALOG, and every
- * letter of both texts is taken on one of the four pages (free: b j q v z). */
-#define KT_RC_KEYSETTINGS_ALLOWIPCLOCK               "Allow locking the agent over IPC (ssh-add -x / -X)"
+#define KT_RC_KEYSETTINGS_BLOCKADD                   "Block keys &added by client programs"
+#define KT_RC_KEYSETTINGS_BLOCKREMOVE                "Block key re&moval by client programs"
+/* No accelerator on the next two: the letters are unique per DIALOG (free:
+ * j q x). Only the first holds one of them, the x of "-x". */
+#define KT_RC_KEYSETTINGS_ALLOWIPCLOCK               "Allow client programs to lock the agent (ssh-add -x / -X)"
 /* the Agent page, under "Register as Windows OpenSSH agent": [Agent]
  * readknownhosts. KiTTY++ never writes the file. */
-#define KT_RC_KEYSETTINGS_KNOWNHOSTS                 "Use OpenSSH's known_hosts as a host-key source"
-#define KT_RC_KEYSETTINGS_BLOCKFWD                   "Refuse key changes from a forwarded agent (add, remove, lock)"
-#define KT_RC_KEYSETTINGS_ALLOWWMCD                  "Accept requests by window messages (PuTTY before 0.75)"
-#define KT_RC_KEYSETTINGS_OPENSSHPIPE                "Serve the Windows OpenSSH agent pipe (ssh.exe, ssh-add, KeePassXC)"
+#define KT_RC_KEYSETTINGS_KNOWNHOSTS                 "Read the OpenSSH known_hosts file"
+#define KT_RC_KEYSETTINGS_BLOCKFWD                   "&Block changes through agent forwarding (add, remove, lock)"
+#define KT_RC_KEYSETTINGS_ALLOWWMCD                  "Allow requests by window messages (PuTTY before 0.75)"
+#define KT_RC_KEYSETTINGS_OPENSSHPIPE                "Serve the &Windows OpenSSH agent pipe (ssh.exe, ssh-add, KeePassXC)"
 #define KT_RC_KEYSETTINGS_OSSHSERVICE                "Windows OpenSSH service..."
-#define KT_RC_KEYSETTINGS_EXTRAPIPE                  "Also serve the pipe \\\\.\\pipe\\"
-#define KT_RC_KEYSETTINGS_SSHAUTHSOCK                "Set SSH_AUTH_SOCK of this Windows user to that pipe"
+#define KT_RC_KEYSETTINGS_EXTRAPIPE                  "Additional named pipe \\\\.\\pipe\\"
+#define KT_RC_KEYSETTINGS_SSHAUTHSOCK                "Set SSH_AUTH_SOCK to the additional named pipe"
 /* kageant -h and a startup entry's destinations (kitty_kageant_dest.c) */
 #define KT_KA_DEST_REFUSED_FMT                       "Destination '%s': %s."
 #define KT_KA_DEST_NO_KEY_FMT                        "No host key found for %s in the KiTTY++ host-key store."
 #define KT_KA_DEST_NO_KEY_KH_FMT                     "No host key found for %s in the KiTTY++ host-key store or in OpenSSH's known_hosts."
-#define KT_RC_KEYSETTINGS_WINLOCK_LABEL              "When Windows locks:"
-#define KT_RC_KEYSETTINGS_HELLO                      "Confirmations require Windows &Hello"
-#define KT_RC_KEYSETTINGS_TTL_LABEL                  "&Passphrase cache (seconds):"
+#define KT_RC_KEYSETTINGS_WINLOCK_LABEL              "Action when Windows is locked:"
+#define KT_RC_KEYSETTINGS_HELLO                      "Confirm key use with Windows &Hello"
+#define KT_RC_KEYSETTINGS_TTL_LABEL                  "&Passphrase cache time (seconds):"
 #define KT_RC_KEYSETTINGS_TTL_HINT                   "0 = do not cache; blank = the default 60; maximum 300 (5 min). Keys that share a passphrase then load with one prompt."
-#define KT_RC_KEYSETTINGS_HELLOTTL_LABEL             "Windows Hello cach&e (seconds):"
+#define KT_RC_KEYSETTINGS_HELLOTTL_LABEL             "Windows Hello cach&e time (seconds):"
 #define KT_RC_KEYSETTINGS_HELLOTTL_HINT              "One Hello covers a batch; 0 = every unlock asks; blank = the default 60. Maximum 300."
-#define KT_RC_KEYSETTINGS_AUTOENC_LABEL              "Re-encr&ypt keys after idle:"
+#define KT_RC_KEYSETTINGS_AUTOENC_LABEL              "Re-encr&ypt idle keys:"
 #define KT_RC_KEYSETTINGS_AUTOENC_HINT               "immediately = re-encrypt right after each use; otherwise 30 s to 7 d"
-#define KT_RC_KEYSETTINGS_RETRY_LABEL                "&Retry startup keys to load, when a drive appears:"
-#define KT_RC_KEYSETTINGS_UNLOAD                     "&Unload a key when its media is removed"
-#define KT_RC_KEYSETTINGS_QUIET                      "Do not &warn about missing startup keys"
-#define KT_RC_KEYSETTINGS_ARRIVAL                    "Notify when startup keys arrive"
-#define KT_RC_KEYSETTINGS_AGENTLOG                   "Wr&ite the agent log"
-#define KT_RC_KEYSETTINGS_LOGPATH_LABEL              "&File (blank = default):"
-#define KT_RC_KEYSETTINGS_LOGKB_LABEL                "Rota&te at (KB):"
-#define KT_RC_KEYSETTINGS_LOGKEEP_LABEL              "&Generations:"
-#define KT_RC_KEYSETTINGS_LOGDAYS_LABEL              "E&xpunge rotated logs after (days, 0 = keep):"
+#define KT_RC_KEYSETTINGS_RETRY_LABEL                "Load startup keys f&rom newly attached drives:"
+#define KT_RC_KEYSETTINGS_UNLOAD                     "&Unload keys when their drive is removed"
+#define KT_RC_KEYSETTINGS_QUIET                      "Suppress notifications for missin&g startup keys"
+#define KT_RC_KEYSETTINGS_ARRIVAL                    "Notify when startup keys become available"
+#define KT_RC_KEYSETTINGS_AGENTLOG                   "Enable the agent &log"
+#define KT_RC_KEYSETTINGS_LOGPATH_LABEL              "Agent log &file path (blank = default):"
+#define KT_RC_KEYSETTINGS_LOGKB_LABEL                "Maximum log file si&ze (KB):"
+#define KT_RC_KEYSETTINGS_LOGKEEP_LABEL              "Number of ro&tated files to keep:"
+#define KT_RC_KEYSETTINGS_LOGDAYS_LABEL              "Rotated f&ile retention (days, 0 = never deleted):"
 #define KT_RC_KEYSETTINGS_LOGNOTE                    "The log is evidence, not proof - see the manual."
-#define KT_RC_KEYSETTINGS_LOGSINK_LABEL              "Destination:"
-#define KT_RC_KEYSETTINGS_LOGSINK_FILE               "file"
+#define KT_RC_KEYSETTINGS_LOGSINK_LABEL              "Agent log destination:"
+#define KT_RC_KEYSETTINGS_LOGSINK_FILE               "File"
 #define KT_RC_KEYSETTINGS_LOGSINK_EVENTLOG           "Windows Event Log"
-#define KT_RC_KEYSETTINGS_LOGSINK_BOTH               "file and Windows Event Log"
+#define KT_RC_KEYSETTINGS_LOGSINK_BOTH               "File and Windows Event Log"
 #define KT_RC_KEYSETTINGS_LOGSINK_HINT               "Windows Event Log: Applications and Services Logs > KiTTY++_Agent when installed for all users, else the Application log. Source KiTTY++_agent."
 #define KT_RC_KEYSETTINGS_EVENTVIEWER                "Event &Viewer"
 /* Under the log's settings: what switching the log on also writes. */

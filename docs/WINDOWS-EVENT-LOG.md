@@ -21,7 +21,7 @@ Viewer's *User* column.
 
 | Program | Source | Event IDs | Log (system MSI installed) | Default |
 |---|---|---|---|---|
-| kageant (agent log) | `KiTTY++_agent` | 100-199 | `KiTTY++_Agent` | on when the log `KiTTY++_Agent` exists (file and Windows Event Log), otherwise file only |
+| kageant (agent log) | `KiTTY++_agent` | 100-199 | `KiTTY++_Agent` | on when the log `KiTTY++_Agent` exists (File and Windows Event Log), otherwise File |
 | kitty.exe sessions | `KiTTY++_kitty` | 200-299 | `KiTTY++_Session` | off |
 | klink, kscp, ksftp | `KiTTY++_cli` | 300-399 | `KiTTY++_Session` | off |
 | kittygen, kittygen-cli | `KiTTY++_kittygen` | 400-499 | `KiTTY++_Session` | off |
@@ -52,11 +52,11 @@ system MSI is installed.
 kageant decides its default once, when it starts: with the log `KiTTY++_Agent`
 present it writes the agent log to the file **and** the Windows Event Log,
 otherwise to the file only. An explicit setting (section 2) always wins.
-`Windows Event Log` or `file and Windows Event Log` without the system MSI
+`Windows Event Log` or `File and Windows Event Log` without the system MSI
 writes to the Application log.
 
 With the agent log on, the anchors of its chain (event ID 171) go to the
-Windows Event Log with every destination, `file` included: to
+Windows Event Log with every destination, `File` included: to
 `KiTTY++_Agent` where it exists, else to the Application log. kageant's
 settings show this under the Log page (section 7).
 
@@ -100,8 +100,8 @@ view of the suite's records: the sources `KiTTY++`, `KiTTY++_kitty`,
 Key list window: **Settings...** (or the tray menu's **Settings...**), page
 **Log**:
 
-- **Write the agent log** - the agent log as a whole (`agentlog`, default `yes`).
-- **Destination:** - `file`, `Windows Event Log` or `file and Windows Event Log`.
+- **Enable the agent log** - the agent log as a whole (`agentlog`, default `yes`).
+- **Agent log destination:** - `File`, `Windows Event Log` or `File and Windows Event Log`.
 - **Event Viewer** - Event Viewer on the source `KiTTY++_agent`, in the log
   `KiTTY++_Agent` when it exists and in the Application log. The agent log
   window (tray: **Agent log...**) has the same button.
@@ -115,7 +115,7 @@ agentlog=yes
 agentlogsink=both
 ```
 
-`agentlogsink` - where the agent log (sink) is sent (the Settings field *Destination*):
+`agentlogsink` - where the agent log (sink) is sent (the Settings field *Agent log destination*):
 `file`, `eventlog` or `both`.
 
 Every `[Agent]` key is listed in [`kitty.ini.example`](examples/kitty.ini.example).

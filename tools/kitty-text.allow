@@ -80,7 +80,8 @@ word | KT_WINFEAT_TCP_PORT_OWNER | naming | wording debt: reword with the user's
 word | KT_WINFEAT_PROCESS_NAME | naming | wording debt: reword with the user's OK when its code is next changed
 word | KT_WINFEAT_PROCESS_NAME_OLD | naming | wording debt: reword with the user's OK when its code is next changed
 word | KT_KA_REENCRYPTED_LEFT_FMT | ask | wording debt: reword with the user's OK when its code is next changed
-word | KT_KA_MENU_CONFIRM | ask | wording debt: reword with the user's OK when its code is next changed
+word | KT_RC_KEYSETTINGS_EXTRAPIPE | named | "named pipe" is the Windows term, not the verb
+word | KT_RC_KEYSETTINGS_SSHAUTHSOCK | named | "named pipe" is the Windows term, not the verb
 word | KT_KA_CLI_HELP | named | wording debt: reword with the user's OK when its code is next changed
 word | KT_KA_CLI_HELP | asked | wording debt: reword with the user's OK when its code is next changed
 word | KT_KA_HELLO_NOT_ADDED_UNPROTECTED_FMT | asked | the person acts, not the program

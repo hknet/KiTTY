@@ -1369,7 +1369,7 @@ static void kageant_park_unloaded(const char *path, int encrypted, int confirm,
  * button press is still a modal box appearing where nobody asked for one.
  */
 /*
- * Retry mode (c), "from their stored path on any drive": the stored path with
+ * Retry mode (c), "From any drive letter": the stored path with
  * its drive letter replaced by a letter that JUST ARRIVED, if a file actually
  * exists there. One GetFileAttributes per pending key per arrived letter and
  * no enumeration - drives are never scanned, only the letter(s) the device
@@ -3613,9 +3613,9 @@ void kageant_do_lock_event(int op, int result)
     sfree(text);
 }
 
-/* "When Windows locks: Re-encrypt the keys" - the keys that were unlocked
- * (decrypted) when Windows locked, by public blob: at Windows unlock their
- * passphrases are prompted for again. */
+/* "Action when Windows is locked: Re-encrypt the keys" - the keys that
+ * were unlocked (decrypted) when Windows locked, by public blob: at Windows
+ * unlock their passphrases are prompted for again. */
 static strbuf **g_winlock_blobs = NULL;
 static int g_nwinlock_blobs = 0;
 

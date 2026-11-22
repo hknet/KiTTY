@@ -799,9 +799,11 @@ char default_init_file_content[] =
 ;    itself, so restrictacl=no does not lift a restriction already applied by\n\
 ;    -restrict-acl. If the ACL cannot be applied, KiTTY++ reports the error and\n\
 ;    exits rather than run unprotected.\n\
-;    Unlike most keys here, this one is read from kitty.ini ONLY, never from\n\
-;    the registry: the usual order consults the registry first, which would\n\
-;    let a stale registry value silently cancel a restrictacl=yes written here.\n\
+;    Unlike most keys here, this one is never read from the user's registry,\n\
+;    where a stale value could silently cancel a restrictacl=yes written here.\n\
+;    Precedence: a mandatory Group Policy, the machine lock (\"Lock for all\n\
+;    users...\" on Application > Security, HKLM\\Software\\kapper.net\\KiTTY++),\n\
+;    this file, a recommended policy (docs/GROUP-POLICY.md).\n\
 ;restrictacl=no\n\
 \n\
 ; sav: base path for the registry backup (a full export of KiTTY++'s hive). Each\n\
@@ -822,8 +824,9 @@ char default_init_file_content[] =
 ;    0 disables backups.\n\
 ;savbackupcount=5\n\
 \n\
-; savemode: where sessions are stored. Read from kitty.ini only - never from\n\
-;    the registry, since the registry cannot state \"do not use the registry\".\n\
+; savemode: where sessions are stored. Precedence: a mandatory Group Policy\n\
+;    (docs/GROUP-POLICY.md), then this file - never the user's registry, since\n\
+;    the registry cannot state \"do not use the registry\".\n\
 ;    Allowed values are:\n\
 ;    - registry : sessions in the Windows registry, under KiTTY++'s own hive.\n\
 ;                 The default for kitty.exe.\n\
@@ -1602,33 +1605,37 @@ char default_init_file_content[] =
 ; or absent with no such layout) the registry stays authoritative and\n\
 ; these keys act as first-run defaults only.\n\
 \n\
-; askconfirmation: prompt before a loaded key may sign:\n\
+; askconfirmation: require confirmation for key use - a prompt before a\n\
+; loaded key signs:\n\
 ;   yes  = every key use\n\
-;   auto = only keys whose comment contains \"confirmation\" (default)\n\
+;   auto = keys that request it: their comment contains \"confirmation\"\n\
+;          (default)\n\
 ;   no   = never - also disables the per-key comment prompts (automation)\n\
 ;askconfirmation=auto\n\
 \n\
-; messageonkeyusage: a notice naming the key after each signature - kageant's\n\
-;    own small window, not a tray balloon (Windows suppresses those under\n\
-;    focus assist, which for a security notice is the worst way to fail). It\n\
-;    names the key by comment and by fingerprint, since two keys can share a\n\
-;    comment.\n\
+; messageonkeyusage: notify on key use - a notification naming the key after\n\
+;    each signature, kageant's own small window, not a tray balloon (Windows\n\
+;    suppresses those under focus assist, which for a security notification\n\
+;    is the worst way to fail). It names the key by comment and by\n\
+;    fingerprint, since two keys can share a comment.\n\
 ; messageonkeyusage covers key USE (signatures) and, over IPC, key ADD /\n\
-; REMOVE / REMOVE-ALL naming the requesting program - a notice, never a\n\
-; prompt, so it does not break scripted ssh-add.\n\
+; REMOVE / REMOVE-ALL naming the requesting program - a notification, never\n\
+; a prompt, so it does not break scripted ssh-add.\n\
 ;messageonkeyusage=yes\n\
 \n\
-; messageonkeyarrival: a notice when startup keys that were not there come\n\
-;    back on a drive and can sign again. A click opens the key list.\n\
-;    Default yes. no silences only this notice: the agent log records each\n\
-;    key that comes back (event 117) either way. Settings > Agent > \"Notify\n\
-;    when startup keys arrive\".\n\
+; messageonkeyarrival: notify when startup keys become available - a\n\
+;    notification when startup keys that were not there come back on a drive\n\
+;    and can sign again. A click opens the key list. Default yes. no\n\
+;    silences only this notification: the agent log records each key that\n\
+;    comes back (event 117) either way. Settings > Agent > \"Notify when\n\
+;    startup keys become available\".\n\
 ;messageonkeyarrival=yes\n\
 \n\
-; noticetimeout: how long the kageant notices stay on screen, in\n\
-; seconds (2-120). One knob for all of them (key used, key added/\n\
-; removed over IPC, startup keys missing). Absent = each notice's own\n\
-; default. Hovering the pointer over a notice holds it open regardless.\n\
+; noticetimeout: the notification display time - how long kageant's\n\
+; notifications stay on screen, in seconds (2-120). One knob for all of them\n\
+; (key used, key added/removed over IPC, startup keys missing). Absent =\n\
+; each notification's own default. Hovering the pointer over a notification\n\
+; holds it open regardless.\n\
 ;noticetimeout=8\n\
 \n\
 \n\
@@ -1639,27 +1646,28 @@ char default_init_file_content[] =
 ; Signing and listing keys are always allowed; re-encrypting a key is\n\
 ; allowed even with both blocks on (it only tightens a key by dropping its\n\
 ; cleartext).\n\
-; blockipcadd / blockipcremove: refuse adds, or removes and remove-all.\n\
+; blockipcadd / blockipcremove: block keys added by client programs, or key\n\
+; removal (remove-all included) by client programs.\n\
 ; Both on: programs change no key. lockdownmode (both at once) is retired:\n\
 ; kageant turns a lockdownmode=yes into both once and removes it.\n\
 ;blockipcadd=no\n\
 ;blockipcremove=no\n\
-; allowipclock: let programs lock and unlock the agent over IPC (ssh-add -x\n\
-; / -X). Off by default; the tray menu's Lock agent / Unlock agent always\n\
-; works, and its Unlock also clears a program's lock.\n\
+; allowipclock: allow client programs to lock and unlock the agent\n\
+; (ssh-add -x / -X). Off by default; the tray menu's Lock agent / Unlock\n\
+; agent always works, and its Unlock also clears a program's lock.\n\
 ;allowipclock=no\n\
-; blockforwardedchanges: refuse key changes from a forwarded agent - an add\n\
+; blockforwardedchanges: block changes through agent forwarding - an add\n\
 ; (also an encrypted PPK), a removal, a lock and an unlock from a program on\n\
 ; a server the agent is forwarded to. Listing and signing stay. Default yes.\n\
 ; Only a connection bound for forwarding is known as one: the forwarding\n\
 ; client sends session-bind@openssh.com marked for forwarding (KiTTY++'s\n\
 ; kitty.exe and klink, OpenSSH's ssh from 8.9).\n\
 ;blockforwardedchanges=yes\n\
-; allowwmcopydata: accept requests by window messages (WM_COPYDATA), the\n\
+; allowwmcopydata: allow requests by window messages (WM_COPYDATA), the\n\
 ; agent connection of programs built on PuTTY before 0.75. A legacy option:\n\
 ; kageant does not identify the program that sends one. KiTTY++'s own\n\
-; programs use it only when the named pipe cannot be opened. A notice once\n\
-; per run. Default no: they are refused, the agent log records it (reason\n\
+; programs use it only when the named pipe cannot be opened. A notification\n\
+; once per run. Default no: they are refused, the agent log records it (reason\n\
 ; window-messages).\n\
 ;allowwmcopydata=no\n\
 ; opensshpipe: kageant serves the Windows OpenSSH agent pipe\n\
@@ -1674,8 +1682,8 @@ char default_init_file_content[] =
 ;    service box, Settings > Agent). Turning the service back on there\n\
 ;    restores it, manual when nothing is recorded. Written by kageant.\n\
 ;opensshservicestart=manual\n\
-; extrapipe: a pipe name kageant serves too, as \\\\.\\pipe\\<name>: a name\n\
-;    that stays, unlike kageant's own pipe whose name changes with every\n\
+; extrapipe: an additional named pipe kageant serves, \\\\.\\pipe\\<name>: a\n\
+;    name that stays, unlike kageant's own pipe whose name changes with every\n\
 ;    boot, for clients that take SSH_AUTH_SOCK (ssh.exe, ssh-add, scripts).\n\
 ;    Letters, digits, '.', '_' and '-', up to 200. Empty = none.\n\
 ;extrapipe=kageant-agent\n\
@@ -1687,12 +1695,13 @@ char default_init_file_content[] =
 ; sshauthsockvalue: the SSH_AUTH_SOCK value kageant wrote, so it changes or\n\
 ;    removes only its own. Written by kageant.\n\
 ;sshauthsockvalue=\n\
-; readknownhosts: use OpenSSH's %USERPROFILE%\\.ssh\\known_hosts as a\n\
-; host-key source (Settings, Agent page). Off by default: kageant then\n\
-; never opens the file. On: host names of a host key for the agent log's\n\
-; dest= / fwd= and the confirmation (marked \"(known_hosts)\"), \"Look up host\n\
-; keys\" in the rule editor (plain, hashed and @cert-authority entries), and\n\
-; \"Checked at each login\" destinations. KiTTY++ never writes the file.\n\
+; readknownhosts: read the OpenSSH known_hosts file\n\
+; (%USERPROFILE%\\.ssh\\known_hosts) as a host-key source (Settings, Agent\n\
+; page). Off by default: kageant then never opens the file. On: host names\n\
+; of a host key for the agent log's dest= / fwd= and the confirmation\n\
+; (marked \"(known_hosts)\"), \"Look up host keys\" in the rule editor (plain,\n\
+; hashed and @cert-authority entries) and \"Checked at each login\"\n\
+; destinations. KiTTY++ never writes the file.\n\
 ; Hashed entries (|1|..., written while OpenSSH's HashKnownHosts is yes)\n\
 ; cannot be decoded: they give no host name to the agent log, the\n\
 ; confirmation or \"Checked at each login\" destinations. The rule editor's\n\
@@ -1714,38 +1723,40 @@ char default_init_file_content[] =
 ; included. A record that repeats the one before it is counted, not\n\
 ; written: one record (event 172) holds the count.\n\
 ; kageant -verifylog <file> checks the chain against those anchors.\n\
-; agentlog: write the log. Default yes.\n\
+; agentlog: enable the agent log. Default yes.\n\
 ;agentlog=yes\n\
-; agentlogpath: full path of the log file. Default: next to kitty.ini for\n\
-; portable installs, else %LOCALAPPDATA%\\kapper.net\\KiTTY\\kageant.log.\n\
+; agentlogpath: the agent log file path, in full. Default: next to kitty.ini\n\
+; for portable installs, else %LOCALAPPDATA%\\kapper.net\\KiTTY\\kageant.log.\n\
 ;agentlogpath=\n\
-; agentlogmaxkb: rotate the active file when it crosses this size (KB).\n\
+; agentlogmaxkb: maximum log file size (KB): the active file is rotated when\n\
+; it exceeds it.\n\
 ;agentlogmaxkb=5120\n\
-; agentlogkeep: rotated generations to keep (.1 .. .N).\n\
+; agentlogkeep: number of rotated files to keep (.1 .. .N).\n\
 ;agentlogkeep=3\n\
-; agentlogexpiredays: delete rotated generations older than this many days\n\
-; at rotation time. 0 = keep them forever. Shorter retention means less\n\
-; forensic history - this is a tradeoff, not housekeeping.\n\
+; agentlogexpiredays: rotated file retention - delete rotated files older\n\
+; than this many days at rotation time. 0 = never deleted. Shorter retention\n\
+; means less forensic history - this is a tradeoff, not housekeeping.\n\
 ;agentlogexpiredays=90\n\
-; agentlogsink: where the agent log goes: file, eventlog or both. Default:\n\
+; agentlogsink: the agent log destination: file, eventlog or both. Default:\n\
 ; both when the KiTTY++_Agent event log exists (installed for all users),\n\
 ; else file.\n\
 ;agentlogsink=file\n\
 \n\
-; helloconfirm: every key-use confirmation demands a Windows Hello presence\n\
-; check (biometrics or the device PIN, in Windows' own protected UI)\n\
-; instead of a Yes button - a button click can be synthesized by another\n\
-; program running as you; the Hello prompt cannot. When Hello cannot run\n\
-; (no Hello credential, policy, a remote-desktop session) the request is\n\
-; REFUSED, never downgraded to a click. A single key can demand Hello on\n\
-; its own via \"Confirm each use\" in its key details, without this global\n\
-; switch. Default no.\n\
+; helloconfirm: confirm key use with Windows Hello - every key-use\n\
+; confirmation demands a Windows Hello presence check (biometrics or the\n\
+; device PIN, in Windows' own protected UI) instead of a Yes button - a\n\
+; button click can be synthesized by another program running as you; the\n\
+; Hello prompt cannot. When Hello cannot run (no Hello credential, policy, a\n\
+; remote-desktop session) the request is REFUSED, never downgraded to a\n\
+; click. A single key can demand Hello on its own via \"Confirm each use\" in\n\
+; its key details, without this global switch. Default no.\n\
 ;helloconfirm=no\n\
 \n\
-; loadkeysonstartup: re-add the remembered keys when kageant starts, added\n\
-;    encrypted so the passphrase is required on first use, not at login. Only\n\
-;    the key FILE PATHS are remembered - never a passphrase or key material -\n\
-;    and the list below is maintained for you as you add and remove keys.\n\
+; loadkeysonstartup: load remembered keys at startup - re-add them when\n\
+;    kageant starts, added encrypted so the passphrase is required on first\n\
+;    use, not at login. Only the key FILE PATHS are remembered - never a\n\
+;    passphrase or key material - and the list below is maintained for you\n\
+;    as you add and remove keys.\n\
 ;    Off by default. Was called loadonstartup; the old name is read once and\n\
 ;    rewritten under this one.\n\
 ;    This is its own tray item and its own Settings checkbox, \"Load remembered\n\
@@ -1762,7 +1773,7 @@ char default_init_file_content[] =
 ;startupkey1=keys\\id_ed25519.ppk,encrypted\n\
 \n\
 ; --- Startup keys on removable media.\n\
-; retrykeys: when a drive appears, load the startup keys that were not there\n\
+; retrykeys: load startup keys from newly attached drives: those not there\n\
 ; at login (they wait as \"not loaded\" rows in the key list rather than being\n\
 ; dropped). Default yes - it does nothing unless a startup key is actually\n\
 ; missing. A third value, ignoredriveletter, also tries each waiting key's\n\
@@ -1770,48 +1781,53 @@ char default_init_file_content[] =
 ; back as a different letter - loading only a key whose recorded fingerprint\n\
 ; matches, and rewriting the stored path once it has.\n\
 ;retrykeys=yes\n\
-; unloadonremove: when the media a key came from goes away, drop that key\n\
-; from the agent and put it back on the pending list, so it returns when the\n\
-; media does. Default no, deliberately: pulling a stick must not break an\n\
-; authentication that is running right now.\n\
+; unloadonremove: unload keys when their drive is removed - when the media a\n\
+; key came from goes away, drop that key from the agent and put it back on\n\
+; the pending list, so it returns when the media does. Default no,\n\
+; deliberately: pulling a stick must not break an authentication that is\n\
+; running right now.\n\
 ;unloadonremove=no\n\
-; quietmissingkeys: skip the startup notice that counts keys whose media is\n\
-; absent (expected, when they live on a stick that is not always plugged\n\
-; in). A key file that EXISTS but will not load is still reported - that is\n\
-; a broken key, not an absent one.\n\
+; quietmissingkeys: suppress notifications for missing startup keys - skip\n\
+; the startup notification that counts keys whose media is absent\n\
+; (expected, when they live on a stick that is not always plugged in). A key\n\
+; file that EXISTS but will not load is still reported - that is a broken\n\
+; key, not an absent one.\n\
 ;quietmissingkeys=no\n\
 \n\
-; passphrasecacheseconds: how long a typed passphrase is kept (encrypted in\n\
-; memory) to unlock further keys of a batch add without retyping it.\n\
+; passphrasecacheseconds: the passphrase cache time - how long a typed\n\
+; passphrase is kept (encrypted in memory) to unlock further keys of a batch\n\
+; add without retyping it.\n\
 ; 0 = do not cache; capped at 300. Default 60.\n\
 ;passphrasecacheseconds=60\n\
 \n\
-; hellocacheseconds: how long the Windows Hello key-unlock stays valid\n\
-; (the derived wrapping key is kept encrypted in memory), so a batch of\n\
-; protected keys and quick successive unlocks need ONE Hello gesture.\n\
+; hellocacheseconds: the Windows Hello cache time - how long the Windows\n\
+; Hello key-unlock stays valid (the derived wrapping key is kept encrypted in\n\
+; memory), so a batch of protected keys and quick successive unlocks need\n\
+; ONE Hello gesture.\n\
 ; 0 = every unlock requires a gesture; capped at 300. Default 60.\n\
 ;hellocacheseconds=60\n\
 \n\
-; autoencryptmode / autoencryptseconds: re-encrypt keys after idle. A key\n\
+; autoencryptmode / autoencryptseconds: re-encrypt idle keys. A key\n\
 ; goes back to its encrypted state autoencryptseconds after it was decrypted\n\
 ; or last signed, whichever is later (the passphrase is required at the next\n\
 ; use, then the clock restarts);\n\
 ; the encrypted copy is kept in memory, no file is re-read. Only keys with\n\
 ; a passphrase take part. autoencryptmode: off = no agent timer (a key's\n\
-; own value in its key details still applies); default = the time below\n\
-; applies to keys without their own value; enforce = the time below applies\n\
-; to EVERY key and the per-key values are ignored, for a site or a network\n\
-; whose rules demand it. autoencryptseconds: seconds, or 10m / 2h / 1d, or\n\
-; \"use\" (or \"immediately\", the same) = right after each signature. 30 s to\n\
-; 7 d. Default off, 600.\n\
+; own value in its key details still applies); default = keys without their\n\
+; own timeout: the time below applies to them; enforce = all keys: the time\n\
+; below applies to EVERY key and the per-key values are ignored, for a site\n\
+; or a network whose rules demand it. autoencryptseconds: seconds, or 10m /\n\
+; 2h / 1d, or \"use\" (or \"immediately\", the same) = right after each\n\
+; signature. 30 s to 7 d. Default off, 600.\n\
 ;autoencryptmode=off\n\
 ;autoencryptseconds=600\n\
 \n\
-; lockwithwindows: when Windows locks or a remote desktop disconnects -\n\
-; keep = the agent keeps working (default); lock = no key is offered or used\n\
-; until Windows unlocks; reencrypt = every key with a passphrase also goes\n\
-; back to its encrypted state, and when Windows unlocks the keys with a key\n\
-; file require their passphrase (the others on first use).\n\
+; lockwithwindows: action when Windows is locked or a remote desktop\n\
+; disconnects - keep = no action, the agent keeps working (default);\n\
+; lock = no key is offered or used until Windows unlocks; reencrypt = every\n\
+; key with a passphrase also goes back to its encrypted state, and when\n\
+; Windows unlocks the keys with a key file require their passphrase (the\n\
+; others on first use).\n\
 ;lockwithwindows=keep\n\
 \n\
 ; keylistgeometry / keylistcolumns: the key-list window's remembered\n\

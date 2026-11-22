@@ -3167,10 +3167,15 @@ With \c{readonly=yes} nothing is written (\k{kitty-cfg-storage}). The
 precedence rules between the two are set out at the top of
 \c{kitty.ini.example}.
 
-Two keys are deliberately not editable here. \c{restrictacl} is shown
-read-only on \k{kitty-cfg-storage}, because it is honoured from
-\c{kitty.ini} alone. \c{conf=no} forbids every write KiTTY++ would make to
-its configuration, so a settings window must not offer it.
+One key is deliberately not editable here: \c{conf=no} forbids every
+write KiTTY++ would make to its configuration, so a settings window must not
+offer it. \c{restrictacl} has its own check box under Application >
+Security > Hardening.
+
+A setting enforced by a mandatory Group Policy (the key
+\c{Software\\Policies\\kapper.net\\KiTTY++}) is greyed out, with a note that
+the administrator set it. The source tree's \c{docs/GROUP-POLICY.md} describes the
+template and the keys.
 
 \S{kitty-cfg-storage} The Storage & Backup panel
 
@@ -3281,11 +3286,6 @@ is not saved: the one stored before stays as it was, and KiTTY++
 reports it. The same when Windows cannot encrypt a password (DPAPI): it
 is not saved, and KiTTY++ reports it.
 
-\b \q{Hardening} shows whether the restricted process ACL is on. That
-switch is read from \c{kitty.ini} only - never the registry, so a stale
-registry value can never cancel it - which is why it is not editable
-here.
-
 \b \q{Legacy password salt variant} shows \c{cryptsalt}, a setting of
 old KiTTY's password scrambling, which KiTTY++ reads but never writes:
 it stores passwords with DPAPI or the master password. \c{0} (the
@@ -3296,7 +3296,7 @@ unreadable.
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{savemode} and
 \c{KiClassName} (shown), \c{savbackupcount}, \c{portablebackupcount},
-\c{sav}, \c{fileextension}, \c{cryptsalt}, \c{restrictacl} (shown), and
+\c{sav}, \c{fileextension}, \c{cryptsalt}, \c{restrictacl}, and
 in a folder store \c{PortablePasswordProtection}.
 
 \S{kitty-cfg-ini-view} The KiTTY.ini leaf (under Storage & Backup)

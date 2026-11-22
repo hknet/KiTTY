@@ -1,0 +1,521 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- KiTTY++ Group Policy template. Copy kittypp.admx to %SystemRoot%\PolicyDefinitions
+     and en-US\kittypp.adml to %SystemRoot%\PolicyDefinitions\en-US (or to the
+     domain's Central Store). Values are written to Software\Policies\kapper.net\KiTTY++
+     under HKLM (Computer Configuration) or HKCU (User Configuration). HKLM takes precedence. -->
+<policyDefinitions xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <policyNamespaces>
+    <target prefix="kittypp" namespace="kapper.net.Policies.KiTTYpp" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <supportedOn>
+    <definitions>
+      <definition name="SUPPORTED_KiTTYpp_0_85_1_22" displayName="$(string.SUPPORTED_KiTTYpp_0_85_1_22)" />
+    </definitions>
+  </supportedOn>
+  <categories>
+    <category name="KiTTYpp" displayName="$(string.Cat_KiTTYpp)">
+    </category>
+    <category name="Store" displayName="$(string.Cat_Store)">
+      <parentCategory ref="KiTTYpp" />
+    </category>
+    <category name="Hardening" displayName="$(string.Cat_Hardening)">
+      <parentCategory ref="KiTTYpp" />
+    </category>
+    <category name="Agent" displayName="$(string.Cat_Agent)">
+      <parentCategory ref="KiTTYpp" />
+    </category>
+    <category name="AgentKeys" displayName="$(string.Cat_AgentKeys)">
+      <parentCategory ref="Agent" />
+    </category>
+    <category name="AgentAccess" displayName="$(string.Cat_AgentAccess)">
+      <parentCategory ref="Agent" />
+    </category>
+    <category name="AgentLog" displayName="$(string.Cat_AgentLog)">
+      <parentCategory ref="Agent" />
+    </category>
+    <category name="KiTTYpp_Rec" displayName="$(string.Cat_KiTTYpp_Rec)">
+    </category>
+    <category name="Hardening_Rec" displayName="$(string.Cat_Hardening_Rec)">
+      <parentCategory ref="KiTTYpp_Rec" />
+    </category>
+    <category name="Agent_Rec" displayName="$(string.Cat_Agent_Rec)">
+      <parentCategory ref="KiTTYpp_Rec" />
+    </category>
+    <category name="AgentKeys_Rec" displayName="$(string.Cat_AgentKeys_Rec)">
+      <parentCategory ref="Agent_Rec" />
+    </category>
+    <category name="AgentAccess_Rec" displayName="$(string.Cat_AgentAccess_Rec)">
+      <parentCategory ref="Agent_Rec" />
+    </category>
+    <category name="AgentLog_Rec" displayName="$(string.Cat_AgentLog_Rec)">
+      <parentCategory ref="Agent_Rec" />
+    </category>
+  </categories>
+  <policies>
+    <policy name="SaveMode" class="Both" displayName="$(string.SaveMode)" explainText="$(string.SaveMode_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.SaveMode)">
+      <parentCategory ref="Store" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="SaveMode_Value" valueName="savemode" required="true">
+          <item displayName="$(string.SaveMode_registry)"><value><string>registry</string></value></item>
+          <item displayName="$(string.SaveMode_dir)"><value><string>dir</string></value></item>
+          <item displayName="$(string.SaveMode_file)"><value><string>file</string></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="ReadOnly" class="Both" displayName="$(string.ReadOnly)" explainText="$(string.ReadOnly_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="readonly">
+      <parentCategory ref="Store" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><string>yes</string></enabledValue>
+      <disabledValue><string>no</string></disabledValue>
+    </policy>
+    <policy name="KiClassName" class="Both" displayName="$(string.KiClassName)" explainText="$(string.KiClassName_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.KiClassName)">
+      <parentCategory ref="Store" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <text id="KiClassName_Value" valueName="KiClassName" maxLength="64" required="true" />
+      </elements>
+    </policy>
+    <policy name="RestrictAcl" class="Both" displayName="$(string.RestrictAcl)" explainText="$(string.RestrictAcl_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="restrictacl">
+      <parentCategory ref="Hardening" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><string>yes</string></enabledValue>
+      <disabledValue><string>no</string></disabledValue>
+    </policy>
+    <policy name="HideApplicationTab" class="Both" displayName="$(string.HideApplicationTab)" explainText="$(string.HideApplicationTab_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="applicationsettings">
+      <parentCategory ref="Hardening" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><string>no</string></enabledValue>
+      <disabledValue><string>yes</string></disabledValue>
+    </policy>
+    <policy name="ConfirmKeyUse" class="Both" displayName="$(string.ConfirmKeyUse)" explainText="$(string.ConfirmKeyUse_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.ConfirmKeyUse)">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="ConfirmKeyUse_Value" valueName="ConfirmKeyUse" required="true">
+          <item displayName="$(string.ConfirmKeyUse_ConfirmAuto)"><value><decimal value="0" /></value></item>
+          <item displayName="$(string.ConfirmKeyUse_ConfirmEvery)"><value><decimal value="1" /></value></item>
+          <item displayName="$(string.ConfirmKeyUse_ConfirmNever)"><value><decimal value="2" /></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="HelloConfirm" class="Both" displayName="$(string.HelloConfirm)" explainText="$(string.HelloConfirm_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="HelloConfirm">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="NotifyOnKeyUse" class="Both" displayName="$(string.NotifyOnKeyUse)" explainText="$(string.NotifyOnKeyUse_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="NotifyOnKeyUse">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="NotifyOnKeyArrival" class="Both" displayName="$(string.NotifyOnKeyArrival)" explainText="$(string.NotifyOnKeyArrival_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="NotifyOnKeyArrival">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="NoticeTimeout" class="Both" displayName="$(string.NoticeTimeout)" explainText="$(string.NoticeTimeout_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.NoticeTimeout)">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="NoticeTimeout_Value" valueName="NoticeTimeout" minValue="2" maxValue="120" required="true" />
+      </elements>
+    </policy>
+    <policy name="LoadKeysOnStartup" class="Both" displayName="$(string.LoadKeysOnStartup)" explainText="$(string.LoadKeysOnStartup_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="LoadKeysOnStartup">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="RetryKeys" class="Both" displayName="$(string.RetryKeys)" explainText="$(string.RetryKeys_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.RetryKeys)">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="RetryKeys_Value" valueName="RetryKeys" required="true">
+          <item displayName="$(string.RetryKeys_RetryNever)"><value><decimal value="0" /></value></item>
+          <item displayName="$(string.RetryKeys_RetryPath)"><value><decimal value="1" /></value></item>
+          <item displayName="$(string.RetryKeys_RetryAnyDrive)"><value><decimal value="2" /></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="UnloadOnRemove" class="Both" displayName="$(string.UnloadOnRemove)" explainText="$(string.UnloadOnRemove_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="UnloadOnRemove">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="QuietMissingKeys" class="Both" displayName="$(string.QuietMissingKeys)" explainText="$(string.QuietMissingKeys_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="QuietMissingKeys">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="PassphraseCacheSeconds" class="Both" displayName="$(string.PassphraseCacheSeconds)" explainText="$(string.PassphraseCacheSeconds_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.PassphraseCacheSeconds)">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="PassphraseCacheSeconds_Value" valueName="PassphraseCacheSeconds" minValue="0" maxValue="300" required="true" />
+      </elements>
+    </policy>
+    <policy name="HelloCacheSeconds" class="Both" displayName="$(string.HelloCacheSeconds)" explainText="$(string.HelloCacheSeconds_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.HelloCacheSeconds)">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="HelloCacheSeconds_Value" valueName="HelloCacheSeconds" minValue="0" maxValue="300" required="true" />
+      </elements>
+    </policy>
+    <policy name="AutoEncryptMode" class="Both" displayName="$(string.AutoEncryptMode)" explainText="$(string.AutoEncryptMode_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.AutoEncryptMode)">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="AutoEncryptMode_Value" valueName="AutoEncryptMode" required="true">
+          <item displayName="$(string.AutoEncryptMode_AutoEncOff)"><value><decimal value="0" /></value></item>
+          <item displayName="$(string.AutoEncryptMode_AutoEncDefault)"><value><decimal value="1" /></value></item>
+          <item displayName="$(string.AutoEncryptMode_AutoEncEnforce)"><value><decimal value="2" /></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="AutoEncryptSeconds" class="Both" displayName="$(string.AutoEncryptSeconds)" explainText="$(string.AutoEncryptSeconds_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.AutoEncryptSeconds)">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="AutoEncryptSeconds_Value" valueName="AutoEncryptSeconds" minValue="1" maxValue="604800" required="true" />
+      </elements>
+    </policy>
+    <policy name="LockWithWindows" class="Both" displayName="$(string.LockWithWindows)" explainText="$(string.LockWithWindows_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.LockWithWindows)">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="LockWithWindows_Value" valueName="LockWithWindows" required="true">
+          <item displayName="$(string.LockWithWindows_WinLockKeep)"><value><decimal value="0" /></value></item>
+          <item displayName="$(string.LockWithWindows_WinLockLock)"><value><decimal value="1" /></value></item>
+          <item displayName="$(string.LockWithWindows_WinLockReencrypt)"><value><decimal value="2" /></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="ReadKnownHosts" class="Both" displayName="$(string.ReadKnownHosts)" explainText="$(string.ReadKnownHosts_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="ReadKnownHosts">
+      <parentCategory ref="AgentKeys" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="BlockIpcAdd" class="Both" displayName="$(string.BlockIpcAdd)" explainText="$(string.BlockIpcAdd_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="BlockIpcAdd">
+      <parentCategory ref="AgentAccess" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="BlockIpcRemove" class="Both" displayName="$(string.BlockIpcRemove)" explainText="$(string.BlockIpcRemove_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="BlockIpcRemove">
+      <parentCategory ref="AgentAccess" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AllowIpcLock" class="Both" displayName="$(string.AllowIpcLock)" explainText="$(string.AllowIpcLock_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="AllowIpcLock">
+      <parentCategory ref="AgentAccess" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="BlockForwardedChanges" class="Both" displayName="$(string.BlockForwardedChanges)" explainText="$(string.BlockForwardedChanges_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="BlockForwardedChanges">
+      <parentCategory ref="AgentAccess" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AllowWmCopyData" class="Both" displayName="$(string.AllowWmCopyData)" explainText="$(string.AllowWmCopyData_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="AllowWmCopyData">
+      <parentCategory ref="AgentAccess" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="OpenSSHPipe" class="Both" displayName="$(string.OpenSSHPipe)" explainText="$(string.OpenSSHPipe_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="OpenSSHPipe">
+      <parentCategory ref="AgentAccess" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="ExtraPipe" class="Both" displayName="$(string.ExtraPipe)" explainText="$(string.ExtraPipe_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.ExtraPipe)">
+      <parentCategory ref="AgentAccess" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <text id="ExtraPipe_Value" valueName="ExtraPipe" maxLength="200" required="true" />
+      </elements>
+    </policy>
+    <policy name="SetSshAuthSock" class="Both" displayName="$(string.SetSshAuthSock)" explainText="$(string.SetSshAuthSock_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="SetSshAuthSock">
+      <parentCategory ref="AgentAccess" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AgentLog" class="Both" displayName="$(string.AgentLog)" explainText="$(string.AgentLog_Help)" key="Software\Policies\kapper.net\KiTTY++" valueName="AgentLog">
+      <parentCategory ref="AgentLog" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AgentLogPath" class="Both" displayName="$(string.AgentLogPath)" explainText="$(string.AgentLogPath_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.AgentLogPath)">
+      <parentCategory ref="AgentLog" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <text id="AgentLogPath_Value" valueName="AgentLogPath" maxLength="260" required="true" />
+      </elements>
+    </policy>
+    <policy name="AgentLogSink" class="Both" displayName="$(string.AgentLogSink)" explainText="$(string.AgentLogSink_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.AgentLogSink)">
+      <parentCategory ref="AgentLog" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="AgentLogSink_Value" valueName="AgentLogSink" required="true">
+          <item displayName="$(string.AgentLogSink_SinkFile)"><value><string>file</string></value></item>
+          <item displayName="$(string.AgentLogSink_SinkEventLog)"><value><string>eventlog</string></value></item>
+          <item displayName="$(string.AgentLogSink_SinkBoth)"><value><string>both</string></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="AgentLogMaxKB" class="Both" displayName="$(string.AgentLogMaxKB)" explainText="$(string.AgentLogMaxKB_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.AgentLogMaxKB)">
+      <parentCategory ref="AgentLog" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="AgentLogMaxKB_Value" valueName="AgentLogMaxKB" minValue="16" maxValue="1048576" required="true" />
+      </elements>
+    </policy>
+    <policy name="AgentLogKeep" class="Both" displayName="$(string.AgentLogKeep)" explainText="$(string.AgentLogKeep_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.AgentLogKeep)">
+      <parentCategory ref="AgentLog" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="AgentLogKeep_Value" valueName="AgentLogKeep" minValue="1" maxValue="99" required="true" />
+      </elements>
+    </policy>
+    <policy name="AgentLogExpireDays" class="Both" displayName="$(string.AgentLogExpireDays)" explainText="$(string.AgentLogExpireDays_Help)" key="Software\Policies\kapper.net\KiTTY++" presentation="$(presentation.AgentLogExpireDays)">
+      <parentCategory ref="AgentLog" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="AgentLogExpireDays_Value" valueName="AgentLogExpireDays" minValue="0" maxValue="3650" required="true" />
+      </elements>
+    </policy>
+    <policy name="RestrictAcl_Recommended" class="Both" displayName="$(string.RestrictAcl_Recommended)" explainText="$(string.RestrictAcl_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="restrictacl">
+      <parentCategory ref="Hardening_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><string>yes</string></enabledValue>
+      <disabledValue><string>no</string></disabledValue>
+    </policy>
+    <policy name="HideApplicationTab_Recommended" class="Both" displayName="$(string.HideApplicationTab_Recommended)" explainText="$(string.HideApplicationTab_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="applicationsettings">
+      <parentCategory ref="Hardening_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><string>no</string></enabledValue>
+      <disabledValue><string>yes</string></disabledValue>
+    </policy>
+    <policy name="ConfirmKeyUse_Recommended" class="Both" displayName="$(string.ConfirmKeyUse_Recommended)" explainText="$(string.ConfirmKeyUse_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.ConfirmKeyUse_Recommended)">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="ConfirmKeyUse_Value" valueName="ConfirmKeyUse" required="true">
+          <item displayName="$(string.ConfirmKeyUse_ConfirmAuto)"><value><decimal value="0" /></value></item>
+          <item displayName="$(string.ConfirmKeyUse_ConfirmEvery)"><value><decimal value="1" /></value></item>
+          <item displayName="$(string.ConfirmKeyUse_ConfirmNever)"><value><decimal value="2" /></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="HelloConfirm_Recommended" class="Both" displayName="$(string.HelloConfirm_Recommended)" explainText="$(string.HelloConfirm_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="HelloConfirm">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="NotifyOnKeyUse_Recommended" class="Both" displayName="$(string.NotifyOnKeyUse_Recommended)" explainText="$(string.NotifyOnKeyUse_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="NotifyOnKeyUse">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="NotifyOnKeyArrival_Recommended" class="Both" displayName="$(string.NotifyOnKeyArrival_Recommended)" explainText="$(string.NotifyOnKeyArrival_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="NotifyOnKeyArrival">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="NoticeTimeout_Recommended" class="Both" displayName="$(string.NoticeTimeout_Recommended)" explainText="$(string.NoticeTimeout_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.NoticeTimeout_Recommended)">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="NoticeTimeout_Value" valueName="NoticeTimeout" minValue="2" maxValue="120" required="true" />
+      </elements>
+    </policy>
+    <policy name="LoadKeysOnStartup_Recommended" class="Both" displayName="$(string.LoadKeysOnStartup_Recommended)" explainText="$(string.LoadKeysOnStartup_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="LoadKeysOnStartup">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="RetryKeys_Recommended" class="Both" displayName="$(string.RetryKeys_Recommended)" explainText="$(string.RetryKeys_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.RetryKeys_Recommended)">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="RetryKeys_Value" valueName="RetryKeys" required="true">
+          <item displayName="$(string.RetryKeys_RetryNever)"><value><decimal value="0" /></value></item>
+          <item displayName="$(string.RetryKeys_RetryPath)"><value><decimal value="1" /></value></item>
+          <item displayName="$(string.RetryKeys_RetryAnyDrive)"><value><decimal value="2" /></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="UnloadOnRemove_Recommended" class="Both" displayName="$(string.UnloadOnRemove_Recommended)" explainText="$(string.UnloadOnRemove_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="UnloadOnRemove">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="QuietMissingKeys_Recommended" class="Both" displayName="$(string.QuietMissingKeys_Recommended)" explainText="$(string.QuietMissingKeys_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="QuietMissingKeys">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="PassphraseCacheSeconds_Recommended" class="Both" displayName="$(string.PassphraseCacheSeconds_Recommended)" explainText="$(string.PassphraseCacheSeconds_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.PassphraseCacheSeconds_Recommended)">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="PassphraseCacheSeconds_Value" valueName="PassphraseCacheSeconds" minValue="0" maxValue="300" required="true" />
+      </elements>
+    </policy>
+    <policy name="HelloCacheSeconds_Recommended" class="Both" displayName="$(string.HelloCacheSeconds_Recommended)" explainText="$(string.HelloCacheSeconds_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.HelloCacheSeconds_Recommended)">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="HelloCacheSeconds_Value" valueName="HelloCacheSeconds" minValue="0" maxValue="300" required="true" />
+      </elements>
+    </policy>
+    <policy name="AutoEncryptMode_Recommended" class="Both" displayName="$(string.AutoEncryptMode_Recommended)" explainText="$(string.AutoEncryptMode_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.AutoEncryptMode_Recommended)">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="AutoEncryptMode_Value" valueName="AutoEncryptMode" required="true">
+          <item displayName="$(string.AutoEncryptMode_AutoEncOff)"><value><decimal value="0" /></value></item>
+          <item displayName="$(string.AutoEncryptMode_AutoEncDefault)"><value><decimal value="1" /></value></item>
+          <item displayName="$(string.AutoEncryptMode_AutoEncEnforce)"><value><decimal value="2" /></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="AutoEncryptSeconds_Recommended" class="Both" displayName="$(string.AutoEncryptSeconds_Recommended)" explainText="$(string.AutoEncryptSeconds_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.AutoEncryptSeconds_Recommended)">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="AutoEncryptSeconds_Value" valueName="AutoEncryptSeconds" minValue="1" maxValue="604800" required="true" />
+      </elements>
+    </policy>
+    <policy name="LockWithWindows_Recommended" class="Both" displayName="$(string.LockWithWindows_Recommended)" explainText="$(string.LockWithWindows_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.LockWithWindows_Recommended)">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="LockWithWindows_Value" valueName="LockWithWindows" required="true">
+          <item displayName="$(string.LockWithWindows_WinLockKeep)"><value><decimal value="0" /></value></item>
+          <item displayName="$(string.LockWithWindows_WinLockLock)"><value><decimal value="1" /></value></item>
+          <item displayName="$(string.LockWithWindows_WinLockReencrypt)"><value><decimal value="2" /></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="ReadKnownHosts_Recommended" class="Both" displayName="$(string.ReadKnownHosts_Recommended)" explainText="$(string.ReadKnownHosts_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="ReadKnownHosts">
+      <parentCategory ref="AgentKeys_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="BlockIpcAdd_Recommended" class="Both" displayName="$(string.BlockIpcAdd_Recommended)" explainText="$(string.BlockIpcAdd_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="BlockIpcAdd">
+      <parentCategory ref="AgentAccess_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="BlockIpcRemove_Recommended" class="Both" displayName="$(string.BlockIpcRemove_Recommended)" explainText="$(string.BlockIpcRemove_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="BlockIpcRemove">
+      <parentCategory ref="AgentAccess_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AllowIpcLock_Recommended" class="Both" displayName="$(string.AllowIpcLock_Recommended)" explainText="$(string.AllowIpcLock_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="AllowIpcLock">
+      <parentCategory ref="AgentAccess_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="BlockForwardedChanges_Recommended" class="Both" displayName="$(string.BlockForwardedChanges_Recommended)" explainText="$(string.BlockForwardedChanges_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="BlockForwardedChanges">
+      <parentCategory ref="AgentAccess_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AllowWmCopyData_Recommended" class="Both" displayName="$(string.AllowWmCopyData_Recommended)" explainText="$(string.AllowWmCopyData_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="AllowWmCopyData">
+      <parentCategory ref="AgentAccess_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="OpenSSHPipe_Recommended" class="Both" displayName="$(string.OpenSSHPipe_Recommended)" explainText="$(string.OpenSSHPipe_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="OpenSSHPipe">
+      <parentCategory ref="AgentAccess_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="ExtraPipe_Recommended" class="Both" displayName="$(string.ExtraPipe_Recommended)" explainText="$(string.ExtraPipe_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.ExtraPipe_Recommended)">
+      <parentCategory ref="AgentAccess_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <text id="ExtraPipe_Value" valueName="ExtraPipe" maxLength="200" required="true" />
+      </elements>
+    </policy>
+    <policy name="SetSshAuthSock_Recommended" class="Both" displayName="$(string.SetSshAuthSock_Recommended)" explainText="$(string.SetSshAuthSock_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="SetSshAuthSock">
+      <parentCategory ref="AgentAccess_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AgentLog_Recommended" class="Both" displayName="$(string.AgentLog_Recommended)" explainText="$(string.AgentLog_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" valueName="AgentLog">
+      <parentCategory ref="AgentLog_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <enabledValue><decimal value="1" /></enabledValue>
+      <disabledValue><decimal value="0" /></disabledValue>
+    </policy>
+    <policy name="AgentLogPath_Recommended" class="Both" displayName="$(string.AgentLogPath_Recommended)" explainText="$(string.AgentLogPath_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.AgentLogPath_Recommended)">
+      <parentCategory ref="AgentLog_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <text id="AgentLogPath_Value" valueName="AgentLogPath" maxLength="260" required="true" />
+      </elements>
+    </policy>
+    <policy name="AgentLogSink_Recommended" class="Both" displayName="$(string.AgentLogSink_Recommended)" explainText="$(string.AgentLogSink_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.AgentLogSink_Recommended)">
+      <parentCategory ref="AgentLog_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <enum id="AgentLogSink_Value" valueName="AgentLogSink" required="true">
+          <item displayName="$(string.AgentLogSink_SinkFile)"><value><string>file</string></value></item>
+          <item displayName="$(string.AgentLogSink_SinkEventLog)"><value><string>eventlog</string></value></item>
+          <item displayName="$(string.AgentLogSink_SinkBoth)"><value><string>both</string></value></item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="AgentLogMaxKB_Recommended" class="Both" displayName="$(string.AgentLogMaxKB_Recommended)" explainText="$(string.AgentLogMaxKB_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.AgentLogMaxKB_Recommended)">
+      <parentCategory ref="AgentLog_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="AgentLogMaxKB_Value" valueName="AgentLogMaxKB" minValue="16" maxValue="1048576" required="true" />
+      </elements>
+    </policy>
+    <policy name="AgentLogKeep_Recommended" class="Both" displayName="$(string.AgentLogKeep_Recommended)" explainText="$(string.AgentLogKeep_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.AgentLogKeep_Recommended)">
+      <parentCategory ref="AgentLog_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="AgentLogKeep_Value" valueName="AgentLogKeep" minValue="1" maxValue="99" required="true" />
+      </elements>
+    </policy>
+    <policy name="AgentLogExpireDays_Recommended" class="Both" displayName="$(string.AgentLogExpireDays_Recommended)" explainText="$(string.AgentLogExpireDays_Recommended_Help)" key="Software\Policies\kapper.net\KiTTY++\Recommended" presentation="$(presentation.AgentLogExpireDays_Recommended)">
+      <parentCategory ref="AgentLog_Rec" />
+      <supportedOn ref="SUPPORTED_KiTTYpp_0_85_1_22" />
+      <elements>
+        <decimal id="AgentLogExpireDays_Value" valueName="AgentLogExpireDays" minValue="0" maxValue="3650" required="true" />
+      </elements>
+    </policy>
+  </policies>
+</policyDefinitions>

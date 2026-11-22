@@ -142,7 +142,7 @@ bool pageant_set_key_confirm(ptrlen blob, int mode);
 enum { KAGEANT_MUT_ADD, KAGEANT_MUT_REMOVE, KAGEANT_MUT_REMOVE_ALL };
 /* KiTTY: a key change or a lock over a connection bound for agent
  * forwarding (a session-bind with is_forwarding set): refused while
- * kageant's "Refuse key changes from a forwarded agent" is on. op is a
+ * kageant's "Block changes through agent forwarding" is on. op is a
  * KAGEANT_MUT_* value or one of these two; fp as for kageant_ipc_blocked_hook.
  * The hook writes the record (reason forwarded) and answers nonzero to
  * refuse. NULL outside kageant (nothing refused). */
@@ -272,7 +272,8 @@ void pageant_set_add_dest(const struct kar_rules *r);
  *   PROGRAM - SSH_AGENTC_LOCK over the pipe (ssh-add -x), with a passphrase;
  *             cleared by a matching SSH_AGENTC_UNLOCK or the tray's Unlock
  *   TRAY    - the tray's "Lock agent", no passphrase; the tray's Unlock
- *   WINDOWS - the Windows session locked ("When Windows locks"); its unlock
+ *   WINDOWS - the Windows session locked ("Action when Windows is
+ *             locked"), cleared by its unlock
  * The tray's Unlock clears all three: whoever sits at the console could
  * restart the agent anyway, and with the menu open the session is unlocked. */
 enum { PAGEANT_LOCK_PROGRAM = 1, PAGEANT_LOCK_TRAY = 2, PAGEANT_LOCK_WINDOWS = 4 };

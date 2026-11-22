@@ -233,9 +233,10 @@ int kageant_notify_set(int on)
                                  KAGEANT_REG_NOTIFY, on ? 1 : 0);
 }
 
-/* KiTTY: how long a notice stays up, [Agent] noticetimeout (seconds). One
- * knob for all of them; absent/0 keeps each notice's own default. Clamped to
- * a sane 2..120s. The user can still HOVER to hold any notice open longer. */
+/* KiTTY: the notification display time, [Agent] noticetimeout (seconds). One
+ * knob for all of them; absent/0 keeps each notification's own default.
+ * Clamped to 2..120 s. Hovering the pointer holds any notification open
+ * longer. */
 int kageant_notice_seconds(int fallback)
 {
     char buf[16];
@@ -526,7 +527,7 @@ int kageant_hello_set(int on)
                                  "HelloConfirm", on ? 1 : 0);
 }
 
-/* [Agent] retrykeys: when a drive appears, try the startup keys that were not
+/* [Agent] retrykeys: load startup keys from newly attached drives - those not
  * there at login. Default ON - it does nothing at all unless a startup key is
  * actually missing, so there is no cost to anyone else.
  *
@@ -675,7 +676,7 @@ int kageant_hello_ttl_set(int seconds)
                                  "HelloCacheSeconds", seconds);
 }
 
-/* ---- re-encrypt keys after idle (see kitty_pageant.h) ------------------ */
+/* ---- re-encrypt idle keys (see kitty_pageant.h) ------------------------ */
 
 int kageant_autoenc_clamp(int v)
 {
@@ -909,9 +910,10 @@ int kageant_blockremove_set(int on)
 {
     return kageant_policy_set(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove", on);
 }
-/* "Allow locking the agent over IPC (ssh-add -x / -X)" - default OFF: the
- * agent never supported the lock before, so nothing depends on it, and any
- * program could otherwise lock the agent with a passphrase nobody knows. */
+/* "Allow client programs to lock the agent (ssh-add -x / -X)" - default
+ * OFF: the agent never supported the lock before, so nothing depends on it,
+ * and any program could otherwise lock the agent with a passphrase nobody
+ * knows. */
 int  kageant_allowipclock_get(void)
 {
     return kageant_policy_get(KI_AGENT_ALLOWIPCLOCK, "AllowIpcLock");
@@ -920,7 +922,7 @@ int kageant_allowipclock_set(int on)
 {
     return kageant_policy_set(KI_AGENT_ALLOWIPCLOCK, "AllowIpcLock", on);
 }
-/* "Use OpenSSH's known_hosts as a host-key source" - default OFF: the user
+/* "Read the OpenSSH known_hosts file" - default OFF: the user
  * never set that file as a source, and PuTTY never reads it. Off, kageant
  * opens no known_hosts at all (kitty_knownhosts.h): no names for dest= and
  * fwd=, no keys for the rule editor's look-up, no "Also servers stored
@@ -933,7 +935,7 @@ int kageant_readknownhosts_set(int on)
 {
     return kageant_policy_set(KI_AGENT_READKNOWNHOSTS, "ReadKnownHosts", on);
 }
-/* "Refuse key changes from a forwarded agent (add, remove, lock)" - default
+/* "Block changes through agent forwarding (add, remove, lock)" - default
  * ON: the program behind a forwarded agent sits on a remote server, which
  * may use the keys it is offered but has no business changing the key set
  * or locking the agent. Asked on every external add/remove/lock request on
@@ -948,7 +950,7 @@ int kageant_blockforwarded_set(int on)
     return kageant_policy_set(KI_AGENT_BLOCKFORWARDEDCHANGES,
                               "BlockForwardedChanges", on);
 }
-/* "Accept requests by window messages (PuTTY before 0.75)" - default OFF:
+/* "Allow requests by window messages (PuTTY before 0.75)" - default OFF:
  * a legacy connection whose sender kageant cannot identify (the window it
  * passes is its own choice). Asked on every WM_COPYDATA request, hence the
  * cache. */
@@ -1022,7 +1024,7 @@ int kageant_sshauthsock_value_set(const char *v)
                                    v ? v : "");
 }
 
-/* "When Windows locks": 0 keep the agent working (default), 1 lock the
+/* "Action when Windows is locked": 0 no action (default), 1 lock the
  * agent, 2 re-encrypt the keys. [Agent] lockwithwindows=keep|lock|reencrypt,
  * registry LockWithWindows (DWORD 0-2). Read on each session event, which is
  * rare enough to need no cache. */

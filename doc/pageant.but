@@ -210,14 +210,13 @@ tracks the key. Greyed for a key not loaded.
 typed time. Blank = the agent default, shown beside the field. The
 value applies when a listed value is picked or the field loses the
 focus. A time that does not parse restores the previous value. Greyed
-for a key not loaded and while the agent setting is \q{Enforced for
-every key}.
+for a key not loaded and while the agent setting is \q{All keys}.
 
 \b \q{Accept this key}: shown only for an entry refused because the
 file holds another key or no fingerprint is on record. Its question
 shows the file, the current fingerprint and the recorded one if there
 is one. Yes loads the key and records the new fingerprint. With
-\q{Confirmations require Windows Hello} on (Settings, \q{Security}
+\q{Confirm key use with Windows Hello} on (Settings, \q{Security}
 page), Accept also requires a Windows Hello gesture. This is the only
 place a changed key file is accepted.
 
@@ -276,33 +275,37 @@ With \c{readonly=yes} in kitty.ini the dialog shows \q{Read-only
 (readonly=yes): changes apply until kageant exits.} - nothing is
 stored, key list changes included.
 
-\b \q{Agent}: whether kageant registers itself as the Windows OpenSSH
-agent, whether it uses OpenSSH's \c{known_hosts} as a host-key source
-(\q{Use OpenSSH's known_hosts as a host-key source}, off by default,
-\k{pageant-knownhosts}), starts at login, reloads the remembered keys at
-startup, and shows a notice when a key is used; \q{Notify when startup
-keys arrive} (on by default): a notice when startup keys that were not
-there come back on a drive and can sign again, event 117 in the agent
-log with either setting; the notice display time; the colour theme.
+\b \q{Agent}: \q{Register as Windows OpenSSH agent}, \q{Serve the
+Windows OpenSSH agent pipe}, \q{Additional named pipe} with \q{Set
+SSH_AUTH_SOCK to the additional named pipe}, \q{Read the OpenSSH
+known_hosts file} (off by default, \k{pageant-knownhosts}), \q{Start
+kageant at login}, \q{Load remembered keys at startup}, \q{Notify on key
+use}, \q{Notify when startup keys become available} (on by default: a
+notification when startup keys that were not there come back on a drive
+and can sign again, event 117 in the agent log with either setting),
+\q{Notification display time} and \q{Colour theme}.
 
-\b \q{Security}: the IPC policy (refuse all key adds and removes over
-the pipe, or only adds, or only removes), \q{Allow locking the agent
-over IPC}, \q{Refuse key changes from a forwarded agent (add, remove,
-lock)} (on by default, \k{pageant-forward-changes}), \q{Accept requests
-by window messages (PuTTY before 0.75)} (off by default,
-\k{pageant-wmcopydata}), whether confirmations demand
-a Windows Hello gesture, how long a typed passphrase and a Windows
-Hello unlock are kept for a batch of keys, and \q{Re-encrypt keys
-after idle} - the mode and the time after which an unused key goes
-back to its encrypted state (\k{pageant-autoencrypt}).
+\b \q{Security}: \q{Block keys added by client programs}, \q{Block key
+removal by client programs}, \q{Allow client programs to lock the
+agent}, \q{Block changes through agent forwarding (add, remove, lock)}
+(on by default, \k{pageant-forward-changes}), \q{Allow requests by
+window messages (PuTTY before 0.75)} (off by default,
+\k{pageant-wmcopydata}), \q{Confirm key use with Windows Hello},
+\q{Passphrase cache time} and \q{Windows Hello cache time} (how long a
+typed passphrase and a Windows Hello unlock are kept for a batch of
+keys), \q{Re-encrypt idle keys} - the mode and the time after which an
+unused key goes back to its encrypted state (\k{pageant-autoencrypt}) -
+and \q{Action when Windows is locked}.
 
-\b \q{Removable media}: what to do with startup keys whose drive was
-absent at login and appears later, whether a key is unloaded when its
-media is removed, and whether missing startup keys are reported.
+\b \q{Removable media}: \q{Load startup keys from newly attached
+drives} (startup keys whose drive was absent at login), \q{Unload keys
+when their drive is removed} and \q{Suppress notifications for missing
+startup keys}.
 
-\b \q{Log}: the agent log - whether it is written, where, and how it
-is rotated and expunged. It can also go to the Windows Event Log
-(Destination): its own log \c{KiTTY++_Agent} when KiTTY++ is installed
+\b \q{Log}: the agent log - whether it is enabled, its file path, the
+maximum file size, the number of rotated files to keep and their
+retention. It can also go to the Windows Event Log (\q{Agent log
+destination}): its own log \c{KiTTY++_Agent} when KiTTY++ is installed
 for all users, otherwise the Application log under the source
 \c{KiTTY++_agent}. Each kind of record has its own event ID and each
 field is its own value in the event data, so Event Viewer filters,
@@ -368,7 +371,7 @@ kageant chains the lines of its agent log file. Every line ends with
 A changed, deleted, swapped or added line breaks the chain at that place.
 
 At its start, at each rotation, at its stop, every 15 minutes while
-records were written and before a change of \q{Write the agent log},
+records were written and before a change of \q{Enable the agent log},
 the log file or the destination takes effect, kageant writes an anchor
 record: \c{ev="logchain"}, event ID 171, \c{result} \c{start},
 \c{rotate}, \c{stop}, \c{config} or \c{head}. After a crash left an
@@ -417,7 +420,7 @@ Other problems: a signature that does not match, a record without a
 signature, records out of order, a record without chain fields inside a
 run, line ends that are not CRLF, a
 generation missing between two others or deleted before its time (the
-files of the last \q{Generations} rotations must be on disk), an anchor
+files of the last \q{Number of rotated files to keep} rotations must be on disk), an anchor
 in the Windows Event Log not signed by the key of its run, a run whose
 key in the file differs from the one in the Windows Event Log, a file
 replaced by another run's.
@@ -546,7 +549,7 @@ fingerprint:
 Only a person at the desktop can allow it. kageant shows \q{kageant:
 remove destination rules?} with the program behind the request, the key
 and its rules, \q{No} the default - or a Windows Hello check instead,
-while \q{Confirmations require Windows Hello} is on. Yes removes the
+while \q{Confirm key use with Windows Hello} is on. Yes removes the
 rules: \q{-R: removed the destination rules of d:\\main.ppk.}, exit code
 0. No, a refused Windows Hello check, another confirmation already up or
 a locked desktop keeps them: \q{-R: not confirmed: the rules stay.}, exit
@@ -627,7 +630,7 @@ variable in the PowerShell window that runs \c{ssh-add}:
 
 The pipe name changes with each Windows start, so set it again in each
 new window. A pipe of a fixed name, with \cw{SSH_AUTH_SOCK} set for the
-user account, is described below (\q{Also serve the pipe}).
+user account, is described below (\q{Additional named pipe}).
 
 \s{Note}: this technique only works with \e{Windows's} port of
 OpenSSH, which lives at \cw{C:\\Windows\\System32\\OpenSSH\\ssh.exe}
@@ -790,16 +793,16 @@ you can send it all the way back to kageant using the local
 
 and then it's available to every machine that has agent forwarding
 available (not just the ones downstream of the place you added it).
-This takes \q{Refuse key changes from a forwarded agent} turned off
+This takes \q{Block changes through agent forwarding} turned off
 (\k{pageant-forward-changes}).
 
-\S{pageant-forward-changes} Key changes from a forwarded agent
+\S{pageant-forward-changes} Changes through agent forwarding
 
-By default kageant refuses key changes from a forwarded agent: an add
+By default kageant blocks changes through agent forwarding: an add
 (\c{ssh-add}, also of an encrypted PPK), a removal (\c{ssh-add -d},
 \c{-D}), a lock and an unlock (\c{ssh-add -x}, \c{-X}). A program on
 the remote server may still list the keys and log in with them. The
-setting is \q{Refuse key changes from a forwarded agent (add, remove,
+setting is \q{Block changes through agent forwarding (add, remove,
 lock)} on the Security page of the settings, \c{blockforwardedchanges}
 in the \c{[Agent]} section of kitty.ini (default \c{yes}).
 
@@ -820,7 +823,7 @@ its changes are not refused.
 
 Programs built on PuTTY before 0.75 reach the agent through window
 messages (\c{WM_COPYDATA}) instead of the named pipe. This is a legacy
-option and off by default: \q{Accept requests by window messages
+option and off by default: \q{Allow requests by window messages
 (PuTTY before 0.75)} on the Security page of the settings,
 \c{allowwmcopydata} in the \c{[Agent]} section of kitty.ini (default
 \c{no}).
@@ -851,10 +854,10 @@ with its former start type. \q{Copy commands} puts the commands on the
 clipboard for a PowerShell started as administrator. The agent log
 records it (\c{agent-pipe}, event ID 162).
 
-\q{Also serve the pipe} (\c{extrapipe}, empty by default) makes kageant
+\q{Additional named pipe} (\c{extrapipe}, empty by default) makes kageant
 serve a pipe of a fixed name beside its own: \c{\\\\.\\pipe\\} followed
 by that name. The name stays across Windows starts, so a client is set
-to it once. \q{Set SSH_AUTH_SOCK of this Windows user to that pipe}
+to it once. \q{Set SSH_AUTH_SOCK to the additional named pipe}
 (\c{setsshauthsock}, default \c{no}) writes that pipe into the user's
 environment variable \cw{SSH_AUTH_SOCK}. Programs started afterwards
 see it. Programs that already run, such as an open terminal or editor,
@@ -951,7 +954,7 @@ are described in full in
 \S{pageant-knownhosts} OpenSSH's \c{known_hosts}
 
 kageant reads \c{%USERPROFILE%\\.ssh\\known_hosts} only while
-\q{Use OpenSSH's known_hosts as a host-key source} is ticked (Settings,
+\q{Read the OpenSSH known_hosts file} is ticked (Settings,
 \q{Agent} page, \c{[Agent] readknownhosts=yes} in kitty.ini). It is off
 by default: the file is OpenSSH's. Nobody set it as a source for
 kageant. PuTTY never reads it. KiTTY++ never writes it. Off, kageant
@@ -1233,7 +1236,7 @@ The other reasons: the connection is bound for agent forwarding
 (\q{No key kageant holds may be used through this forwarded
 connection.}), its session-bind was refused (the server was not
 verified), or the rule file is damaged. The notice follows
-\q{Notify when a key is used}. The agent log records it whatever that
+\q{Notify on key use}. The agent log records it whatever that
 setting: kind \c{restricted}, result \c{no-key-offered}, the reason as a
 token (\c{destination}, \c{forwarding-hop}, \c{bind-failed},
 \c{store-damaged}), \c{dest} and \c{fwd}: event ID 104. A connection
@@ -1426,10 +1429,10 @@ focus. Check that the prompt window is active before typing the
 passphrase: if Windows refused the switch, the typing goes to the window
 in front.
 
-\H{pageant-autoencrypt} Re-encrypting keys after idle
+\H{pageant-autoencrypt} Re-encrypting idle keys
 
-A decrypted key stays usable until kageant stops. \q{Re-encrypt keys
-after idle}, on the Security page of the settings, puts a key back into
+A decrypted key stays usable until kageant stops. \q{Re-encrypt idle
+keys}, on the Security page of the settings, puts a key back into
 its encrypted state once the given time has passed since it was
 decrypted or last signed, whichever is later; the next use prompts for
 the passphrase and the clock starts again. kageant
@@ -1437,10 +1440,10 @@ keeps the encrypted copy in memory, so nothing is read from disk and
 the key stays listed. Only keys that have a passphrase take part.
 
 The setting has a mode and a time. \q{Off} runs no agent timer; a key
-can still carry its own time in its key details. \q{Default for keys
-without their own setting} applies the time to every key that has no
-value of its own, and a key's own value wins for that key. \q{Enforced
-for every key} applies the time to every key and ignores the per-key
+can still carry its own time in its key details. \q{Keys without
+their own timeout} applies the time to every key that has no value of
+its own, and a key's own value wins for that key. \q{All keys} applies
+the time to every key and ignores the per-key
 values, for a site or a network whose rules demand it; key details
 then show the field greyed with the enforced value, and the tray tip
 reports this.
@@ -1470,8 +1473,9 @@ someone who can read kageant's memory.
 The lock lasts while kageant runs; a restart starts it unlocked, as
 OpenSSH's agent does.
 
-\q{When Windows locks}, on the Security page of the settings, ties the
-agent to the Windows session. \q{Keep the agent working} (the default)
+\q{Action when Windows is locked}, on the Security page of the
+settings, ties the agent to the Windows session. \q{No action} (the
+default)
 leaves it alone, so a job that uses the agent keeps running while the
 screen is locked. \q{Lock the agent} locks it when Windows locks or a
 remote desktop disconnects, and unlocks it when Windows unlocks.

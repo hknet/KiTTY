@@ -413,8 +413,7 @@ BEGIN
     /* ---- page 0: Agent ---- */
     AUTOCHECKBOX KT_KA_MENU_OPENSSH, IDC_SET_OPENSSH,
         16, 28, 268, 10
-    /* [Agent] opensshpipe (default no): no accelerator, every letter of it
-     * is taken here */
+    /* [Agent] opensshpipe (default no) */
     AUTOCHECKBOX KT_RC_KEYSETTINGS_OPENSSHPIPE, IDC_SET_OPENSSHPIPE,
         16, 39, 268, 10
     /* the service box: its state, stop and disable it or turn it back on */
@@ -422,12 +421,12 @@ BEGIN
         28, 51, 110, 13
     /* [Agent] extrapipe: a pipe of the user's naming. SSH_AUTH_SOCK below it */
     LTEXT KT_RC_KEYSETTINGS_EXTRAPIPE, IDC_SET_L_EXTRAPIPE,
-        16, 69, 112, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_EXTRAPIPE, 130, 69, 154, 11, ES_AUTOHSCROLL
+        16, 69, 116, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_EXTRAPIPE, 134, 69, 150, 11, ES_AUTOHSCROLL
     AUTOCHECKBOX KT_RC_KEYSETTINGS_SSHAUTHSOCK, IDC_SET_SSHAUTHSOCK,
         28, 83, 256, 10
-    /* OpenSSH's known_hosts as a host-key source ([Agent] readknownhosts,
-     * default off): no accelerator, every letter of it is taken here */
+    /* Read the OpenSSH known_hosts file ([Agent] readknownhosts, default
+     * off): no accelerator, every letter of it is taken here */
     AUTOCHECKBOX KT_RC_KEYSETTINGS_KNOWNHOSTS, IDC_SET_KNOWNHOSTS,
         16, 97, 268, 10
     AUTOCHECKBOX KT_KA_MENU_START_AT_LOGIN, IDC_SET_STARTUP,
@@ -437,20 +436,21 @@ BEGIN
     AUTOCHECKBOX KT_KA_MENU_NOTIFY, IDC_SET_NOTIFY,
         16, 130, 268, 10
     /* [Agent] messageonkeyarrival (default yes): no accelerator, every
-     * letter of it is taken on this page */
+     * letter of it is taken on this dialog */
     AUTOCHECKBOX KT_RC_KEYSETTINGS_ARRIVAL, IDC_SET_ARRIVAL,
         16, 141, 268, 10
+    /* the hint has a row of its own: next to the field it does not fit */
     LTEXT KT_RC_KEYSETTINGS_NOTICE_LABEL, IDC_SET_L_NOTICE,
-        16, 156, 86, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_NOTICESECS, 106, 156, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+        16, 156, 126, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_NOTICESECS, 146, 156, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT KT_RC_KEYSETTINGS_NOTICE_HINT, IDC_SET_L_NOTICEHINT,
-        146, 156, 138, 11, SS_CENTERIMAGE
+        28, 168, 256, 10
     LTEXT KT_RC_KEYSETTINGS_THEME_LABEL, IDC_SET_L_THEME,
-        16, 171, 50, 14, SS_CENTERIMAGE
-    COMBOBOX IDC_SET_THEME, 70, 171, 100, 80,
+        16, 182, 50, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_THEME, 70, 182, 100, 80,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT KT_RC_KEYSETTINGS_THEME_HINT,
-        IDC_SET_L_THEMEHINT, 16, 189, 268, 10
+        IDC_SET_L_THEMEHINT, 16, 200, 268, 10
 
     /* ---- page 1: Security ---- */
     AUTOCHECKBOX KT_RC_KEYSETTINGS_BLOCKADD, IDC_SET_BLOCKADD,
@@ -459,8 +459,7 @@ BEGIN
         16, 39, 268, 10
     AUTOCHECKBOX KT_RC_KEYSETTINGS_ALLOWIPCLOCK, IDC_SET_ALLOWIPCLOCK,
         16, 50, 268, 10
-    /* [Agent] blockforwardedchanges (default yes): no accelerator, every
-     * letter of it is taken on this dialog */
+    /* [Agent] blockforwardedchanges (default yes) */
     AUTOCHECKBOX KT_RC_KEYSETTINGS_BLOCKFWD, IDC_SET_BLOCKFWD,
         16, 61, 268, 10
     /* [Agent] allowwmcopydata (default yes): WM_COPYDATA requests; no
@@ -470,31 +469,31 @@ BEGIN
     AUTOCHECKBOX KT_RC_KEYSETTINGS_HELLO, IDC_SET_HELLO,
         16, 83, 268, 10
     LTEXT KT_RC_KEYSETTINGS_TTL_LABEL, IDC_SET_L_TTL,
-        16, 98, 96, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_TTL, 116, 98, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+        16, 98, 116, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_TTL, 136, 98, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT KT_RC_KEYSETTINGS_TTL_HINT,
         IDC_SET_L_TTLHINT, 16, 112, 268, 20
     LTEXT KT_RC_KEYSETTINGS_HELLOTTL_LABEL, IDC_SET_L_HELLOTTL,
-        16, 134, 108, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_HELLOTTL, 128, 134, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
+        16, 134, 128, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_HELLOTTL, 148, 134, 34, 11, ES_NUMBER | ES_AUTOHSCROLL
     LTEXT KT_RC_KEYSETTINGS_HELLOTTL_HINT,
         IDC_SET_L_HELLOTTLHINT, 16, 150, 268, 10
-    /* Re-encrypt keys after idle: a MODE (off / default for keys without
-     * their own value / enforced for every key) and a time. */
+    /* Re-encrypt idle keys: a MODE (off / keys without their own timeout /
+     * all keys) and a time. */
     LTEXT KT_RC_KEYSETTINGS_AUTOENC_LABEL, IDC_SET_L_AUTOENC,
-        16, 164, 94, 14, SS_CENTERIMAGE
-    COMBOBOX IDC_SET_AUTOENCMODE, 112, 164, 100, 60,
+        16, 164, 72, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_AUTOENCMODE, 92, 164, 120, 60,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     /* an editable combo box: the usual values listed, any other typed */
     COMBOBOX IDC_SET_AUTOENC, 216, 164, 68, 60,
         CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
     LTEXT KT_RC_KEYSETTINGS_AUTOENC_HINT,
         IDC_SET_L_AUTOENCHINT, 16, 180, 268, 10
-    /* When Windows locks: keep the agent working / lock it / re-encrypt the
-     * keys. */
+    /* Action when Windows is locked: no action / lock the agent /
+     * re-encrypt the keys. */
     LTEXT KT_RC_KEYSETTINGS_WINLOCK_LABEL, IDC_SET_L_WINLOCK,
-        16, 193, 94, 14, SS_CENTERIMAGE
-    COMBOBOX IDC_SET_WINLOCK, 112, 193, 118, 60,
+        16, 193, 110, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_WINLOCK, 130, 193, 118, 60,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
     /* ---- page 2: Removable media ---- */
@@ -511,46 +510,46 @@ BEGIN
     AUTOCHECKBOX KT_RC_KEYSETTINGS_AGENTLOG, IDC_SET_AGENTLOG,
         16, 28, 268, 10
     LTEXT KT_RC_KEYSETTINGS_LOGPATH_LABEL, IDC_SET_L_LOGPATH,
-        16, 42, 74, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_AGENTLOGPATH, 94, 42, 190, 11, ES_AUTOHSCROLL
-    /* Where a blank File box actually puts the log. Filled in at
-     * WM_INITDIALOG - the path depends on whether this install is portable -
+        16, 42, 132, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGPATH, 152, 42, 132, 11, ES_AUTOHSCROLL
+    /* Where a blank Agent log file path box actually puts the log. Filled in
+     * at WM_INITDIALOG - the path depends on whether this install is portable -
      * because "blank = default" tells nobody where the file is.
      * SS_PATHELLIPSIS drops the MIDDLE of a path too long to fit, so the file
      * name survives; plain ellipsis would cut off the part being looked for. */
-    LTEXT "", IDC_SET_L_LOGDEFAULT, 94, 55, 190, 10, SS_PATHELLIPSIS
+    LTEXT "", IDC_SET_L_LOGDEFAULT, 152, 55, 132, 10, SS_PATHELLIPSIS
     /* Alt+K belongs to "Load remembered &keys at startup" on the first page.
      * The accelerator check is per DIALOG, not per page, and it is right to
      * be: Alt+letter reaches a hidden page's control just as well as a
      * visible one, so the letters have to be unique across all four. */
     LTEXT KT_RC_KEYSETTINGS_LOGKB_LABEL, IDC_SET_L_LOGKB,
-        16, 70, 48, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_AGENTLOGKB, 68, 70, 36, 11, ES_NUMBER
+        16, 70, 114, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGKB, 134, 70, 36, 11, ES_NUMBER
     LTEXT KT_RC_KEYSETTINGS_LOGKEEP_LABEL, IDC_SET_L_LOGKEEP,
-        112, 70, 44, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_AGENTLOGKEEP, 160, 70, 28, 11, ES_NUMBER
+        16, 84, 114, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGKEEP, 134, 84, 28, 11, ES_NUMBER
     LTEXT KT_RC_KEYSETTINGS_LOGDAYS_LABEL, IDC_SET_L_LOGDAYS,
-        16, 86, 152, 11, SS_CENTERIMAGE
-    EDITTEXT IDC_SET_AGENTLOGDAYS, 172, 86, 32, 11, ES_NUMBER
-    /* Destination: the file, the Windows Event Log, or both, and the
-     * button that opens Event Viewer on the agent's events. The label has
-     * no accelerator: every letter of the word is taken on this dialog
-     * (Alt+D is "Notice display" on the first page). The combo runs to
-     * 8 DLU before the button: "file and Windows Event Log" fits. */
+        16, 100, 172, 11, SS_CENTERIMAGE
+    EDITTEXT IDC_SET_AGENTLOGDAYS, 192, 100, 32, 11, ES_NUMBER
+    /* Agent log destination: the file, the Windows Event Log, or both, and
+     * the button that opens Event Viewer on the agent's events. The label
+     * has no accelerator: every letter of it is taken on this dialog
+     * (Alt+D: notification display time, first page). The combo runs to
+     * 8 DLU before the button: "File and Windows Event Log" fits. */
     LTEXT KT_RC_KEYSETTINGS_LOGSINK_LABEL, IDC_SET_L_LOGSINK,
-        16, 102, 44, 14, SS_CENTERIMAGE
-    COMBOBOX IDC_SET_AGENTLOGSINK, 64, 102, 150, 60,
+        16, 116, 78, 14, SS_CENTERIMAGE
+    COMBOBOX IDC_SET_AGENTLOGSINK, 98, 116, 116, 60,
         CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     PUSHBUTTON KT_RC_KEYSETTINGS_EVENTVIEWER, IDC_SET_EVENTVIEWER,
-        222, 102, 62, 14
+        222, 116, 62, 14
     LTEXT KT_RC_KEYSETTINGS_LOGSINK_HINT,
-        IDC_SET_L_LOGSINKHINT, 16, 120, 268, 27
+        IDC_SET_L_LOGSINKHINT, 16, 134, 268, 27
     LTEXT KT_RC_KEYSETTINGS_LOGNOTE,
-        IDC_SET_L_LOGNOTE, 16, 150, 268, 10
+        IDC_SET_L_LOGNOTE, 16, 164, 268, 10
     /* What switching the log on also writes: the chain's anchors go to the
      * Windows Event Log with every destination. */
     LTEXT KT_RC_KEYSETTINGS_LOGCHAIN_HINT,
-        IDC_SET_L_LOGCHAINHINT, 16, 164, 268, 18
+        IDC_SET_L_LOGCHAINHINT, 16, 178, 268, 18
 
     DEFPUSHBUTTON KT_WIN_OK, IDOK, 182, 224, 54, 15
     PUSHBUTTON KT_KITTY_CANCEL, IDCANCEL, 240, 224, 54, 15

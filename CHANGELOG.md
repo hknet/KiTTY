@@ -29,6 +29,17 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - The Terminal Window's Event Log shows when a program in the terminal takes
   the mouse and when the mouse comes back, with the sequence or event that
   did it (hknet/KiTTY#93).
+- Group Policy: the settings store, the hardening options and kageant's
+  agent settings can be managed for a computer or a user under
+  `Software\Policies\kapper.net\KiTTY++`, with the Administrative Template
+  `windows/policy/kittypp.admx` and its en-US language file. A mandatory
+  policy greys out its control in the configuration window and in kageant
+  with "Set by your administrator". The category "KiTTY++ - Default
+  Settings (users can override)" holds the same settings as recommended
+  policies: a user's own value takes precedence over them, the built-in
+  default comes last. Deployment (the editors, a domain, Intune, `reg add`):
+  [docs/GROUP-POLICY.md](docs/GROUP-POLICY.md). The template is a separate
+  download next to the installers, `kittypp-policy-templates-<version>.zip`.
 
 ### Changed
 
@@ -99,6 +110,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - A change made in Manage Sessions or in a configuration window shows at
   once in the configuration windows and Manage Sessions of every other
   running KiTTY++, as it already did in the launcher.
+- kageant's lockdown checkbox is gone: it did no more than "Block keys
+  added by client programs" and "Block key removal by client programs" on
+  Settings > Security. A stored `lockdownmode=yes` turns both on once at
+  kageant's start. While the tray's "Lock agent" holds, the Key List's
+  title shows "(LOCKED)".
 
 ### Fixed
 

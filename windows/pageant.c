@@ -6110,7 +6110,7 @@ static void keysettings_leave(HWND hwnd)
 static void keysettings_align_rows(HWND hwnd)
 {
     static const struct kitty_theme_row rows[] = {
-        { IDC_SET_NOTICESECS,   { IDC_SET_L_NOTICE, IDC_SET_L_NOTICEHINT, 0 } },
+        { IDC_SET_NOTICESECS,   { IDC_SET_L_NOTICE, 0 } },
         { IDC_SET_THEME,        { IDC_SET_L_THEME, 0 } },
         { IDC_SET_TTL,          { IDC_SET_L_TTL, 0 } },
         { IDC_SET_HELLOTTL,     { IDC_SET_L_HELLOTTL, 0 } },
@@ -6283,7 +6283,7 @@ static void keysettings_recollect(HWND hwnd)
     kar_store_free(t);
 }
 
-/* KiTTY: "Use OpenSSH's known_hosts as a host-key source" was turned on by
+/* KiTTY: "Read the OpenSSH known_hosts file" was turned on by
  * this OK (off before): the file is checked at once and the result shown in
  * one box - not there (normal before ssh.exe stored a host key), not
  * readable (with Windows' reason), or read with its count of host entries
@@ -6389,7 +6389,7 @@ struct kas_row {
 static const char *const kas_retry_items[] = {
     KT_KASET_RETRY_NEVER, KT_KASET_RETRY_DRIVE, KT_KASET_RETRY_ANYDRIVE,
 };
-/* When Windows locks - the list index is the stored value */
+/* Action when Windows is locked - the list index is the stored value */
 static const char *const kas_winlock_items[] = {
     KT_KASET_WINLOCK_KEEP, KT_KASET_WINLOCK_LOCK, KT_KASET_WINLOCK_REENCRYPT,
 };
@@ -6605,7 +6605,7 @@ static INT_PTR CALLBACK KeySettingsProc(HWND hwnd, UINT msg,
         CheckDlgButton(hwnd, IDC_SET_STARTUP,
             kageant_autostart_active() ? BST_CHECKED : BST_UNCHECKED);
         keysettings_fill(hwnd);       /* every row of kas_rows */
-        /* Re-encrypt keys after idle: mode + time. The time field is live
+        /* Re-encrypt idle keys: mode + time. The time field is live
          * only while a mode uses it. */
         {
             static const char *const modes[] = {
@@ -8735,9 +8735,9 @@ static void kageant_lock_changed(void)
     keylist_update();
 }
 
-/* "When Windows locks": the Windows session notifications, for the tray
- * window. wtsapi32 is loaded at run time - a static import of a DLL an old
- * Windows lacks stops the program in the loader. */
+/* "Action when Windows is locked": the Windows session notifications, for
+ * the tray window. wtsapi32 is loaded at run time - a static import of a DLL
+ * an old Windows lacks stops the program in the loader. */
 #ifndef WM_WTSSESSION_CHANGE
 #define WM_WTSSESSION_CHANGE 0x02B1
 #endif
@@ -8799,14 +8799,14 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         break;
       case WM_CREATE:
         msgTaskbarCreated = RegisterWindowMessage(_T("TaskbarCreated"));
-        kageant_wts_register(hwnd, true);   /* KiTTY: When Windows locks */
+        kageant_wts_register(hwnd, true);   /* KiTTY: session lock events */
         break;
       case WM_WTSSESSION_CHANGE:
-        /* KiTTY: When Windows locks. A locked session and a disconnected
-         * remote desktop both mean nobody is at this desktop. Only the
-         * UNLOCK releases the lock - a reconnect is announced before anyone
-         * has authenticated on a remote desktop without NLA; if an unlock
-         * never comes, the tray's Unlock agent clears it. */
+        /* KiTTY: Action when Windows is locked. A locked session and a
+         * disconnected remote desktop both mean nobody is at this desktop.
+         * Only the UNLOCK releases the lock - a reconnect is announced
+         * before anyone has authenticated on a remote desktop without NLA;
+         * if an unlock never comes, the tray's Unlock agent clears it. */
         if (wParam == KAGEANT_WTS_SESSION_LOCK ||
             wParam == KAGEANT_WTS_REMOTE_DISCONNECT ||
             wParam == KAGEANT_WTS_CONSOLE_DISCONNECT)
@@ -9047,7 +9047,7 @@ static LRESULT CALLBACK TrayWndProc(HWND hwnd, UINT message,
         /* KiTTY: remove any ssh-add -t keys whose lifetime has run out. */
         if (wParam == TID_KEY_LIFETIME) {
             int changed = kageant_expire_due_keys();
-            changed += kageant_idle_tick();    /* re-encrypt keys after idle */
+            changed += kageant_idle_tick();    /* re-encrypt idle keys */
             if (changed)
                 keylist_update();          /* refresh the window if it is open */
             else
@@ -11365,7 +11365,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     kitty_audit("agent", "result", "stop", (const char *)NULL);
     kitty_audit_chain_end();   /* KiTTY: the stop anchor, the run key wiped */
     if (traywindow)
-        kageant_wts_register(traywindow, false);   /* KiTTY: When Windows locks */
+        kageant_wts_register(traywindow, false);   /* KiTTY: session lock events */
 
     /* Clean up the system tray icon */
     {

@@ -127,8 +127,8 @@ shown. Its answer on a forwarded connection never reaches the server.
 
 **Display.** kageant shows the name first, marked ` (client)`, then the
 names its own lookup finds for the host key (the KiTTY++ host-key store,
-and OpenSSH's `known_hosts` only while kageant's setting "Use OpenSSH's
-known_hosts as a host-key source" is on - a name from it marked
+and OpenSSH's `known_hosts` only while kageant's setting "Read the
+OpenSSH known_hosts file" is on - a name from it marked
 ` (known_hosts)`) that differ from it, at most 5 names in all, then `+N`
 for the rest:
 

@@ -188,7 +188,7 @@ Known limitations of this release:
 - **Host keys a server offers after login (hostkeys-00) are not stored for
   DSA** or for a type below the warn line of the session's host-key list.
 - **kageant refuses requests by window messages by default** (programs
-  built on PuTTY before 0.75). "Accept requests by window messages (PuTTY
+  built on PuTTY before 0.75). "Allow requests by window messages (PuTTY
   before 0.75)" serves them as from an unknown program, never with a key
   unlocked for another program. A session-bind by window messages is
   always refused.

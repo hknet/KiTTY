@@ -665,6 +665,23 @@ if(KITTY_INI_CHECK_PYTHON)
     COMMENT "Checking kitty.ini templates against the options the source reads")
   add_custom_target(check_kitty_ini ALL DEPENDS ${KITTY_INI_CHECK_STAMP})
 
+  # The Group Policy template and the policy table of docs/GROUP-POLICY.md
+  # as tools/gen-admx.py writes them: a hand edit of one of them, or a new
+  # policy without the guide's row, fails the build.
+  set(KITTY_ADMX_CHECK_STAMP ${CMAKE_CURRENT_BINARY_DIR}/kitty_admx_check.stamp)
+  add_custom_command(
+    OUTPUT ${KITTY_ADMX_CHECK_STAMP}
+    COMMAND ${KITTY_INI_CHECK_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-admx.py --check
+    COMMAND ${CMAKE_COMMAND} -E touch ${KITTY_ADMX_CHECK_STAMP}
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/gen-admx.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/windows/policy/kittypp.admx
+            ${CMAKE_CURRENT_SOURCE_DIR}/windows/policy/en-US/kittypp.adml
+            ${CMAKE_CURRENT_SOURCE_DIR}/docs/GROUP-POLICY.md
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Checking the Group Policy template and its table in docs/GROUP-POLICY.md")
+  add_custom_target(check_admx ALL DEPENDS ${KITTY_ADMX_CHECK_STAMP})
+
   # FEATURES.md's table of contents against its headings: a section added
   # without its TOC line could not be found from the top.
   # tools/gen-features-toc.py rewrites the TOC.

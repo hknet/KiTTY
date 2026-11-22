@@ -132,7 +132,7 @@ int  kageant_passphrase_ttl_set(int seconds);
 int  kageant_hello_ttl(void);      /* Hello KEK cache seconds; default 60 */
 int  kageant_hello_ttl_set(int seconds);
 
-/* Re-encrypt keys after idle.
+/* Re-encrypt idle keys.
  * Mode: 0 off (a key's own value still applies), 1 default for keys without
  * their own value, 2 enforced for every key. Seconds: KAGEANT_AUTOENC_USE
  * (1) = right after each use, else 30 s .. 7 d. A per-key value of -1 means
@@ -299,7 +299,7 @@ int  kageant_blockforwarded_set(int on);
  *     every key the agent holds), _kept_take: the text for them ("<n>
  *     removed keys keep ..." for several), the count reset.
  *   _hint_notice: a notice of its own (the Key List's Add Key, Remove,
- *     Remove All), under "Notify when a key is used". */
+ *     Remove All), under "Notify on key use". */
 char *kageant_rules_apply_hint(const char *fp, const char *comment);
 char *kageant_rules_kept_hint(const char *fp, const char *comment);
 void kageant_rules_kept_add(const char *fp, const char *comment);
@@ -336,7 +336,8 @@ int  kageant_wmcopydata_request(void);
 /* the full path of the program behind a request (pid), NULL when not
  * known; sfree it (kitty_kageant_audit.c, kageant_req_path_hook) */
 char *kageant_req_path_dup(unsigned long pid);
-int  kageant_winlock_mode(void);        /* When Windows locks: 0 keep, 1 lock, 2 re-encrypt */
+/* Action when Windows is locked: 0 no action, 1 lock, 2 re-encrypt */
+int  kageant_winlock_mode(void);
 int  kageant_winlock_mode_set(int mode);
 /* one agent-log line (kitty_kageant_audit.c; also in kitty_pageant_int.h) */
 void kageant_audit_use(const char *ev, const char *fp, const char *comment,

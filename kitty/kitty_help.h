@@ -100,6 +100,10 @@ Windows integration\r\n\
       -uninstall  remove the handlers again - only ones pointing at a KiTTY or KiTTY++\r\n\
 * -fileassoc: open .ktx session files with KiTTY++. Same options as -sshhandler\r\n\
     (-force, -user, -yes, -uninstall)\r\n\
+* -machinelock restrictacl=yes: restrict access to KiTTY++ processes for all\r\n\
+    users of this computer (requires administrator rights). restrictacl=\r\n\
+    removes the lock. Exit code 0: success, 1: failure.\r\n\
+    See docs/GROUP-POLICY.md\r\n\
 * -cleanup: remove KiTTY++'s settings from this machine\r\n\
 \r\n\
 Quick connect (see docs/KITTY-INI.md)\r\n\

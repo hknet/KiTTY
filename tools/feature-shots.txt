@@ -16,6 +16,7 @@
 docs/features/img/session_list_classic.png | MANUAL                           | Session panel, folder dropdown, a session loaded (guest gate row shot_sessions_classic)
 docs/features/img/session_list_rows.png    | MANUAL                           | Session panel, folders as rows (guest gate row shot_sessions_rows)
 docs/features/img/manage_sessions.png      | MANUAL                           | Manage Sessions window (guest gate row shot_manage)
+docs/features/img/policy_held_security.png | MANUAL                           | Application > Security under a policy's restrictacl (vm11 gate row shot_policy_held)
 docs/features/img/config_hotkey.jpg        | Session/Startup                  | launcher global hotkey
 docs/features/img/config_workplace.jpg     | Application/Workplace Proxy      | workplace proxy mode switch
 docs/features/img/config_rutty.jpg         | Session/Scripting                | login script (RuTTY) panel

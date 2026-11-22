@@ -1647,7 +1647,7 @@ static void pageant_lock_request(PageantClient *pc, PageantClientRequestId *reqi
         pageant_client_log(pc, reqid, "reply: SSH_AGENT_SUCCESS");
     } else {
         failure(pc, reqid, sb, SSH_AGENT_FAILURE,
-                result == 2 ? "locking the agent over IPC is not allowed" :
+                result == 2 ? "client programs may not lock the agent" :
                 result == 3 ? "wrong passphrase before: not checked yet" :
                 result == 4 ? "wrong passphrase ten times: unlock only from the tray now" :
                 result == 5 ? "unlock over IPC shut after ten wrong passphrases" :
