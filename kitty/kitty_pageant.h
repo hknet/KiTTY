@@ -277,8 +277,7 @@ void kageant_do_mutation_notice(int op, const char *comment, const char *fp);
 int  kageant_ipc_blocked(int op, const char *fp);   /* IPC access-control policy */
 void kageant_confirm_resume(void);  /* lift the confirm-suppress latch */
 int  kageant_confirm_suppressed(void);  /* is the latch engaged? */
-int  kageant_lockdown_get(void);
-int  kageant_lockdown_set(int on);
+void kageant_lockdown_retire(void);  /* lockdownmode -> both blocks, once */
 int  kageant_blockadd_get(void);
 int  kageant_blockadd_set(int on);
 int  kageant_blockremove_get(void);

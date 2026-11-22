@@ -1634,11 +1634,11 @@
 ; the named pipe, which is also what the Windows-OpenSSH integration
 ; uses); the kageant window's own Add/Remove buttons are never affected.
 ; Signing and listing keys are always allowed; re-encrypting a key is
-; allowed even under lockdown (it only tightens a key by dropping its
+; allowed even with both blocks on (it only tightens a key by dropping its
 ; cleartext).
-; lockdownmode: refuse ALL key add/remove/remove-all over IPC.
-;lockdownmode=no
-; blockipcadd / blockipcremove: refuse just adds, or just removes.
+; blockipcadd / blockipcremove: refuse adds, or removes and remove-all.
+; Both on: programs change no key. lockdownmode (both at once) is retired:
+; kageant turns a lockdownmode=yes into both once and removes it.
 ;blockipcadd=no
 ;blockipcremove=no
 ; allowipclock: let programs lock and unlock the agent over IPC (ssh-add -x

@@ -803,8 +803,9 @@ int kageant_autoenc_seconds_set(int seconds)
  * requesting process. Deliberately a NOTICE and not a prompt - a prompt
  * would break every scripted ssh-add. Shares the "Notify key usage"
  * setting with the signature notices. */
-/* KiTTY: IPC access-control policy. All default OFF. lockdownmode blocks
- * both add and remove; blockipcadd / blockipcremove block one direction.
+/* KiTTY: IPC access-control policy. All default OFF. blockipcadd /
+ * blockipcremove block one direction each (lockdownmode, both at once, is
+ * retired: kageant_lockdown_retire).
  * Read from the ini where authoritative, else the registry, same shape as
  * the other kageant settings. Enforced only for EXTERNAL requests. */
 /* def: the value when neither store holds one (0 for every policy but
@@ -867,11 +868,6 @@ static int kageant_policy_get_def(const char *inikey, const char *regname,
     }
 }
 
-int kageant_lockdown_get(void)
-{
-    return kageant_policy_get(KI_AGENT_LOCKDOWNMODE, "LockdownMode");
-}
-
 /* A yes/no policy, to the store in charge like every agent setting. */
 static int kageant_policy_set(const char *inikey, const char *regname, int on)
 {
@@ -879,9 +875,23 @@ static int kageant_policy_set(const char *inikey, const char *regname, int on)
     memset(kageant_policy_cache, 0, sizeof(kageant_policy_cache));
     return ok;
 }
-int kageant_lockdown_set(int on)
+
+/* One-time step since 0.85.1.22: lockdownmode (released since 0.84.1.72)
+ * refused every key change over IPC, exactly what blockipcadd and
+ * blockipcremove do together. A yes turns both on, then the old value goes
+ * from kitty.ini and the registry. Under readonly=yes the writers keep both
+ * for this run only and the old value stays, so it holds at every start. */
+void kageant_lockdown_retire(void)
 {
-    return kageant_policy_set(KI_AGENT_LOCKDOWNMODE, "LockdownMode", on);
+    int on = kageant_policy_read(KI_AGENT_LOCKDOWNMODE, "LockdownMode", -1);
+    if (on < 0)
+        return;
+    if (on) {
+        kageant_policy_set(KI_AGENT_BLOCKIPCADD, "BlockIpcAdd", 1);
+        kageant_policy_set(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove", 1);
+    }
+    kitty_inifile_write(KI_SECTION_AGENT, KI_AGENT_LOCKDOWNMODE, NULL);
+    kitty_settings_reg_del(KS_HIVE_FIXED, "LockdownMode");
 }
 int  kageant_blockadd_get(void)
 {

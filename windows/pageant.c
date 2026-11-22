@@ -1768,6 +1768,23 @@ static void kageant_cert_check_soon(void)
         SetTimer(traywindow, TID_CERT_CHECK, 1500, NULL);
 }
 
+/* KiTTY: the key list's title carries the agent's state - this is the
+ * process holding the keys, so portable/restricted get answered here. It
+ * carries (LOCKED) while the agent lock holds, as the terminal window marks
+ * its own states. The lock hook (kageant_lock_changed) sets it again at each change,
+ * from the tray, from a program (ssh-add -x / -X) or from Windows locking.
+ * Suffixes composed in kitty/kitty_title.c - one place. */
+static void keylist_set_title(HWND hwnd)
+{
+    char *base = dupcat(KT_CAP_KA_KEY_LIST,
+                        pageant_lock_flags() ? KT_KA_TITLE_LOCKED : "");
+    char *t = kitty_title_compose(base, kitty_inifile_portable(),
+                                  restricted_acl(), false);
+    SetWindowText(hwnd, t);
+    sfree(t);
+    sfree(base);
+}
+
 void keylist_update(void)
 {
     /* KiTTY: a key came or went - its certificates' validity */
@@ -5978,7 +5995,7 @@ static const int keysettings_page_agent[] = {
     IDC_SET_L_THEME, IDC_SET_THEME, IDC_SET_L_THEMEHINT,
 };
 static const int keysettings_page_security[] = {
-    IDC_SET_LOCKDOWN, IDC_SET_BLOCKADD, IDC_SET_BLOCKREMOVE, IDC_SET_ALLOWIPCLOCK,
+    IDC_SET_BLOCKADD, IDC_SET_BLOCKREMOVE, IDC_SET_ALLOWIPCLOCK,
     IDC_SET_BLOCKFWD, IDC_SET_ALLOWWMCD, IDC_SET_HELLO,
     IDC_SET_L_TTL, IDC_SET_TTL, IDC_SET_L_TTLHINT,
     IDC_SET_L_HELLOTTL, IDC_SET_HELLOTTL, IDC_SET_L_HELLOTTLHINT,
@@ -6399,8 +6416,6 @@ static const struct kas_row kas_rows[] = {
     { .id = IDC_SET_HELLOTTL, .kind = KAS_NUMBER,
       .get = kageant_hello_ttl, .set = kageant_hello_ttl_set,
       .deflt = KAGEANT_TTL_DEFAULT, .limit = 3 },
-    { .id = IDC_SET_LOCKDOWN, .kind = KAS_BOOL,
-      .get = kageant_lockdown_get, .set = kageant_lockdown_set },
     { .id = IDC_SET_BLOCKADD, .kind = KAS_BOOL,
       .get = kageant_blockadd_get, .set = kageant_blockadd_set },
     { .id = IDC_SET_BLOCKREMOVE, .kind = KAS_BOOL,
@@ -6455,7 +6470,6 @@ static const struct kas_lock {
     { IDC_SET_QUIET,        "QuietMissingKeys",       true,  { 0 } },
     { IDC_SET_TTL,          "PassphraseCacheSeconds", true,  { IDC_SET_L_TTL, IDC_SET_L_TTLHINT, 0 } },
     { IDC_SET_HELLOTTL,     "HelloCacheSeconds",      true,  { IDC_SET_L_HELLOTTL, IDC_SET_L_HELLOTTLHINT, 0 } },
-    { IDC_SET_LOCKDOWN,     "LockdownMode",           true,  { 0 } },
     { IDC_SET_BLOCKADD,     "BlockIpcAdd",            true,  { 0 } },
     { IDC_SET_BLOCKREMOVE,  "BlockIpcRemove",         true,  { 0 } },
     { IDC_SET_ALLOWIPCLOCK, "AllowIpcLock",           true,  { 0 } },
@@ -6955,16 +6969,7 @@ static INT_PTR CALLBACK KeyListProc(HWND hwnd, UINT msg,
         EnableWindow(GetDlgItem(hwnd, IDC_KEYLIST_RESUMECONFIRM),
                      kageant_confirm_suppressed());
         SetTimer(hwnd, TID_KL_RESUME, 1000, NULL);
-        /* KiTTY: mark the key list with the agent's state - this is the
-         * process holding the keys, so portable/restricted get answered
-         * here. Suffixes composed in kitty/kitty_title.c - one place. */
-        {
-            char *t = kitty_title_compose(KT_CAP_KA_KEY_LIST,
-                                          kitty_inifile_portable(),
-                                          restricted_acl(), false);
-            SetWindowText(hwnd, t);
-            sfree(t);
-        }
+        keylist_set_title(hwnd);
         /* KiTTY: the confirm-mode radios are shown in BOTH stores' modes now
          * (registry gained the third state), so nothing is hidden here. */
         /* KiTTY: the layout baseline for resizing - captured now, after the
@@ -7939,7 +7944,7 @@ static BOOL AddTrayIcon(HWND hwnd)
     tnid.hIcon = hicon = kageant_tray_icon();
     /* KiTTY: extra tooltip lines for the agent's state - ini store,
      * portable layout, restricted ACL. The agent holds the keys, so "is the
-     * lockdown actually on?" is worth answering without opening anything.
+     * agent locked?" is worth answering without opening anything.
      * Composed in kitty/kitty_title.c; szTip is 128 chars, all lines fit. */
     {
         char *tip = kitty_title_compose_sep(
@@ -8725,6 +8730,8 @@ void kageant_refresh_tray_tip(void)
 static void kageant_lock_changed(void)
 {
     kageant_refresh_tray_tip();
+    if (keylist)
+        keylist_set_title(keylist);
     keylist_update();
 }
 
@@ -10832,6 +10839,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         kageant_bind_hook = kageant_audit_bind;         /* KiTTY: session-binds in the audit log */
         kageant_comment_confirm_hook = kageant_comment_wants_confirm;
         kageant_mutation_notice_hook = kageant_do_mutation_notice;
+        kageant_lockdown_retire();   /* before the first request (0.85.1.22) */
         kageant_ipc_blocked_hook = kageant_ipc_blocked;
         kageant_fwd_blocked_hook = kageant_fwd_blocked;   /* forwarded agents */
         /* the keys with rules a program's remove-all takes out (the hint) */
@@ -11000,7 +11008,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
     /*
      * KiTTY: -d and -D on the running agent, before any key of the call is
      * added. Over the pipe as REMOVE_IDENTITY / REMOVE_ALL_IDENTITIES, so
-     * its policy (blockipcremove, lockdown, the agent lock, a forwarded
+     * its policy (blockipcremove, the agent lock, a forwarded
      * connection) decides as for any program. Each result on the console.
      */
     if (already_running) {

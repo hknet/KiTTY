@@ -3275,9 +3275,7 @@ extern int (*kageant_confirm_hook)(const char *comment, int key_confirm,
 int kageant_ipc_blocked(int op, const char *fp)
 {
     int blocked;
-    if (kageant_lockdown_get())
-        blocked = 1;   /* add + remove + remove-all all blocked */
-    else if (op == KAGEANT_MUT_ADD)
+    if (op == KAGEANT_MUT_ADD)
         blocked = kageant_policy_get(KI_AGENT_BLOCKIPCADD, "BlockIpcAdd");
     else   /* remove and remove-all share the one switch */
         blocked = kageant_policy_get(KI_AGENT_BLOCKIPCREMOVE, "BlockIpcRemove");

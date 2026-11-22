@@ -1637,11 +1637,11 @@ char default_init_file_content[] =
 ; the named pipe, which is also what the Windows-OpenSSH integration\n\
 ; uses); the kageant window's own Add/Remove buttons are never affected.\n\
 ; Signing and listing keys are always allowed; re-encrypting a key is\n\
-; allowed even under lockdown (it only tightens a key by dropping its\n\
+; allowed even with both blocks on (it only tightens a key by dropping its\n\
 ; cleartext).\n\
-; lockdownmode: refuse ALL key add/remove/remove-all over IPC.\n\
-;lockdownmode=no\n\
-; blockipcadd / blockipcremove: refuse just adds, or just removes.\n\
+; blockipcadd / blockipcremove: refuse adds, or removes and remove-all.\n\
+; Both on: programs change no key. lockdownmode (both at once) is retired:\n\
+; kageant turns a lockdownmode=yes into both once and removes it.\n\
 ;blockipcadd=no\n\
 ;blockipcremove=no\n\
 ; allowipclock: let programs lock and unlock the agent over IPC (ssh-add -x\n\

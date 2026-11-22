@@ -1580,14 +1580,13 @@ the pipe.
 # run these lines in order
 # portable copy or ini store (savemode=file/dir): the [Agent] section of the kitty.ini in use
 # registry install:
-reg query "HKCU\Software\kapper.net\KiTTY" /v LockdownMode
 reg query "HKCU\Software\kapper.net\KiTTY" /v BlockIpcAdd
 reg query "HKCU\Software\kapper.net\KiTTY" /v BlockIpcRemove
 reg query "HKCU\Software\kapper.net\KiTTY" /v AllowIpcLock
 ```
 
-**expect:** `lockdownmode=yes`: no add, no remove. `blockipcadd=yes`: no add.
-`blockipcremove=yes`: no remove, no remove-all. All default to no.
+**expect:** `blockipcadd=yes`: no add. `blockipcremove=yes`: no remove, no
+remove-all. Both default to no.
 
 **failure:** a value is absent: the default (no) applies.
 
@@ -1659,8 +1658,8 @@ records `blocked` with `ipc-policy`. Stop. Report it.
   path of the kageant pipe (the Windows named pipe of kageant).
 - `SSH_AUTH_SOCK`: the environment variable that points ssh-add at the
   agent. The first two command lines set it from `kageant.conf`.
-- `blockipcremove`, `lockdownmode`: kageant settings that refuse a remove
-  from other programs.
+- `blockipcremove`: the kageant setting that refuses a remove from other
+  programs.
 
 **command:**
 
@@ -1676,7 +1675,7 @@ C:\Windows\System32\OpenSSH\ssh-add.exe -d <pubkeyfile>
 **expect:** exit code 0. A notice on screen. The agent log records event 114
 `remove`. The fingerprint is gone from `ssh-add -l`.
 
-**failure:** refused by policy (`blockipcremove` or `lockdownmode`): report
+**failure:** refused by policy (`blockipcremove`): report
 it. The key leaves kageant at the end of its `-t` time in any case.
 
 **never:** remove a key this AI agent did not add. `ssh-add -D` (it removes

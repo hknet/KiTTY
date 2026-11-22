@@ -76,6 +76,9 @@ ALLOW_UNDOCUMENTED = {
     ("KiTTY", "WorkplaceWasArmed"),
     # Read only to migrate it to [Agent] loadkeysonstartup; not a knob.
     ("Agent", "loadonstartup"),
+    # Read only to turn it into blockipcadd + blockipcremove once
+    # (kageant_lockdown_retire), not a knob.
+    ("Agent", "lockdownmode"),
 }
 # Keys whose variable is referenced only from its own plumbing but which are
 # not dead - none known; entries here need a reason.
@@ -84,10 +87,9 @@ ALLOW_DEAD_KNOBS: set[str] = set()
 ALLOW_TEMPLATE_UNREAD = {
     # Real keys the literal scan cannot see, because the name is built at
     # runtime or read through a helper the scan does not know:
-    #   kageant_policy_get(KI_AGENT_LOCKDOWNMODE, ...)   kitty/kitty_pageant.c
+    #   kageant_policy_get(KI_AGENT_BLOCKIPCADD, ...)    kitty/kitty_kageant_settings.c
     #   snprintf(key, ..., "startupkey%d", i)            kitty/kitty_pageant.c
     #   kageant_setting_str_get(KI_AGENT_KEYLISTGEOMETRY, ...)  windows/pageant.c
-    ("Agent", "lockdownmode"),
     ("Agent", "blockipcadd"),
     ("Agent", "blockipcremove"),
     ("Agent", "allowipclock"),

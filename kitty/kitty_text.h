@@ -2993,6 +2993,7 @@
         "The setting keeps its old value."
 #define KT_CAP_KA_CMDLINE                            "kageant command line"
 #define KT_CAP_KA_KEY_LIST                           "kageant Key List"
+#define KT_KA_TITLE_LOCKED                           " (LOCKED)"
 #define KT_CAP_KA_KEY_DETAILS                        "kageant - key details"
 #define KT_CAP_KA_KEY_RULES                          "kageant - key destinations"
 #define KT_CAP_KA_RULES_NOT_SAVED                    "kageant - rules not saved"
@@ -5613,9 +5614,8 @@
 #define KT_RC_KEYSETTINGS_NOTICE_HINT                "blank = each notice's own default"
 #define KT_RC_KEYSETTINGS_THEME_LABEL                "&Colour theme:"
 #define KT_RC_KEYSETTINGS_THEME_HINT                 "Dark needs Windows 10 1809 or newer; anything older stays light."
-#define KT_RC_KEYSETTINGS_LOCKDOWN                   "&Lock down: refuse ALL key add/remove over IPC"
-#define KT_RC_KEYSETTINGS_BLOCKADD                   "Block &adding keys over IPC"
-#define KT_RC_KEYSETTINGS_BLOCKREMOVE                "Block re&moving keys over IPC"
+#define KT_RC_KEYSETTINGS_BLOCKADD                   "Refuse keys &added by other programs"
+#define KT_RC_KEYSETTINGS_BLOCKREMOVE                "Refuse key re&movals by other programs"
 /* No accelerator on these two: the letters are unique per DIALOG, and every
  * letter of both texts is taken on one of the four pages (free: b j q v z). */
 #define KT_RC_KEYSETTINGS_ALLOWIPCLOCK               "Allow locking the agent over IPC (ssh-add -x / -X)"

@@ -422,7 +422,7 @@ a client that sends no binding.
 - kageant: the KiTTY++ SSH agent. It holds the user's loaded private keys
   and signs logins with them.
 - IPC policy: the kageant settings for requests from other programs
-  (`lockdownmode`, `blockipcadd`, `blockipcremove`, `allowipclock`).
+  (`blockipcadd`, `blockipcremove`, `allowipclock`).
 
 **command:**
 
@@ -450,8 +450,8 @@ none.
 - IPC: requests that other programs send to kageant over its Windows named
   pipe.
 - remove-all: `ssh-add -D`, the removal of every key in kageant.
-- `lockdownmode`: refuse every add, remove and remove-all over IPC.
-  `blockipcadd`: refuse adds. `blockipcremove`: refuse removes.
+- `blockipcadd`: refuse adds over IPC. `blockipcremove`: refuse removes and
+  remove-all. Both on: programs change no key.
   `allowipclock`: let programs lock and unlock kageant.
 - tray: the kageant icon in the Windows notification area. Its menu has
   "Lock agent" and "Unlock agent".
@@ -462,8 +462,6 @@ none.
 ; kageant Settings > Security, or kitty.ini:
 [Agent]
 ; refuse every add, remove and remove-all over IPC:
-lockdownmode=yes
-; or one by one:
 blockipcadd=yes
 blockipcremove=yes
 ; programs may not lock or unlock kageant (ssh-add -x / -X):
@@ -910,12 +908,10 @@ lockwithwindows=keep
 allowipclock=no
 
 ; variant 1: the AI agent may only sign
-lockdownmode=no
 blockipcadd=yes
 blockipcremove=yes
 
 ; variant 2: the AI agent may add and remove keys with ssh-add -t
-; lockdownmode=no
 ; blockipcadd=no
 ; blockipcremove=no
 ```

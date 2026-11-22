@@ -41,7 +41,7 @@
 #define IDC_SET_QUIET 305
 #define IDC_SET_TTL 306
 #define IDC_SET_NOTICESECS 307   /* notice display seconds */
-#define IDC_SET_LOCKDOWN 308      /* IPC: refuse all add/remove */
+/* 308 was IDC_SET_LOCKDOWN (lockdownmode, retired 0.85.1.22) */
 #define IDC_SET_BLOCKADD 309      /* IPC: refuse adds */
 #define IDC_SET_BLOCKREMOVE 310   /* IPC: refuse removes */
 #define IDC_SET_LOADKEYS 311      /* re-add remembered keys at startup */

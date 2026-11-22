@@ -16,7 +16,6 @@ row Agent helloconfirm
 row Agent keylistcolumns
 row Agent keylistgeometry
 row Agent loadkeysonstartup
-row Agent lockdownmode
 row Agent noticetimeout
 row Agent passphrasecacheseconds
 row Agent quietmissingkeys
@@ -136,7 +135,6 @@ text Agent helloconfirm
 text Agent keylistcolumns
 text Agent keylistgeometry
 text Agent loadkeysonstartup
-text Agent lockdownmode
 text Agent noticetimeout
 text Agent passphrasecacheseconds
 text Agent quietmissingkeys

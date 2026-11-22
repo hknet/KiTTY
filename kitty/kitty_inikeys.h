@@ -296,7 +296,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_AGENT_KEYLISTGEOMETRY            "keylistgeometry"
 #define KI_AGENT_LOADKEYSONSTARTUP          "loadkeysonstartup"
 #define KI_AGENT_LOADONSTARTUP              "loadonstartup"
-#define KI_AGENT_LOCKDOWNMODE               "lockdownmode"
+#define KI_AGENT_LOCKDOWNMODE               "lockdownmode"   /* retired: kageant_lockdown_retire */
 #define KI_AGENT_LOCKWITHWINDOWS            "lockwithwindows"
 #define KI_AGENT_MESSAGEONKEYUSAGE          "messageonkeyusage"
 /* the notice when startup keys come back on a drive (default yes) */
