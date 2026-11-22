@@ -1119,6 +1119,7 @@ static int kts_as_confirm(const char *v)
                                     !stricmp(v, "no") ? KAGEANT_CONFIRM_NO :
                                     KAGEANT_CONFIRM_AUTO);
 }
+static char *kts_ag_hello(void) { return kitty_testdoor_int_dup(kageant_hello_get()); }
 static char *kts_ag_notice(void) { return kitty_testdoor_int_dup(kageant_notice_timeout_get()); }
 static int kts_as_notice(const char *v) { return kageant_notice_timeout_set(atoi(v)); }
 static char *kts_ag_ossh(void) { return kitty_testdoor_int_dup(kageant_opensshpipe_get()); }
@@ -1172,6 +1173,7 @@ void kitty_testdoor_settings_kageant(void)
     static const struct kts_probe p[] = {
         { "allowwmcopydata", kts_ag_wm, kts_as_wm },
         { "askconfirmation", kts_ag_confirm, kts_as_confirm },
+        { "helloconfirm", kts_ag_hello, NULL },
         { "noticetimeout", kts_ag_notice, kts_as_notice },
         { "opensshpipe", kts_ag_ossh, kts_as_ossh },
         { "theme", kts_ag_theme, kts_as_theme },
