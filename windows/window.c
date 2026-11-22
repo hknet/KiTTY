@@ -13767,19 +13767,20 @@ static void process_clipdata(WinGuiSeat *wgs, HGLOBAL clipdata, bool unicode)
                     (unsigned long)clipboard_length, limit);
             /* modeless (kitty_paste_answer), holding the text: the
              * clipboard thread waits on this message, and a modal box
-             * stopped the session as well */
+             * stopped the session as well. Yes is the default: the user
+             * already pressed the paste key, so Enter alone pastes. */
             pa = snew(kitty_paste_ask_t);
             pa->hwnd = wgs->term_hwnd;
             pa->text = clipboard_contents;
             pa->len = clipboard_length;
-            kitty_paste_box = kitty_confirm_modeless(wgs->term_hwnd,
-                KT_CAP_PASTE, msg, NULL, NULL, kitty_paste_answer, pa);
+            kitty_paste_box = kitty_confirm_modeless_yes(wgs->term_hwnd,
+                KT_CAP_PASTE, msg, 0, kitty_paste_answer, pa);
             if (kitty_paste_box)
                 return;                  /* the text is the question's now */
             sfree(pa);
             /* no modeless box here: the box as before */
-            if (!kitty_confirm_box(wgs->term_hwnd, KT_CAP_PASTE, msg,
-                                   NULL)) {
+            if (!kitty_confirm_box_yes(wgs->term_hwnd, KT_CAP_PASTE, msg,
+                                       NULL)) {
                 sfree(clipboard_contents);
                 return;
             }
