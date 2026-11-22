@@ -2681,8 +2681,8 @@ static void kitty_clayer_blink(TermWin *tw, int half, bool ease);
  *   9  one pixel right and back (SetWindowPos)
  *  10  one pixel wider and back: a real size change like a minimise and
  *      restore, without the taskbar or the focus
- *   and 5 by itself, 1.5 s after the last display mode or work area change,
- *   on a Direct2D window that is not minimised (kitty_test88_event).
+ * Nothing repairs by itself: a shifted picture stays until an entry is
+ * chosen, so each one can be tried on it.
  * Each writes the window's, the client area's and the visible frame's place
  * on the screen to the Terminal Window's Event Log. With the same switch the
  * window also logs every display, power, session and window event that
@@ -2726,8 +2726,7 @@ static void kitty_test_geometry(HWND h, struct kitty_test_geom *g)
         memcpy(g->mon, mi.szDevice, sizeof(mi.szDevice));   /* NUL-terminated, 32 at most */
 }
 
-/* automatic: repair 5 after a display change, from kitty_test88_event */
-static void kitty_test_repair_ex(WinGuiSeat *wgs, int which, bool automatic)
+static void kitty_test_repair(WinGuiSeat *wgs, int which)
 {
     static const char *const names[] = { "", "redraw", "frame", "buffers",
         "new device", "hide and show", "minimise and restore",
@@ -2737,20 +2736,7 @@ static void kitty_test_repair_ex(WinGuiSeat *wgs, int which, bool automatic)
     const char *name = (which >= 1 && which <= 10) ? names[which] : "?";
     struct kitty_test_geom g;
     char *line;
-    if (automatic && which == 5) {
-        /* the window may be the active one: show and activate it again,
-         * else SW_HIDE leaves another window active */
-        bool fg = GetForegroundWindow() == h;
-        ShowWindow(h, SW_HIDE);
-        ShowWindow(h, fg ? SW_SHOW : SW_SHOWNA);
-        if (fg)
-            SetForegroundWindow(h);
-        name = "hide and show, automatic after a display change";
-        which = 0;
-    }
     switch (which) {
-      case 0:
-        break;
       case 1:
         term_invalidate(wgs->term);
         InvalidateRect(h, NULL, FALSE);
@@ -2825,7 +2811,7 @@ static void kitty_test_repair_ex(WinGuiSeat *wgs, int which, bool automatic)
         break;
     }
     kitty_test_geometry(h, &g);
-    line = dupprintf(KT_TEST_REPAIR_EVENT, automatic ? 5 : which, name,
+    line = dupprintf(KT_TEST_REPAIR_EVENT, which, name,
                      (long)g.wr.left, (long)g.wr.top, (long)(g.wr.right - g.wr.left),
                      (long)(g.wr.bottom - g.wr.top), (long)g.o.x, (long)g.o.y,
                      (long)g.cr.right, (long)g.cr.bottom, (long)g.fr.left,
@@ -2833,11 +2819,6 @@ static void kitty_test_repair_ex(WinGuiSeat *wgs, int which, bool automatic)
                      (long)(g.fr.bottom - g.fr.top));
     logevent(wgs->logctx, line);
     sfree(line);
-}
-
-static void kitty_test_repair(WinGuiSeat *wgs, int which)
-{
-    kitty_test_repair_ex(wgs, which, false);
 }
 
 /* hknet/KiTTY#88 test builds, KITTY_TEST_D2D_REPAIR=1: one Event Log line
@@ -2868,7 +2849,6 @@ static const struct { GUID guid; const char *name; } kitty_test88_power[] = {
  * visible share in percent. *top: the window covering the most of it, in
  * full (sfree it). */
 #define TIMER_TEST88_COVER 8788        /* free across window.c + kitty.c timer ids */
-#define TIMER_TEST88_AUTO  8789        /* the automatic repair 5, 1.5 s after the last display change */
 static int kitty_test88_cover(HWND h, char **top)
 {
     typedef HRESULT (WINAPI *dwmattr_t)(HWND, DWORD, PVOID, DWORD);
@@ -2976,7 +2956,6 @@ static void kitty_test88_event(WinGuiSeat *wgs, HWND h, UINT msg, WPARAM wp, LPA
       case WM_DISPLAYCHANGE:
         what = dupprintf("display mode %ux%u, %u bits",
                          (unsigned)LOWORD(lp), (unsigned)HIWORD(lp), (unsigned)wp);
-        SetTimer(h, TIMER_TEST88_AUTO, 1500, NULL);   /* again at each one */
         break;
       case WM_DPICHANGED: {
         const RECT *r = (const RECT *)lp;
@@ -3028,14 +3007,6 @@ static void kitty_test88_event(WinGuiSeat *wgs, HWND h, UINT msg, WPARAM wp, LPA
         what = dupstr(wp ? "the program is active again" : "another program is active");
         break;
       case WM_TIMER:
-        if (wp == TIMER_TEST88_AUTO) {
-            KillTimer(h, TIMER_TEST88_AUTO);
-            /* minimised: the restore rebuilds the picture anyway */
-            if (!IsIconic(h) && IsWindowVisible(h) &&
-                (ULONG_PTR)GetPropA(h, "KiTTY.renderer") >= 2)
-                kitty_test_repair_ex(wgs, 5, true);
-            break;
-        }
         if (wp == TIMER_TEST88_COVER && !IsIconic(h)) {
             /* shown, partly covered or covered: a line at each change of
              * these three, none while the share moves within one */
@@ -3108,7 +3079,6 @@ static void kitty_test88_event(WinGuiSeat *wgs, HWND h, UINT msg, WPARAM wp, LPA
       case WM_SETTINGCHANGE:
         if (wp == SPI_SETWORKAREA) {
             what = dupstr("the work area changed");
-            SetTimer(h, TIMER_TEST88_AUTO, 1500, NULL);
         }
         break;
     }
