@@ -41,6 +41,7 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_gui.h"
 #include "kitty_atomicfile.h"  /* kitty_write_file_whole: the Event Viewer view file */
+#include "kitty_winkeys.h"   /* Windows' own keys */
 int kageant_audit_get(void)
 {
     return kageant_bool_get(KI_AGENT_AGENTLOG, "AgentLog", 1);
@@ -96,13 +97,8 @@ char *kageant_audit_pathsetting_dup(void)
 int kageant_audit_eventlog_exists(void)
 {
     static int exists = -1;
-    if (exists < 0) {
-        HKEY k;
-        exists = RegOpenKeyExA(HKEY_LOCAL_MACHINE, KAGEANT_EVENTLOG_KEY, 0,
-                               KEY_QUERY_VALUE, &k) == ERROR_SUCCESS;
-        if (exists)
-            RegCloseKey(k);
-    }
+    if (exists < 0)
+        exists = kitty_winkey_exists(HKEY_LOCAL_MACHINE, KAGEANT_EVENTLOG_KEY, 0);
     return exists;
 }
 

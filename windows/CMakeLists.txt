@@ -15,6 +15,7 @@ add_sources_from_current_dir(utils
   # that - including the command-line tools, which is what lets network.c and
   # gss.c report a fallback they took without breaking klink/kscp/ksftp.
   ../kitty/kitty_oldwin.c
+  ../kitty/kitty_winkeys.c   # KiTTY: Windows' own keys (kitty_winkeys.h)
   # KiTTY: the rename guard - a shipped program refuses to start under a file
   # name that does not begin with its product name. In `utils` for the same
   # reason as the file above: every binary links it, and each entry point calls
@@ -249,6 +250,7 @@ target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_theme.c)
 # library member is only pulled in for a symbol nothing else defines, so the
 # duplicate costs nothing.
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c)
+target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_winkeys.c)
 # KiTTY: edge anchoring for resizable dialogs - the configuration box's outer
 # furniture here, kageant's three windows in the pageant target below.
 target_sources(guiterminal PRIVATE ${CMAKE_SOURCE_DIR}/kitty/kitty_anchor.c)
@@ -283,6 +285,7 @@ add_executable(pageant
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_rules.c   # KiTTY: the destination rule file (DPAPI) and its editor's data
   ${CMAKE_SOURCE_DIR}/kitty/kitty_kageant_settings.c   # KiTTY: the agent settings facade
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winkeys.c   # KiTTY: Windows' own keys (kitty_winkeys.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_anchor.c    # KiTTY: edge anchoring for the resizable windows
   ${CMAKE_SOURCE_DIR}/kitty/kitty_authenticode.c  # KiTTY: shared verify for the New key launcher
@@ -415,6 +418,7 @@ add_executable(puttygen
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winkeys.c   # KiTTY: Windows' own keys (kitty_winkeys.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
@@ -465,6 +469,7 @@ add_executable(kittygen-cli
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c   # KiTTY: Hello-protected keys (container; no UI used here)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winkeys.c   # KiTTY: Windows' own keys (kitty_winkeys.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
@@ -837,6 +842,7 @@ add_executable(test_hello_container
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winkeys.c   # KiTTY: Windows' own keys (kitty_winkeys.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
@@ -1019,6 +1025,7 @@ add_executable(kitty
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winkeys.c   # KiTTY: Windows' own keys (kitty_winkeys.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
@@ -1149,6 +1156,7 @@ add_executable(kitty_portable
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c          # KiTTY: Hello-protected key files
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winkeys.c   # KiTTY: Windows' own keys (kitty_winkeys.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c
@@ -1305,6 +1313,7 @@ add_executable(test_hello_gui
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_host.c   # KiTTY: the anchor host window (kitty_hello_int.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_oldwin.c   # KiTTY: APIs newer than the oldest Windows we load on
+  ${CMAKE_SOURCE_DIR}/kitty/kitty_winkeys.c   # KiTTY: Windows' own keys (kitty_winkeys.h)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_crashlog.c   # KiTTY: crash log beside the exe; MUST be listed per-target - as an archive member the linker drops it (nothing references a bare constructor)
   ${CMAKE_SOURCE_DIR}/kitty/kitty_hello_container.c
   ${CMAKE_SOURCE_DIR}/kitty/kitty_foreground.c

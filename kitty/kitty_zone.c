@@ -12,6 +12,7 @@
 #include "kitty_storage.h"    /* kitty_open_settings_r_items */
 #include "kitty_dlgbox.h"     /* kitty_confirm_box, kitty_info_box */
 #include "kitty_zone.h"
+#include "kitty_winkeys.h"   /* Windows' own keys */
 
 
 int kitty_zone_file_policy(const char *path)
@@ -65,18 +66,10 @@ int kitty_zone_file_policy(const char *path)
 
 static int policy_dword(HKEY root, const char *name)
 {
-    DWORD v = 0, sz = sizeof(v), type = 0;
-    HKEY k;
-    int set = 0;
-    if (RegOpenKeyExA(root,
+    DWORD v = 0;
+    return kitty_winkey_dword(root,
             "Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\Attachments",
-            0, KEY_READ, &k) != ERROR_SUCCESS)
-        return 0;
-    if (RegQueryValueExA(k, name, NULL, &type, (BYTE *)&v, &sz) == ERROR_SUCCESS &&
-        type == REG_DWORD && v == 1)
-        set = 1;
-    RegCloseKey(k);
-    return set;
+            name, 0, &v) && v == 1;
 }
 
 int kitty_zone_unblock_hidden(void)

@@ -31,6 +31,7 @@
 #include "kitty_gui.h"
 #include "kitty_tools.h"
 #include "kitty.h"
+#include "kitty_winkeys.h"   /* Windows' own keys */
 
 //extern int offset_width, offset_height ;
 //extern int font_width, font_height ;
@@ -300,10 +301,8 @@ static void fill_dc(HDC dc, int width, int height, COLORREF color)
 
 static BOOL load_wallpaper_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
 {
-    LONG lRes;
-    HKEY kDesktop;
-    DWORD type = 0, len = 0;
-    unsigned char *wpPath, *v;
+    DWORD type = 0;
+    char *wpPath, *v;
 
     int wpStyle = -1;
     int wpTile = -1;
@@ -319,34 +318,26 @@ static BOOL load_wallpaper_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
     // For now, we'll never return an (x,y) positioning request to the caller.
     *x = *y = 0;
 
-    lRes = RegOpenKeyEx(
-        HKEY_CURRENT_USER, "Control Panel\\Desktop", 0, KEY_READ, &kDesktop
-    );
-    if(lRes != ERROR_SUCCESS)
+    /* The values in full and terminated (kitty_winkeys.c): a stored value
+     * need not carry its NUL. The path is not limited to MAX_PATH in the
+     * registry. */
+    wpPath = kitty_winkey_str_dup(HKEY_CURRENT_USER, "Control Panel\\Desktop",
+                                  "Wallpaper", 0, &type);
+    if(wpPath == NULL)
         return FALSE; // TODO: Should the error be reported to the user here?
 
-    /* The values in full and terminated: a stored value need not carry its
-     * NUL, and the path is not limited to MAX_PATH in the registry. */
-    wpPath = kitty_reg_query_dup(kDesktop, "Wallpaper", &type, &len);
-    if(wpPath == NULL || (type != REG_SZ && type != REG_EXPAND_SZ))
+    if((v = kitty_winkey_str_dup(HKEY_CURRENT_USER, "Control Panel\\Desktop",
+                                 "WallpaperStyle", 0, NULL)) != NULL)
     {
-        sfree(wpPath);
-        RegCloseKey(kDesktop);
-        return FALSE; // TODO: Should the error be reported to the user here?
+        wpStyle = atoi(v);
+        free(v);
     }
 
-    if((v = kitty_reg_query_dup(kDesktop, "WallpaperStyle", &type, &len)) != NULL)
+    if((v = kitty_winkey_str_dup(HKEY_CURRENT_USER, "Control Panel\\Desktop",
+                                 "TileWallpaper", 0, NULL)) != NULL)
     {
-        if(type == REG_SZ || type == REG_EXPAND_SZ)
-            wpStyle = atoi((char *)v);
-        sfree(v);
-    }
-
-    if((v = kitty_reg_query_dup(kDesktop, "TileWallpaper", &type, &len)) != NULL)
-    {
-        if(type == REG_SZ || type == REG_EXPAND_SZ)
-            wpTile = atoi((char *)v);
-        sfree(v);
+        wpTile = atoi(v);
+        free(v);
     }
 
     if(wpStyle < 0 && wpStyle > 3)
@@ -359,13 +350,12 @@ static BOOL load_wallpaper_bmp(HBITMAP* rawImage, int* style, int* x, int* y)
                       // center and don't use wpTile, to simplify things after
                       // this point.
 
-    RegCloseKey(kDesktop);
  
     if( *rawImage!=NULL ) { DeleteObject( *rawImage ) ; *rawImage=NULL ; }
     *rawImage = LoadImage(
         NULL, (char *)wpPath, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE
     );
-    sfree(wpPath);
+    free(wpPath);
     if(*rawImage == 0)
         return FALSE; // TODO: Should the error be reported to the user here?
 

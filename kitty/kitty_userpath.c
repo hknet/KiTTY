@@ -14,6 +14,7 @@
 #include "putty.h"
 #include "kitty_oldwin.h"   /* the program's folder read whole */
 #include "kitty_userpath.h"
+#include "kitty_winkeys.h"   /* Windows' own keys */
 
 bool kitty_userpath_contains_exe_dir(void);
 bool kitty_userpath_set_exe_dir(bool on, char **err);
@@ -37,20 +38,12 @@ static void trim_dir(char *s)
 /* The raw (unexpanded) user PATH and its registry type; "" when unset. */
 static char *read_user_path(DWORD *type)
 {
-    HKEY key;
-    char *value = NULL;
-    *type = REG_EXPAND_SZ;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Environment", 0, KEY_READ, &key) == ERROR_SUCCESS) {
-        DWORD len = 0;
-        if (RegQueryValueExA(key, "Path", NULL, type, NULL, &len) == ERROR_SUCCESS && len > 0) {
-            value = snewn(len + 1, char);
-            if (RegQueryValueExA(key, "Path", NULL, type, (BYTE *)value, &len) == ERROR_SUCCESS)
-                value[len] = '\0';
-            else { sfree(value); value = NULL; }
-        }
-        RegCloseKey(key);
-    }
-    return value ? value : dupstr("");
+    DWORD t = REG_EXPAND_SZ;
+    char *v = kitty_winkey_str_dup(HKEY_CURRENT_USER, "Environment", "Path", 0, &t);
+    char *value = dupstr(v ? v : "");
+    *type = v ? t : REG_EXPAND_SZ;
+    free(v);
+    return value;
 }
 
 /* Does one PATH entry name the exe's folder? */
@@ -92,7 +85,6 @@ bool kitty_userpath_set_exe_dir(bool on, char **err)
     DWORD type;
     char *path, *p;
     strbuf *out;
-    HKEY key;
     LONG rc;
 
     *err = NULL;
@@ -118,12 +110,9 @@ bool kitty_userpath_set_exe_dir(bool on, char **err)
     sfree(dir);
     if (type != REG_SZ && type != REG_EXPAND_SZ)
         type = REG_EXPAND_SZ;
-    rc = RegCreateKeyExA(HKEY_CURRENT_USER, "Environment", 0, NULL, 0,
-                         KEY_SET_VALUE, NULL, &key, NULL);
-    if (rc == ERROR_SUCCESS) {
-        rc = RegSetValueExA(key, "Path", 0, type, (const BYTE *)out->s, (DWORD)out->len + 1);
-        RegCloseKey(key);
-    }
+    rc = kitty_winkey_set(HKEY_CURRENT_USER, "Environment", "Path", 0, type,
+                          out->s, (DWORD)out->len + 1) ? ERROR_SUCCESS
+                                                        : (LONG)GetLastError();
     strbuf_free(out);
     if (rc != ERROR_SUCCESS) {
         *err = dupprintf("HKEY_CURRENT_USER\\Environment\\Path could not be written (error %ld)", rc);

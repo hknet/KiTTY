@@ -63,6 +63,7 @@ static void scb_policy_lines(struct controlbox *b);
 #include "kitty_eventids.h"     /* the Event Viewer view: sources and log */
 #include "kitty_scriptbridge.h"  /* the Script bridge leaf: the installation's key */
 #include "kitty_winerr.h"       /* kitty_win_reason: the Hardening group's failure line */
+#include "kitty_winkeys.h"   /* Windows' own keys */
 
 #define KITTY_WORKPLACE_STATE_ON  "Workplace proxy mode is ON for every connection."
 
@@ -1650,12 +1651,7 @@ static void kitty_verifyagent_handler(dlgcontrol *ctrl, dlgparam *dlg,
 
 static int kitty_session_eventlog_exists(void)
 {
-    HKEY k;
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, KITTY_SESSION_EVENTLOG_KEY, 0,
-                      KEY_QUERY_VALUE, &k) != ERROR_SUCCESS)
-        return 0;
-    RegCloseKey(k);
-    return 1;
+    return kitty_winkey_exists(HKEY_LOCAL_MACHINE, KITTY_SESSION_EVENTLOG_KEY, 0);
 }
 
 static void kitty_eventviewer_open(HWND owner)

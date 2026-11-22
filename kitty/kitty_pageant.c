@@ -44,6 +44,7 @@
 #include "kitty_inikeys.h"  /* KI_*: the kitty.ini key names */
 #include "kitty_gui.h"
 #include "kitty_winerr.h"   /* kitty_win_reason: a key copy that failed */
+#include "kitty_winkeys.h"   /* Windows' own keys */
 /* Shim so the moved kageant_do_notify body below stays textually identical
  * to its pageant.c original: reach pageant.c's static tray-window handle
  * through the accessor it exports for us. */
@@ -2672,8 +2673,6 @@ void kageant_track_keypath(const char *path, int encrypted)
 /* 1 done; 0 not, Windows' reason in GetLastError(). */
 int kageant_set_run_entry(int on)
 {
-    HKEY hk;
-    LONG rc;
     if (on) {
         char exe[MAX_PATH + 3];
         DWORD n = GetModuleFileNameA(NULL, exe + 1, MAX_PATH);
@@ -2682,25 +2681,12 @@ int kageant_set_run_entry(int on)
             return 0;
         }
         exe[0] = '"'; exe[n + 1] = '"'; exe[n + 2] = '\0';
-        rc = RegCreateKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0, NULL, 0,
-                             KEY_SET_VALUE, NULL, &hk, NULL);
-        if (rc == ERROR_SUCCESS) {
-            rc = RegSetValueExA(hk, KAGEANT_RUN_NAME, 0, REG_SZ,
-                                (const BYTE *)exe, (DWORD)strlen(exe) + 1);
-            RegCloseKey(hk);
-        }
-    } else {
-        rc = RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
-                           KEY_SET_VALUE, &hk);
-        if (rc == ERROR_FILE_NOT_FOUND) return 1;    /* nothing to remove */
-        if (rc == ERROR_SUCCESS) {
-            rc = RegDeleteValueA(hk, KAGEANT_RUN_NAME);
-            if (rc == ERROR_FILE_NOT_FOUND) rc = ERROR_SUCCESS;
-            RegCloseKey(hk);
-        }
+        return kitty_winkey_set_str(HKEY_CURRENT_USER, KAGEANT_RUN_KEY,
+                                    KAGEANT_RUN_NAME, 0, exe);
     }
-    if (rc != ERROR_SUCCESS) { SetLastError((DWORD)rc); return 0; }
-    return 1;
+    /* gone, or never there: done */
+    return kitty_winkey_delete_value(HKEY_CURRENT_USER, KAGEANT_RUN_KEY,
+                                     KAGEANT_RUN_NAME, 0);
 }
 
 /* ---- autostart: registry-free Startup shortcut (portable) + a warn-only
@@ -2737,81 +2723,43 @@ static char *kageant_cmd_to_exe(const char *cmd)
 /* A REG_SZ / REG_EXPAND_SZ value whole and NUL-terminated even when it was
  * stored without one; NULL when absent, of another type or unreadable
  * (sfree it). */
-static char *kageant_reg_sz_dup(HKEY hk, const char *name)
+/* A Run value in full (sfree it), NULL when absent or not a string. One
+ * stored without its NUL is terminated (kitty_winkeys.c). */
+static char *kageant_run_value_dup(HKEY root, const char *name)
 {
-    int tries;
-    for (tries = 0; tries < 4; tries++) {
-        DWORD type = 0, sz = 0;
-        char *buf;
-        LONG rc = RegQueryValueExA(hk, name, NULL, &type, NULL, &sz);
-        if (rc != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ))
-            return NULL;
-        buf = snewn(sz + 1, char);
-        rc = RegQueryValueExA(hk, name, NULL, &type, (BYTE *)buf, &sz);
-        if (rc == ERROR_SUCCESS &&
-            (type == REG_SZ || type == REG_EXPAND_SZ)) {
-            buf[sz] = '\0';
-            return buf;
-        }
-        sfree(buf);
-        if (rc != ERROR_MORE_DATA)     /* it grew in between: ask again */
-            return NULL;
+    char *v = kitty_winkey_str_dup(root, KAGEANT_RUN_KEY, name, 0, NULL);
+    char *out = v ? dupstr(v) : NULL;
+    free(v);
+    return out;
+}
+
+struct kageant_scan_ctx { HKEY root; const char *myexe; char **desc; int found; };
+static int kageant_scan_one(const char *name, void *vctx)
+{
+    struct kageant_scan_ctx *c = (struct kageant_scan_ctx *)vctx;
+    char *data = kageant_run_value_dup(c->root, name), *exe;
+    if (!data)
+        return 1;                       /* not a string: the next one */
+    /* Exclude our own entry by EXE PATH, not by value name: the
+     * KAGEANT_RUN_NAME name is shared by every kageant/pageant install,
+     * so a same-named entry pointing at a different exe is a real
+     * conflict (e.g. a system-installed kageant vs this portable one). */
+    exe = kageant_cmd_to_exe(data);
+    if (kageant_is_agent_exe(exe) && stricmp(exe, c->myexe) != 0) {
+        *c->desc = dupprintf(KT_KA_AUTOSTART_RUN_DESC_FMT, name, exe,
+                             c->root == HKEY_CURRENT_USER ? "HKCU" : "HKLM");
+        c->found = 1;
     }
-    return NULL;
+    sfree(exe);
+    sfree(data);
+    return !c->found;
 }
 
 static int kageant_scan_run(HKEY root, const char *myexe, char **desc)
 {
-    HKEY hk;
-    char *name = NULL, *data = NULL;
-    DWORD idx = 0, maxname = 0, maxdata = 0, nlen, dlen, type;
-    int found = 0, regrow = 0;
-    if (RegOpenKeyExA(root, KAGEANT_RUN_KEY, 0, KEY_READ, &hk) != ERROR_SUCCESS)
-        return 0;
-    for (;;) {
-        LONG r;
-        char *exe;
-        if (!data) {
-            /* buffers for the longest name and value the key holds */
-            if (RegQueryInfoKeyA(hk, NULL, NULL, NULL, NULL, NULL, NULL,
-                                 NULL, &maxname, &maxdata, NULL,
-                                 NULL) != ERROR_SUCCESS)
-                break;
-            name = snewn(maxname + 1, char);
-            data = snewn(maxdata + 1, char);
-        }
-        nlen = maxname + 1; dlen = maxdata;
-        r = RegEnumValueA(hk, idx, name, &nlen, NULL, &type,
-                          (BYTE *)data, &dlen);
-        if (r == ERROR_NO_MORE_ITEMS) break;
-        if (r == ERROR_MORE_DATA && regrow++ < 4) {
-            /* a value grew since the sizes were read: read them again */
-            sfree(name); sfree(data);
-            name = data = NULL;
-            continue;
-        }
-        idx++;
-        if (r != ERROR_SUCCESS) continue;
-        if (type != REG_SZ && type != REG_EXPAND_SZ) continue;
-        data[dlen] = '\0';             /* a value stored without its NUL */
-        /* Exclude our own entry by EXE PATH, not by value name: the
-         * KAGEANT_RUN_NAME name is shared by every kageant/pageant install,
-         * so a same-named entry pointing at a different exe is a real
-         * conflict (e.g. a system-installed kageant vs this portable one). */
-        exe = kageant_cmd_to_exe(data);
-        if (kageant_is_agent_exe(exe) && stricmp(exe, myexe) != 0) {
-            *desc = dupprintf(KT_KA_AUTOSTART_RUN_DESC_FMT, name, exe,
-                              root == HKEY_CURRENT_USER ? "HKCU" : "HKLM");
-            found = 1;
-        }
-        sfree(exe);
-        if (found)
-            break;
-    }
-    sfree(name);
-    sfree(data);
-    RegCloseKey(hk);
-    return found;
+    struct kageant_scan_ctx c = { root, myexe, desc, 0 };
+    kitty_winkey_value_names(root, KAGEANT_RUN_KEY, 0, kageant_scan_one, &c);
+    return c.found;
 }
 
 static int kageant_scan_startup(int common, const char *myexe, char **desc)
@@ -2871,22 +2819,16 @@ char *kageant_autostart_conflict(void)
 static void kageant_clear_own_run_entry(void)
 {
     char *myexe = kitty_module_path_dup(NULL), *data, *exe;
-    HKEY hk;
     if (!myexe)
         return;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
-                      KEY_QUERY_VALUE | KEY_SET_VALUE, &hk) != ERROR_SUCCESS) {
-        sfree(myexe);
-        return;
-    }
-    if ((data = kageant_reg_sz_dup(hk, KAGEANT_RUN_NAME)) != NULL) {
+    if ((data = kageant_run_value_dup(HKEY_CURRENT_USER, KAGEANT_RUN_NAME)) != NULL) {
         exe = kageant_cmd_to_exe(data);
         if (!stricmp(exe, myexe))
-            RegDeleteValueA(hk, KAGEANT_RUN_NAME);
+            kitty_winkey_delete_value(HKEY_CURRENT_USER, KAGEANT_RUN_KEY,
+                                      KAGEANT_RUN_NAME, 0);
         sfree(exe);
         sfree(data);
     }
-    RegCloseKey(hk);
     sfree(myexe);
 }
 
@@ -2911,22 +2853,15 @@ int kageant_autostart_active(void)
     }
     {
         char *myexe = kitty_module_path_dup(NULL), *data, *exe;
-        HKEY hk;
         int active = 0;
         if (!myexe)
             return 0;
-        if (RegOpenKeyExA(HKEY_CURRENT_USER, KAGEANT_RUN_KEY, 0,
-                          KEY_QUERY_VALUE, &hk) != ERROR_SUCCESS) {
-            sfree(myexe);
-            return 0;
-        }
-        if ((data = kageant_reg_sz_dup(hk, KAGEANT_RUN_NAME)) != NULL) {
+        if ((data = kageant_run_value_dup(HKEY_CURRENT_USER, KAGEANT_RUN_NAME)) != NULL) {
             exe = kageant_cmd_to_exe(data);
             active = !stricmp(exe, myexe);
             sfree(exe);
             sfree(data);
         }
-        RegCloseKey(hk);
         sfree(myexe);
         return active;
     }

@@ -21,6 +21,7 @@
 #include "kitty_auditverify.h"
 #include "kitty_auditlog.h"     /* KITTY_AUDIT_EVENT_SOURCE, _LOG */
 #include "kitty_text.h"
+#include "kitty_winkeys.h"   /* Windows' own keys */
 
 #define AV_ANCHOR_ID 171
 #define AV_MAXDATA   40              /* insertion strings kept per event */
@@ -366,13 +367,9 @@ static int av_query_classic(struct av_set *s, const char *log,
 
 static int av_log_exists(const char *log)
 {
-    HKEY k;
     char *key = dupprintf("SYSTEM\\CurrentControlSet\\Services\\EventLog\\%s",
                           log);
-    int ok = RegOpenKeyExA(HKEY_LOCAL_MACHINE, key, 0, KEY_QUERY_VALUE, &k) ==
-        ERROR_SUCCESS;
-    if (ok)
-        RegCloseKey(k);
+    int ok = kitty_winkey_exists(HKEY_LOCAL_MACHINE, key, 0);
     sfree(key);
     return ok;
 }

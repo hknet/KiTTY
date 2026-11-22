@@ -421,6 +421,7 @@ static INT_PTR CALLBACK LicenceProc(HWND hwnd, UINT msg,
 
 /* kitty_auxpos.c: DPI/monitor-safe placement + position and size memory. */
 #include "../kitty/kitty_auxpos.h"
+#include "../kitty/kitty_winkeys.h"  /* KiTTY: Windows' own keys */
 int kitty_inifile_registry_authoritative(void);   /* kitty_inifile.c */
 
 /* KiTTY: the KiTTY key generator, sitting next to us - kittygen.exe in a
@@ -457,18 +458,10 @@ static char *find_kittygen(void)
  * RegGetValue would kill the process in the loader on old Windows. */
 static HICON kageant_tray_icon(void)
 {
-    HKEY k;
-    DWORD v = 1, sz = sizeof(v), type = 0;
-    int dark_taskbar = 0;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER,
-                      "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-                      0, KEY_READ, &k) == ERROR_SUCCESS) {
-        if (RegQueryValueExA(k, "SystemUsesLightTheme", NULL, &type,
-                             (BYTE *)&v, &sz) == ERROR_SUCCESS &&
-            type == REG_DWORD)
-            dark_taskbar = (v == 0);
-        RegCloseKey(k);
-    }
+    DWORD v = 1;
+    int dark_taskbar = kitty_winkey_dword(HKEY_CURRENT_USER,
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+            "SystemUsesLightTheme", 0, &v) && v == 0;
     return LoadIcon(hinst, MAKEINTRESOURCE(dark_taskbar ? 202 : 201));
 }
 
@@ -9812,34 +9805,24 @@ static char *kageant_pipe_holder_dup(const char *pipe)
  * "Environment"): programs started afterwards see it. */
 static void kageant_sshauthsock_apply(void)
 {
-    HKEY k;
-    char *cur = NULL;
-    DWORD type = 0, n = 0;
+    char *cur = NULL, *raw;
     char *mine = kageant_sshauthsock_value_dup();
     const char *want = (kageant_setsshauthsock_get() && extrapipe_path) ? extrapipe_path : NULL;
     int changed = 0;
-    if (RegOpenKeyExA(HKEY_CURRENT_USER, "Environment", 0,
-                      KEY_QUERY_VALUE | KEY_SET_VALUE, &k) != ERROR_SUCCESS) {
+    if (!kitty_winkey_exists(HKEY_CURRENT_USER, "Environment", 0)) {
         sfree(mine);
         return;
     }
-    /* the value at its own length: its size read first */
-    if (RegQueryValueExA(k, "SSH_AUTH_SOCK", NULL, &type, NULL, &n) == ERROR_SUCCESS &&
-        (type == REG_SZ || type == REG_EXPAND_SZ)) {
-        cur = snewn(n + 1, char);
-        if (RegQueryValueExA(k, "SSH_AUTH_SOCK", NULL, &type, (LPBYTE)cur, &n) == ERROR_SUCCESS)
-            cur[n] = '\0';
-        else
-            cur[0] = '\0';
-    } else {
-        cur = dupstr("");
-    }
+    /* the value in full (kitty_winkeys.c) */
+    raw = kitty_winkey_str_dup(HKEY_CURRENT_USER, "Environment", "SSH_AUTH_SOCK", 0, NULL);
+    cur = dupstr(raw ? raw : "");
+    free(raw);
     if (want) {
         if (!stricmp(cur, want)) {
             /* already so */
         } else if (!cur[0] || (mine && *mine && !stricmp(cur, mine))) {
-            if (RegSetValueExA(k, "SSH_AUTH_SOCK", 0, REG_SZ, (const BYTE *)want,
-                               (DWORD)strlen(want) + 1) == ERROR_SUCCESS) {
+            if (kitty_winkey_set_str(HKEY_CURRENT_USER, "Environment",
+                                     "SSH_AUTH_SOCK", 0, want)) {
                 kageant_sshauthsock_value_set(want);
                 kageant_pipe_record(want, "sshauthsock-set", NULL);
                 changed = 1;
@@ -9853,13 +9836,13 @@ static void kageant_sshauthsock_apply(void)
             sfree(text);
         }
     } else if (mine && *mine && cur[0] && !stricmp(cur, mine)) {
-        if (RegDeleteValueA(k, "SSH_AUTH_SOCK") == ERROR_SUCCESS) {
+        if (kitty_winkey_delete_value(HKEY_CURRENT_USER, "Environment",
+                                      "SSH_AUTH_SOCK", 0)) {
             kageant_pipe_record(mine, "sshauthsock-removed", NULL);
             kageant_sshauthsock_value_set("");
             changed = 1;
         }
     }
-    RegCloseKey(k);
     sfree(mine);
     sfree(cur);
     if (changed) {

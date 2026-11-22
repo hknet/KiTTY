@@ -17,6 +17,7 @@
 #include "kitty_inikeys.h"       /* KI_SECTION_CONFIGBOX, KI_CONFIGBOX_QUICKSERIALSPEED */
 #include "kitty_oldwin.h"        /* kitty_api */
 #include "kitty_text.h"
+#include "kitty_winkeys.h"   /* Windows' own keys */
 
 const int kitty_serial_speeds[KITTY_SERIAL_NSPEEDS] = {
     300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 74880, 115200,
@@ -87,37 +88,27 @@ static void kitty_serial_add(struct kitty_serial_port **p, int *n,
 /* The device names Windows has mapped now: one value per port under
  * HKLM\HARDWARE\DEVICEMAP\SERIALCOMM, its data the device name. Every
  * Windows from XP on has the key. It is missing when no port exists. */
+struct kitty_serial_dm { struct kitty_serial_port **p; int *n; size_t *size; };
+static int kitty_serial_dm_one(const char *name, void *vctx)
+{
+    struct kitty_serial_dm *c = (struct kitty_serial_dm *)vctx;
+    DWORD type = 0;
+    char *data = kitty_winkey_str_dup(HKEY_LOCAL_MACHINE,
+                                      "HARDWARE\\DEVICEMAP\\SERIALCOMM", name, 0,
+                                      &type);
+    if (data && type == REG_SZ)
+        kitty_serial_add(c->p, c->n, c->size, data);
+    free(data);
+    return 1;
+}
+
 static void kitty_serial_from_devicemap(struct kitty_serial_port **p, int *n,
                                         size_t *size)
 {
-    HKEY key;
-    DWORD maxname = 0, maxdata = 0;
-    char *vname, *data;
-    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DEVICEMAP\\SERIALCOMM",
-                      0, KEY_READ, &key) != ERROR_SUCCESS)
-        return;
-    if (RegQueryInfoKeyA(key, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-                         &maxname, &maxdata, NULL, NULL) != ERROR_SUCCESS) {
-        RegCloseKey(key);
-        return;
-    }
-    /* sized from the key: the longest value name and data it holds */
-    vname = snewn(maxname + 1, char);
-    data = snewn(maxdata + 1, char);
-    for (DWORD i = 0; ; i++) {
-        DWORD vlen = maxname + 1, dlen = maxdata, type;
-        LONG r = RegEnumValueA(key, i, vname, &vlen, NULL, &type,
-                               (BYTE *)data, &dlen);
-        if (r == ERROR_NO_MORE_ITEMS)
-            break;
-        if (r != ERROR_SUCCESS || type != REG_SZ)
-            continue;
-        data[dlen < maxdata ? dlen : maxdata] = '\0';
-        kitty_serial_add(p, n, size, data);
-    }
-    sfree(vname);
-    sfree(data);
-    RegCloseKey(key);
+    /* every value of the device map, each in full (kitty_winkeys.c) */
+    struct kitty_serial_dm c = { p, n, size };
+    kitty_winkey_value_names(HKEY_LOCAL_MACHINE, "HARDWARE\\DEVICEMAP\\SERIALCOMM",
+                             0, kitty_serial_dm_one, &c);
 }
 
 /* The descriptions, plus any port the registry above did not have: every
@@ -165,17 +156,12 @@ static void kitty_serial_from_setupapi(struct kitty_serial_port **p, int *n,
         key = openkey(devs, &dev, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
         if (key == INVALID_HANDLE_VALUE || !key)
             continue;
-        /* the value's size first, then the value */
-        if (RegQueryValueExA(key, "PortName", NULL, &type, NULL,
-                             &len) == ERROR_SUCCESS && type == REG_SZ) {
-            name = snewn(len + 1, char);
-            if (RegQueryValueExA(key, "PortName", NULL, &type, (BYTE *)name,
-                                 &len) == ERROR_SUCCESS)
-                name[len] = '\0';
-            else {
-                sfree(name);
-                name = NULL;
-            }
+        /* the value in full (kitty_winkeys.c) */
+        {
+            char *v = kitty_winkey_handle_value_dup(key, "PortName", &type, NULL);
+            if (v && type == REG_SZ)
+                name = dupstr(v);
+            free(v);
         }
         RegCloseKey(key);
         if (!name)

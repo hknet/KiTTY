@@ -27,6 +27,7 @@
 #include "kitty_buildlabel.h"   /* KITTY_TEST_BUILD_LABEL: KITTY_NO_SETTINGS_LAUNCH */
 #include <objbase.h>        /* CoInitializeEx: the ms-settings: launch */
 #include <stdarg.h>
+#include "kitty_winkeys.h"   /* Windows' own keys */
 /* kitty_tools.c; declared locally because this file deliberately includes
  * only kitty_registry.h (see the MigrateOldKittyHive rationale below). */
 /* kitty.c, same reason: CreateSSHHandler() needs to know whether a portable
@@ -118,7 +119,6 @@ int RegCountKey( HKEY hMainKey, LPCTSTR lpSubKey ) {
 	// The same holds for every writer below (RegTestOrCreateDWORD,
 	// RegDelValue, RegDelTree, kitty_RegCopyTree's destination).
 int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR value ) {
-	HKEY hKey = NULL ;
 	LONG rc ;
 	if( lpSubKey == NULL ) return 0 ;
 	if( strlen( lpSubKey ) == 0 ) return 0 ;
@@ -131,21 +131,13 @@ int RegTestOrCreate( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, LPCTSTR valu
 		if( rc != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
 		return 1 ;
 		}
-	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
-		/* the reason stays in GetLastError() for the caller's report */
-		if( ( rc = RegCreateKey( hMainKey, lpSubKey, &hKey ) ) != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
-		}
-	rc = ERROR_SUCCESS ;
-	if( name != NULL )
-		rc = RegSetValueEx( hKey, TEXT( name ), 0, REG_SZ, (const BYTE *)value, strlen(value)+1 ) ;
-	RegCloseKey( hKey ) ;
-	if( rc != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
-	return 1 ;
+	/* another top key (the classes of HKLM): Windows' own keys */
+	if( name == NULL ) return kitty_winkey_create( hMainKey, lpSubKey, 0 ) ;
+	return kitty_winkey_set( hMainKey, lpSubKey, name, 0, REG_SZ, value, (DWORD)strlen(value)+1 ) ;
 	}
 
 // Test whether a key or a DWORD value exists and create it otherwise
 int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD value ) {
-	HKEY hKey = NULL ;
 	LONG rc ;
 	if( lpSubKey == NULL ) return 0 ;
 	if( strlen( lpSubKey ) == 0 ) return 0 ;
@@ -157,16 +149,9 @@ int RegTestOrCreateDWORD( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR name, DWORD v
 		if( rc != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
 		return 1 ;
 		}
-	if( RegOpenKeyEx( hMainKey, TEXT(lpSubKey), 0, KEY_WRITE, &hKey) != ERROR_SUCCESS ) {
-		/* the reason stays in GetLastError() for the caller's report */
-		if( ( rc = RegCreateKey( hMainKey, lpSubKey, &hKey ) ) != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
-		}
-	rc = ERROR_SUCCESS ;
-	if( name != NULL )
-		rc = RegSetValueEx( hKey, TEXT( name ), 0, REG_DWORD, (LPBYTE)&value, sizeof(DWORD) ) ;
-	RegCloseKey( hKey ) ;
-	if( rc != ERROR_SUCCESS ) { SetLastError( (DWORD)rc ) ; return 0 ; }
-	return 1 ;
+	/* another top key (the classes of HKLM): Windows' own keys */
+	if( name == NULL ) return kitty_winkey_create( hMainKey, lpSubKey, 0 ) ;
+	return kitty_winkey_set( hMainKey, lpSubKey, name, 0, REG_DWORD, &value, sizeof(DWORD) ) ;
 	}
 	
 
@@ -1012,23 +997,13 @@ static int RunningFromProgramFiles( const char *path ) {
  * to count as not there: another program's handler was then taken over
  * without -force. */
 static char *RegSzDup( HKEY root, const char *subkey, const char *name ) {
-	HKEY hk ;
 	DWORD type = 0 ;
-	unsigned char *v ;
-	if( RegOpenKeyExA( root, subkey, 0, KEY_READ, &hk ) != ERROR_SUCCESS ) return NULL ;
-	v = kitty_reg_query_dup( hk, name, &type, NULL ) ;
-	RegCloseKey( hk ) ;
-	if( v == NULL ) return NULL ;
-	if( type == REG_EXPAND_SZ ) {
-		char *x = kitty_expand_env_strict_dup( (char *)v ) ;
-		sfree( v ) ;
-		v = (unsigned char *)x ;
-	} else if( type != REG_SZ ) {
-		sfree( v ) ;
-		v = NULL ;
-	}
+	char *w = kitty_winkey_str_dup( root, subkey, name, 0, &type ), *v ;
+	if( w == NULL ) return NULL ;
+	v = ( type == REG_EXPAND_SZ ) ? kitty_expand_env_strict_dup( w ) : dupstr( w ) ;
+	free( w ) ;
 	if( v && !v[0] ) { sfree( v ) ; v = NULL ; }
-	return (char *)v ;
+	return v ;
 }
 
 /* KiTTY: the command the shell currently runs for <proto>://, read from the
@@ -1060,11 +1035,7 @@ static char *UrlHandlerProgram( const char *command ) {
  * HKCU, so a handler can be visible there while the hive we are about to write
  * holds nothing at all. That difference decides what "undo" means. */
 static int ClassKeyExists( HKEY root, const char *subkey ) {
-	HKEY hk ;
-	if( RegOpenKeyExA( root, subkey, 0, KEY_READ, &hk ) != ERROR_SUCCESS )
-		return 0 ;
-	RegCloseKey( hk ) ;
-	return 1 ;
+	return kitty_winkey_exists( root, subkey, 0 ) ;
 }
 
 /* KiTTY: save one key, in one hive, to a .reg file before we change it, so
@@ -1142,8 +1113,6 @@ static int ClassRegTarget( const char *path, const char *relaunch,
 			   const char *relaunch_extra,
 			   int peruser, int assume_yes,
 			   const char *what, const char *title, HKEY *root ) {
-	HKEY classes ;
-
 #ifdef MOD_PORTABLE
 	/* A portable KiTTY is expected to leave the machine as it found it, and
 	 * registering is the opposite of that: the entry outlives the USB stick
@@ -1166,9 +1135,7 @@ static int ClassRegTarget( const char *path, const char *relaunch,
 
 	/* Opening the parent for KEY_CREATE_SUB_KEY answers "may we write to
 	 * HKLM?" without creating anything. */
-	if( RegOpenKeyExA( HKEY_LOCAL_MACHINE, "Software\\Classes", 0,
-			   KEY_WRITE|KEY_CREATE_SUB_KEY, &classes ) == ERROR_SUCCESS ) {
-		RegCloseKey( classes ) ;
+	if( kitty_winkey_may_create( HKEY_LOCAL_MACHINE, "Software\\Classes", 0 ) ) {
 		*root = HKEY_LOCAL_MACHINE ;
 		return 1 ;
 	}
@@ -1274,13 +1241,7 @@ static const char *const defapps_schemes[DEFAPPS_NSCHEMES] = { "telnet", "ssh", 
 
 /* One REG_SZ value in the 64-bit view, key created as needed. */
 static int defapps_set( HKEY root, const char *subkey, const char *name, const char *data ) {
-	HKEY hk ;
-	LONG rc ;
-	if( RegCreateKeyExA( root, subkey, 0, NULL, 0, KEY_SET_VALUE|KEY_WOW64_64KEY,
-			     NULL, &hk, NULL ) != ERROR_SUCCESS ) return 0 ;
-	rc = RegSetValueExA( hk, name, 0, REG_SZ, (const BYTE *)data, (DWORD)strlen(data)+1 ) ;
-	RegCloseKey( hk ) ;
-	return rc == ERROR_SUCCESS ;
+	return kitty_winkey_set_str( root, subkey, name, KEY_WOW64_64KEY, data ) ;
 }
 
 /* RegisteredApplications + Capabilities in `root`, for the schemes whose
@@ -1321,77 +1282,74 @@ static void defapps_register( HKEY root, const char *path, const int *progid_ok,
  * and Windows reads it there. One report line per scheme and application;
  * *claimed counts them. Names, paths and values are read whole: one longer
  * than a fixed buffer used to drop the application from the list. */
+struct defapps_scan {
+	HKEY root ; REGSAM view, other ;
+	const int *offered ; strbuf *report ; int *claimed ;
+	char ***seen ; size_t *seensize, *nseen ;
+} ;
+
+/* one value of RegisteredApplications: the program's Capabilities path */
+static int defapps_competitor( const char *name, void *vctx ) {
+	struct defapps_scan *c = (struct defapps_scan *)vctx ;
+	char *caps, *app, *urls ;
+	REGSAM vw ;
+	size_t k ;
+	int i ;
+	if( !stricmp( name, DEFAPPS_NAME ) ) return 1 ;
+	caps = kitty_winkey_str_dup( c->root, DEFAPPS_REGAPPS, name, c->view, NULL ) ;
+	if( !caps || !caps[0] ) { free( caps ) ; return 1 ; }
+	/* the path in the view it was listed in first, then the other */
+	if( kitty_winkey_exists( c->root, caps, c->view ) ) vw = c->view ;
+	else if( kitty_winkey_exists( c->root, caps, c->other ) ) vw = c->other ;
+	else { free( caps ) ; return 1 ; }
+	/* the name Settings shows. An indirect "@dll,-id" one is not
+	 * resolved here - the value name stands in for it */
+	app = kitty_winkey_str_dup( c->root, caps, "ApplicationName", vw, NULL ) ;
+	if( app && ( !app[0] || app[0] == '@' ) ) { free( app ) ; app = NULL ; }
+	{
+		char *shown = dupstr( app ? app : name ) ;
+		free( app ) ;
+		app = shown ;
+	}
+	urls = dupprintf( "%s\\URLAssociations", caps ) ;
+	free( caps ) ;
+	for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) {
+		char *pv, *tag ;
+		int dup = 0 ;
+		if( !c->offered[i] ) continue ;
+		pv = (char *)kitty_winkey_value_dup( c->root, urls, defapps_schemes[i], vw, NULL, NULL ) ;
+		if( !pv ) continue ;
+		if( !pv[0] ) { free( pv ) ; continue ; }
+		free( pv ) ;
+		/* listed in both views (a shared key, or 32-bit Windows),
+		 * or in both hives: one line */
+		tag = dupprintf( "%s|%s", defapps_schemes[i], app ) ;
+		for( k = 0 ; k < *c->nseen ; k++ ) if( !stricmp( (*c->seen)[k], tag ) ) { dup = 1 ; break ; }
+		if( dup ) { sfree( tag ) ; continue ; }
+		sgrowarray( *c->seen, *c->seensize, *c->nseen ) ;
+		(*c->seen)[(*c->nseen)++] = tag ;
+		put_fmt( c->report, KT_REG_DEFAPPS_CLAIMED,
+			 defapps_schemes[i], app, app ) ;
+		(*c->claimed)++ ;
+	}
+	sfree( urls ) ;
+	sfree( app ) ;
+	return 1 ;
+}
+
 static void defapps_competitors( const int *offered, strbuf *report, int *claimed ) {
 	static const HKEY hives[2] = { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER } ;
 	static const REGSAM views[2] = { KEY_WOW64_64KEY, KEY_WOW64_32KEY } ;
 	char **seen = NULL ;
 	size_t seensize = 0, nseen = 0, k ;
-	int h, v, i ;
-	DWORD idx ;
+	int h, v ;
 
 	*claimed = 0 ;
 	for( h = 0 ; h < 2 ; h++ ) for( v = 0 ; v < 2 ; v++ ) {
-		HKEY hr ;
-		DWORD maxname = 0 ;
-		char *name ;
-		if( RegOpenKeyExA( hives[h], DEFAPPS_REGAPPS, 0, KEY_QUERY_VALUE|views[v], &hr ) != ERROR_SUCCESS )
-			continue ;
-		if( RegQueryInfoKeyA( hr, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
-				      &maxname, NULL, NULL, NULL ) != ERROR_SUCCESS )
-			maxname = MAX_VALUE_NAME ;
-		name = snewn( maxname + 2, char ) ;
-		for( idx = 0 ; ; idx++ ) {
-			char *caps, *app ;
-			DWORD nlen = maxname + 2, type ;
-			HKEY hc, hu ;
-			LONG rc = RegEnumValueA( hr, idx, name, &nlen, NULL, NULL, NULL, NULL ) ;
-			if( rc == ERROR_NO_MORE_ITEMS ) break ;
-			if( rc != ERROR_SUCCESS ) continue ;
-			caps = (char *)kitty_reg_query_dup( hr, name, &type, NULL ) ;
-			if( !caps ) continue ;
-			if( ( type != REG_SZ && type != REG_EXPAND_SZ ) ||
-			    !stricmp( name, DEFAPPS_NAME ) || !caps[0] ) { sfree( caps ) ; continue ; }
-			/* the path in the view it was listed in first, then the other */
-			if( RegOpenKeyExA( hives[h], caps, 0, KEY_READ|views[v], &hc ) != ERROR_SUCCESS &&
-			    RegOpenKeyExA( hives[h], caps, 0, KEY_READ|views[1-v], &hc ) != ERROR_SUCCESS ) {
-				sfree( caps ) ;
-				continue ;
-			}
-			sfree( caps ) ;
-			/* the name Settings shows; an indirect "@dll,-id" one is not
-			 * resolved here - the value name stands in for it */
-			app = (char *)kitty_reg_query_dup( hc, "ApplicationName", &type, NULL ) ;
-			if( app && ( ( type != REG_SZ && type != REG_EXPAND_SZ ) || !app[0] || app[0] == '@' ) ) {
-				sfree( app ) ; app = NULL ;
-			}
-			if( !app ) app = dupstr( name ) ;
-			if( RegOpenKeyExA( hc, "URLAssociations", 0, KEY_QUERY_VALUE, &hu ) == ERROR_SUCCESS ) {
-				for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) {
-					char *pv, *tag ;
-					int dup = 0 ;
-					if( !offered[i] ) continue ;
-					pv = (char *)kitty_reg_query_dup( hu, defapps_schemes[i], NULL, NULL ) ;
-					if( !pv ) continue ;
-					if( !pv[0] ) { sfree( pv ) ; continue ; }
-					sfree( pv ) ;
-					/* listed in both views (a shared key, or 32-bit Windows),
-					 * or in both hives: one line */
-					tag = dupprintf( "%s|%s", defapps_schemes[i], app ) ;
-					for( k = 0 ; k < nseen ; k++ ) if( !stricmp( seen[k], tag ) ) { dup = 1 ; break ; }
-					if( dup ) { sfree( tag ) ; continue ; }
-					sgrowarray( seen, seensize, nseen ) ;
-					seen[nseen++] = tag ;
-					put_fmt( report, KT_REG_DEFAPPS_CLAIMED,
-						 defapps_schemes[i], app, app ) ;
-					(*claimed)++ ;
-				}
-				RegCloseKey( hu ) ;
-			}
-			sfree( app ) ;
-			RegCloseKey( hc ) ;
-		}
-		sfree( name ) ;
-		RegCloseKey( hr ) ;
+		struct defapps_scan c = { hives[h], views[v], views[1-v], offered,
+					  report, claimed, &seen, &seensize, &nseen } ;
+		kitty_winkey_value_names( hives[h], DEFAPPS_REGAPPS, views[v],
+					  defapps_competitor, &c ) ;
 	}
 	for( k = 0 ; k < nseen ; k++ ) sfree( seen[k] ) ;
 	sfree( seen ) ;
@@ -1453,39 +1411,26 @@ static void defapps_open_settings( HKEY root ) {
  * in it. The settings store (kapper.net\KiTTY) and the installer's key are
  * never touched. Returns 1 when anything was removed. */
 static int defapps_remove( HKEY root ) {
-	HKEY hk ;
 	char key[128] ;
 	int any = 0, i ;
-	if( RegOpenKeyExA( root, DEFAPPS_REGAPPS, 0, KEY_QUERY_VALUE|KEY_SET_VALUE|KEY_WOW64_64KEY,
-			   &hk ) == ERROR_SUCCESS ) {
-		if( RegQueryValueExA( hk, DEFAPPS_NAME, NULL, NULL, NULL, NULL ) == ERROR_SUCCESS &&
-		    RegDeleteValueA( hk, DEFAPPS_NAME ) == ERROR_SUCCESS ) any = 1 ;
-		RegCloseKey( hk ) ;
+	void *had = kitty_winkey_value_dup( root, DEFAPPS_REGAPPS, DEFAPPS_NAME,
+					    KEY_WOW64_64KEY, NULL, NULL ) ;
+	if( had ) {
+		free( had ) ;
+		if( kitty_winkey_delete_value( root, DEFAPPS_REGAPPS, DEFAPPS_NAME,
+					       KEY_WOW64_64KEY ) ) any = 1 ;
 	}
-	/* relative to a handle opened in the 64-bit view: the subkey is not
-	 * redirected again */
-	if( RegOpenKeyExA( root, "Software\\kapper.net", 0, KEY_READ|KEY_WRITE|DELETE|KEY_WOW64_64KEY,
-			   &hk ) == ERROR_SUCCESS ) {
-		HKEY hc ;
+	/* in the 64-bit view, where it was written */
+	if( kitty_winkey_delete_tree( root, DEFAPPS_PARENT, KEY_WOW64_64KEY ) == 1 ) any = 1 ;
+	if( root == HKEY_LOCAL_MACHINE ) {
 		DWORD nsub = 1, nval = 1 ;
-		if( RegOpenKeyExA( hk, DEFAPPS_KEYNAME, 0, KEY_READ, &hc ) == ERROR_SUCCESS ) {
-			RegCloseKey( hc ) ;
-			if( RegDeleteTreeA( hk, DEFAPPS_KEYNAME ) == ERROR_SUCCESS ) any = 1 ;
-		}
-		if( root != HKEY_LOCAL_MACHINE ||
-		    RegQueryInfoKeyA( hk, NULL, NULL, NULL, &nsub, NULL, NULL, &nval,
-				      NULL, NULL, NULL, NULL ) != ERROR_SUCCESS ) nsub = nval = 1 ;
-		RegCloseKey( hk ) ;
-		if( nsub == 0 && nval == 0 &&
-		    RegOpenKeyExA( root, "Software", 0, KEY_READ|KEY_WRITE|DELETE|KEY_WOW64_64KEY,
-				   &hk ) == ERROR_SUCCESS ) {
-			RegDeleteKeyA( hk, "kapper.net" ) ;
-			RegCloseKey( hk ) ;
-		}
+		if( kitty_winkey_counts( root, "Software\\kapper.net", KEY_WOW64_64KEY,
+					 &nsub, &nval ) && nsub == 0 && nval == 0 )
+			kitty_winkey_delete_tree( root, "Software\\kapper.net", KEY_WOW64_64KEY ) ;
 	}
 	for( i = 0 ; i < DEFAPPS_NSCHEMES ; i++ ) {
 		snprintf( key, sizeof(key), "Software\\Classes\\" DEFAPPS_PROGID_FMT, defapps_schemes[i] ) ;
-		if( ClassKeyExists( root, key ) && RegDeleteTreeA( root, key ) == ERROR_SUCCESS ) any = 1 ;
+		if( kitty_winkey_delete_tree( root, key, 0 ) == 1 ) any = 1 ;
 	}
 	return any ;
 }
@@ -1668,12 +1613,10 @@ void RemoveSSHHandler( void ) {
 
 	for( h = 0 ; h < (int)(sizeof(hives)/sizeof(hives[0])) ; h++ ) {
 		for( i = 0 ; i < (int)(sizeof(protos)/sizeof(protos[0])) ; i++ ) {
-			HKEY hk ;
 			char *cur, *prog, *backup ;
 			snprintf( key, sizeof(key), "Software\\Classes\\%s", protos[i] ) ;
-			if( RegOpenKeyExA( hives[h].root, key, 0, KEY_READ, &hk ) != ERROR_SUCCESS )
+			if( !ClassKeyExists( hives[h].root, key ) )
 				continue ;
-			RegCloseKey( hk ) ;
 
 			snprintf( key, sizeof(key),
 				  "Software\\Classes\\%s\\shell\\open\\command", protos[i] ) ;
@@ -1695,7 +1638,7 @@ void RemoveSSHHandler( void ) {
 
 			snprintf( key, sizeof(key), "Software\\Classes\\%s", protos[i] ) ;
 			backup = ClassKeyBackup( hives[h].root, key, protos[i] ) ;
-			if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
+			if( kitty_winkey_delete_tree( hives[h].root, key, 0 ) == 1 ) {
 				removed++ ;
 				put_fmt( report, KT_REG_URL_REMOVED, protos[i], hives[h].label ) ;
 				if( backup )
@@ -1798,13 +1741,7 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	 * string pointing at no module and no string resource, so Windows always fell
 	 * back to this default value; a registration left by it is cleaned up. */
 	RegTestOrCreate( root, key, "", "KiTTY++ session file") ;
-	{
-		HKEY hk ;
-		if( RegOpenKeyExA( root, key, 0, KEY_SET_VALUE, &hk ) == ERROR_SUCCESS ) {
-			RegDeleteValueA( hk, "FriendlyTypeName" ) ;
-			RegCloseKey( hk ) ;
-		}
-	}
+	kitty_winkey_delete_value( root, key, "FriendlyTypeName", 0 ) ;
 	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\CurVer" ) ;
 	RegTestOrCreate( root, key, "", "kitty.connect.1") ;
 	snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1\\DefaultIcon" ) ;
@@ -1836,12 +1773,8 @@ void CreateFileAssoc( int force, int peruser, int assume_yes ) {
 	 * instead, which Windows ignores; a registration left by it, or by an
 	 * earlier KiTTY++, loses that value here. */
 	{
-		HKEY hk ;
 		char owp[256] ;
-		if( RegOpenKeyExA( root, key, 0, KEY_SET_VALUE, &hk ) == ERROR_SUCCESS ) {
-			RegDeleteValueA( hk, "OpenWithProgids" ) ;
-			RegCloseKey( hk ) ;
-		}
+		kitty_winkey_delete_value( root, key, "OpenWithProgids", 0 ) ;
 		snprintf( owp, sizeof(owp), "%s\\OpenWithProgids", key ) ;
 		RegTestOrCreate( root, owp, "kitty.connect.1", "" ) ;
 	}
@@ -1893,7 +1826,7 @@ void RemoveFileAssoc( void ) {
 				continue ;
 			} else {
 				char *backup = ClassKeyBackup( hives[h].root, key, ext[0] == '.' ? ext+1 : ext ) ;
-				if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS ) {
+				if( kitty_winkey_delete_tree( hives[h].root, key, 0 ) == 1 ) {
 					removed++ ;
 					put_fmt( report, KT_REG_ASSOC_REMOVED, ext, hives[h].label ) ;
 					if( backup )
@@ -1910,7 +1843,7 @@ void RemoveFileAssoc( void ) {
 			sfree( cur ) ;
 		}
 		snprintf( key, sizeof(key), "Software\\Classes\\kitty.connect.1" ) ;
-		if( RegDeleteTreeA( hives[h].root, key ) == ERROR_SUCCESS )
+		if( kitty_winkey_delete_tree( hives[h].root, key, 0 ) == 1 )
 			put_fmt( report, KT_REG_PROGID_REMOVED, hives[h].label ) ;
 	}
 

@@ -44,8 +44,6 @@ kitty/kitty_registry.c | kitty_RegCopyTree | the store's tree: a key copied whol
 kitty/kitty_registry.c | RegTestKey | the store's tree: whether a key exists
 kitty/kitty_registry.c | RegCountKey | the store's tree: how many subkeys a key has
 kitty/kitty_registry.c | RegCleanPuTTY | the store's tree: -cleanup of PuTTY's key
-kitty/kitty_registry.c | RegTestOrCreate | another top key than HKCU (the HKCU leg writes through the settings module)
-kitty/kitty_registry.c | RegTestOrCreateDWORD | another top key than HKCU (the HKCU leg writes through the settings module)
 
 # ---- one-time migrations from older versions and other programs -----------
 kitty/kitty_registry.c | RepairSharrowDefaults | one-time migration: the shifted arrow keys' default
@@ -55,32 +53,7 @@ kitty/kitty_proxy.c | kitty_migrate_old_proxies | one-time migration: 9bis' name
 kitty/kitty_migrate.c | kitty_import_foreign_session | one-time migration: another program's sessions imported
 
 # ---- Windows' own keys ------------------------------------------------------
-kitty/kitty_registry.c | RegSzDup | Windows' own keys: file and URL associations
-kitty/kitty_registry.c | ClassKeyExists | Windows' own keys: file and URL associations
-kitty/kitty_registry.c | ClassRegTarget | Windows' own keys: file and URL associations
-kitty/kitty_registry.c | defapps_set | Windows' own keys: Default Apps registration
-kitty/kitty_registry.c | defapps_competitors | Windows' own keys: Default Apps registration
-kitty/kitty_registry.c | defapps_remove | Windows' own keys: Default Apps registration
-kitty/kitty_registry.c | RemoveSSHHandler | Windows' own keys: the ssh: URL handler
-kitty/kitty_registry.c | CreateFileAssoc | Windows' own keys: the .ktx file association
-kitty/kitty_registry.c | RemoveFileAssoc | Windows' own keys: the .ktx file association
-kitty/kitty_userpath.c | read_user_path | Windows' own keys: HKCU\Environment Path
-kitty/kitty_userpath.c | kitty_userpath_set_exe_dir | Windows' own keys: HKCU\Environment Path
-windows/pageant.c | kageant_sshauthsock_apply | Windows' own keys: HKCU\Environment SSH_AUTH_SOCK
-windows/pageant.c | kageant_tray_icon | Windows' own keys: the taskbar's light or dark theme
-kitty/kitty_theme.c | kitty_theme_system_is_dark | Windows' own keys: the apps' light or dark theme
-kitty/kitty_pageant.c | kageant_set_run_entry | Windows' own keys: the Run entry that starts kageant
-kitty/kitty_pageant.c | kageant_reg_sz_dup | Windows' own keys: the Run entry that starts kageant
-kitty/kitty_pageant.c | kageant_scan_run | Windows' own keys: the Run entry that starts kageant
-kitty/kitty_pageant.c | kageant_clear_own_run_entry | Windows' own keys: the Run entry that starts kageant
-kitty/kitty_pageant.c | kageant_autostart_active | Windows' own keys: the Run entry that starts kageant
-kitty/kitty_image.c | load_wallpaper_bmp | Windows' own keys: Control Panel\Desktop wallpaper
-kitty/kitty_zone.c | policy_dword | Windows' own keys: the Attachments policy
-kitty/kitty_serialports.c | kitty_serial_from_devicemap | Windows' own keys: HKLM SERIALCOMM
-kitty/kitty_serialports.c | kitty_serial_from_setupapi | Windows' own keys: a serial device's PortName
-kitty/kitty_kageant_audit.c | kageant_audit_eventlog_exists | Windows' own keys: the Event Log source (HKLM)
-kitty/kitty_auditverify.c | av_log_exists | Windows' own keys: the Event Log source (HKLM)
-kitty/kitty_config_app.c | kitty_session_eventlog_exists | Windows' own keys: the Event Log source (HKLM)
+kitty/kitty_winkeys.c | * | Windows' own keys, read and written in one place (kitty_winkeys.h)
 
 # ---- the Windows XP stand-ins ----------------------------------------------
 kitty/kitty_oldwin.c | kitty_reg_query_dup | the stand-ins for APIs newer than Windows XP: a value whole

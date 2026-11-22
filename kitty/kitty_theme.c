@@ -43,6 +43,7 @@
 #include "kitty_theme.h"
 #include "kitty_oldwin.h"   /* record what an older Windows does not have */
 #include "kitty_text.h"     /* the feature names in the old-Windows report */
+#include "kitty_winkeys.h"   /* Windows' own keys */
 
 #ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
@@ -291,23 +292,13 @@ bool kitty_theme_available(void)
 
 bool kitty_theme_system_is_dark(void)
 {
-    HKEY hk;
-    DWORD val = 1, sz = sizeof(val), type = 0;
-    bool dark = false;
-
+    DWORD val = 1;
     /* Absent (every Windows before 10 1809, and a fresh profile) means the
      * classic light theme, which is the safe answer. */
-    if (RegOpenKeyExA(HKEY_CURRENT_USER,
-                      "Software\\Microsoft\\Windows\\CurrentVersion\\"
-                      "Themes\\Personalize",
-                      0, KEY_QUERY_VALUE, &hk) == ERROR_SUCCESS) {
-        if (RegQueryValueExA(hk, "AppsUseLightTheme", NULL, &type,
-                             (LPBYTE)&val, &sz) == ERROR_SUCCESS &&
-            type == REG_DWORD)
-            dark = (val == 0);
-        RegCloseKey(hk);
-    }
-    return dark;
+    return kitty_winkey_dword(HKEY_CURRENT_USER,
+                              "Software\\Microsoft\\Windows\\CurrentVersion\\"
+                              "Themes\\Personalize", "AppsUseLightTheme", 0,
+                              &val) && val == 0;
 }
 
 bool kitty_theme_dark_for(int pref)
