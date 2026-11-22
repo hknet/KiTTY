@@ -252,9 +252,6 @@ extern int NbShortCuts ;
 int DefineShortcuts( char * buf ) ;
 void TranslateShortcuts( char * st ) ;
 void InitShortcuts( void ) ;
-/* kitty.ini [Shortcuts]: an action key under an older name gets its new
- * name, once at startup (not under readonly=yes) */
-void ShortcutsRenameOldKeys( void ) ;
 /* [Shortcuts] list or AutoText text of kitty.ini (sfree it), "" when absent */
 char * ShortcutsIniDup( const char * key ) ;
 /* The keys switched off: 1 when the key is the one of "Shortcuts on/off",
@@ -272,6 +269,7 @@ void kitty_menu_show_shortcuts( HMENU m, int altenter ) ;   /* a menu opening: k
  * action - its ini key, its display name, the key in force, its default. */
 int ShortcutActionCount( void ) ;
 const char * ShortcutActionKey( int i ) ;
+const char * ShortcutActionOldKey( int i ) ;   /* NULL: no older name */
 const char * ShortcutActionName( int i ) ;
 int ShortcutActionValue( int i ) ;
 int ShortcutActionDefault( int i ) ;

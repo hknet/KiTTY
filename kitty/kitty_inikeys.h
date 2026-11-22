@@ -320,7 +320,7 @@ static inline void kitty_ext_dot(char *v, unsigned size)
 #define KI_LAUNCHER_CLASSNAME               "classname"
 #define KI_LAUNCHER_EXITWITHWORKPLACE       "exitwithworkplace"
 /* proxynoticeseconds, traydblclick: dblclick and noticeseconds until
- * 0.85.1.19-beta, renamed at startup (kitty_startup.c LauncherKeysRename) - the
+ * 0.85.1.19-beta, renamed at startup (kitty_onetime.c LauncherKeysRename) - the
  * flat registry made them one value with [ConfigBox] dblclick and
  * [KiTTY] noticeseconds */
 #define KI_LAUNCHER_NOTICESECONDS           "proxynoticeseconds"

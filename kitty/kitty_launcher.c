@@ -166,6 +166,7 @@ static void RunKiTTYppAtPanel( HWND hwnd, const char * panel, int mark_loaded ) 
 #include "kitty_startup_shortcut.h"   /* KiTTY: on-request Startup-folder shortcut */
 #include "kitty_workplace.h"          /* KiTTY: workplace proxy mode arming */
 #include "kitty_notice.h"           /* KiTTY: our own arm/disarm notice window */
+#include "kitty_onetime.h"   /* the one-time steps (kitty_onetime.c) */
 
 static HMENU MenuLauncher = NULL ;
 static HMENU HideMenu ;

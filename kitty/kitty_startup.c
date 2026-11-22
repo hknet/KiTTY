@@ -63,8 +63,9 @@
 #include "kitty_store.h"
 #include "kitty_startup.h"
 #include "kitty_winerr.h"   /* kitty_win_reason: Windows' reason, for the reports */
+#include "kitty_onetime.h"   /* the one-time steps (kitty_onetime.c) */
 #ifdef MOD_PROXY
-#include "kitty_proxy.h"   /* InitProxyList, kitty_migrate_old_proxies (kitty.c includes it mid-file) */
+#include "kitty_proxy.h"   /* InitProxyList (kitty.c includes it mid-file) */
 #endif
 
 // Work out the names of the kitty.ini and kitty.sav configuration files
@@ -81,12 +82,12 @@
 //
 // A putty.ini is not read: kitty.exe never created one and read only its
 // [KiTTY] section, so the name is retired for the whole suite. One that
-// carries a [KiTTY] section is copied to kitty.ini once (MigratePuttyIni).
+// carries a [KiTTY] section is copied to kitty.ini once (kitty_onetime.c MigratePuttyIni).
 //
 
 /* A start-up notice about kitty.exe's own files: at the prompt that started
  * kitty.exe, else in a box - never a box in a scripted do-and-exit run. */
-static void StartupNotice( const char * msg, int warn ) {
+void StartupNotice( const char * msg, int warn ) {
 #ifdef MOD_PERSO
 	if( KittyCliPrint( msg ) || kitty_cli_do_and_exit() ) return ;
 #endif
@@ -94,36 +95,6 @@ static void StartupNotice( const char * msg, int warn ) {
 	kitty_info_box( NULL, KT_CAP_KITTYPP, msg, NULL ) ;   /* themed, as every KiTTY++ box */
 }
 
-/* The putty.ini beside the exe was kitty.exe's settings file when no kitty.ini
- * was there - read from its [KiTTY] section only, and wholly (every section is
- * kitty.exe's own). Copied to kitty.ini once, as it is, and reported: at the
- * prompt that started kitty.exe, else in a box - never a box in a scripted
- * do-and-exit run. A putty.ini with no [KiTTY] keys (classic KiTTY's own,
- * [PuTTY]) did nothing here and is left alone: copying it would create a
- * kitty.ini that hides %APPDATA%\KiTTY\kitty.ini. putty.ini stays as it is. */
-static void MigratePuttyIni( const char * kittyini ) {
-	char *puttyini, keys[64], err[256], *msg ;
-	int ok ;
-	/* both files named whole */
-	puttyini = dupprintf( "%s\\putty.ini", InitialDirectory ) ;
-	if( !existfile( puttyini ) || existfile( kittyini ) ||
-	    GetPrivateProfileSectionA( KI_SECTION_KITTY, keys, sizeof(keys), puttyini ) == 0 ) {
-		sfree( puttyini ) ;
-		return ;
-	}
-	ok = CopyFileA( puttyini, kittyini, TRUE ) ;
-	if( ok ) msg = dupprintf( KT_MAIN_PUTTYINI_COPIED_FMT, kittyini ) ;
-	else {
-		DWORD e = GetLastError() ;
-		err[0] = '\0' ;
-		FormatMessageA( FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, e, 0, err, sizeof(err), NULL ) ;
-		str_rtrim( err, "\r\n .\t" ) ;
-		msg = dupprintf( KT_MAIN_PUTTYINI_COPY_FAILED_FMT, kittyini, err[0] ? err : "unknown error" ) ;
-	}
-	StartupNotice( msg, !ok ) ;
-	sfree( msg ) ;
-	sfree( puttyini ) ;
-}
 
 
 /*
@@ -366,13 +337,8 @@ static void InitNameConfigFile( void ) {
 		free( found ) ;
 	}
 
-	/* The putty.ini copy is for the kitty.ini beside the exe - not when
-	 * %KITTY_INI_FILE% points to a file that is there. */
-	if( !GetReadOnlyFlag() && ( getenv("KITTY_INI_FILE") == NULL || !existfile( getenv("KITTY_INI_FILE") ) ) ) {
-		buffer = dupprintf( "%s\\%s", InitialDirectory, DEFAULT_INIT_FILE ) ;
-		MigratePuttyIni( buffer ) ;
-		sfree( buffer ) ;
-	}
+	/* one-time steps: putty.ini's [KiTTY] copied to kitty.ini */
+	kitty_onetime_run( KOT_BEFORE_INI ) ;
 	/* The search is the resolver's, the one list of places every program
 	 * walks (kitty_inifile.c); the portable build leaves %APPDATA% out. What
 	 * only kitty.exe does stays here: choosing the file when none is there -
@@ -424,37 +390,8 @@ static void InitNameConfigFile( void ) {
 }
 	
 #ifdef MOD_PORTABLE
-/* The portable build is the folder store without a savemode key, and the
- * programs beside it (kageant, klink, kscp, ksftp) take their store from
- * kitty.ini (kitty_inifile.c). The first start writes the key down for them:
- * a kitty.ini that is not there yet is created from the template, which then
- * carries savemode=dir, and one without the key gets it. A savemode already
- * there is the user's and stays. Nothing is written with conf=no or
- * readonly=yes, and a failed write raises no message - on a read-only stick it
- * would come at every start; the resolver's layout guess covers that copy. */
-static void PortableWriteSaveMode( void ) {
-	char buffer[64] = "" ;
-	if( GetReadOnlyFlag() ) return ;   /* the folder store: conf=no does not hold it back */
-	if( (KittyIniFile == NULL) || !KittyIniFile[0] ) return ;
-	if( IniFileFlag != SAVEMODE_DIR ) return ;
-	if( !existfile( KittyIniFile ) ) { CreateIniFile( KittyIniFile ) ; return ; }
-	if( readINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, buffer, sizeof(buffer) ) ) {
-		str_rtrim( buffer, "\n\r \t" ) ;
-		if( buffer[0] ) return ;
-	}
-	writeINI( KittyIniFile, INIT_SECTION, KI_SAVEMODE, "dir" ) ;
-}
 #endif
 
-/* conf=no used to switch the .sav backups off too. Now the count alone does
- * (savbackupcount=0): an install with conf=no and no count gets the count
- * once, so it keeps writing no backups. */
-static void ConfNoBackupCountOnce( void ) {
-	char kb[16] = "" ;
-	if( !kitty_inifile_noconf() || GetReadOnlyFlag() ) return ;
-	if( ReadParameterN( INIT_SECTION, KI_SAVBACKUPCOUNT, kb, sizeof(kb) ) && kb[0] ) return ;
-	WriteParameter( INIT_SECTION, KI_SAVBACKUPCOUNT, "0" ) ;
-}
 
 /* Which store kitty.exe uses: kitty.ini's savemode (registry, file, dir),
  * else the build's default - the folder store for kitty_portable.exe, the
@@ -584,145 +521,8 @@ static void kitty_startup_load_failed( const char *file ) {
 	sfree( msg ) ;
 	}
 
-/* One AutoText key name of an old hive list: a number, or a key
- * DefineShortcuts knows; nothing kitty.ini cannot hold as a key. */
-static int AutoTextNameOk( const char * name ) {
-	const char * p ;
-	char * probe ;
-	int ok ;
-	if( !name[0] || name[0] == ';' || name[0] == '#' || name[0] == '[' ) return 0 ;
-	for( p = name ; *p ; p++ )
-		if( (unsigned char)*p < 0x20 || *p == '=' || *p == ']' ) return 0 ;
-	if( name[0] >= '0' && name[0] <= '9' ) {
-		for( p = name ; *p ; p++ ) if( *p < '0' || *p > '9' ) return 0 ;
-		return 1 ;
-	}
-	probe = dupstr( name ) ;
-	ok = DefineShortcuts( probe ) > 0 ;
-	sfree( probe ) ;
-	return ok ;
-	}
 
-/*
- * The AutoText (the [Shortcuts] list and the texts of its keys) an older
- * build read with ReadParameterDup, so a registry copy kept it in the hive.
- * [Shortcuts] is kitty.ini only now (InitShortcuts), so that AutoText is
- * copied into kitty.ini once, before InitShortcuts first reads it.
- *
- * Only when the registry is the store in charge (not savemode=dir), kitty.ini
- * has no list in [Shortcuts] yet and the hive has a list. Copied: the list
- * and the texts of the key names it holds. A list with a word that is no key
- * name is left as it is. The list is written last, so a copy cut short is
- * done again at the next start. The hive values are deleted only after every
- * kitty.ini write succeeded: that deletion is the done-marker, as for the
- * retired values of kitty_regbackup.c.
- *
- * Under readonly=yes nothing is copied: the hive's AutoText stays unseen
- * until readonly is lifted. With conf=no and no kitty.ini, none is created.
- */
-static void AutoTextFromRegistry( void ) {
-	const char * base = kitty_registry_base() ;
-	char * have, * list, * words, * p, * q ;
-	char ** names = NULL ;
-	size_t n = 0, size = 0, i ;
-	int ok = 1 ;
-	if( IniFileFlag == SAVEMODE_DIR || GetReadOnlyFlag() ) return ;
-	if( KittyIniFile == NULL || !KittyIniFile[0] ) return ;
-	if( kitty_inifile_noconf_blocks() ) return ;   /* conf=no: nothing into kitty.ini */
-	if( ( have = kitty_read_ini_dup( KittyIniFile, KI_SECTION_SHORTCUTS, KI_SC_LIST ) ) != NULL ) {
-		sfree( have ) ;
-		return ;
-	}
-	/* store-pairs: read param Shortcuts KI_SC_LIST - the one-time copy of an older build's AutoText out of the hive */
-	if( ( list = GetValueDataDup( HKEY_CURRENT_USER, base, KI_SC_LIST ) ) == NULL ) return ;
-	words = dupstr( list ) ;
-	for( p = words ; *p ; p = q ) {
-		while( *p == ' ' ) p++ ;
-		if( !*p ) break ;
-		q = p ;
-		while( *q && *q != ' ' ) q++ ;
-		if( *q ) *q++ = '\0' ;
-		if( !AutoTextNameOk( p ) ) { ok = 0 ; break ; }
-		sgrowarray( names, size, n ) ;
-		names[n++] = p ;
-	}
-	if( ok && n ) {
-		for( i = 0 ; i < n && ok ; i++ ) {
-			char * text = GetValueDataDup( HKEY_CURRENT_USER, base, names[i] ) ;
-			if( text == NULL ) continue ;          /* a key name without a text */
-			/* store-pairs: write file Shortcuts * - the one-time copy: the AutoText texts into kitty.ini */
-			if( !writeINI( KittyIniFile, KI_SECTION_SHORTCUTS, names[i], text ) ) ok = 0 ;
-			smemclr( text, strlen( text ) ) ;      /* a text can hold a password */
-			sfree( text ) ;
-		}
-		if( ok && !writeINI( KittyIniFile, KI_SECTION_SHORTCUTS, KI_SC_LIST, list ) ) ok = 0 ;
-		if( ok ) {
-			for( i = 0 ; i < n ; i++ ) RegDelValue( HKEY_CURRENT_USER, base, names[i] ) ;
-			RegDelValue( HKEY_CURRENT_USER, base, KI_SC_LIST ) ;
-		}
-	}
-	sfree( names ) ;
-	sfree( words ) ;
-	sfree( list ) ;
-	}
 
-/*
- * [Launcher] dblclick and noticeseconds are traydblclick and
- * proxynoticeseconds now. The registry is flat (WriteParameter drops the
- * section): in registry mode they were one hive value with [ConfigBox]
- * dblclick and [KiTTY] noticeseconds, written so by 0.85.1.14-beta to
- * 0.85.1.19-beta. Renamed once at startup, nothing under readonly=yes.
- *
- * kitty.ini [Launcher]: the old key's value goes to the new key unless the
- * new key is there, then the old key is removed.
- * The hive (registry mode): a dblclick holding a launcher value (config,
- * manage, quickconnect) moves to traydblclick and is deleted; open and start
- * are the configuration box's and stay. A noticeseconds value cannot be told
- * apart: it is copied to proxynoticeseconds when that is absent, so both
- * notices keep the time in effect.
- */
-static void LauncherKeysRename( void ) {
-	static const char * const old_keys[] = { "dblclick", "noticeseconds" } ;
-	static const char * const new_keys[] = { KI_LAUNCHER_DBLCLICK, KI_LAUNCHER_NOTICESECONDS } ;
-	size_t i ;
-	if( GetReadOnlyFlag() ) return ;
-	if( KittyIniFile != NULL && KittyIniFile[0] && existfile( KittyIniFile ) ) {
-		for( i = 0 ; i < lenof( old_keys ) ; i++ ) {
-			/* store-pairs: read file Launcher dblclick,noticeseconds - the one-time rename: the old [Launcher] names */
-			char * old = kitty_read_ini_dup( KittyIniFile, KI_SECTION_LAUNCHER, old_keys[i] ) ;
-			char * cur ;
-			if( old == NULL ) continue ;
-			/* store-pairs: read param Launcher KI_LAUNCHER_DBLCLICK,KI_LAUNCHER_NOTICESECONDS - the one-time rename: is the new name there */
-			cur = kitty_read_ini_dup( KittyIniFile, KI_SECTION_LAUNCHER, new_keys[i] ) ;
-			/* store-pairs: write param Launcher KI_LAUNCHER_DBLCLICK,KI_LAUNCHER_NOTICESECONDS - the one-time rename: the kitty.ini value under its new name */
-			if( cur != NULL || writeINI( KittyIniFile, KI_SECTION_LAUNCHER, new_keys[i], old ) )
-				/* store-pairs: write file Launcher dblclick,noticeseconds - the one-time rename: the old name removed */
-				delINI( KittyIniFile, KI_SECTION_LAUNCHER, old_keys[i] ) ;
-			sfree( cur ) ;
-			sfree( old ) ;
-		}
-	}
-	if( IniFileFlag != SAVEMODE_DIR ) {
-		const char * base = kitty_registry_base() ;
-		char * v = GetValueDataDup( HKEY_CURRENT_USER, base, "dblclick" ) ;
-		char * have ;
-		if( v != NULL ) {
-			if( !stricmp( v, "config" ) || !stricmp( v, "manage" ) || !stricmp( v, "quickconnect" ) ) {
-				have = GetValueDataDup( HKEY_CURRENT_USER, base, KI_LAUNCHER_DBLCLICK ) ;
-				if( have != NULL || RegTestOrCreate( HKEY_CURRENT_USER, base, KI_LAUNCHER_DBLCLICK, v ) )
-					RegDelValue( HKEY_CURRENT_USER, base, "dblclick" ) ;
-				sfree( have ) ;
-			}
-			sfree( v ) ;
-		}
-		if( ( v = GetValueDataDup( HKEY_CURRENT_USER, base, "noticeseconds" ) ) != NULL ) {
-			if( ( have = GetValueDataDup( HKEY_CURRENT_USER, base, KI_LAUNCHER_NOTICESECONDS ) ) == NULL )
-				RegTestOrCreate( HKEY_CURRENT_USER, base, KI_LAUNCHER_NOTICESECONDS, v ) ;
-			sfree( have ) ;
-			sfree( v ) ;
-		}
-	}
-}
 
 void InitWinMain( void ) {
 	char buffer[4096];
@@ -806,19 +606,11 @@ void InitWinMain( void ) {
 	// Initialise the parameters from the kitty.ini file
 	LoadParameters() ;
 	NETDBG_TS("after LoadParameters (kitty.ini read)");
-#ifdef MOD_PORTABLE
-	PortableWriteSaveMode() ;
-#endif
 
 	// Add the InitialDirectory and ConfigDirectory directories to PATH
 
-	// AutoText an older build kept in the hive: into kitty.ini, once
-	AutoTextFromRegistry() ;
-	// [Launcher] dblclick, noticeseconds: their new names, once
-	LauncherKeysRename() ;
-	ConfNoBackupCountOnce() ;
-	// [Shortcuts] script: its new name typetextfile, once
-	ShortcutsRenameOldKeys() ;
+	/* one-time steps on kitty.ini, before the shortcuts are set up */
+	kitty_onetime_run( KOT_AFTER_INI ) ;
 	// Initialise the shortcuts
 	InitShortcuts() ;
 	NETDBG_TS("after InitShortcuts");
@@ -826,7 +618,8 @@ void InitWinMain( void ) {
 	/* Does our hive exist? ASK NOW, BEFORE the migrations below, because they
 	 * create it as a side effect.
 	 *
-	 * RepairSharrowDefaults() and MigrateScpAutoPwd() finish by writing a
+	 * RepairSharrowDefaults() and MigrateScpAutoPwd() (kitty_onetime.c,
+	 * KOT_AFTER_HIVE_CHECK) finish by writing a
 	 * one-time marker with RegTestOrCreateDWORD(), which CREATES the key when it
 	 * is missing. The first-run block further down then checks "does the hive
 	 * exist?" - and by then it always does, so neither of its branches could
@@ -850,36 +643,11 @@ void InitWinMain( void ) {
 	kitty_reg_live_sess = dupprintf( "%s\\Sessions", kitty_reg_live ) ;
 	kitty_hive_existed = RegTestKey( HKEY_CURRENT_USER, kitty_reg_live ) ;
 
-	/* KiTTY 0.84: migrate the old 9bis.com\KiTTY hive to kapper.net\KiTTY BEFORE the
-	 * PuTTY-import check below, so once our hive exists that import path stays out of the
-	 * way. Idempotent + non-destructive (see kitty_registry.c). */
-	/* readonly=yes: the one-time migrations and clean-ups below do not run
-	 * (they write the store); a later writable start does them. */
-	if( !GetReadOnlyFlag() && ( (IniFileFlag == SAVEMODE_REG) || (IniFileFlag == SAVEMODE_FILE) ) ) {
-		NETDBG_TS("before MigrateOldKittyHive");
-		MigrateOldKittyHive() ;
-		NETDBG_TS("after MigrateOldKittyHive");
-		/* One-time repair of registry sessions that persisted the buggy
-		 * SHARROW_APPLICATION default; must run after the hive exists. Registry-only:
-		 * it reads/writes the kapper.net hive and its marker, so it must NOT run in
-		 * portable (SAVEMODE_FILE) mode -- portable sessions are files, healed instead
-		 * by the conf.h SHARROW_BITMAP default; letting portable flip the marker would
-		 * also consume the one-shot before an installed KiTTY could run it. Idempotent
-		 * (marker-guarded). */
-		if( IniFileFlag == SAVEMODE_REG ) { RepairSharrowDefaults() ; MigrateScpAutoPwd() ; }
-		/* One-time migration of legacy 9bis named proxies into our hive, with its
-		 * own marker so it fires even when sessions were migrated in an earlier
-		 * build. Registry-mode only (REG||FILE); DPAPI-protects passwords on copy
-		 * and in place (hknet/KiTTY#11). */
-		kitty_migrate_old_proxies() ;
-	}
-	/* Not gated on the save mode: the obsolete kitty.ini copy exists in
-	 * portable installs too. */
-	if( !GetReadOnlyFlag() ) RetireConfigPasswordLeftovers() ;
-	/* Same reasoning, same place: the retired CountUp bookkeeping can be in a
-	 * kitty.ini as well as in the hive, and two of those values held the user's
-	 * username and machine name. */
-	if( !GetReadOnlyFlag() ) RetireCountUpLeftovers() ;
+	/* one-time steps on the store (kitty_onetime.c): after the hive check
+	 * above, before the PuTTY import below */
+	NETDBG_TS("before the one-time steps on the store");
+	kitty_onetime_run( KOT_AFTER_HIVE_CHECK ) ;
+	NETDBG_TS("after the one-time steps on the store");
 
 	// Load the registry store if needed
 	if( IniFileFlag == SAVEMODE_REG ) { // registry save mode
@@ -975,13 +743,11 @@ void InitWinMain( void ) {
 			} else { // Otherwise look for PuTTY's key and take it over
 				InfoBoxSetText( hdlg, KT_MSG_INIT_REGISTRY ) ;
 				InfoBoxSetText( hdlg, KT_MAIN_INFO_FIRST_RUN_PUTTY ) ;
-				/* Copy DIRECTLY rather than through TestRegKeyOrCopyFromPuTTY():
-				 * that helper first tests whether our key exists and does
-				 * nothing if it does - and the migration markers above have
-				 * created it, so it would decline every time. We have already
-				 * established that this is a first run (kitty_hive_existed);
-				 * what is in our hive at this point is markers, nothing a copy
-				 * could overwrite.
+				/* Copy without testing first whether our key exists: the
+				 * migration markers above have created it. kitty_hive_existed
+				 * has already established that this is a first run. What is
+				 * in our hive at this point is markers, nothing a copy could
+				 * overwrite.
 				 *
 				 * And copy INTO the hive this run uses, not the compile-time one -
 				 * with KiClassName=PuTTY that hive IS PuTTY's, where there is by
@@ -1076,7 +842,7 @@ void InitWinMain( void ) {
 		 * values are the ones in force (session folder, session file
 		 * ending, host-key folder and ending). Before the store starts,
 		 * because it may move the session folder. */
-		if( kitty_store_ini_takeover() ) {   /* moved just now: report it, once */
+		if( kitty_onetime_run( KOT_STORE_LOAD ) ) {   /* moved just now: report it, once */
 			char *msg = dupprintf( KT_MAIN_PUTTYCONF_MOVED_FMT, KittyIniFile ) ;
 			StartupNotice( msg, 0 ) ;
 			sfree( msg ) ;
@@ -1121,7 +887,7 @@ void InitWinMain( void ) {
 	 * Portable stores used to read their master-password salt out of the
 	 * registry on every unlock. That is gone, so a store that relied on it gets
 	 * the state copied in once here - before anything tries to unlock. */
-	if( kitty_migrate_portable_mpw_state() ) { kitty_show_mpw_moved( NULL ) ; }
+	if( kitty_onetime_run( KOT_END ) ) { kitty_show_mpw_moved( NULL ) ; }
 
 	// Make mandatory registry keys
 	snprintf( buffer, sizeof(buffer), "%s\\%s", kitty_registry_base(), "Commands" ) ;

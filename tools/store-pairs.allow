@@ -14,7 +14,7 @@
 # Section and key compare without case.
 
 # deliberate
-Shortcuts list | the one-time copy of an older build's AutoText out of the hive (kitty_startup.c AutoTextFromRegistry): the hive list is read once and deleted after the copy
+Shortcuts list | the one-time copy of an older build's AutoText out of the hive (kitty_onetime.c AutoTextFromRegistry): the hive list is read once and deleted after the copy
 KiTTY KiClassName | set by hand only (kitty_registry.c deletes a copy from PuTTY's hive). kitty.exe reads it with ReadParameterN, the satellites read kitty.ini through the resolver (kitty_inifile_read): it picks the hive itself
 KiTTY showforeignsessions | the pinned answer is the hive's ShowForeignSessions DWORD (kitty_storage.c). This text key is the fallback: ReadParameterN in kitty.exe, kitty_inifile_read in klink, kscp and ksftp (kitty_showforeign_ini.c), where ReadParameterN is a stub
 

@@ -238,7 +238,7 @@ GENERIC = {
         "the wrapper kitty_store_ending_mark itself",
     ("kitty/kitty_store.c", "kitty_store_ending_mark", "delINI"):
         "the wrapper kitty_store_ending_mark itself",
-    ("kitty/kitty_regbackup.c", "retire_ini_value_present", "kitty_read_ini_dup"):
+    ("kitty/kitty_onetime.c", "retire_ini_value_present", "kitty_read_ini_dup"):
         "the wrapper retire_ini_value_present itself",
     ("kitty/kitty_kageant_settings.c", "kageant_setting_write", "kitty_inifile_write"):
         "the wrapper kageant_setting_write itself",

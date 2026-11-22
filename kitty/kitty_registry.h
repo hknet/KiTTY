@@ -57,16 +57,7 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) ;
 
 // Copy one registry key onto another
 int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) ;   /* 1 whole tree copied, 0 not (GetLastError) */
-// One-time migration of the old hive (9bis.com\KiTTY) to kapper.net\KiTTY
-void MigrateOldKittyHive( void ) ;
-
-// One-time repair of the ShiftedArrowKeys default (SHARROW_APPLICATION was
-// saved by mistake)
-void RepairSharrowDefaults( void ) ;
-
-// One-time migration: SCPAutoPwd (retired) -> OSC7CwdTracking, then the
-// value is deleted
-void MigrateScpAutoPwd( void ) ;
+// The one-time migrations and repairs: kitty_onetime.h
 
 // Clean the PuTTY key: remove the keys and values specific to KiTTY
 BOOL RegCleanPuTTY( void ) ;
@@ -130,8 +121,6 @@ void kitty_shell_integration_unregister( void ) ;
 // KiTTY: -fileassoc -uninstall. Removes the association only while it is ours
 void RemoveFileAssoc( void ) ;
 
-// Check that the KiTTY key exists, otherwise copy it from PuTTY
-void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) ;
 
 /* 1 when the .reg is written whole; 0 not (the reason in GetLastError) */
 int InitRegistryAllSessions( HKEY hMainKey, LPCTSTR lpSubKey, char * SubKeyName, char * filename, char * text ) ;

@@ -273,6 +273,8 @@ static const struct sc_action sc_actions[] = {
 
 int ShortcutActionCount( void ) { return (int) ( sizeof(sc_actions) / sizeof(sc_actions[0]) ) ; }
 const char * ShortcutActionKey( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? sc_actions[i].key : "" ; }
+/* the key's older name, NULL when it had none (kitty_onetime.c renames it) */
+const char * ShortcutActionOldKey( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? sc_actions[i].oldkey : NULL ; }
 const char * ShortcutActionName( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? sc_actions[i].name : "" ; }
 int ShortcutActionValue( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? *SC_SLOT(i) : 0 ; }
 int ShortcutActionDefault( int i ) { return ( i >= 0 && i < ShortcutActionCount() ) ? sc_actions[i].dflt : 0 ; }
@@ -284,31 +286,6 @@ char * ShortcutsIniDup( const char * key ) {
 	return v ? v : dupstr( "" ) ;
 }
 
-/* An action renamed in kitty.ini (the oldkey column): the old key's value
- * goes to the new key unless the new key is there, then the old key is
- * removed. A key that is there counts, not a value: an empty old key (the
- * action switched off) becomes an empty new key. Once at startup, before
- * InitShortcuts first reads the keys (kitty_startup.c). Nothing under
- * readonly=yes. [Shortcuts] is kitty.ini only (see InitShortcuts). */
-void ShortcutsRenameOldKeys( void ) {
-	int i ;
-	if( GetReadOnlyFlag() ) return ;
-	if( KittyIniFile == NULL || !KittyIniFile[0] || !existfile( KittyIniFile ) ) return ;
-	for( i=0 ; i<ShortcutActionCount() ; i++ ) {
-		char * old, * cur ;
-		if( sc_actions[i].oldkey == NULL ) continue ;
-		/* store-pairs: read file Shortcuts script - the one-time rename: the old name of typetextfile */
-		if( ( old = kitty_read_ini_dup( KittyIniFile, KI_SECTION_SHORTCUTS, sc_actions[i].oldkey ) ) == NULL ) continue ;
-		/* store-pairs: read file Shortcuts KI_SC_TYPETEXTFILE - the one-time rename: is the new name there */
-		cur = kitty_read_ini_dup( KittyIniFile, KI_SECTION_SHORTCUTS, sc_actions[i].key ) ;
-		/* store-pairs: write file Shortcuts KI_SC_TYPETEXTFILE - the one-time rename: the value under its new name */
-		if( cur != NULL || writeINI( KittyIniFile, KI_SECTION_SHORTCUTS, sc_actions[i].key, old ) == 1 )
-			/* store-pairs: write file Shortcuts script - the one-time rename: the old name removed */
-			delINI( KittyIniFile, KI_SECTION_SHORTCUTS, sc_actions[i].oldkey ) ;
-		sfree( cur ) ;
-		sfree( old ) ;
-	}
-}
 
 // Init shortcuts map at startup
 void InitShortcuts( void ) {

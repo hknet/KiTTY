@@ -26,7 +26,9 @@ void kitty_proxy_panel_preselect( const char *name ) ;
 void kitty_proxy_resolve_selection( Conf *conf ) ;
 int SaveProxyInfo( Conf *conf, const char *name ) ;
 int DeleteProxyInfo( const char *name ) ;
-void kitty_migrate_old_proxies( void ) ;
+/* a copied proxy's password DPAPI-protected when still plain (the 9bis
+ * proxies' one-time migration, kitty_onetime.c) */
+void kitty_proxy_encrypt_in_place( const char *dstpath, const char *name ) ;
 int kitty_export_proxies_to_dir( const char *dir, int *failOut ) ;   /* Piece 7 */
 /* The last export's definitions left out (not loadable), as report lines
  * (sfree it); NULL when none was. */

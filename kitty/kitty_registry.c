@@ -319,161 +319,14 @@ BOOL RegDelTree (HKEY hKeyRoot, LPCTSTR lpSubKey) {
 	return FALSE;
 	}
 
-/* KiTTY 0.84: one-time migration of the registry hive from the old KiTTY namespace
- * (Software\9bis.com\KiTTY) to the current one (Software\kapper.net\KiTTY). Idempotent
- * -- copies only when the destination is absent and the source exists; non-destructive
- * (the old hive is left intact and also serves as a read-only fallback in storage.c).
- * Call it from every kitty.exe entry path (terminal init AND -launcher) so the launcher
- * sees migrated sessions even on a boot where it runs before the main terminal.
- *
- * Hive paths are spelled out as string literals on purpose (not PUTTY_REG_POS): this is
- * a one-off migration between two FIXED endpoints -- the legacy 9bis hive and the current
- * kapper.net hive -- so we specifically do NOT want the runtime-flippable base; and the
- * 9bis side has no global macro anyway. Literals also keep this helper's include surface
- * minimal (kitty_registry.h only, not platform.h/putty.h). */
-void MigrateOldKittyHive( void ) {
-	if( !RegTestKey( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY" )
-	    && RegTestKey( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY" ) ) {
-		/* a partial copy must not stay: the key's presence is what marks the
-		 * migration done, so it would never be tried again */
-		if( !kitty_RegCopyTree( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY", "Software\\kapper.net\\KiTTY" ) )
-			RegDelTree( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY" ) ;
-	}
-}
 
 /* The one-shot repairs below address the kapper.net\\KiTTY hive by literal
  * path (see the note above RepairSharrowDefaults). They run only when that is
  * the hive in use, else a run under another hive would create kapper.net\\KiTTY
  * just to leave a marker in it. */
 extern const char *kitty_registry_base( void ) ;
-static int kitty_repairs_own_hive( void ) {
-	return strcmp( kitty_registry_base(), "Software\\kapper.net\\KiTTY" ) == 0 ;
-}
 
-/* KiTTY 0.84: one-time repair of the ShiftedArrowKeys default regression.
- * The 0.84 port inherited PuTTY's SHARROW_APPLICATION(0) compiled default instead
- * of KiTTY's historical SHARROW_BITMAP(1). A session migrated from the old 9bis
- * hive that relied on that old default, once loaded and *re-saved* under the buggy
- * build, had ShiftedArrowKeys=0 persisted into the kapper.net hive -- silently
- * losing Ctrl+Left/Right word navigation. conf.h now restores BITMAP as the
- * default, which auto-heals every session that has NO explicit value; this repair
- * mops up the ones that persisted an explicit 0.
- *
- * We reset ONLY where we can prove the 0 was written by us and not chosen by the
- * user: the corresponding session must still exist in the untouched old 9bis hive
- * AND have no explicit ShiftedArrowKeys there. Deleting the kapper.net value then
- * lets the session fall back to the new BITMAP default. Any deliberate choice
- * (an explicit value already in 9bis, or a session absent from 9bis so we cannot
- * know) is left untouched. Idempotent via a marker value -- runs at most once.
- *
- * Registry paths are string literals, not PUTTY_REG_POS -- same rationale as
- * MigrateOldKittyHive above: fixed 9bis<->kapper.net migration endpoints (not the
- * runtime-flippable base), and this file intentionally includes only kitty_registry.h. */
-void RepairSharrowDefaults( void ) {
-	HKEY hSess ;
-	char *cur, *old ;
-	char name[MAX_KEY_LENGTH+1], *kpath, *oldsess ;
-	DWORD idx, len ;
-	int failed = 0 ;
 
-	/* Only when kapper.net\\KiTTY is the hive this run uses (KiClassName can
-	 * point the store at another hive): the repair reads and marks THAT hive
-	 * by literal path, and must not create it as a side effect under any other. */
-	if( !kitty_repairs_own_hive() ) return ;
-
-	/* one-time guard: skip if we've already run */
-	if( ( cur = GetValueDataDup( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE ) ) != NULL ) {
-		sfree( cur ) ;
-		return ;
-	}
-
-	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY\\Sessions", 0, KEY_READ, &hSess ) == ERROR_SUCCESS ) {
-		for( idx = 0 ; ; idx++ ) {
-			int zero ;
-			len = sizeof(name) ;
-			if( RegEnumKeyEx( hSess, idx, name, &len, NULL, NULL, NULL, NULL ) != ERROR_SUCCESS ) break ;
-			/* only sessions with an explicit APPLICATION(0) are candidates */
-			kpath = dupprintf( "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
-			cur = GetValueDataDup( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys" ) ;
-			zero = cur != NULL && strcmp( cur, "0" ) == 0 ;
-			sfree( cur ) ;
-			if( zero ) {
-				oldsess = dupprintf( "Software\\9bis.com\\KiTTY\\Sessions\\%s", name ) ;
-				/* repair only if the 9bis original exists and had NO explicit value:
-				 * that proves the 0 is our persisted default, not the user's choice. */
-				if( RegTestKey( HKEY_CURRENT_USER, oldsess ) ) {
-					if( ( old = GetValueDataDup( HKEY_CURRENT_USER, oldsess, "ShiftedArrowKeys" ) ) == NULL ) {
-						if( !RegDelValue( HKEY_CURRENT_USER, kpath, "ShiftedArrowKeys" ) ) failed = 1 ;
-					} else sfree( old ) ;
-				}
-				sfree( oldsess ) ;
-			}
-			sfree( kpath ) ;
-		}
-		RegCloseKey( hSess ) ;
-	}
-
-	/* set the marker, so we don't rescan every boot (even if the old 9bis hive
-	 * is gone and nothing could be repaired) - but not after a repair that
-	 * failed: the next start tries it again. RegTestOrCreateDWORD hides the
-	 * RegSetValueEx byte-buffer boilerplate and creates the base key if needed. */
-	if( !failed ) RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SHARROWREPAIRDONE, 1 ) ;
-}
-
-/* One-time migration: the per-session "Send file in current
- * directory" option (SCPAutoPwd) was retired -- it drove uploads off the removed
- * __pw title-scan (CVE-2024-23749) and is superseded by opt-in OSC 7 cwd
- * tracking. For every registry session that had SCPAutoPwd=1, enable
- * OSC7CwdTracking (the safe way to get the "upload into the current remote dir"
- * behaviour the user had asked for); then delete the retired SCPAutoPwd value
- * from every session so it does not linger. Idempotent via the ScpAutoPwdMigrated
- * marker -- runs at most once. Registry mode only (like RepairSharrowDefaults);
- * portable sessions simply stop persisting the key once it is no longer saved. */
-void MigrateScpAutoPwd( void ) {
-	HKEY hSess ;
-	int failed = 0 ;
-	char *cur ;
-	char name[MAX_KEY_LENGTH+1], *kpath ;
-	DWORD idx, len ;
-
-	/* Only when kapper.net\\KiTTY is the hive this run uses (KiClassName can
-	 * point the store at another hive): the repair reads and marks THAT hive
-	 * by literal path, and must not create it as a side effect under any other. */
-	if( !kitty_repairs_own_hive() ) return ;
-
-	/* one-time guard: skip if we've already run */
-	if( ( cur = GetValueDataDup( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED ) ) != NULL ) {
-		sfree( cur ) ;
-		return ;
-	}
-
-	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY\\Sessions", 0, KEY_READ, &hSess ) == ERROR_SUCCESS ) {
-		for( idx = 0 ; ; idx++ ) {
-			len = sizeof(name) ;
-			if( RegEnumKeyEx( hSess, idx, name, &len, NULL, NULL, NULL, NULL ) != ERROR_SUCCESS ) break ;
-			kpath = dupprintf( "Software\\kapper.net\\KiTTY\\Sessions\\%s", name ) ;
-			if( ( cur = GetValueDataDup( HKEY_CURRENT_USER, kpath, "SCPAutoPwd" ) ) == NULL ) { sfree( kpath ) ; continue ; }
-			/* the old option was on -> turn on its safe replacement */
-			if( strcmp( cur, "1" ) == 0
-			    && !RegTestOrCreateDWORD( HKEY_CURRENT_USER, kpath, "OSC7CwdTracking", 1 ) ) {
-				/* the replacement is not stored: keep the old value, the
-				 * next start tries again - deleting it lost the setting */
-				failed = 1 ;
-				sfree( cur ) ; sfree( kpath ) ;
-				continue ;
-			}
-			/* drop the retired key regardless of its value */
-			if( !RegDelValue( HKEY_CURRENT_USER, kpath, "SCPAutoPwd" ) ) failed = 1 ;
-			sfree( cur ) ; sfree( kpath ) ;
-		}
-		RegCloseKey( hSess ) ;
-	}
-
-	/* set the marker, so we don't rescan every boot - unless a session was
-	 * left unmigrated, which the next start tries again */
-	if( !failed )
-		RegTestOrCreateDWORD( HKEY_CURRENT_USER, "Software\\kapper.net\\KiTTY", KR_SCPAUTOPWDMIGRATED, 1 ) ;
-}
 
 /* Copy one registry key onto another, every value at its full size and every
  * subkey. 1 the whole tree was copied; 0 not (the source key missing, or a
@@ -1854,17 +1707,6 @@ void RemoveFileAssoc( void ) {
 	strbuf_free( report ) ;
 }
 	
-// Check for KiTTY registry key. If not, copy from PuTTY one
-void TestRegKeyOrCopyFromPuTTY( HKEY hMainKey, char * KeyName ) { 
-	HKEY hKey ;
-	if( RegOpenKeyEx( hMainKey, TEXT(KeyName), 0, KEY_READ, &hKey) == ERROR_SUCCESS ) {
-		RegCloseKey( hKey ) ;
-	} else {
-		RegCreateKey( hMainKey, TEXT(KeyName), &hKey ) ;
-		RegCloseKey( hKey ) ;
-		kitty_RegCopyTree( hMainKey, "Software\\SimonTatham\\PuTTY", TEXT(KeyName) ) ;
-	}
-}
 
 
 /******

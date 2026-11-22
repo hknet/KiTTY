@@ -477,33 +477,8 @@ int DeleteProxyInfo( const char *name ) {
 	return 1 ;
 }
 
-/* One-time, marker-gated migration of named proxies from the legacy 9bis hive
- * (Software\9bis.com\KiTTY\Proxies) into ours (PUTTY_REG_POS\Proxies). Runs at
- * startup in registry mode only (portable reads its Proxies\ folder in place);
- * INDEPENDENT of the session-hive migration so it also fires for users who
- * migrated sessions in an earlier build. Registry-only, so at-rest protection
- * is DPAPI (transparent, account-bound, losslessly reversible - no prompt):
- *   - a proxy absent on our side is copied over whole, then its ProxyPassword
- *     is DPAPI-encrypted;
- *   - a proxy already present keeps its (possibly user-edited) fields, but a
- *     still-plaintext ProxyPassword is DPAPI-encrypted in place - this also
- *     auto-protects proxies the whole-tree MigrateOldKittyHive copied earlier.
- * A marked (already-encrypted) password is never re-wrapped. The one-shot marker
- * means a proxy the user later deletes never resurrects (hknet/KiTTY#11). */
-static int kitty_proxies_migrated( void ) {
-	DWORD val = 0, len = 0, type = 0 ; int got = 0 ;
-	/* through the settings module. A value over 4 bytes did not fit the
-	 * read and counts as not set */
-	unsigned char *v = kitty_settings_reg_stored_dup_at( kitty_registry_base(), "ProxiesMigrated", &type, &len ) ;
-	if( v != NULL && len <= sizeof(val) ) {
-		memcpy( &val, v, len ) ;
-		if( type == REG_DWORD && val ) got = 1 ;
-	}
-	free( v ) ;
-	return got ;
-}
 
-static void kitty_proxy_encrypt_in_place( const char *dstpath, const char *name ) {
+void kitty_proxy_encrypt_in_place( const char *dstpath, const char *name ) {
 	char *raw = GetValueDataDup( HKEY_CURRENT_USER, dstpath, "ProxyPassword" ) ;
 	if( raw && raw[0] && !kitty_secret_is_marked( raw ) ) {
 		/* strip_plain: a PLAIN:-marked value is cleartext with a marker, so
@@ -520,30 +495,6 @@ static void kitty_proxy_encrypt_in_place( const char *dstpath, const char *name 
 	if( raw ) { smemclr( raw, strlen(raw) ) ; sfree( raw ) ; }
 }
 
-void kitty_migrate_old_proxies( void ) {
-	if( (IniFileFlag != SAVEMODE_REG) && (IniFileFlag != SAVEMODE_FILE) ) return ;
-	if( kitty_store_readonly() ) return ;   /* readonly=yes: a later start migrates */
-	if( kitty_proxies_migrated() ) return ;
-	HKEY hSrc ;
-	if( RegOpenKeyEx( HKEY_CURRENT_USER, "Software\\9bis.com\\KiTTY\\Proxies", 0, KEY_READ, &hSrc ) == ERROR_SUCCESS ) {
-		DWORD idx ; FILETIME ft ;
-		for( idx = 0 ; ; idx++ ) {
-			/* a key name is at most 255 characters, plus its NUL */
-			char sub[MAX_KEY_LENGTH + 1] ; DWORD subsz = sizeof(sub) ;
-			if( RegEnumKeyEx( hSrc, idx, sub, &subsz, NULL, NULL, NULL, &ft ) != ERROR_SUCCESS ) break ;
-			if( !strcmp(sub,"None") || !strcmp(sub,"Default") ) continue ;
-			char *srcpath = dupprintf( "Software\\9bis.com\\KiTTY\\Proxies\\%s", sub ) ;
-			char *dstpath = dupprintf( "%s\\Proxies\\%s", kitty_registry_base(), sub ) ;
-			if( !RegTestKey( HKEY_CURRENT_USER, dstpath ) )
-				kitty_RegCopyTree( HKEY_CURRENT_USER, srcpath, dstpath ) ;  /* all fields (pw plaintext) */
-			kitty_proxy_encrypt_in_place( dstpath, sub ) ;                  /* protect if still plaintext */
-			sfree( srcpath ) ;
-			sfree( dstpath ) ;
-		}
-		RegCloseKey( hSrc ) ;
-	}
-	RegTestOrCreateDWORD( HKEY_CURRENT_USER, kitty_registry_base(), "ProxiesMigrated", 1 ) ;
-}
 
 /* ---- Piece 7: carry named proxies in the whole-store export/import bundle ----
  * Definitions are written under <dir>\Proxies\<munged> as portable "key\value\"

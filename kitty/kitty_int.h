@@ -20,10 +20,8 @@ extern char * KittySavFile ;
 extern char PasswordConf[] ;
 
 /* kitty_regbackup.c, for the startup sequence: the newest .sav to offer at a
- * first start, and the two clean-outs of retired features. */
+ * first start (the clean-outs of retired features: kitty_onetime.c) */
 int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) ;
-void RetireConfigPasswordLeftovers( void ) ;
-void RetireCountUpLeftovers( void ) ;
 
 /* The icon library and the icon file kitty.ini sets (kitty.c), resolved
  * by the startup sequence. */

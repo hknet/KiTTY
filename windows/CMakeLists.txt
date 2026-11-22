@@ -868,7 +868,7 @@ if(KITTY_PERF)
 endif()
 
 # The kitty/ sources BOTH terminals compile identically: MOD_PORTABLE is
-# tested by five files only (kitty_launcher.c, kitty_registry.c,
+# tested by six files only (kitty_onetime.c, kitty_launcher.c, kitty_registry.c,
 # kitty_updater.c, kitty_common.c, kitty_startup.c - checked below), and no
 # header branches on it, so the rest is the same object twice. An OBJECT
 # library compiles it once per width and both terminals take every object
@@ -979,7 +979,7 @@ set(KITTY_CORE_SOURCES
   ${KITTY_DIR}/kitty_zone.c         # KiTTY: Windows' zone policy for a .ktx file (ProcessUrlAction)
   ${KITTY_DIR}/kitty_startup_shortcut.c
 )
-# No file outside the five may test MOD_PORTABLE: it would land in the
+# No file outside the six may test MOD_PORTABLE: it would land in the
 # shared object and the portable build would silently get the other half.
 file(GLOB KITTY_CORE_SCAN ${KITTY_DIR}/*.c)
 set(KITTY_CORE_BAD "")
@@ -987,7 +987,7 @@ foreach(f ${KITTY_CORE_SCAN})
   file(READ ${f} _c)
   if(_c MATCHES "MOD_PORTABLE")
     get_filename_component(_n ${f} NAME)
-    if(NOT _n MATCHES "^(kitty_launcher|kitty_registry|kitty_updater|kitty_common|kitty_startup)\\.c$")
+    if(NOT _n MATCHES "^(kitty_launcher|kitty_registry|kitty_updater|kitty_common|kitty_startup|kitty_onetime)\\.c$")
       list(APPEND KITTY_CORE_BAD ${f})
     endif()
   endif()
@@ -1065,6 +1065,7 @@ add_executable(kitty
   kitty.rc
   ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)
   ${KITTY_DIR}/kitty_startup.c
+  ${KITTY_DIR}/kitty_onetime.c    # KiTTY: the one-time steps of the start (kitty_onetime.h)
   ${KITTY_DIR}/kitty_common.c
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/blocnote/notepad.rc
@@ -1179,6 +1180,7 @@ add_executable(kitty_portable
   kitty.rc
   ${KITTY_DIR}/kitty_launcher.c   # the tray launcher and the child-process starters (likewise)
   ${KITTY_DIR}/kitty_startup.c
+  ${KITTY_DIR}/kitty_onetime.c    # KiTTY: the one-time steps of the start (kitty_onetime.h)
   ${KITTY_DIR}/kitty_common.c
   ${KITTY_DIR}/kitty_registry.c
   ${KITTY_DIR}/blocnote/notepad.rc

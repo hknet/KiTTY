@@ -55,9 +55,6 @@ FLAG | kitty/kitty_params.c | load_ini_params | the program start: kitty.exe's o
 FLAG | kitty/kitty_params.c | write_parameter | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
 FLAG | kitty/kitty_proxy.c | DeleteProxyInfo | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_proxy.c | SaveProxyInfo | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
-FLAG | kitty/kitty_proxy.c | kitty_migrate_old_proxies | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
-FLAG | kitty/kitty_regbackup.c | RetireConfigPasswordLeftovers | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
-FLAG | kitty/kitty_regbackup.c | RetireCountUpLeftovers | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_regbackup.c | SavePortableDirBackupEx | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_regbackup.c | kitty_sav_backup_report_dup | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_regbackup.c | sav_backup | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
@@ -88,13 +85,8 @@ FLAG | kitty/kitty_sessorg.c | so_tag_menu | the session store and its files: it
 FLAG | kitty/kitty_sessorg.c | so_tree_menu | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_sessorg.c | so_untag | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_sessorg.c | so_untag_answer | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
-FLAG | kitty/kitty_shortcuts.c | ShortcutsRenameOldKeys | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
-FLAG | kitty/kitty_startup.c | AutoTextFromRegistry | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
-FLAG | kitty/kitty_startup.c | ConfNoBackupCountOnce | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
 FLAG | kitty/kitty_startup.c | InitNameConfigFile | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
 FLAG | kitty/kitty_startup.c | InitWinMain | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
-FLAG | kitty/kitty_startup.c | LauncherKeysRename | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
-FLAG | kitty/kitty_startup.c | PortableWriteSaveMode | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
 FLAG | kitty/kitty_storage.c | kitty_dword_store | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_storage.c | kitty_portable_store_state_string | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_storage.c | kitty_session_suffix_rename | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
@@ -154,6 +146,7 @@ FLAG | windows/storage.c | store_host_key | the session store and its files: its
 FLAG | windows/storage.c | transform_jumplist_registry | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | windows/storage.c | write_random_seed | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | windows/window.c | do_text_internal | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
+FLAG | kitty/kitty_onetime.c | * | the one-time steps of the start, each marked with its release
 INI | kitty/kitty_commands.c | cmd_savemode | savemode: a key that decides the store, kept in kitty.ini
 INI | kitty/kitty_config_app.c | khard_cb_handler | restrictacl: kitty.ini only by design, never the user's registry
 INI | kitty/kitty_config_app.c | khard_refresh | restrictacl: kitty.ini only by design, never the user's registry
@@ -163,12 +156,7 @@ INI | kitty/kitty_config_app.c | kitty_sp_suffix_apply_handler | the folder stor
 INI | kitty/kitty_config_app.c | scb_panel_kitty_settings | the folder store's layout shown (fileextension): kitty.ini only
 INI | kitty/kitty_mpw_gui.c | gui_master_pw_prompt | the folder store's password protection: kitty.ini only
 INI | kitty/kitty_params.c | LoadParameters | the folder store's layout (fileextension): kitty.ini only
-INI | kitty/kitty_regbackup.c | RetireConfigPasswordLeftovers | one-time cleanup of a retired kitty.ini value
-INI | kitty/kitty_regbackup.c | RetireCountUpLeftovers | one-time cleanup of a retired kitty.ini value
-INI | kitty/kitty_regbackup.c | retire_ini_value_present | one-time cleanup of a retired kitty.ini value
 INI | kitty/kitty_startup.c | InitWinMain | the folder store's password protection: kitty.ini only
-INI | kitty/kitty_startup.c | LauncherKeysRename | one-time migration: [Launcher] dblclick/noticeseconds renamed in kitty.ini
-INI | kitty/kitty_startup.c | PortableWriteSaveMode | savemode: the portable build writes its key once into kitty.ini
 INI | kitty/kitty_store.c | kitty_store_ending_applied | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
 INI | kitty/kitty_store.c | kitty_store_ending_mark | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
 INI | kitty/kitty_store.c | kitty_store_hostkey_rename | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
@@ -177,3 +165,4 @@ INI | kitty/kitty_store.c | kstore_ini_dup | the folder store's layout keys (ses
 INI | kitty/kitty_store.c | kstore_store_endings | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
 INI | kitty/kitty_store.c | loadPath | the folder store's layout keys (sessions=, configdir=, the endings): kitty.ini only
 INI | kitty/kitty_storemove.c | ksm_globals_from_ini | the store move: the source kitty.ini read whole
+INI | kitty/kitty_onetime.c | * | the one-time steps of the start, each marked with its release

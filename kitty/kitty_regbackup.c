@@ -702,67 +702,8 @@ int sav_find_for_restore( const char *savfile, char *out, size_t outlen ) {
  * copy was only obfuscated with a constant compiled into every build. Nothing
  * reads either value any more, so remove them rather than leave a plaintext
  * secret lying about. Self-limiting: both deletes are skipped when absent. */
-/* Is the value there, in the registry hive in use? The value is read in full
- * and cleared again: it may be a secret. */
-static int retire_reg_value_present( const char * name ) {
-	char * v = GetValueDataDup( HKEY_CURRENT_USER, kitty_registry_base(), name ) ;
-	if( v == NULL ) return 0 ;
-	smemclr( v, strlen( v ) ) ; sfree( v ) ;
-	return 1 ;
-	}
-/* ... in kitty.ini (any value, empty included, as readINI answered) */
-static int retire_ini_value_present( const char * name ) {
-	char * v = kitty_read_ini_dup( KittyIniFile, INIT_SECTION, name ) ;
-	if( v == NULL ) return 0 ;
-	smemclr( v, strlen( v ) ) ; sfree( v ) ;
-	return 1 ;
-	}
 
-void RetireConfigPasswordLeftovers( void ) {
-	/* the registry only for a copy that keeps its settings there: a portable
-	 * copy (folder store) leaves HKCU alone - an installed copy cleans its
-	 * own hive at its next start */
-	if( IniFileFlag != SAVEMODE_DIR && retire_reg_value_present( KI_PASSWORD ) )
-		/* store-pairs: write param KiTTY KI_PASSWORD - the retired configuration password, deleted from the hive */
-		RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), KI_PASSWORD ) ;
-	if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag() && retire_ini_value_present( KI_PASSWORD ) )
-		delINI( KittyIniFile, INIT_SECTION, KI_PASSWORD ) ;
-	}
 
-/*
- * CountUp() used to write five bookkeeping values on every run - KiLastUp,
- * KiLastUH, KiSess, KiVers, KiPath - that nothing ever read back. The writes are
- * gone; this removes them from stores that already have them, because stopping
- * the writes on its own would just freeze stale values in place for ever.
- *
- * Two of them mattered more than the rest. KiLastUH held your Windows username
- * and computer name, and KiVers your OS version, both scrambled with the
- * compiled-in public constant - which is obfuscation, not encryption, and which
- * made the leak invisible to the one person who would care: kitty.ini gets
- * shared, and nobody reading their own file could tell those two lines were
- * their username and machine.
- *
- * Self-limiting, like RetireConfigPasswordLeftovers above: every delete is
- * skipped when the value is absent, so this costs nothing on a clean store and
- * runs at most once usefully.
- */
-void RetireCountUpLeftovers( void ) {
-	/* char* rather than const char*: RegDelValue takes LPTSTR. */
-	static char *const dead[] = {
-		KR_KILASTUP, KR_KILASTUH, KR_KISESS, KR_KISESS_COMMENTED, KR_KIVERS, KR_KIPATH } ;
-	size_t i ;
-	for( i = 0 ; i < lenof(dead) ; i++ ) {
-		if( IniFileFlag != SAVEMODE_DIR   /* a portable copy leaves HKCU alone (above) */
-		    /* store-pairs: read param KiTTY KR_KILASTUP,KR_KILASTUH,KR_KISESS,KR_KISESS_COMMENTED,KR_KIVERS,KR_KIPATH - the retired bookkeeping values (dead[]) */
-		    && retire_reg_value_present( dead[i] ) )
-			/* store-pairs: write param KiTTY KR_KILASTUP,KR_KILASTUH,KR_KISESS,KR_KISESS_COMMENTED,KR_KIVERS,KR_KIPATH - the retired bookkeeping values (dead[]) */
-			RegDelValue( HKEY_CURRENT_USER, kitty_registry_base(), dead[i] ) ;
-		/* store-pairs: read file KiTTY KR_KILASTUP,KR_KILASTUH,KR_KISESS,KR_KISESS_COMMENTED,KR_KIVERS,KR_KIPATH - the retired bookkeeping values (dead[]) */
-		if( ( KittyIniFile != NULL ) && !GetReadOnlyFlag() && retire_ini_value_present( dead[i] ) )
-			/* store-pairs: write file KiTTY KR_KILASTUP,KR_KILASTUH,KR_KISESS,KR_KISESS_COMMENTED,KR_KIVERS,KR_KIPATH - the retired bookkeeping values (dead[]) */
-			delINI( KittyIniFile, INIT_SECTION, dead[i] ) ;
-	}
-	}
 
 /* The export spawns reg.exe, so it runs on a worker thread rather than making
  * the config box wait for it - upstream did the same with _beginthread. One at

@@ -46,10 +46,7 @@ kitty/kitty_registry.c | RegCountKey | the store's tree: how many subkeys a key 
 kitty/kitty_registry.c | RegCleanPuTTY | the store's tree: -cleanup of PuTTY's key
 
 # ---- one-time migrations from older versions and other programs -----------
-kitty/kitty_registry.c | RepairSharrowDefaults | one-time migration: the shifted arrow keys' default
-kitty/kitty_registry.c | MigrateScpAutoPwd | one-time migration: SCPAutoPwd
-kitty/kitty_registry.c | TestRegKeyOrCopyFromPuTTY | one-time migration: PuTTY's or 9bis' store copied over
-kitty/kitty_proxy.c | kitty_migrate_old_proxies | one-time migration: 9bis' named proxies
+kitty/kitty_onetime.c | * | the one-time steps of the start, each marked with its release
 kitty/kitty_migrate.c | kitty_import_foreign_session | one-time migration: another program's sessions imported
 
 # ---- Windows' own keys ------------------------------------------------------
@@ -63,5 +60,4 @@ kitty/kitty_oldwin.c | kitty_oldwin_RegGetValueA | the stand-ins for APIs newer 
 
 # ---- kitty.ini written whole: the store move and kitty.ini's own upkeep ------
 kitty/kitty_startup.c | ConsolidateKittyIniLocked | kitty.ini rewritten whole: Windows' ini cache of the file flushed
-kitty/kitty_startup.c | MigratePuttyIni | one-time migration: putty.ini's [KiTTY] section
 kitty/kitty_oldwin.c | kitty_profile_string_dup | a kitty.ini value whole, the settings module's file reader built on it
