@@ -533,7 +533,7 @@ static char *gui_master_pw_prompt(int creating)
          * (ksec_protect_portable_x), and no master password is created;
          * readonly=yes: this process only */
         char *ini = GetKittyIniFile();
-        if (ini && ini[0] && !kitty_inifile_write_blocked(ini))
+        if (ini && ini[0])            /* writeINI refuses under readonly=yes */
             writeINI(ini, KI_SECTION_KITTY, KI_PORTABLEPASSWORDPROTECTION, "dpapi");
         kitty_set_portable_password_protection("dpapi");
     }

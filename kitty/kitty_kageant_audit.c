@@ -208,21 +208,19 @@ void kageant_audit_cfg_set(const char *path, int maxkb, int keep,
         }
         sfree(was);
     }
-    /* the set's values a policy key holds are left alone: a write of them
-     * is refused (KITTY_POLICY_REFUSED) and would be reported */
+    /* the set's values a policy key holds are left alone: kageant_setting_write
+     * refuses them itself (KITTY_POLICY_REFUSED). The path is checked here
+     * as either type, kageant_setting_str_set only as a string. */
     if (!kitty_settings_policy_source("AgentLogPath", -1))
         kageant_setting_str_set(KI_AGENT_AGENTLOGPATH, "AgentLogPath",
                                 path ? path : "");
     snprintf(num, sizeof(num), "%d", maxkb);
-    if (!kitty_settings_policy_source("AgentLogMaxKB", 1))
-        kageant_setting_write(KI_AGENT_AGENTLOGMAXKB, num, "AgentLogMaxKB", maxkb);
+    kageant_setting_write(KI_AGENT_AGENTLOGMAXKB, num, "AgentLogMaxKB", maxkb);
     snprintf(num, sizeof(num), "%d", keep);
-    if (!kitty_settings_policy_source("AgentLogKeep", 1))
-        kageant_setting_write(KI_AGENT_AGENTLOGKEEP, num, "AgentLogKeep", keep);
+    kageant_setting_write(KI_AGENT_AGENTLOGKEEP, num, "AgentLogKeep", keep);
     snprintf(num, sizeof(num), "%d", expiredays);
-    if (!kitty_settings_policy_source("AgentLogExpireDays", 1))
-        kageant_setting_write(KI_AGENT_AGENTLOGEXPIREDAYS, num,
-                              "AgentLogExpireDays", expiredays);
+    kageant_setting_write(KI_AGENT_AGENTLOGEXPIREDAYS, num,
+                          "AgentLogExpireDays", expiredays);
     kageant_audit_setup();
 }
 

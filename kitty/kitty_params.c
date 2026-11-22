@@ -1155,9 +1155,8 @@ void LoadParameters( void ) {
 		char * del = kitty_read_ini_dup( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL ) ;
 		if( del ) {
 			StringList_Del( FolderList, del ) ;
-			/* readonly=yes: the key stays, and is applied again next start */
-			if( !kitty_inifile_write_blocked( KittyIniFile ) )
-				delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL ) ;
+			/* readonly=yes: delINI leaves the key, it is applied again next start */
+			delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_DEL ) ;
 			sfree( del ) ;
 		}
 	}

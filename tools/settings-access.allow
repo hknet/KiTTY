@@ -5,7 +5,6 @@
 
 FILE | kitty/kitty_startup.c | InitNameConfigFile | kitty.ini named and moved into place at start, before the module is pinned to it
 FLAG | kitty/kitty.c | CreateIniFile | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
-FLAG | kitty/kitty.c | InitFolderList | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
 FLAG | kitty/kitty_auxpos.c | kitty_auxpos_write | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_commands.c | cmd_policy_held | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
 FLAG | kitty/kitty_commands.c | cmd_savemode | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
@@ -41,7 +40,6 @@ FLAG | kitty/kitty_kageant_settings.c | kageant_setting_str_set | kageant's sett
 FLAG | kitty/kitty_kageant_settings.c | kageant_setting_write | kageant's settings layer over the module: its own names refused under readonly=yes or a policy
 FLAG | kitty/kitty_migrate.c | kitty_import_file_session | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
 FLAG | kitty/kitty_migrate.c | kitty_import_foreign_session | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
-FLAG | kitty/kitty_mpw_gui.c | gui_master_pw_prompt | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
 FLAG | kitty/kitty_osc52.c | kitty_osc52_save_deny_for_host | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
 FLAG | kitty/kitty_osc52.c | kitty_osc52_store_readonly | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
 FLAG | kitty/kitty_pageant.c | kageant_forget_startup_key | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
@@ -50,7 +48,6 @@ FLAG | kitty/kitty_pageant.c | kageant_save_startup_keys | a panel, box or comma
 FLAG | kitty/kitty_pageant.c | kageant_track_keypath | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
 FLAG | kitty/kitty_params.c | CreateDefaultIniFile | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
 FLAG | kitty/kitty_params.c | DelParameter | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
-FLAG | kitty/kitty_params.c | LoadParameters | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
 FLAG | kitty/kitty_params.c | load_ini_params | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
 FLAG | kitty/kitty_params.c | write_parameter | the program start: kitty.exe's own readings handed to the module, a start step skipped under readonly=yes
 FLAG | kitty/kitty_proxy.c | DeleteProxyInfo | the session store and its files: its writer refuses under readonly=yes itself (TODO one session-store module)
@@ -120,7 +117,6 @@ FLAG | ssh/ca-config.c | ca_store_refused | the SSH layer's host-key and CA stor
 FLAG | ssh/common.c | verify_ssh_host_key | the SSH layer's host-key and CA store: the refusal named in the prompt or the Event Log
 FLAG | ssh/kex2-client.c | ssh2kex_coroutine | the SSH layer's host-key and CA store: the refusal named in the prompt or the Event Log
 FLAG | windows/console.c | console_confirm_ssh_host_key | the SSH layer's host-key and CA store: the refusal named in the prompt or the Event Log
-FLAG | windows/dialog.c | kitty_cfgbox_restore_pos | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
 FLAG | windows/dialog.c | kitty_inline_confirm | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
 FLAG | windows/dialog.c | kitty_inline_confirm_changed | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses
 FLAG | windows/dialog.c | win_seat_confirm_ssh_host_key | a panel, box or command: greys a control or names the refusal (readonly, a policy, conf=no) before the writer refuses

@@ -2892,8 +2892,8 @@ static int kitty_cfgbox_restore_pos(HWND hwnd)
         if (type == REG_BINARY && sz == 2 * sizeof(LONG))
             kitty_auxpos_seed(KR_DLGPOS_CONFIGBOX, (int)xy[0], (int)xy[1], 0, 0);
         free(xy);
-        if (!kitty_store_readonly())    /* readonly=yes: the old value stays */
-            kitty_settings_reg_del_at(base, KR_DLGPOS_CONFIGBOX);
+        /* readonly=yes: the module's delete leaves the old value */
+        kitty_settings_reg_del_at(base, KR_DLGPOS_CONFIGBOX);
         kitty_cfgpos_dbg("RESTORE carried the old WindowPos\\ConfigBox over");
     }
     sfree(base);

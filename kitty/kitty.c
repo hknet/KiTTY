@@ -351,9 +351,8 @@ void InitFolderList( void ) {
 			char * comma = strchr( fnew, ',' ) ;
 			if( comma ) *comma = '\0' ;
 			if( fnew[0] ) StringList_Add( &FolderList, fnew ) ;
-			/* readonly=yes: the key stays, and is applied again next start */
-			if( !kitty_inifile_write_blocked( KittyIniFile ) )
-				delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW ) ;
+			/* readonly=yes: delINI leaves the key, it is applied again next start */
+			delINI( KittyIniFile, KI_SECTION_FOLDER, KI_FOLDER_NEW ) ;
 			sfree( fnew ) ;
 			}
 	}
