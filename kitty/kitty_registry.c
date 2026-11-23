@@ -340,7 +340,11 @@ extern const char *kitty_registry_base( void ) ;
  * a buffer of its own size. */
 int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 	HKEY hKey, hDestKey ;
-	TCHAR achKey[MAX_KEY_LENGTH], achValue[MAX_VALUE_NAME] ;
+	/* the names in memory of the key's longest, plus its NUL: fixed
+	 * buffers one character short refused a name of 255 (ERROR_MORE_DATA),
+	 * the copy failed and the savemode=file park ended with exit code 1 */
+	char * achKey = NULL, * achValue = NULL ;
+	DWORD cbMaxSubKeyLen = 0, cbMaxValueNameLen = 0 ;
 	DWORD cbName, cchValue, cSubKeys = 0, cValues = 0, cbMaxValueData = 0 ;
 	DWORD i, type, size ;
 	LONG rc ;
@@ -353,14 +357,16 @@ int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 		SetLastError( (DWORD)rc ) ; return 0 ; }
 	if( ( rc = RegCreateKeyEx( hMainKey, TEXT(lpDestKey), 0, NULL, 0, KEY_WRITE, NULL, &hDestKey, NULL ) ) != ERROR_SUCCESS ) {
 		RegCloseKey( hKey ) ; SetLastError( (DWORD)rc ) ; return 0 ; }
-	if( ( rc = RegQueryInfoKey( hKey, NULL, NULL, NULL, &cSubKeys, NULL, NULL,
-	                            &cValues, NULL, &cbMaxValueData, NULL, NULL ) ) != ERROR_SUCCESS ) {
+	if( ( rc = RegQueryInfoKey( hKey, NULL, NULL, NULL, &cSubKeys, &cbMaxSubKeyLen, NULL,
+	                            &cValues, &cbMaxValueNameLen, &cbMaxValueData, NULL, NULL ) ) != ERROR_SUCCESS ) {
 		ok = 0 ; goto done ; }
 	data = (unsigned char *) malloc( cbMaxValueData ? cbMaxValueData : 1 ) ;
 	if( data == NULL ) { rc = ERROR_NOT_ENOUGH_MEMORY ; ok = 0 ; goto done ; }
+	achKey = snewn( cbMaxSubKeyLen + 1, char ) ;
+	achValue = snewn( cbMaxValueNameLen + 1, char ) ;
 
 	for( i = 0 ; i < cValues ; i++ ) {
-		cchValue = MAX_VALUE_NAME ;
+		cchValue = cbMaxValueNameLen + 1 ;
 		size = cbMaxValueData ;
 		rc = RegEnumValue( hKey, i, achValue, &cchValue, NULL, &type, data, &size ) ;
 		if( rc == ERROR_MORE_DATA ) {
@@ -368,7 +374,7 @@ int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 			unsigned char * bigger = (unsigned char *) realloc( data, size ) ;
 			if( bigger == NULL ) { rc = ERROR_NOT_ENOUGH_MEMORY ; ok = 0 ; goto done ; }
 			data = bigger ; cbMaxValueData = size ;
-			cchValue = MAX_VALUE_NAME ;
+			cchValue = cbMaxValueNameLen + 1 ;
 			rc = RegEnumValue( hKey, i, achValue, &cchValue, NULL, &type, data, &size ) ;
 		}
 		if( rc == ERROR_NO_MORE_ITEMS ) break ;
@@ -378,7 +384,7 @@ int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 
 	for( i = 0 ; i < cSubKeys ; i++ ) {
 		char * src, * dst ;
-		cbName = MAX_KEY_LENGTH ;
+		cbName = cbMaxSubKeyLen + 1 ;
 		rc = RegEnumKeyEx( hKey, i, achKey, &cbName, NULL, NULL, NULL, NULL ) ;
 		if( rc == ERROR_NO_MORE_ITEMS ) break ;
 		if( rc != ERROR_SUCCESS ) { ok = 0 ; goto done ; }
@@ -391,6 +397,8 @@ int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 	}
   done:
 	free( data ) ;
+	sfree( achKey ) ;
+	sfree( achValue ) ;
 	RegCloseKey( hDestKey ) ;
 	RegCloseKey( hKey ) ;
 	if( !ok ) SetLastError( rc != ERROR_SUCCESS ? (DWORD)rc : ERROR_WRITE_FAULT ) ;
@@ -401,12 +409,12 @@ int kitty_RegCopyTree( HKEY hMainKey, LPCTSTR lpSubKey, LPCTSTR lpDestKey ) {
 BOOL RegCleanPuTTY( void ) {
 	HKEY hKey, hSubKey ;
 	DWORD retCode, i;
-	TCHAR    achKey[MAX_KEY_LENGTH];   // buffer for subkey name
+	char    *achKey = NULL;            // the longest subkey name, plus its NUL
 	DWORD    cbName;                   // size of name string 
 	TCHAR    achClass[MAX_PATH] = TEXT("");  // buffer for class name 
 	DWORD    cchClassName = MAX_PATH;  // size of class string 
 	DWORD    cSubKeys=0;               // number of subkeys 
-	DWORD    cbMaxSubKey;              // longest subkey size 
+	DWORD    cbMaxSubKey = 0;          // longest subkey name, in characters
 	DWORD    cchMaxClass;              // longest class string 
 	DWORD    cValues;              // number of values for key 
 	DWORD    cchMaxValue;          // longest value name 
@@ -456,9 +464,10 @@ BOOL RegCleanPuTTY( void ) {
         &ftLastWriteTime);
 	
 	// Enumerate the subkeys, until RegEnumKeyEx fails.
-	if (cSubKeys) {  //printf( "\nNumber of subkeys: %d\n", cSubKeys);
+	if (retCode == ERROR_SUCCESS && cSubKeys) {  //printf( "\nNumber of subkeys: %d\n", cSubKeys);
+		achKey = snewn( cbMaxSubKey + 1, char ) ;
 		for (i=0; i<cSubKeys; i++) { 
-			cbName = MAX_KEY_LENGTH;
+			cbName = cbMaxSubKey + 1;
 			if( ( retCode = RegEnumKeyEx(hKey, i, achKey, &cbName,NULL,NULL,NULL, &ftLastWriteTime) ) == ERROR_SUCCESS ) {
 				buffer = (char*) malloc( strlen( achKey ) + 50 ) ;
 				sprintf( buffer, "Software\\SimonTatham\\PuTTY\\Sessions\\%s\\Commands", achKey ) ;
@@ -585,6 +594,7 @@ BOOL RegCleanPuTTY( void ) {
 			}
 		} 
  
+	sfree( achKey ) ;
 	RegCloseKey( hKey ) ;
 	
 	return 1;

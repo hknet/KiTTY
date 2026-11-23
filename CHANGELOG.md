@@ -139,6 +139,11 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   scroll bar was held and for every click on an arrow or the track and
   every turn of the wheel. The terminal now keeps showing output. The Event
   Log's list moves at once, without Windows' smooth scrolling (for now).
+- With `savemode=file`, KiTTY++ stopped at its start with "could not set
+  your registry sessions aside" when a session name had 255 characters
+  (the registry's limit). Value names of the longest length (16383
+  characters) failed the same way. Both are now copied. Removing KiTTY's
+  values from PuTTY's sessions also reads such names now.
 
 ## 0.85.1.21-beta — 2026-11-14
 

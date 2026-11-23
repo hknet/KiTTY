@@ -294,7 +294,6 @@ kitty/kitty_registry.c | QuerySubKey() | achKey | MAX_KEY_LENGTH + 1 | registry 
 kitty/kitty_registry.c | QuerySubKey() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
 kitty/kitty_registry.c | InitAllSessions() | chunk | 4096 | fread chunk of the .ses.updt file, size passed; appended to a growing strbuf
 kitty/kitty_registry.c | RegDelTree() | szName | MAX_PATH | subkey name from RegEnumKeyEx (size passed, key names at most 255); the child path is built with dupprintf
-kitty/kitty_registry.c | kitty_RegCopyTree() | achValue | MAX_VALUE_NAME | registry value name (MAX_VALUE_NAME = 16383, the registry limit), size passed
 kitty/kitty_registry.c | RegCleanPuTTY() | achClass | MAX_PATH | class-name buffer for RegQueryInfoKey/RegEnumKeyEx, its size passed as cchClass; class names are not used
 kitty/kitty_registry.c | defapps_register() | key | 300 | registry key path, not a file path: fixed capabilities key plus \URLAssociations
 kitty/kitty_registry.c | RemoveSSHHandler() | key | 512 | registry key path, not a file path: Software\Classes\<proto>[\shell\open\command] for fixed protocol names
