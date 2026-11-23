@@ -789,6 +789,25 @@ bool kitty_d2d_gdi_font(void)
     ReadParameterN(KI_SECTION_KITTY, KI_D2DGDIFONT, v, sizeof(v));
     return stricmp(v, "yes") == 0;
 }
+/* Terminal > Renderer > Bugs: [KiTTY] d2ddisplayrepair, what a Direct2D
+ * window does after a display mode or work area change (windows/window.c
+ * kitty_d2d_display_repair, hknet/KiTTY#88). Read at each change, so a new
+ * choice applies to open windows. */
+static const struct kset_choice kset_disprepair_choices[] = {
+    { KT_KSET_WD_DR_NO, "no", 0 },         { KT_KSET_WD_DR_MOVE, "move", 1 },
+    { KT_KSET_WD_DR_RESIZE, "resize", 2 }, { KT_KSET_WD_DR_HIDE, "hide", 3 } };
+/* 0 nothing (the default, also for an unknown word), 1 move, 2 resize,
+ * 3 hide and show */
+int kitty_d2d_display_repair_mode(void)
+{
+    char v[16] = "";
+    size_t i;
+    ReadParameterN(KI_SECTION_KITTY, KI_D2DDISPLAYREPAIR, v, sizeof(v));
+    for (i = 0; i < lenof(kset_disprepair_choices); i++)
+        if (!stricmp(v, kset_disprepair_choices[i].stored))
+            return kset_disprepair_choices[i].value;
+    return 0;
+}
 static void kset_set_framepace(int v)
 {
     char buf[16];
@@ -917,6 +936,9 @@ static const struct kset_key kset_keys[] = {
       NULL, NULL, kset_renderer_choices, lenof(kset_renderer_choices) },
     /* read when a Direct2D window is created (kitty_d2d_gdi_font) */
     { INIT_SECTION, KI_D2DGDIFONT,     KSET_BOOL, false, NULL, NULL, NULL, 0, 0, 0 },
+    /* read at each display change (kitty_d2d_display_repair_mode) */
+    { INIT_SECTION, KI_D2DDISPLAYREPAIR, KSET_CHOICE, false, NULL, NULL, NULL, 0, 0, 0,
+      NULL, NULL, kset_disprepair_choices, lenof(kset_disprepair_choices) },
     { INIT_SECTION, KI_FRAMEPACE,     KSET_CHOICE, false, NULL, kset_set_framepace, NULL, 0, 0, -1,
       NULL, NULL, kset_framepace_choices, lenof(kset_framepace_choices) },
     { INIT_SECTION, KI_CTXTINT,        KSET_CHOICE, false, NULL, kset_set_ctxtint, NULL, 0, 0, 10,

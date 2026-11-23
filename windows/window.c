@@ -1021,6 +1021,10 @@ extern void kitty_mpw_session_ended(void);              /* kitty_mpw_gui.c */
  * dupstr the receiver frees) - posted, so a line logged on another thread
  * shows on the window's own. */
 #define WM_KITTY_EVLOG_NOTE (WM_APP + 77)
+/* Posted at a display mode or work area change: the repair [KiTTY]
+ * d2ddisplayrepair picks runs once Windows has handled the change
+ * (kitty_d2d_display_repair, hknet/KiTTY#88). */
+#define WM_KITTY_D2D_DISPLAY_REPAIR (WM_APP + 79)
 #define TIMER_AUTOCOMMAND 8702
 /* Anti-idle: periodically send a keepalive string (CONF_antiidle). */
 #define TIMER_ANTIIDLE 8703
@@ -2654,6 +2658,79 @@ static bool kitty_win_scroll_rows(TermWin *tw, int top, int bot, int lines);
 /* KiTTY cursor layer (beside wintw_draw_text) */
 static void kitty_clayer_frame_end(WinGuiSeat *wgs);
 static void kitty_clayer_blink(TermWin *tw, int half, bool ease);
+
+#ifdef MOD_PERSO
+/* hknet/KiTTY#88: after a display mode or work area change some systems
+ * (Windows 10, Intel HD 530) keep a Direct2D window's picture up and left
+ * of its place - the compositor loses the client area's offset while
+ * Windows reports the window's geometry right. Moving the window one pixel
+ * and back, making it one pixel wider and back, or hiding and showing it
+ * makes the compositor place the picture again. [KiTTY] d2ddisplayrepair
+ * picks one, nothing by default. A window hidden (tray, launcher) or
+ * minimised shows nothing to misplace and is left alone: its showing again
+ * places it anew. Move and wider skip a maximised window. */
+static void kitty_d2d_display_repair(WinGuiSeat *wgs)
+{
+    const UINT f = SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+    int mode = kitty_d2d_display_repair_mode();
+    HWND h;
+    RECT r;
+    if (!wgs || !mode || !kitty_painter_is_d2d(wgs->painter))
+        return;
+    h = wgs->term_hwnd;
+    if (!IsWindowVisible(h) || IsIconic(h))
+        return;
+    if (mode != 3 && IsZoomed(h)) {
+        char *line = dupprintf(KT_D2D_DISPREPAIR_MAX_EVENT,
+                               mode == 1 ? "move" : "resize");
+        logevent(wgs->logctx, line);
+        sfree(line);
+        return;
+    }
+    GetWindowRect(h, &r);
+    switch (mode) {
+      case 1:
+        SetWindowPos(h, NULL, r.left + 1, r.top, 0, 0, f | SWP_NOSIZE);
+        SetWindowPos(h, NULL, r.left, r.top, 0, 0, f | SWP_NOSIZE);
+        logevent(wgs->logctx, KT_D2D_DISPREPAIR_MOVE_EVENT);
+        break;
+      case 2:
+        /* wider, not narrower: a narrower window could lose a column */
+        SetWindowPos(h, NULL, 0, 0, r.right - r.left + 1, r.bottom - r.top, f | SWP_NOMOVE);
+        SetWindowPos(h, NULL, 0, 0, r.right - r.left, r.bottom - r.top, f | SWP_NOMOVE);
+        logevent(wgs->logctx, KT_D2D_DISPREPAIR_RESIZE_EVENT);
+        break;
+      default: {
+        /* without Windows' hide and show animation
+         * (DWMWA_TRANSITIONS_FORCEDISABLED, 3). A window in front is put
+         * in front again. */
+        typedef HRESULT (WINAPI *dwmset_t)(HWND, DWORD, LPCVOID, DWORD);
+        static dwmset_t dwmset;
+        static bool tried;
+        BOOL on = TRUE, off = FALSE;
+        bool front = GetForegroundWindow() == h;
+        if (!tried) {
+            HMODULE dwm = load_system32_dll("dwmapi.dll");
+            tried = true;
+            dwmset = dwm ? (dwmset_t)(void *)GetProcAddress(
+                               dwm, "DwmSetWindowAttribute") : NULL;
+        }
+        if (dwmset)
+            dwmset(h, 3, &on, sizeof(on));
+        ShowWindow(h, SW_HIDE);
+        if (front) {
+            ShowWindow(h, SW_SHOW);
+            SetForegroundWindow(h);
+        } else
+            ShowWindow(h, SW_SHOWNA);
+        if (dwmset)
+            dwmset(h, 3, &off, sizeof(off));
+        logevent(wgs->logctx, KT_D2D_DISPREPAIR_HIDE_EVENT);
+        break;
+      }
+    }
+}
+#endif
 
 #ifdef KITTY_TEST_BUILD_LABEL
 /* hknet/KiTTY#88 test builds: the Direct2D picture sits up and left by the
@@ -6729,6 +6806,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
     }
 #endif
 #ifdef MOD_PERSO
+    /* KiTTY, hknet/KiTTY#88: a display mode or work area change - the
+     * repair (kitty_d2d_display_repair) is posted, so it runs after Windows
+     * has handled the change, once per change */
+    if (message == WM_DISPLAYCHANGE ||
+        (message == WM_SETTINGCHANGE && wParam == SPI_SETWORKAREA))
+        PostMessage(hwnd, WM_KITTY_D2D_DISPLAY_REPAIR, 0, 0);
     /* KiTTY: the taskbar button was (re)created - Explorer restarted - so a
      * host's taskbar progress (OSC 9;4) goes back on it. A registered
      * message, so it cannot be a case label; it carries on to the default. */
@@ -9706,6 +9789,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         }
         return 0;
 #ifdef MOD_PERSO
+      case WM_KITTY_D2D_DISPLAY_REPAIR:
+        kitty_d2d_display_repair(wgs);
+        return 0;
       case WM_SETTINGCHANGE:
         /* KiTTY: the system switched between light and dark - a frame that
          * follows the system (Appearance = follow the system) follows now,

@@ -2516,9 +2516,9 @@ AutoHotkey v2: \W{https://github.com/hknet/KiTTY/blob/kitty-0.85/docs/SCRIPTING.
 
 \S{kitty-cfg-kset-window} The Terminal panel (KiTTY++ Settings)
 
-How the terminal windows look and behave, for every session. Two
-leaves below this panel hold the rest: \k{kitty-cfg-kset-fontfb} and
-\k{kitty-cfg-kset-printing}.
+How the terminal windows look and behave, for every session. Three
+leaves below this panel hold the rest: \k{kitty-cfg-kset-renderer},
+\k{kitty-cfg-kset-fontfb} and \k{kitty-cfg-kset-printing}.
 
 \b \q{Title bar & Notifications}: \q{Show status information in the title bar} enables the size suffix,
 the PROTECTED, ONTOP, BROADCAST and RESTRICTED markers and what a program on
@@ -2540,23 +2540,7 @@ default); \q{Show the terminal size in the
 title} adds the live \c{[24x80]}; \q{Double-click the title bar rolls
 the window up} is the roll-up feature.
 
-\b \q{Terminal Features} starts with how the terminal window is painted.
-\q{Renderer} is Direct2D (the default), which draws on the graphics card
-and needs Windows 8.1 or newer, or GDI, which every Windows has. On an
-older Windows the entry reads \q{Direct2D (Win8.1+ only)}, cannot be
-chosen and GDI is used. Direct2D works with \q{Window transparency} too:
-a window that may be dimmed is layered from its creation. A window opened
-while transparency is off stays opaque.
-\q{Direct2D: use GDI font selection} makes Direct2D draw with the font
-face GDI selects for the session's font. It helps a font family that
-puts more than four weights under one legacy name, where Direct2D can
-pick a thinner face than GDI. It applies to new terminal windows.
-\q{Frame pacing} is
-how often the window repaints
-while output streams in: \q{Follow the display} means one frame per
-refresh of whatever display the window is on, \q{30fps} and \q{20fps}
-cap it, and \q{PuTTY's fixed (20ms)} is the pause PuTTY always had. Both
-apply to terminal windows opened afterwards. The checkboxes enable or
+\b \q{Terminal Features}: the checkboxes enable or
 disable Ctrl+Tab window switching (also needs the per-session switch in
 Window > Behaviour), window transparency, background images
 and hyperlinks in the terminal; a disabled feature's panels and menu
@@ -2590,9 +2574,44 @@ into a running launcher and otherwise to its own icon; it never starts
 a launcher.
 
 The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{wintitle}, \c{size},
-\c{winroll}, \c{renderer}, \c{d2dgdifont}, \c{framepace}, \c{ctrltab},
-\c{transparency}, \c{bgimage}, \c{hyperlink}, \c{slidedelay},
-\c{shrinkbitmap}, \c{sendtermenv} and \c{traymode}.
+\c{winroll}, \c{ctrltab}, \c{transparency}, \c{bgimage}, \c{hyperlink},
+\c{slidedelay}, \c{shrinkbitmap}, \c{sendtermenv} and \c{traymode}.
+
+\S{kitty-cfg-kset-renderer} The Renderer leaf (under Terminal)
+
+How the terminal window is drawn, for every session.
+
+\b \q{Renderer} is Direct2D (the default), which draws on the graphics
+card and needs Windows 8.1 or newer, or GDI, which every Windows has. On
+an older Windows the entry reads \q{Direct2D (Win8.1+ only)}, cannot be
+chosen and GDI is used. Direct2D works with \q{Window transparency}
+(\k{kitty-cfg-kset-window}) too: a window that may be dimmed is layered
+from its creation. A window opened while transparency is off stays
+opaque.
+
+\b \q{Direct2D: use GDI font selection} makes Direct2D draw with the font
+face GDI selects for the session's font. It helps a font family that
+puts more than four weights under one legacy name, where Direct2D can
+pick a thinner face than GDI. It applies to new terminal windows.
+
+\b \q{Frame pacing} is how often the window repaints while output
+streams in: \q{Follow the display} means one frame per refresh of
+whatever display the window is on. \q{30fps} and \q{20fps} cap it.
+\q{PuTTY's fixed (20ms)} is the pause PuTTY always had. The renderer and
+the frame pacing apply to terminal windows opened afterwards.
+
+\b \q{Bugs}, \q{After a display mode or work area change (Direct2D)}:
+on some systems the compositor keeps a Direct2D window's picture up and
+left of its place after the display woke or changed mode (seen on
+Windows 10 with Intel HD 530 graphics). \q{Move the window one pixel and
+back}, \q{Make the window one pixel wider and back} or \q{Hide and show
+the window} (without Windows' animation) makes it place the picture again
+right after each such change. Move and wider skip a maximised window.
+Each repair writes a line to the Terminal Window's Event Log. \q{Do
+nothing} is the default. It applies to open windows at once.
+
+The keys in \c{kitty.ini}, under \c{[KiTTY]}: \c{renderer},
+\c{d2dgdifont}, \c{framepace} and \c{d2ddisplayrepair}.
 
 \S{kitty-cfg-kset-fontfb} The Font Fallback leaf (under Terminal)
 
@@ -2600,7 +2619,7 @@ A terminal font rarely has every character a host sends: box drawing,
 Nerd Font icons, CJK, symbols. \i{Font fallback} draws such a character
 from another font that has it, in the same cell, so the columns stay
 where they are. How far it reaches depends on the renderer chosen on
-\k{kitty-cfg-kset-window}.
+\k{kitty-cfg-kset-renderer}.
 
 \b With \e{GDI}, a missing character is looked
 up in \c{override} below, then a fixed built-in list of fonts, tried

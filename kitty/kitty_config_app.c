@@ -3938,10 +3938,6 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
                         HELPCTX(kitty_appearance), kitty_sharedpos_reset_handler, I(0));
     }
     s = ctrl_getset(b, KSET_PATH("Terminal"), "features", KT_KSET_WD_FEATURES);
-    KSET_DROPLIST(s, KT_KSET_WD_RENDERER, KI_RENDERER, kitty_kset_window);
-    KSET_CHECKBOX(s, KT_KSET_WD_D2DGDIFONT, KI_D2DGDIFONT, kitty_kset_window);
-    KSET_DROPLIST(s, KT_KSET_WD_FRAMEPACE, KI_FRAMEPACE, kitty_kset_window);
-    ctrl_text(s, KT_KSET_WD_RENDERER_NOTE, HELPCTX(kitty_kset_window));
     KSET_CHECKBOX(s, KT_KSET_WD_CTRLTAB, KI_CTRLTAB, kitty_kset_window);
     KSET_CHECKBOX(s, KT_KSET_WD_TRANSPARENCY, KI_TRANSPARENCY, kitty_kset_window);
     m = KSET_MASTER_CHECKBOX(s, KT_KSET_WD_BGIMAGE, KI_BGIMAGE, kitty_kset_window);
@@ -3960,6 +3956,22 @@ static void scb_panel_kitty_settings_leaves(struct controlbox *b)
     KSET_FILESEL(s, KT_KSET_WD_ICONFILE, KT_KSET_WD_ICONFILE_SELECT, KI_ICONFILE, kitty_appearance);
     ctrl_text(s, KT_KSET_WD_ICONFILE_NOTE, HELPCTX(kitty_appearance));
     KSET_CHECKBOX(s, KT_KSET_WD_SESSIONICONS, KI_SESSIONICONS, kitty_appearance);
+
+    /* Terminal > Renderer, the first leaf under Terminal: how the window is
+     * drawn. In Bugs: what a Direct2D window does after a display mode or
+     * work area change (hknet/KiTTY#88: a compositor that keeps the picture
+     * at the wrong place). The repair list has its label above it: the
+     * entries are too long for the half-width droplist beside a label. */
+    ctrl_settitle(b, KSET_PATH("Terminal/Renderer"), KT_KSET_WD_RENDERER_TITLE);
+    s = ctrl_getset(b, KSET_PATH("Terminal/Renderer"), "renderer", KT_KSET_WD_RENDERER_GROUP);
+    KSET_DROPLIST(s, KT_KSET_WD_RENDERER, KI_RENDERER, kitty_kset_renderer);
+    KSET_CHECKBOX(s, KT_KSET_WD_D2DGDIFONT, KI_D2DGDIFONT, kitty_kset_renderer);
+    KSET_DROPLIST(s, KT_KSET_WD_FRAMEPACE, KI_FRAMEPACE, kitty_kset_renderer);
+    ctrl_text(s, KT_KSET_WD_RENDERER_NOTE, HELPCTX(kitty_kset_renderer));
+    s = ctrl_getset(b, KSET_PATH("Terminal/Renderer"), "bugs", KT_KSET_WD_BUGS);
+    ctrl_droplist(s, KT_KSET_WD_DISPREPAIR, NO_SHORTCUT, 100, HELPCTX(kitty_kset_renderer),
+                  kitty_kset_handler, KSET(KI_D2DDISPLAYREPAIR));
+    ctrl_text(s, KT_KSET_WD_DISPREPAIR_NOTE, HELPCTX(kitty_kset_renderer));
 
     /* Terminal > Font Fallback: the master switch greys the list below it.
      * [FontFallback] is stored as every setting is: the registry (its own

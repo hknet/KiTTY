@@ -3008,6 +3008,11 @@ bool kitty_d2d_test_new_device(KittyPainter *p)
 #endif
 }
 
+bool kitty_painter_is_d2d(KittyPainter *p)
+{
+    return p && p->vt == &d2d_vt;
+}
+
 bool kitty_d2d_test_new_buffers(KittyPainter *p)
 {
 #ifdef KITTY_TEST_BUILD_LABEL

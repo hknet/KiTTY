@@ -56,6 +56,9 @@ bool kitty_renderer_is_d2d(void);
 /* [KiTTY] d2dgdifont=yes: Direct2D takes the font face GDI selected, read
  * once per Direct2D window (windows/paint-d2d.c). */
 bool kitty_d2d_gdi_font(void);
+/* [KiTTY] d2ddisplayrepair: 0 nothing, 1 move, 2 resize, 3 hide and show
+ * (kitty_config_shared.c, used by windows/window.c kitty_d2d_display_repair) */
+int kitty_d2d_display_repair_mode(void);
 /* readonly=yes: a control whose action writes the settings store is greyed
  * (on every EVENT_REFRESH) and its action refused. True: the event stops. */
 bool kitty_cfg_ro_control(struct dlgcontrol *ctrl, struct dlgparam *dlg, int event);

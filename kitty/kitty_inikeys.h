@@ -31,6 +31,7 @@
 #define KI_CRYPTSALT                        "cryptsalt"
 #define KI_CTRLTAB                          "ctrltab"
 #define KI_D2DGDIFONT                       "d2dgdifont"
+#define KI_D2DDISPLAYREPAIR                 "d2ddisplayrepair"
 #define KI_DEBUG                            "debug"
 #define KI_DOWNLOADDIR                      "downloaddir"
 #define KI_FILEEXTENSION                    "fileextension"

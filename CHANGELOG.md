@@ -41,6 +41,16 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   [docs/GROUP-POLICY.md](docs/GROUP-POLICY.md). The template is a separate
   download next to the installers, `kittypp-policy-templates-<version>.zip`.
 
+- A Direct2D window can place its picture again after a display change
+  (Application > KiTTY++ Settings > Terminal > Renderer, group Bugs,
+  `[KiTTY] d2ddisplayrepair`, off by default). On some systems the
+  compositor keeps the picture up and left of its place after the display
+  woke or changed mode (seen on Windows 10 with Intel HD 530 graphics). The
+  window can move one pixel and back, get one pixel wider and back, or hide
+  and show without Windows' animation, right after each display mode or
+  work area change. Each repair writes a line to the Terminal Window's Event
+  Log. Refs hknet/KiTTY#88
+
 ### Changed
 
 - The SSH agent check (`[KiTTY] verifyagent`) runs before the first
@@ -115,6 +125,10 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   Settings > Security. A stored `lockdownmode=yes` turns both on once at
   kageant's start. While the tray's "Lock agent" holds, the Key List's
   title shows "(LOCKED)".
+
+- The renderer, "Direct2D: use GDI font selection" and the frame pacing
+  moved from Application > KiTTY++ Settings > Terminal to its new leaf
+  Renderer.
 
 ### Fixed
 

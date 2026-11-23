@@ -1774,6 +1774,24 @@
 #define KT_KSET_WD_FP_20                             "20fps"
 #define KT_KSET_WD_FP_FIXED                          "PuTTY's fixed (20ms)"
 #define KT_KSET_WD_RENDERER_NOTE                     "Renderer and frame pacing apply to new terminal windows only."
+/* Terminal > Renderer: how the window is drawn. Bugs: the repairs for a
+ * compositor that misplaces the Direct2D picture (hknet/KiTTY#88) */
+#define KT_KSET_WD_RENDERER_TITLE                    "How the terminal window is drawn"
+#define KT_KSET_WD_RENDERER_GROUP                    "Renderer"
+#define KT_KSET_WD_BUGS                              "Bugs"
+#define KT_KSET_WD_DISPREPAIR                        "After a display mode or work area change (Direct2D):"
+#define KT_KSET_WD_DR_NO                             "Do nothing (default)"
+#define KT_KSET_WD_DR_MOVE                           "Move the window one pixel and back"
+#define KT_KSET_WD_DR_RESIZE                         "Make the window one pixel wider and back"
+#define KT_KSET_WD_DR_HIDE                           "Hide and show the window"
+#define KT_KSET_WD_DISPREPAIR_NOTE                   "For a terminal picture that sits up and left of its place after the " \
+        "display woke or changed mode. Move and wider skip a maximised window."
+/* the Terminal Window's Event Log, window.c: the repair [KiTTY]
+ * d2ddisplayrepair made after a display mode or work area change */
+#define KT_D2D_DISPREPAIR_MOVE_EVENT                 "Direct2D renderer: window moved one pixel and back after a display change (d2ddisplayrepair=move)"
+#define KT_D2D_DISPREPAIR_RESIZE_EVENT               "Direct2D renderer: window made one pixel wider and back after a display change (d2ddisplayrepair=resize)"
+#define KT_D2D_DISPREPAIR_HIDE_EVENT                 "Direct2D renderer: window hidden and shown after a display change (d2ddisplayrepair=hide)"
+#define KT_D2D_DISPREPAIR_MAX_EVENT                  "Direct2D renderer: no repair after a display change, the window is maximised (d2ddisplayrepair=%s)"
 #define KT_KSET_WD_CTRLTAB                           "Ctrl+Tab window switching (needs per Session Setting too)"
 #define KT_KSET_WD_TRANSPARENCY                      "Window transparency"
 #define KT_KSET_WD_SENDTERMENV                       "Send COLORTERM and TERM_PROGRAM to the server"

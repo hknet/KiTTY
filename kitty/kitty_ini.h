@@ -459,14 +459,14 @@ char default_init_file_content[] =
 ;    a Direct2D window that may be transparent is layered from its\n\
 ;    creation; one opened opaque stays opaque, and a transparency change\n\
 ;    applies to the next window. Also on the configuration window,\n\
-;    Application > KiTTY++ Settings > Terminal.\n\
+;    Application > KiTTY++ Settings > Terminal > Renderer.\n\
 ;renderer=d2d\n\
 \n\
 ; d2dgdifont: yes = Direct2D draws with the font face GDI selects for the\n\
 ; session's font. Helps a font family that puts more than four weights\n\
 ; under one legacy name, where Direct2D can pick a thinner face than GDI.\n\
 ; Applies to new terminal windows. Also on the configuration window,\n\
-;    Application > KiTTY++ Settings > Terminal.\n\
+;    Application > KiTTY++ Settings > Terminal > Renderer.\n\
 ;d2dgdifont=no\n\
 \n\
 ; framepace: how often the window may repaint while output streams in.\n\
@@ -480,6 +480,17 @@ char default_init_file_content[] =
 ;    Painting never takes more than half the time in any case, so a large\n\
 ;    window on a slow machine paces itself down instead of stalling.\n\
 ;framepace=auto\n\
+\n\
+; d2ddisplayrepair: what a Direct2D window does after a display mode or work\n\
+;    area change, for a system whose compositor then keeps the terminal\n\
+;    picture up and left of its place (seen on Windows 10 with Intel HD 530\n\
+;    graphics). no (the default): nothing. move: the window moves one pixel\n\
+;    and back. resize: it gets one pixel wider and back. hide: it is hidden\n\
+;    and shown, without Windows' animation. move and resize skip a maximised\n\
+;    window. Each repair writes a line to the Terminal Window's Event Log.\n\
+;    Also on the configuration window,\n\
+;    Application > KiTTY++ Settings > Terminal > Renderer, group Bugs.\n\
+;d2ddisplayrepair=no\n\
 \n\
 ; traymode: where a window goes when it is sent to the tray (the system menu\n\
 ;    entry, its shortcut, Ctrl+middle-click, a right click or a Ctrl+click on\n\
