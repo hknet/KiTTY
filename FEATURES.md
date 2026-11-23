@@ -100,6 +100,7 @@ AI agentic use cases: [docs/AGENTIC-USE.md](docs/AGENTIC-USE.md) is for the huma
   - [Program status (OSC 7501) and prompt marks (OSC 133)](#program-status-osc-7501-and-prompt-marks-osc-133)
   - [Contexts (OSC 3008)](#contexts-osc-3008)
   - [far2l keys and mouse](#far2l-keys-and-mouse)
+  - [Keys for programs that request them (kitty keyboard protocol, modifyOtherKeys)](#keys-for-programs-that-request-them-kitty-keyboard-protocol-modifyotherkeys)
   - [far2l images](#far2l-images)
   - [Inline images (kitty graphics protocol)](#inline-images-kitty-graphics-protocol)
   - [Inline images (iTerm2 OSC 1337)](#inline-images-iterm2-osc-1337)
@@ -1660,6 +1661,18 @@ Only while far2l has the extensions on: when it exits (or the terminal is reset)
 While the key events are on, the window title ends in `[far2l keys]`. A notice near the clock, titled with the session name, reports when they turn on ("Keyboard: all keys go to far2l on the host. KiTTY++ shortcuts are off until far2l ends.") and off again ("Keyboard: far2l ended. KiTTY++ shortcuts are back."), whatever the host-notification setting; a state that lasts less than a second gets no notice.
 
 **How to enable:** nothing to set; far2l requests it when it starts.
+
+(no screenshot)
+
+### Keys for programs that request them (kitty keyboard protocol, modifyOtherKeys)
+
+A program that pushes kitty keyboard protocol flags (`CSI > flags u`) gets keys the way the protocol defines them: `CSI code ; modifiers u` with Shift, Alt, Ctrl, Super and the lock keys told apart, Escape and Ctrl+key unambiguous, repeat and release events, the shifted and base-layout key, every key as an escape code, the text a key types. Push, pop, set and query (`CSI ? u`) work, with one stack per screen, cleared by a reset. Neovim, Helix, fish and the pi coding agent request it.
+
+A program that sends xterm's `CSI > 4 ; 2 m` (modifyOtherKeys) gets keys with modifiers as `CSI 27 ; mod ; key ~`: Shift+Enter, Alt+Enter, Ctrl+- and the like arrive as themselves instead of as Enter, Esc+Enter or nothing. Level 1 and the query `CSI ? 4 m` work too. When a program requests both, the kitty keyboard protocol is used.
+
+KiTTY++'s own shortcuts and scroll keys keep priority. Without a request every key is sent as before.
+
+**How to enable:** nothing to set, the program requests it.
 
 (no screenshot)
 
