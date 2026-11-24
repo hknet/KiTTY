@@ -1718,7 +1718,9 @@ static void start_backend_connect(WinGuiSeat *wgs)
 static void start_backend_connect_ex(WinGuiSeat *wgs, const char *refusal)
 {
     const struct BackendVtable *vt;
-    char *error, *realhost;
+    /* KiTTY: realhost NULL - a refused knock and a backend that fails before
+     * naming a host both reach connect_failed, which frees it */
+    char *error, *realhost = NULL;
     int i;
 
     if (refusal) {
