@@ -56,6 +56,8 @@ bool kitty_renderer_is_d2d(void);
 /* [KiTTY] d2dgdifont=yes: Direct2D takes the font face GDI selected, read
  * once per Direct2D window (windows/paint-d2d.c). */
 bool kitty_d2d_gdi_font(void);
+/* [KiTTY] renderer=d2dcomp on a Windows that has Direct2D (8.1+) */
+bool kitty_renderer_is_d2dcomp(void);
 /* [KiTTY] d2ddisplayrepair: 0 nothing, 1 move, 2 resize, 3 hide and show
  * (kitty_config_shared.c, used by windows/window.c kitty_d2d_display_repair) */
 int kitty_d2d_display_repair_mode(void);

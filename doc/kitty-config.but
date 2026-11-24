@@ -2584,7 +2584,13 @@ How the terminal window is drawn, for every session.
 \b \q{Renderer} is Direct2D (the default), which draws on the graphics
 card and needs Windows 8.1 or newer, or GDI, which every Windows has. On
 an older Windows the entry reads \q{Direct2D (Win8.1+ only)}, cannot be
-chosen and GDI is used. Direct2D works with \q{Window transparency}
+chosen and GDI is used. \q{Direct2D composition (new)} draws as Direct2D
+does, but shows the picture through a composition visual of KiTTY++'s
+own on a window without a redirection surface, for a system whose
+compositor places the Direct2D picture wrong. Such a window draws its
+own scroll bar, with the failed-command and search marks inside it.
+Where the composition cannot be made the window uses Direct2D, with a
+line in its Event Log. Direct2D works with \q{Window transparency}
 (\k{kitty-cfg-kset-window}) too: a window that may be dimmed is layered
 from its creation. A window opened while transparency is off stays
 opaque.

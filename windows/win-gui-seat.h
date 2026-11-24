@@ -66,6 +66,17 @@ struct WinGuiSeat {
     bool font_dualwidth, font_varpitch;
     int offset_width, offset_height;
     bool strip_dirty;  /* KiTTY: the mark strip is drawn in the next frame */
+    /* KiTTY: renderer=d2dcomp - the window was made without a redirection
+     * surface, so it draws its own scroll bar in the strip (kitty_sb_*):
+     * Windows' bar in the non-client area would not show. sb_total/start/
+     * page: what the terminal last set (wintw_set_scrollbar). sb_drag: the
+     * thumb is held, sb_grab pixels below its top. sb_repeat: the track is
+     * held, -1 up / +1 down, sb_y the pointer then. sb_hover: what the
+     * pointer is over (0 nothing, 1 the track, 2 the thumb). */
+    bool comp_window;
+    int sb_total, sb_start, sb_page;
+    bool sb_drag, sb_tracking;
+    int sb_grab, sb_repeat, sb_y, sb_hover;
     /* KiTTY: the cursor on the painter's layer (kitty_clayer_*): on = the
      * terminal knows (term_set_cursor_layer); in = drawing into it now. Per
      * frame: drawn = the cursor was drawn at `rect`, covered = text was drawn

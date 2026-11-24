@@ -1145,6 +1145,14 @@ static UINT wm_mousewheel = WM_MOUSEWHEEL;
 HWND kitty_hwnd_parent = NULL;
 static HWND kitty_hwnd_parent_main = NULL;
 #define KITTY_EMBEDDED() (kitty_hwnd_parent != NULL)
+/* KiTTY renderer=d2dcomp: kitty_win_recreating - the window is being
+ * destroyed to be made again for plain Direct2D (WinMain).
+ * kitty_comp_fallback_step - the painter's failed step for the Event Log
+ * line (0 = no such fallback). */
+static bool kitty_win_recreating;
+static unsigned long kitty_comp_fallback_step;
+/* KiTTY renderer=d2dcomp: the held track pages again (kitty_sb_mouse) */
+#define TIMER_SB_REPEAT 8720   /* free across window.c + kitty.c timer ids */
 /* #554: the host may embed us WITHOUT -hwndparent by reparenting our window
  * itself (this is what mRemoteNG actually does). So detect embedding at runtime:
  * the effective host is the explicit -hwndparent, else our actual parent window.
@@ -3573,8 +3581,22 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
          * asked once, here, for this style and for the painter below, so
          * the two cannot disagree (kitty_renderer_is_d2d). */
         bool kitty_want_d2d = kitty_renderer_is_d2d();
+        /* renderer=d2dcomp (hknet/KiTTY#88): no redirection surface, so the
+         * compositor shows only our own composition visual (paint-d2d.c).
+         * Windows' scroll bar cannot show on such a window: it draws its
+         * own (kitty_sb_*). Transparency stays the layered alpha, which dims
+         * the visual and the frame alike (measured). Not for a window
+         * embedded in another program (#554): unmeasured there. */
+        bool kitty_want_comp = kitty_want_d2d && kitty_renderer_is_d2dcomp() &&
+                               !KITTY_EMBEDDED();
+        if (kitty_want_comp) {
+            exwinmode |= 0x00200000;   /* WS_EX_NOREDIRECTIONBITMAP, Windows 8 */
+            winmode &= ~WS_VSCROLL;
+        }
+        wgs->comp_window = kitty_want_comp;
         if (kitty_want_d2d && GetTransparencyFlag())
             exwinmode |= WS_EX_LAYERED;
+      kitty_make_window:
 #endif
 
 #ifdef TEST_ANSI_WINDOW
@@ -3629,7 +3651,26 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef MOD_PERSO
         if (kitty_want_d2d)
             wgs->painter = kitty_painter_d2d_new(
-                wgs->term_hwnd, conf_get_int(wgs->conf, CONF_font_quality));
+                wgs->term_hwnd, conf_get_int(wgs->conf, CONF_font_quality),
+                kitty_want_comp);
+        if (!wgs->painter && kitty_want_comp) {
+            /* renderer=d2dcomp could not be made: a window without a
+             * redirection surface shows nothing GDI draws, so it is made
+             * again as a plain Direct2D window, with Windows' scroll bar.
+             * Nothing hangs on it yet (no seat in GWLP_USERDATA). WndProc
+             * lets its messages pass (kitty_win_recreating). */
+            kitty_comp_fallback_step = (unsigned long)(ULONG_PTR)
+                GetPropA(wgs->term_hwnd, "KiTTY.renderer.fail");
+            kitty_win_recreating = true;
+            DestroyWindow(wgs->term_hwnd);
+            kitty_win_recreating = false;
+            wgs->term_hwnd = NULL;
+            kitty_want_comp = wgs->comp_window = false;
+            exwinmode &= ~0x00200000;
+            if (conf_get_bool(wgs->conf, CONF_scrollbar))
+                winmode |= WS_VSCROLL;
+            goto kitty_make_window;
+        }
 #endif
         if (!wgs->painter)
             wgs->painter = kitty_painter_gdi_new(wgs->term_hwnd, &wgs->pal);
@@ -3879,6 +3920,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
 #ifdef MOD_PERSO
     /* KiTTY: the font line init_fonts could not write yet (no log then) */
     kitty_font_event(wgs);
+    if (kitty_comp_fallback_step) {    /* renderer=d2dcomp made again plain */
+        char *m = dupprintf(KT_D2D_COMP_FALLBACK_EVENT, kitty_comp_fallback_step);
+        logevent(wgs->logctx, m);
+        sfree(m);
+    }
     /* KiTTY feature: URL hyperlinks - init urlhack + compile regex. After
      * log_init: a custom pattern that does not compile is reported in this
      * Terminal Window's Event Log (urlhack_report_fallback), which needs logctx. */
@@ -3999,7 +4045,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdline, int show)
         si.nMax = wgs->term->rows - 1;
         si.nPage = wgs->term->rows;
         si.nPos = 0;
-        SetScrollInfo(wgs->term_hwnd, SB_VERT, &si, false);
+        wgs->sb_total = wgs->sb_page = wgs->term->rows;
+        wgs->sb_start = 0;
+        if (!wgs->comp_window)         /* KiTTY: renderer=d2dcomp has its own */
+            SetScrollInfo(wgs->term_hwnd, SB_VERT, &si, false);
     }
 
     /*
@@ -5948,13 +5997,32 @@ static void wintw_request_resize(TermWin *tw, int w, int h)
 #define KITTY_STRIP_PX96 4             /* strip width at 96 dpi */
 #endif
 
+#ifdef MOD_PERSO
+/* KiTTY renderer=d2dcomp: the window draws its own scroll bar (no
+ * redirection surface, so Windows' bar would not show), where it shows one:
+ * the scroll bar setting, or its full-screen one. */
+static bool kitty_sb_shown(WinGuiSeat *wgs)
+{
+    return wgs->comp_window &&
+        conf_get_bool(wgs->conf, is_full_screen(wgs) ?
+                      CONF_scrollbar_in_fullscreen : CONF_scrollbar);
+}
+#endif
+
+/* The strip at the client area's right edge: the failed-command and search
+ * marks (KITTY_STRIP_PX96 wide), or with renderer=d2dcomp our own scroll
+ * bar, Windows' width, with the marks inside it. */
 static int strip_width(WinGuiSeat *wgs)
 {
 #ifdef MOD_PERSO
     int dpi;
+    dpi = wgs->dpi_info.cur_dpi.x > 0 ? wgs->dpi_info.cur_dpi.x : 96;
+    if (kitty_sb_shown(wgs))
+        return p_GetSystemMetricsForDpi ?
+            p_GetSystemMetricsForDpi(SM_CXVSCROLL, dpi) :
+            MulDiv(GetSystemMetrics(SM_CXVSCROLL), dpi, 96);
     if (!conf_get_bool(wgs->conf, CONF_failed_marks))
         return 0;
-    dpi = wgs->dpi_info.cur_dpi.x > 0 ? wgs->dpi_info.cur_dpi.x : 96;
     return MulDiv(KITTY_STRIP_PX96, dpi, 96);
 #else
     (void)wgs;
@@ -6025,12 +6093,254 @@ static void kitty_paint_default_bg(WinGuiSeat *wgs, const RECT *r,
  * tick per failed command, placed by
  * where its line is in scrollback + screen. Drawn into the current frame;
  * `clip` limits the drawing (WM_PAINT), NULL draws the whole strip. */
+/* KiTTY renderer=d2dcomp: our own scroll bar, the strip at the client
+ * area's right edge (strip_width). No arrow buttons: the track is the whole
+ * height. The thumb is the view's share of scrollback + screen, at least
+ * 20 px (96 dpi) tall. No scrollback, no thumb. False: no own bar here. */
+struct kitty_sbgeo {
+    RECT bar;
+    int track_top, track_len, thumb_top, thumb_len, maxpos;
+};
+static bool kitty_sb_geometry(WinGuiSeat *wgs, struct kitty_sbgeo *g)
+{
+    RECT cr;
+    int sw, dpi, minthumb, start;
+    if (!kitty_sb_shown(wgs) || !wgs->term_hwnd ||
+        !GetClientRect(wgs->term_hwnd, &cr))
+        return false;
+    sw = strip_width(wgs);
+    g->bar = cr;
+    g->bar.left = cr.right - sw;
+    if (g->bar.left < cr.left)
+        g->bar.left = cr.left;
+    g->track_top = cr.top;
+    g->track_len = cr.bottom - cr.top;
+    g->thumb_top = g->track_top;
+    g->thumb_len = 0;
+    g->maxpos = wgs->sb_total - wgs->sb_page;
+    if (g->maxpos <= 0 || g->track_len <= 0 || wgs->sb_total <= 0) {
+        g->maxpos = 0;
+        return true;
+    }
+    dpi = wgs->dpi_info.cur_dpi.y > 0 ? wgs->dpi_info.cur_dpi.y : 96;
+    minthumb = MulDiv(20, dpi, 96);
+    g->thumb_len = (int)((long long)g->track_len * wgs->sb_page /
+                         wgs->sb_total);
+    if (g->thumb_len < minthumb)
+        g->thumb_len = minthumb;
+    if (g->thumb_len > g->track_len)
+        g->thumb_len = g->track_len;
+    start = wgs->sb_start < 0 ? 0 :
+            wgs->sb_start > g->maxpos ? g->maxpos : wgs->sb_start;
+    g->thumb_top = g->track_top + (int)((long long)(g->track_len - g->thumb_len) *
+                                        start / g->maxpos);
+    return true;
+}
+
+/* The bar's track and thumb, in the app's light or dark theme. The thumb is
+ * lighter (dark) or darker (light) under the pointer and while held. */
+static void kitty_sb_draw(WinGuiSeat *wgs, const struct kitty_sbgeo *g,
+                          const RECT *clip)
+{
+    bool dark = kitty_theme_app_dark();
+    COLORREF track = dark ? RGB(32, 32, 32) : RGB(240, 240, 240);
+    COLORREF thumb = wgs->sb_drag ?
+                         (dark ? RGB(176, 176, 176) : RGB(96, 96, 96)) :
+                     wgs->sb_hover == 2 ?
+                         (dark ? RGB(144, 144, 144) : RGB(136, 136, 136)) :
+                         (dark ? RGB(104, 104, 104) : RGB(192, 192, 192));
+    RECT r, part;
+    int m;
+    if (IntersectRect(&part, &g->bar, clip))
+        kp_fill_rect(wgs->painter, &part, track);
+    if (g->thumb_len <= 0)
+        return;
+    m = (g->bar.right - g->bar.left) / 4;   /* the thumb narrower than the track */
+    r.left = g->bar.left + m;
+    r.right = g->bar.right - m;
+    if (r.right <= r.left) {
+        r.left = g->bar.left;
+        r.right = g->bar.right;
+    }
+    r.top = g->thumb_top;
+    r.bottom = g->thumb_top + g->thumb_len;
+    if (IntersectRect(&part, &r, clip))
+        kp_fill_rect(wgs->painter, &part, thumb);
+}
+
+/* The bar drawn again now, in a frame of its own (as a scroll draws it,
+ * wintw_free_draw_ctx): hover, held, released, the theme switched. With
+ * an InvalidateRect instead, row d2d_comp_bar saw the thumb keep its old
+ * colour on screen. */
+static void kitty_sb_redraw(WinGuiSeat *wgs)
+{
+    struct kitty_sbgeo g;
+    if (!wgs || !kitty_sb_geometry(wgs, &g))
+        return;
+    wgs->strip_dirty = true;
+    if (wintw_setup_draw_ctx(&wgs->termwin))
+        wintw_free_draw_ctx(&wgs->termwin);
+}
+
+/* the thumb held at y: the view's top line where the thumb's top is */
+static void kitty_sb_drag_to(WinGuiSeat *wgs, int y)
+{
+    struct kitty_sbgeo g;
+    long long pos;
+    if (!kitty_sb_geometry(wgs, &g) || g.maxpos <= 0 ||
+        g.track_len <= g.thumb_len)
+        return;
+    pos = (long long)(y - wgs->sb_grab - g.track_top) * g.maxpos /
+          (g.track_len - g.thumb_len);
+    if (pos < 0)
+        pos = 0;
+    if (pos > g.maxpos)
+        pos = g.maxpos;
+    term_scroll(wgs->term, 1, (int)pos);
+}
+
+/* a click on the track: half a screen, as PuTTY's SB_PAGEUP / SB_PAGEDOWN */
+static void kitty_sb_page(WinGuiSeat *wgs, int dir)
+{
+    term_scroll(wgs->term, 0, dir * wgs->term->rows / 2);
+}
+
+static void kitty_sb_end(WinGuiSeat *wgs, bool release)
+{
+    wgs->sb_drag = false;
+    wgs->sb_repeat = 0;
+    KillTimer(wgs->term_hwnd, TIMER_SB_REPEAT);
+    if (release && GetCapture() == wgs->term_hwnd)
+        ReleaseCapture();
+    kitty_sb_redraw(wgs);
+}
+
+/* The mouse on our own bar (WndProc, before every other handler, so the
+ * bar never starts a selection, a paste, a menu or the host's mouse
+ * reporting): the thumb dragged, the track held (pages, again every 50 ms
+ * after 400 ms, until the thumb reaches the pointer), the hover, an arrow
+ * pointer. True: handled, *ret the answer. The wheel is not taken: it
+ * scrolls as anywhere in the window. */
+static bool kitty_sb_mouse(WinGuiSeat *wgs, HWND hwnd, UINT msg, WPARAM wp,
+                           LPARAM lp, LRESULT *ret)
+{
+    struct kitty_sbgeo g;
+    POINT pt;
+    pt.x = (short)LOWORD(lp);
+    pt.y = (short)HIWORD(lp);
+    switch (msg) {
+      case WM_LBUTTONDOWN:
+      case WM_LBUTTONDBLCLK:
+        if (!kitty_sb_geometry(wgs, &g) || !PtInRect(&g.bar, pt))
+            return false;
+        SetCapture(hwnd);
+        if (g.thumb_len > 0 && pt.y >= g.thumb_top &&
+            pt.y < g.thumb_top + g.thumb_len) {
+            wgs->sb_drag = true;
+            wgs->sb_grab = pt.y - g.thumb_top;
+            kitty_sb_redraw(wgs);
+        } else if (g.thumb_len > 0) {
+            wgs->sb_repeat = pt.y < g.thumb_top ? -1 : +1;
+            wgs->sb_y = pt.y;
+            kitty_sb_page(wgs, wgs->sb_repeat);
+            SetTimer(hwnd, TIMER_SB_REPEAT, 400, NULL);
+        }
+        *ret = 0;
+        return true;
+      case WM_MOUSEMOVE: {
+        int h;
+        bool in;
+        if (wgs->sb_drag) {
+            kitty_sb_drag_to(wgs, pt.y);
+            *ret = 0;
+            return true;
+        }
+        if (wgs->sb_repeat) {
+            wgs->sb_y = pt.y;
+            *ret = 0;
+            return true;
+        }
+        if (!kitty_sb_geometry(wgs, &g))
+            return false;
+        in = PtInRect(&g.bar, pt) != 0;
+        h = !in ? 0 : (g.thumb_len > 0 && pt.y >= g.thumb_top &&
+                       pt.y < g.thumb_top + g.thumb_len) ? 2 : 1;
+        if (h != wgs->sb_hover) {
+            wgs->sb_hover = h;
+            kitty_sb_redraw(wgs);
+        }
+        if (in && !wgs->sb_tracking) {
+            TRACKMOUSEEVENT t;
+            t.cbSize = sizeof(t);
+            t.dwFlags = TME_LEAVE;
+            t.hwndTrack = hwnd;
+            t.dwHoverTime = 0;
+            if (TrackMouseEvent(&t))
+                wgs->sb_tracking = true;
+        }
+        if (!in)
+            return false;
+        *ret = 0;
+        return true;
+      }
+      case WM_MOUSELEAVE:
+        wgs->sb_tracking = false;
+        if (wgs->sb_hover) {
+            wgs->sb_hover = 0;
+            kitty_sb_redraw(wgs);
+        }
+        return false;                  /* the window's own handling too */
+      case WM_LBUTTONUP:
+        if (!wgs->sb_drag && !wgs->sb_repeat)
+            return false;
+        kitty_sb_end(wgs, true);
+        *ret = 0;
+        return true;
+      case WM_CAPTURECHANGED:
+        if (wgs->sb_drag || wgs->sb_repeat)
+            kitty_sb_end(wgs, false);
+        return false;
+      case WM_TIMER:
+        if (wp != TIMER_SB_REPEAT)
+            return false;
+        if (!wgs->sb_repeat || !kitty_sb_geometry(wgs, &g)) {
+            KillTimer(hwnd, TIMER_SB_REPEAT);
+        } else {
+            if ((wgs->sb_repeat < 0 && wgs->sb_y < g.thumb_top) ||
+                (wgs->sb_repeat > 0 && wgs->sb_y >= g.thumb_top + g.thumb_len))
+                kitty_sb_page(wgs, wgs->sb_repeat);
+            SetTimer(hwnd, TIMER_SB_REPEAT, 50, NULL);
+        }
+        *ret = 0;
+        return true;
+      case WM_SETCURSOR:
+        if (LOWORD(lp) != HTCLIENT || !kitty_sb_geometry(wgs, &g))
+            return false;
+        GetCursorPos(&pt);
+        ScreenToClient(hwnd, &pt);
+        if (!PtInRect(&g.bar, pt) && !wgs->sb_drag)
+            return false;
+        SetCursor(LoadCursor(NULL, IDC_ARROW));
+        *ret = TRUE;
+        return true;
+      case WM_RBUTTONDOWN: case WM_RBUTTONUP: case WM_RBUTTONDBLCLK:
+      case WM_MBUTTONDOWN: case WM_MBUTTONUP: case WM_MBUTTONDBLCLK:
+        if (!kitty_sb_geometry(wgs, &g) || !PtInRect(&g.bar, pt))
+            return false;
+        *ret = 0;                      /* no paste, no menu from the bar */
+        return true;
+    }
+    return false;
+}
+
 static void kitty_strip_paint(WinGuiSeat *wgs, const RECT *clip)
 {
     static int marks[KITTY_STRIP_TICKS], smarks[KITTY_STRIP_TICKS];
     RECT cr, strip, draw;
     int sw, n, ns, scur, total, i, tick_h, dpi_y, h, last_bottom, pass;
     int track_top, track_len, thumb_len, maxpos;
+    struct kitty_sbgeo sbg;
+    bool own;
 
     sw = strip_width(wgs);
     if (sw <= 0 || !wgs->painter || !wgs->term || !wgs->term_hwnd)
@@ -6047,8 +6357,22 @@ static void kitty_strip_paint(WinGuiSeat *wgs, const RECT *clip)
     } else {
         draw = strip;
     }
-    kitty_paint_default_bg(wgs, &draw,
-                           wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT]);
+    own = kitty_sb_geometry(wgs, &sbg);     /* renderer=d2dcomp: our own bar */
+    /* the badge keeps left of our bar (paint-d2d.c badge_rect) */
+    if (own)
+        SetPropA(wgs->term_hwnd, "KiTTY.d2dcomp.bar",
+                 (HANDLE)(ULONG_PTR)(DWORD)sw);
+    else
+        RemovePropA(wgs->term_hwnd, "KiTTY.d2dcomp.bar");
+    /* Our bar is drawn whole whenever a paint reaches it, not only the
+     * paint's rectangle of it. */
+    if (own) {
+        draw = strip;
+        kitty_sb_draw(wgs, &sbg, &draw);
+    }
+    else
+        kitty_paint_default_bg(wgs, &draw,
+                               wgs->colours[ATTR_DEFBG >> ATTR_BGSHIFT]);
 
     n = term_failed_marks(wgs->term, marks, KITTY_STRIP_TICKS, &total);
     /* the scrollback search's hits, amber, the current one taller */
@@ -6070,7 +6394,11 @@ static void kitty_strip_paint(WinGuiSeat *wgs, const RECT *clip)
     track_top = cr.top;
     track_len = h;
     thumb_len = 0;
-    {
+    if (own) {                         /* the marks inside our own bar */
+        track_top = sbg.track_top;
+        track_len = sbg.track_len;
+        thumb_len = sbg.thumb_len;
+    } else {
         SCROLLBARINFO sbi;
         memset(&sbi, 0, sizeof(sbi));
         sbi.cbSize = sizeof(sbi);
@@ -6252,7 +6580,7 @@ static void reset_window(WinGuiSeat *wgs, int reinit)
         RECT rect;
         rect.left = rect.top = 0;
         rect.right = (wgs->font_width * wgs->term->cols);
-        if (conf_get_bool(wgs->conf, CONF_scrollbar))
+        if (conf_get_bool(wgs->conf, CONF_scrollbar) && !wgs->comp_window)
             rect.right += p_GetSystemMetricsForDpi(SM_CXVSCROLL,
                                                    wgs->dpi_info.cur_dpi.x);
         rect.bottom = (wgs->font_height * wgs->term->rows);
@@ -6795,6 +7123,19 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
     HDC hdc;
     int resize_action;
     WinGuiSeat *wgs = (WinGuiSeat *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+
+#ifdef MOD_PERSO
+    /* KiTTY: a renderer=d2dcomp window being destroyed to be made again
+     * (WinMain): none of this program's handling, no PostQuitMessage */
+    if (kitty_win_recreating)
+        return sw_DefWindowProc(hwnd, message, wParam, lParam);
+    {
+        LRESULT sbr = 0;
+        if (wgs && wgs->comp_window &&
+            kitty_sb_mouse(wgs, hwnd, message, wParam, lParam, &sbr))
+            return sbr;
+    }
+#endif
 
 #if defined(MOD_PERSO) && defined(KITTY_TEST_BUILD_LABEL)
     {
@@ -8069,10 +8410,22 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
                 nflg = flag;
                 if (conf_get_bool(wgs->conf, is_full_screen(wgs) ?
                                   CONF_scrollbar_in_fullscreen :
-                                  CONF_scrollbar))
+                                  CONF_scrollbar) && !wgs->comp_window)
                     nflg |= WS_VSCROLL;
                 else
                     nflg &= ~WS_VSCROLL;
+#ifdef MOD_PERSO
+                /* KiTTY renderer=d2dcomp: its own bar is client width, so a
+                 * bar switched on or off lays the window out again */
+                if (wgs->comp_window &&
+                    (conf_get_bool(prev_conf, CONF_scrollbar) !=
+                     conf_get_bool(wgs->conf, CONF_scrollbar) ||
+                     conf_get_bool(prev_conf, CONF_scrollbar_in_fullscreen) !=
+                     conf_get_bool(wgs->conf, CONF_scrollbar_in_fullscreen))) {
+                    wgs->strip_dirty = true;
+                    init_lvl = 2;
+                }
+#endif
 
                 if (resize_action == RESIZE_DISABLED ||
                     is_full_screen(wgs))
@@ -8848,9 +9201,21 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
         return 0;
       case WM_PAINT: {
         PAINTSTRUCT p;
+#ifdef MOD_PERSO
+        /* KiTTY renderer=d2dcomp: the window has no redirection surface.
+         * Its WM_PAINT DC has an empty clip (paint-d2d.c traces it in test
+         * builds). Painting rcPaint repainted nothing there. The update
+         * region is read before BeginPaint. */
+        RECT kupd;
+        bool kupd_ok = wgs->comp_window && GetUpdateRect(hwnd, &kupd, FALSE);
+#endif
 
         HideCaret(hwnd);
         hdc = BeginPaint(hwnd, &p);
+#ifdef MOD_PERSO
+        if (kupd_ok)
+            p.rcPaint = kupd;
+#endif
         if (wgs->pal) {
             SelectPalette(hdc, wgs->pal, true);
             RealizePalette(hdc);
@@ -9802,6 +10167,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
              * the theme it cached unless that cache is dropped. */
             kitty_theme_system_changed();
             kitty_frame_restore_resting();
+            kitty_sb_redraw(wgs);      /* renderer=d2dcomp: our own bar too */
         }
         break;
 #endif
@@ -9913,6 +10279,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT message,
             if (!kitty_theme_frame_dark(MainHwnd, &was_dark) ||
                 was_dark != kitty_theme_app_dark())
                 kitty_frame_restore_resting();
+            kitty_sb_redraw(wgs);      /* renderer=d2dcomp: our own bar too */
             /* the strength of the OSC 3008 tint is an Appearance setting */
             kitty_ctx_tint_forget();
             if (kitty_ctx_tint_apply(wgs))
@@ -13117,8 +13484,15 @@ static void wintw_set_scrollbar(TermWin *tw, int total, int start, int page)
 
 #ifdef MOD_PERSO
     /* KiTTY: the scrollback changed, so the mark strip is drawn again with
-     * the next frame (wintw_free_draw_ctx). */
+     * the next frame (wintw_free_draw_ctx). renderer=d2dcomp: that strip is
+     * the scroll bar, drawn from these. Windows' bar is never touched (a
+     * SetScrollInfo would make one appear). */
     wgs->strip_dirty = true;
+    wgs->sb_total = total;
+    wgs->sb_start = start;
+    wgs->sb_page = page;
+    if (wgs->comp_window)
+        return;
 #endif
     if (!conf_get_bool(wgs->conf, is_full_screen(wgs) ?
                        CONF_scrollbar_in_fullscreen : CONF_scrollbar))
@@ -14430,7 +14804,8 @@ static void make_full_screen(WinGuiSeat *wgs)
     /* Remove the window furniture. */
     style = GetWindowLongPtr(wgs->term_hwnd, GWL_STYLE);
     style &= ~(WS_CAPTION | WS_BORDER | WS_THICKFRAME);
-    if (conf_get_bool(wgs->conf, CONF_scrollbar_in_fullscreen))
+    if (conf_get_bool(wgs->conf, CONF_scrollbar_in_fullscreen) &&
+        !wgs->comp_window)
         style |= WS_VSCROLL;
     else
         style &= ~WS_VSCROLL;
@@ -14468,7 +14843,7 @@ static void clear_full_screen(WinGuiSeat *wgs)
         style &= ~WS_THICKFRAME;
     else
         style |= WS_THICKFRAME;
-    if (conf_get_bool(wgs->conf, CONF_scrollbar))
+    if (conf_get_bool(wgs->conf, CONF_scrollbar) && !wgs->comp_window)
         style |= WS_VSCROLL;
     else
         style &= ~WS_VSCROLL;

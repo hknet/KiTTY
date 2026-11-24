@@ -455,8 +455,13 @@
 ; window works with both:
 ;    a Direct2D window that may be transparent is layered from its
 ;    creation; one opened opaque stays opaque, and a transparency change
-;    applies to the next window. Also on the configuration window,
-;    Application > KiTTY++ Settings > Terminal > Renderer.
+;    applies to the next window. d2dcomp (new): Direct2D as d2d, but the
+;    picture is shown by a composition visual of KiTTY++'s own on a window
+;    without a redirection surface, for a system whose compositor places
+;    the d2d picture wrong. The window draws its own scroll bar, with the
+;    failed-command and search marks inside it. Where it cannot be made the
+;    window uses d2d, with a line in its Event Log. Also on the configuration
+;    window, Application > KiTTY++ Settings > Terminal > Renderer.
 ;renderer=d2d
 
 ; d2dgdifont: yes = Direct2D draws with the font face GDI selects for the

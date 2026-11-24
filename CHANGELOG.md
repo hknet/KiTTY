@@ -51,6 +51,16 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   work area change. Each repair writes a line to the Terminal Window's Event
   Log. Refs hknet/KiTTY#88
 
+- Renderer "Direct2D composition (new)" (Application > KiTTY++ Settings >
+  Terminal > Renderer, `[KiTTY] renderer=d2dcomp`): Direct2D draws as
+  before, but the window has no redirection surface and shows its picture
+  through a composition visual of its own, for a system whose compositor
+  places the Direct2D picture wrong. The window draws its own scroll bar,
+  light or dark with the Appearance, with the failed-command and search
+  marks inside it. Where the composition cannot be made the window uses
+  Direct2D, with a line in the Terminal Window's Event Log. Refs
+  hknet/KiTTY#88
+
 ### Changed
 
 - The SSH agent check (`[KiTTY] verifyagent`) runs before the first

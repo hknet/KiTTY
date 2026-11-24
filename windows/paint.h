@@ -181,8 +181,11 @@ KittyPainter *kitty_painter_gdi_new(HWND hwnd, HPALETTE *pal);
  * NULL when the machine cannot provide it, and the caller stays on GDI.
  * font_quality is the session's FQ_* setting (the antialiasing mode).
  * The swap chain is flip-model for the window's whole life; a window that
- * may be dimmed must be layered BEFORE this is called (window.c). */
-KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality);
+ * may be dimmed must be layered BEFORE this is called (window.c). comp
+ * ([KiTTY] renderer=d2dcomp): the chain is shown by a composition visual
+ * of our own, on a window made without a redirection surface. NULL when
+ * that cannot be made: the caller makes the window again. */
+KittyPainter *kitty_painter_d2d_new(HWND hwnd, int font_quality, bool comp);
 /* KiTTY: DXGI's occlusion notification for the Direct2D window
  * (IDXGIFactory2::RegisterOcclusionStatusWindow, hknet/KiTTY#88): window.c
  * hands the message to the painter. Test builds trace it (KITTY_TEST_D2D_TRACE). */

@@ -1720,6 +1720,13 @@
 #define KT_KSET_WD_RENDERER_GDI                      "GDI"
 #define KT_KSET_WD_RENDERER_D2D                      "Direct2D (default)"
 #define KT_KSET_WD_RENDERER_D2D_OLD                  "Direct2D (Win8.1+ only)"
+#define KT_KSET_WD_RENDERER_D2DCOMP                  "Direct2D composition (new)"
+#define KT_KSET_WD_RENDERER_D2DCOMP_OLD              "Direct2D composition (Win8.1+ only)"
+/* the Terminal Window's Event Log. paint-d2d.c: the adapter line (%s) of a
+ * window with renderer=d2dcomp. window.c: such a window made again for plain
+ * Direct2D because the composition could not be made (%lu: the step). */
+#define KT_D2D_COMP_PRESENT_FMT                      "%s, composition presentation"
+#define KT_D2D_COMP_FALLBACK_EVENT                   "Direct2D composition could not be used here (step %lu), the window uses plain Direct2D"
 #define KT_KSET_WD_D2DGDIFONT                        "Direct2D: use GDI font selection"
 #define KT_D2D_BADGE                                 "D2D"   /* the renderer badge, paint-d2d.c */
 #define KT_D2D_FALLBACK_EVENT                        "Direct2D renderer: the graphics device failed %d times in a row " \

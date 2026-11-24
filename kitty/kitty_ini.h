@@ -458,8 +458,13 @@ char default_init_file_content[] =
 ; window works with both:\n\
 ;    a Direct2D window that may be transparent is layered from its\n\
 ;    creation; one opened opaque stays opaque, and a transparency change\n\
-;    applies to the next window. Also on the configuration window,\n\
-;    Application > KiTTY++ Settings > Terminal > Renderer.\n\
+;    applies to the next window. d2dcomp (new): Direct2D as d2d, but the\n\
+;    picture is shown by a composition visual of KiTTY++'s own on a window\n\
+;    without a redirection surface, for a system whose compositor places\n\
+;    the d2d picture wrong. The window draws its own scroll bar, with the\n\
+;    failed-command and search marks inside it. Where it cannot be made the\n\
+;    window uses d2d, with a line in its Event Log. Also on the configuration\n\
+;    window, Application > KiTTY++ Settings > Terminal > Renderer.\n\
 ;renderer=d2d\n\
 \n\
 ; d2dgdifont: yes = Direct2D draws with the font face GDI selects for the\n\

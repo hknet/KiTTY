@@ -741,7 +741,8 @@ static const struct kset_choice kset_rc_agent_choices[] = {
 /* Terminal: the renderer and the frame pacing ([KiTTY] renderer /
  * framepace, read when a window is created / at startup). */
 static const struct kset_choice kset_renderer_choices[] = {
-    { KT_KSET_WD_RENDERER_GDI, "gdi", 0 }, { KT_KSET_WD_RENDERER_D2D, "d2d", 1 } };
+    { KT_KSET_WD_RENDERER_GDI, "gdi", 0 }, { KT_KSET_WD_RENDERER_D2D, "d2d", 1 },
+    { KT_KSET_WD_RENDERER_D2DCOMP, "d2dcomp", 2 } };
 static const struct kset_choice kset_framepace_choices[] = {
     { KT_KSET_WD_FP_AUTO, "auto", -1 }, { KT_KSET_WD_FP_30, "33", 33 },
     { KT_KSET_WD_FP_20, "50", 50 },     { KT_KSET_WD_FP_FIXED, "0", 0 } };
@@ -780,6 +781,15 @@ bool kitty_renderer_is_d2d(void)
     char v[16] = "";
     ReadParameterN(KI_SECTION_KITTY, KI_RENDERER, v, sizeof(v));
     return stricmp(v, "gdi") != 0 && kset_d2d_supported();
+}
+/* renderer=d2dcomp: Direct2D shown by a composition visual of our own on a
+ * window without a redirection surface (paint-d2d.c, window.c). An older
+ * KiTTY++ reads the word as plain Direct2D. */
+bool kitty_renderer_is_d2dcomp(void)
+{
+    char v[16] = "";
+    ReadParameterN(KI_SECTION_KITTY, KI_RENDERER, v, sizeof(v));
+    return stricmp(v, "d2dcomp") == 0 && kset_d2d_supported();
 }
 /* [KiTTY] d2dgdifont=yes: Direct2D draws with the face GDI selected for the
  * window's font (windows/paint-d2d.c font_of), default no. */
@@ -1326,9 +1336,10 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
                 /* Direct2D on a Windows below 8.1: offered, labelled as such,
                  * and refused when picked (a plain combo box cannot grey
                  * one entry) */
-                if (!strcmp(k->key, KI_RENDERER) && k->choices[i].value == 1 &&
+                if (!strcmp(k->key, KI_RENDERER) && k->choices[i].value >= 1 &&
                     !kset_d2d_supported())
-                    name = KT_KSET_WD_RENDERER_D2D_OLD;
+                    name = k->choices[i].value == 2 ? KT_KSET_WD_RENDERER_D2DCOMP_OLD
+                                                    : KT_KSET_WD_RENDERER_D2D_OLD;
                 dlg_listbox_addwithid(ctrl, dlg, name, k->choices[i].value);
             }
             if (other) {
@@ -1457,7 +1468,7 @@ void kitty_kset_handler(dlgcontrol *ctrl, dlgparam *dlg, void *data, int event)
     } else if (event == EVENT_SELCHANGE && k->kind == KSET_CHOICE && !cfgwin_refreshing) {
         int idx = dlg_listbox_index(ctrl, dlg);
         if (idx >= 0 && idx < k->nchoices) {
-            if (!strcmp(k->key, KI_RENDERER) && k->choices[idx].value == 1 &&
+            if (!strcmp(k->key, KI_RENDERER) && k->choices[idx].value >= 1 &&
                 !kset_d2d_supported()) {
                 /* snap back to GDI: nothing stored */
                 cfgwin_refreshing = 1;
