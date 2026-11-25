@@ -940,7 +940,6 @@ static Socket *sk_net_accept(accept_ctx_t ctx, Plug *plug)
  * on a dropped SYN -- a real connect completes in well under a second -- so it
  * is safe to apply unconditionally to every outgoing TCP attempt.
  */
-#define KITTY_CONNECT_TIMEOUT_MS (5 * TICKSPERSEC)
 static void net_connect_timeout(void *ctx, unsigned long now);
 
 static DWORD try_connect(NetSocket *sock)
@@ -1177,7 +1176,7 @@ static void net_connect_timeout(void *ctx, unsigned long now)
     {
         SockAddr thisaddr = sk_extractaddr_tmp(s->addr, &s->step);
         plug_log(s->plug, &s->sock, PLUGLOG_CONNECT_FAILED, &thisaddr,
-                 s->port, "Connection attempt timed out", 0);
+                 s->port, KITTY_CONNECT_TIMEOUT_MSG, 0);
     }
 
     err = 1;
@@ -1185,7 +1184,7 @@ static void net_connect_timeout(void *ctx, unsigned long now)
         err = try_connect(s);
 
     if (err != 0)
-        plug_closing_error(s->plug, "Connection attempt timed out");
+        plug_closing_error(s->plug, KITTY_CONNECT_TIMEOUT_MSG);
 }
 
 Socket *sk_new(SockAddr *addr, int port, bool privport, bool oobinline,

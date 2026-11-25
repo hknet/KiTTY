@@ -34,6 +34,7 @@ struct KittyKnock {
     Plug plug;
     unsigned pport;
     bool pconnected, pended;
+    unsigned pwait_ms;          /* the cap the knock waited out */
     char *perror;
     unsigned long next;         /* the pending timer */
     kitty_knock_done_fn done;
@@ -244,7 +245,11 @@ static void knock_plug_closing(Plug *p, PlugCloseType type,
     if (k->pended)
         return;
     k->pended = true;
-    if (type != PLUGCLOSE_NORMAL && msg)
+    if (!k->pconnected && msg && !strcmp(msg, KITTY_CONNECT_TIMEOUT_MSG))
+        /* network.c's connect cap, at or before the knock's own: no
+         * answer, as when the knock's cap ends it */
+        k->pwait_ms = KITTY_CONNECT_TIMEOUT_MS;
+    else if (type != PLUGCLOSE_NORMAL && msg)
         k->perror = dupstr(msg);
     expire_timer_context(k);
     /* not sk_close from inside the socket's own callback */
@@ -284,6 +289,8 @@ static void knock_proxied(KittyKnock *k, unsigned port)
 
     k->pport = port;
     k->pconnected = k->pended = false;
+    k->pwait_ms = knock_ssh_proxy(k->conf) ? KNOCK_SSHPROXY_CAP_MS
+                                           : KNOCK_PROXY_CAP_MS;
     a = name_lookup(k->host, (int)port, &canon, k->conf,
                     conf_get_int(k->conf, CONF_addressfamily), NULL,
                     "port knocking");
@@ -306,8 +313,7 @@ static void knock_proxied(KittyKnock *k, unsigned port)
         knock_after(k, KNOCK_GAP_MS);
         return;
     }
-    knock_after(k, knock_ssh_proxy(k->conf) ? KNOCK_SSHPROXY_CAP_MS
-                                             : KNOCK_PROXY_CAP_MS);
+    knock_after(k, k->pwait_ms);
 }
 
 /*
@@ -344,9 +350,7 @@ static void knock_proxy_end(KittyKnock *k)
         knock_log(k, false, KT_KNOCK_PROXY_SENT_FMT, k->pport, k->host);
     else
         knock_note(k, KT_KNOCK_PROXY_WAIT_FMT, k->pport,
-                  (unsigned)(knock_ssh_proxy(k->conf) ? KNOCK_SSHPROXY_CAP_MS
-                                                      : KNOCK_PROXY_CAP_MS)
-                  / 1000u);
+                   k->pwait_ms / 1000u);
     knock_next(k);
 }
 

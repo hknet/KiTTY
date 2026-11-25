@@ -108,6 +108,10 @@ void kitty_knock_run_cli(Conf *conf, LogContext *logctx);
 /* windows/network.c: every address of a looked-up name, port 0. */
 typedef void (*kitty_sk_addr_fn)(void *ctx, const void *sa, int salen);
 int kitty_sk_addr_each(SockAddr *addr, kitty_sk_addr_fn fn, void *ctx);
+/* windows/network.c: the cap on one pending connect, then the error it
+ * ends the connection with */
+#define KITTY_CONNECT_TIMEOUT_MS  5000
+#define KITTY_CONNECT_TIMEOUT_MSG "Connection attempt timed out"
 
 /* proxy/proxy.c: whether a connection to host:port uses the proxy. */
 bool kitty_proxy_applies(const char *host, int port, Conf *conf);
