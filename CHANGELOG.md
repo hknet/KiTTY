@@ -1,23 +1,26 @@
 # KiTTY changelog
 
-KiTTY++ is the old KiTTY plus serious (speed) enhancements and a lot
+KiTTY++ is the new old KiTTY plus serious (speed) enhancements and a lot
 more features based on a modern, security-patched **PuTTY 0.85** core
 with more current fixes cherry-picked to our codebase.
 Versions below are this port's own `0.85.1.x` line.
 For current known limitations see [KNOWN-ISSUES.md](KNOWN-ISSUES.md);
-for the full feature list see [FEATURES.md](FEATURES.md).
+for the full feature list see [FEATURES.md](FEATURES.md) and the docs-folder.
 
-## 0.85.1.22-beta — unreleased
+## 0.85.1.22-beta — 2026-11-25
 
 ### New
 
-- kageant can serve the Windows OpenSSH agent pipe beside its own
+- kageant can serve the Windows OpenSSH agent pipe beside its own pipe(s)
   (Settings > Agent, `[Agent] opensshpipe`, off by default): ssh.exe,
   ssh-add and KeePassXC's "Use OpenSSH" reach kageant with nothing else
   set. When the Windows service OpenSSH Authentication Agent holds the
   pipe, kageant's service box stops it, disables it when kageant starts at
   login, or turns it back on, with Windows' administrator prompt, or shows
-  the commands to copy. Refs hknet/KiTTY#29
+  the commands to copy. kageant also serves an additional named pipe of a
+  fixed name (`[Agent] extrapipe`) and can set SSH_AUTH_SOCK of the Windows
+  user to it (`[Agent] setsshauthsock`). Programs started afterwards use it.
+  Refs hknet/KiTTY#29
 - Session icons: with **Show session icons in KiTTY++** on Application >
   KiTTY++ Settings > Appearance (off by default) the launcher's session menu,
   Manage Sessions and the Session panel's list show each session's icon in
@@ -41,9 +44,9 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   [docs/GROUP-POLICY.md](docs/GROUP-POLICY.md). The template is a separate
   download next to the installers, `kittypp-policy-templates-<version>.zip`.
 
-- A Direct2D window can place its picture again after a display change
+- A Direct2D window can redraw its picture again after a display change
   (Application > KiTTY++ Settings > Terminal > Renderer, group Bugs,
-  `[KiTTY] d2ddisplayrepair`, off by default). On some systems the
+  `[KiTTY] d2ddisplayrepair`, off by default). On some (few) systems the
   compositor keeps the picture up and left of its place after the display
   woke or changed mode (seen on Windows 10 with Intel HD 530 graphics). The
   window can move one pixel and back, get one pixel wider and back, or hide
@@ -57,21 +60,27 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   through a composition visual of its own, for a system whose compositor
   places the Direct2D picture wrong. The window draws its own scroll bar,
   light or dark with the Appearance, with the failed-command and search
-  marks inside it. Where the composition cannot be made the window uses
+  marks inside it. If the composition mode cannot be used, the window uses
   Direct2D, with a line in the Terminal Window's Event Log. Refs
   hknet/KiTTY#88
+  
+- Application > Security: the group Hardening with **Restrict access to
+  KiTTY++ processes (restrictacl)**. **Lock for all users...** or
+  `kitty.exe -machinelock restrictacl=yes` sets it for all users of the
+  computer, with administrator rights. `[Print]` and `[FontFallback]` have
+  registry subkeys of their own, so the registry store and the Group Policy
+  template hold them too.
 
 ### Changed
 
 - The SSH agent check (`[KiTTY] verifyagent`) runs before the first
-  request leaves, on the named pipe and through the old Pageant window. It
-  runs again for each other program that answers later (agent forwarding
-  included). It
-  also warns when it cannot check the program that answers. klink, kscp and
-  ksftp make the same check: one line on standard error. On Windows XP the
-  integrity stamp of the release decides, as XP cannot verify the
-  signature. Refs hknet/KiTTY#29
-- A new folder store (its session folder made at the first start of
+  request leaves, on the named pipe and through the old Pageant window message.
+  It runs again for each other program that answers later (agent forwarding
+  included). It also warns when it cannot check the program that answers.
+  klink, kscp and ksftp check the same and report one line on standard error.
+  On Windows XP the integrity stamp of the release decides, as XP cannot
+  verify the Authenticode signature. Refs hknet/KiTTY#29
+- A new folder store (its session folder created at the first start of
   `kitty_portable.exe`) gets `.ktx` as session file extension. It gets `.khk`
   as host-key file extension when its host-key folder holds no file yet.
   An existing store gets both keys empty (none) without a file renamed. From
@@ -79,12 +88,12 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - New icons for every program of the suite: one blue tile with two
   computers and the green `++`, a badge for Manage Sessions, Quick
   Connect, kageant, kittygen, kscp/ksftp and the lost connection. kageant's
-  tray icon comes in one form for a light and one for a dark taskbar. 16
-  to 24 px are drawn pixel by pixel.
+  tray icon comes in one form for a light and one for a dark taskbar.
+  16 to 24 px are drawn pixel by pixel.
 - The numbered session icons (Window > Title & Icon) are drawn anew and
   come in `kitty++.icl` beside `kitty.exe`: symbols on coloured tiles,
-  drawn from Microsoft's Fluent UI System Icons (MIT). The cartoon
-  characters of classic KiTTY are gone: a session set to 2, 10-19, 21-35
+  drawn from Microsoft's Fluent UI System Icons (MIT). The classic
+  characters of old KiTTY are gone: a session set to 2, 10-19, 21-35
   or 39 shows a new picture (server, database, cloud, firewall, console,
   git and more). The other numbers keep their meaning: computers in their
   colours, the warning sign, the balls, the printer and the digits. 51
@@ -97,7 +106,7 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - Window > Title & Icon: **Choose...** beside the icon number shows the
   icons with their numbers. The external icon file also takes an icon
   library (`.dll`, `.icl`, `.exe`): the number picks the icon in it.
-  **Choose...** then shows that file's icons.
+  **Choose...** then shows that file's available icons.
 
 - FEATURES.md lists what the pseudo-console (ConPTY) of a Local session
   does to images and titles, measured: iTerm2 inline images pass, Sixel,
@@ -106,7 +115,7 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   running, or `far2l --tty --nodetect=f` in a Local session.
 - The Terminal Window's Event Log shows the time of each line with
   milliseconds, so the lines of one second keep apart.
-- A blinking cursor costs far less. With Direct2D the cursor blinks, plain
+- A blinking cursor costs far less CPU. With Direct2D the cursor blinks, plain
   or eased, on a layer of its own that Windows animates: an idle window
   draws no frames for it (Ease blinking took 23 ms of CPU a second). With
   GDI, Ease blinking takes 15 steps a second instead of 30 and redraws only
@@ -139,6 +148,18 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - The renderer, "Direct2D: use GDI font selection" and the frame pacing
   moved from Application > KiTTY++ Settings > Terminal to its new leaf
   Renderer.
+- The confirmation before a paste longer than `pastesize` now has Yes as
+  its default button: Enter alone pastes.
+- Storage & Backup: **Comment out defaults** shows a Yes/No question first,
+  with the number of sessions it would change, No as the default
+  (hknet/KiTTY#61).
+- With `conf=no` KiTTY++ creates and writes no kitty.ini. A folder store
+  (`savemode=dir`) is the exception: there kitty.ini holds the settings and
+  is still written, only `readonly=yes` stops that. The backups follow
+  `savbackupcount` alone: an installation with `conf=no` gets
+  `savbackupcount=0` once.
+- LICENSE holds the plain MIT text, the full credits moved to NOTICE. The
+  About boxes and the file properties name KiTTY++ and its copyright holder.
 
 ### Fixed
 
@@ -156,7 +177,7 @@ for the full feature list see [FEATURES.md](FEATURES.md).
   until the drag ended, as did moving the terminal itself in a Local
   session. The terminal now keeps showing output during the drag. The Event
   Log has the terminal's icon and remembers its place and size. It can be
-  made much smaller than before.
+  sized much smaller than before.
 - A minimised terminal kept its cursor blinking, one frame a second that
   nobody saw. The blink now stops while the window is minimised.
 - Scrolling the Terminal Window's Event Log stopped the terminal: while its
@@ -166,8 +187,13 @@ for the full feature list see [FEATURES.md](FEATURES.md).
 - With `savemode=file`, KiTTY++ stopped at its start with "could not set
   your registry sessions aside" when a session name had 255 characters
   (the registry's limit). Value names of the longest length (16383
-  characters) failed the same way. Both are now copied. Removing KiTTY's
-  values from PuTTY's sessions also reads such names now.
+  characters) failed the same way. Both are now copied. `/copytoputty` also
+  copies such sessions to PuTTY now.
+- Port knocking through a proxy: a knock the proxy never answered was logged
+  as failed ("Connection attempt timed out") instead of "no answer within
+  5 s - next knock".
+- A refused port knock or a serial port that would not open closed the
+  window at once instead of showing the failure.
 
 ## 0.85.1.21-beta — 2026-11-14
 
